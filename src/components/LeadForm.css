@@ -1,0 +1,19 @@
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.form-grid label {
+  grid-column: span 2;
+  font-weight: bold;
+}
+
+.form-grid input,
+.form-grid select,
+.form-grid textarea {
+  grid-column: span 2;
+  padding: 0.5rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}

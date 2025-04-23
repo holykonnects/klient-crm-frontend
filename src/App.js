@@ -5,6 +5,7 @@ import Dashboard from './pages/Dashboard';
 import LeadForm from './components/LeadForm';
 import LeadsTable from './components/LeadsTable';
 import AccountsTable from './components/AccountsTable';
+import DealsTable from './components/DealsTable';
 
 function App() {
   return (
@@ -15,6 +16,7 @@ function App() {
         <Route path="/add-lead" element={<LeadForm />} />
         <Route path="/view-leads" element={<LeadsTable />} />
         <Route path="/view-accounts" element={<AccountsTable />} />
+        <Route path="/view-deals" element={<DealsTable />} />
       </Routes>
     </Router>
   );

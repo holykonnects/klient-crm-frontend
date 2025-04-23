@@ -3,9 +3,10 @@ import React, { useEffect, useState } from 'react';
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
 
   useEffect(() => {
-    fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
+    fetch('https://script.google.com/macros/s/AKfycbzA0HwP6EMOlD04NcDXYbK0I2mRGN7G3rTzAjKTuYwoU6NL-RaMEtI8DRv0S9eELK7WbQ/exec') // Replace with your correct Apps Script URL
       .then(response => response.json())
       .then(data => {
         setAccounts(data);
@@ -18,7 +19,17 @@ function AccountsTable() {
 
   return (
     <div style={{ padding: '2rem' }}>
-      <h2>Account Records</h2>
+      <h2>Accounts Records</h2>
+
+      {/* 🔍 Search Input */}
+      <input
+        type="text"
+        placeholder="Search by Company, City, Mobile, Lead Owner..."
+        value={searchTerm}
+        onChange={e => setSearchTerm(e.target.value)}
+        style={{ marginBottom: '1rem', padding: '0.5rem', width: '300px' }}
+      />
+
       <table border="1" cellPadding="10">
         <thead>
           <tr>
@@ -28,13 +39,21 @@ function AccountsTable() {
           </tr>
         </thead>
         <tbody>
-          {accounts.map((account, index) => (
-            <tr key={index}>
-              {Object.values(account).map((value, i) => (
-                <td key={i}>{value}</td>
-              ))}
-            </tr>
-          ))}
+          {accounts
+            .filter(account =>
+              ['Company', 'City', 'Mobile Number', 'Lead Owner', 'Lead ID'].some(key =>
+                String(account[key] || '')
+                  .toLowerCase()
+                  .includes(searchTerm.toLowerCase())
+              )
+            )
+            .map((account, index) => (
+              <tr key={index}>
+                {Object.values(account).map((value, i) => (
+                  <td key={i}>{value}</td>
+                ))}
+              </tr>
+            ))}
         </tbody>
       </table>
     </div>

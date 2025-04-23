@@ -14,7 +14,7 @@ function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/add-lead" element={<LeadForm />} />
         <Route path="/view-leads" element={<LeadsTable />} />
-        <Route path="/view-accounts" elements={<AccountsTable />} />
+        <Route path="/view-accounts" element={<AccountsTable />} />
       </Routes>
     </Router>
   );

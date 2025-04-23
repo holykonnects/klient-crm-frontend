@@ -11,7 +11,7 @@ function AccountsTable() {
   const [filterOwner, setFilterOwner] = useState('');
 
   useEffect(() => {
-    fetch('https://script.google.com/macros/s/AKfycbw9lmKBaT-yE_zfzA1S6eFu3YvK86Vi0bBgD7y_a1btvrsY1-H4FRI4OQBYLNuGKh9S/exec')
+    fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
       .then(response => response.json())
       .then(data => {
         setAccounts(data);

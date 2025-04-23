@@ -10,6 +10,7 @@ function Dashboard() {
       <p>Select an option below:</p>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginTop: '2rem' }}>
         <button onClick={() => navigate('/add-lead')}>Add Lead</button>
+        <button onClick={() => navigate('/view-leads')}>View Leads</button>
         <button>Edit Leads</button>
         <button>Edit Accounts</button>
         <button>Edit Deals</button>

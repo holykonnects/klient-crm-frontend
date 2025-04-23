@@ -12,6 +12,7 @@ function Dashboard() {
         <button onClick={() => navigate('/add-lead')}>Add Lead</button>
         <button onClick={() => navigate('/view-leads')}>View Leads</button>
         <button>Edit Leads</button>
+        <button onClick={() => navigate('/view-accounts')}>View Accounts</button>
         <button>Edit Accounts</button>
         <button>Edit Deals</button>
         <button>Edit Orders</button>

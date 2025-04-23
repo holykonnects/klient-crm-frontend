@@ -1,14 +1,15 @@
 import React, { useEffect, useState } from 'react';
+import {
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow,
+  Paper, TextField, Button, Dialog, DialogTitle, DialogContent, Typography
+} from '@mui/material';
 
 function LeadsTable() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [filterStage, setFilterStage] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterLeadSource, setFilterLeadSource] = useState('');
-  const [filterOwner, setFilterOwner] = useState('');
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec')
@@ -16,127 +17,88 @@ function LeadsTable() {
       .then(data => {
         setLeads(data);
         setLoading(false);
+      })
+      .catch(err => {
+        console.error('Failed to fetch leads:', err);
+        setLoading(false);
       });
   }, []);
 
-  const sortedLeads = [...leads].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
-
-  const filteredLeads = sortedLeads
-    .filter(lead =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead Status', 'Lead ID'].some(key =>
-        String(lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      )
+  const filteredLeads = leads.filter(lead =>
+    ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+      String(lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
     )
-    .filter(lead =>
-      (!filterStage || lead['Lead Status'] === filterStage) &&
-      (!filterType || lead['Type'] === filterType) &&
-      (!filterLeadSource || lead['Lead Source'] === filterLeadSource) &&
-      (!filterOwner || lead['Lead Owner'] === filterOwner)
-    );
+  );
 
-  const requestSort = key => {
-    let direction = 'asc';
-    if (sortConfig.key === key && sortConfig.direction === 'asc') {
-      direction = 'desc';
-    }
-    setSortConfig({ key, direction });
+  const handleView = (lead) => {
+    setSelectedLead(lead);
+    setModalOpen(true);
   };
 
-  const uniqueStages = [...new Set(leads.map(d => d['Lead Status']).filter(Boolean))];
-  const uniqueTypes = [...new Set(leads.map(d => d['Type']).filter(Boolean))];
-  const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
-  const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
+  const handleCloseModal = () => {
+    setModalOpen(false);
+    setSelectedLead(null);
+  };
 
   if (loading) return <p>Loading leads...</p>;
   if (!leads.length) return <p>No leads available.</p>;
 
   return (
     <div style={{ padding: '2rem' }}>
-      <h2>Leads Records</h2>
-
-      <div
-        style={{
-          display: 'flex',
-          gap: '1rem',
-          marginBottom: '1rem',
-          flexWrap: 'wrap',
-          alignItems: 'center'
-        }}
-      >
-        <input
-          type="text"
-          placeholder="Search by Name, Company, Mobile..."
+      <div style={{ display: 'flex', alignItems: 'center', marginBottom: '1rem' }}>
+        {/* 🔷 Klient Konnect Logo */}
+        <img src="/logo192.png" alt="Klient Konnect" style={{ height: 40, marginRight: '1rem' }} />
+        <Typography variant="h5" component="div" sx={{ flexGrow: 1 }}>
+          Leads Records
+        </Typography>
+        <TextField
+          label="Search"
+          variant="outlined"
+          size="small"
           value={searchTerm}
-          onChange={e => setSearchTerm(e.target.value)}
-          style={{ padding: '0.5rem', flex: '1' }}
+          onChange={(e) => setSearchTerm(e.target.value)}
+          sx={{ width: 300 }}
         />
-
-        <select value={filterStage} onChange={e => setFilterStage(e.target.value)}>
-          <option value="">All Stages</option>
-          {uniqueStages.map(stage => (
-            <option key={stage} value={stage}>{stage}</option>
-          ))}
-        </select>
-
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}>
-          <option value="">All Types</option>
-          {uniqueTypes.map(type => (
-            <option key={type} value={type}>{type}</option>
-          ))}
-        </select>
-
-        <select value={filterLeadSource} onChange={e => setFilterLeadSource(e.target.value)}>
-          <option value="">All Sources</option>
-          {uniqueSources.map(src => (
-            <option key={src} value={src}>{src}</option>
-          ))}
-        </select>
-
-        <select value={filterOwner} onChange={e => setFilterOwner(e.target.value)}>
-          <option value="">All Owners</option>
-          {uniqueOwners.map(owner => (
-            <option key={owner} value={owner}>{owner}</option>
-          ))}
-        </select>
       </div>
 
-      <table border="1" cellPadding="10">
-        <thead>
-          <tr>
-            {Object.keys(leads[0]).map(header => (
-              <th
-                key={header}
-                onClick={() => requestSort(header)}
-                style={{ cursor: 'pointer' }}
-              >
-                {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '🔼' : '🔽') : ''}
-              </th>
-            ))}
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredLeads.map((lead, index) => (
-            <tr key={index}>
-              {Object.values(lead).map((value, i) => (
-                <td key={i}>{value}</td>
+      <TableContainer component={Paper}>
+        <Table>
+          <TableHead>
+            <TableRow>
+              {Object.keys(leads[0]).map((key) => (
+                <TableCell key={key}>{key}</TableCell>
               ))}
-              <td>
-                <a href={lead['Prefilled Link'] || '#'} target="_blank" rel="noopener noreferrer">
-                  👁 View
-                </a>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+              <TableCell>Actions</TableCell>
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {filteredLeads.map((lead, idx) => (
+              <TableRow key={idx}>
+                {Object.values(lead).map((val, i) => (
+                  <TableCell key={i}>{val}</TableCell>
+                ))}
+                <TableCell>
+                  <Button variant="outlined" size="small" onClick={() => handleView(lead)}>
+                    👁 View
+                  </Button>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+
+      {/* 👁 View Modal */}
+      <Dialog open={modalOpen} onClose={handleCloseModal} maxWidth="md" fullWidth>
+        <DialogTitle>Lead Details</DialogTitle>
+        <DialogContent>
+          {selectedLead &&
+            Object.entries(selectedLead).map(([key, value]) => (
+              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
+            ))
+          }
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

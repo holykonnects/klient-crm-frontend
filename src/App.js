@@ -1,14 +1,18 @@
 import React from 'react';
-import './App.css';
-import Header from './components/Header';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import Landing from './pages/Landing';
+import Dashboard from './pages/Dashboard';
 import LeadForm from './components/LeadForm';
 
 function App() {
   return (
-    <div>
-      <Header />
-      <LeadForm />
-    </div>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Landing />} />
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/add-lead" element={<LeadForm />} />
+      </Routes>
+    </Router>
   );
 }
 

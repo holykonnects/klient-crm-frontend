@@ -3,7 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import Landing from './pages/Landing';
 import Dashboard from './pages/Dashboard';
 import LeadForm from './components/LeadForm';
-import  LeadsTable from './components/LeadsTable';
+import LeadsTable from './components/LeadsTable';
 
 function App() {
   return (

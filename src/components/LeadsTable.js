@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent
+  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, FormGroup, FormControlLabel
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
@@ -23,6 +23,7 @@ function LeadsTable() {
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState({});
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec')
@@ -30,6 +31,14 @@ function LeadsTable() {
       .then(data => {
         setLeads(data);
         setLoading(false);
+        // Initialize all columns as visible
+        if (data.length > 0) {
+          const initialColumns = Object.keys(data[0]).reduce((acc, key) => {
+            acc[key] = true;
+            return acc;
+          }, {});
+          setVisibleColumns(initialColumns);
+        }
       });
   }, []);
 
@@ -61,6 +70,10 @@ function LeadsTable() {
   const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
 
+  const toggleColumn = (column) => {
+    setVisibleColumns(prev => ({ ...prev, [column]: !prev[column] }));
+  };
+
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
@@ -78,11 +91,7 @@ function LeadsTable() {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             size="small"
-            sx={{
-              minWidth: 200,
-              border: '1px solid rgba(0,0,0,0.3)',
-              borderRadius: '4px'
-            }}
+            sx={{ minWidth: 200 }}
           />
           <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Status</InputLabel>
@@ -113,10 +122,30 @@ function LeadsTable() {
           </FormControl>
         </Box>
 
+        {/* ✅ Column Toggle */}
+        <Box marginBottom={2}>
+          <Typography fontWeight="bold" fontSize="0.8rem" marginBottom={1}>Select Columns:</Typography>
+          <FormGroup row>
+            {Object.keys(visibleColumns).map(column => (
+              <FormControlLabel
+                key={column}
+                control={
+                  <Checkbox
+                    checked={visibleColumns[column]}
+                    onChange={() => toggleColumn(column)}
+                    size="small"
+                  />
+                }
+                label={column}
+              />
+            ))}
+          </FormGroup>
+        </Box>
+
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {Object.keys(leads[0]).map(header => (
+              {Object.keys(visibleColumns).filter(col => visibleColumns[col]).map(header => (
                 <TableCell
                   key={header}
                   onClick={() => handleSort(header)}
@@ -131,8 +160,8 @@ function LeadsTable() {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {Object.values(lead).map((value, i) => (
-                  <TableCell key={i}>{value}</TableCell>
+                {Object.keys(visibleColumns).filter(col => visibleColumns[col]).map((key, i) => (
+                  <TableCell key={i}>{lead[key]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(lead)}>
@@ -147,21 +176,13 @@ function LeadsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Lead Details</DialogTitle>
           <DialogContent dividers>
-            <Box
-              display="grid"
-              gridTemplateColumns="1fr 1fr"
-              rowGap={2}
-              columnGap={4}
-              fontSize="9px"
-              fontFamily="'Montserrat', sans-serif"
-            >
-              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-                <Box key={key} display="flex" flexDirection="column">
-                  <Typography variant="caption" sx={{ fontWeight: 600 }}>{key}</Typography>
-                  <Typography variant="body2">{value}</Typography>
-                </Box>
-              ))}
-            </Box>
+            {selectedRow && (
+              <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
+                {Object.entries(selectedRow).map(([key, value]) => (
+                  <Typography key={key}><strong>{key}:</strong> {value}</Typography>
+                ))}
+              </Box>
+            )}
           </DialogContent>
         </Dialog>
       </Box>

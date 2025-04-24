@@ -2,8 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox,
-  Menu, ListItemText, Button
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -33,10 +32,10 @@ function LeadsTable() {
       .then(response => response.json())
       .then(data => {
         setLeads(data);
-        if (data.length > 0) {
+        setLoading(false);
+        if (data.length) {
           setVisibleColumns(Object.keys(data[0]));
         }
-        setLoading(false);
       });
   }, []);
 
@@ -68,29 +67,19 @@ function LeadsTable() {
   const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
 
-  const toggleColumn = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column)
-        ? prev.filter(c => c !== column)
-        : [...prev, column]
-    );
-  };
-
-  const handleOpenMenu = (event) => {
-    setAnchorEl(event.currentTarget);
-  };
-
-  const handleCloseMenu = () => {
-    setAnchorEl(null);
-  };
-
-  const selectAllColumns = () => {
-    if (leads.length > 0) {
-      setVisibleColumns(Object.keys(leads[0]));
+  const handleColumnToggle = (col) => {
+    if (visibleColumns.includes(col)) {
+      setVisibleColumns(visibleColumns.filter(c => c !== col));
+    } else {
+      setVisibleColumns([...visibleColumns, col]);
     }
   };
 
-  const deselectAllColumns = () => {
+  const handleSelectAll = () => {
+    if (leads.length) setVisibleColumns(Object.keys(leads[0]));
+  };
+
+  const handleDeselectAll = () => {
     setVisibleColumns([]);
   };
 
@@ -141,19 +130,31 @@ function LeadsTable() {
             </Select>
           </FormControl>
 
-          <IconButton onClick={handleOpenMenu}>
+          {/* 🧭 Column Selector */}
+          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
-            <MenuItem onClick={selectAllColumns}>Select All</MenuItem>
-            <MenuItem onClick={deselectAllColumns}>Deselect All</MenuItem>
-            {leads.length > 0 && Object.keys(leads[0]).map((col) => (
-              <MenuItem key={col} onClick={() => toggleColumn(col)}>
-                <Checkbox checked={visibleColumns.includes(col)} />
-                <ListItemText primary={col} />
-              </MenuItem>
-            ))}
-          </Menu>
+          <Popover
+            open={Boolean(anchorEl)}
+            anchorEl={anchorEl}
+            onClose={() => setAnchorEl(null)}
+            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
+          >
+            <Box padding={2}>
+              <Button onClick={handleSelectAll} size="small">Select All</Button>
+              <Button onClick={handleDeselectAll} size="small">Deselect All</Button>
+              {leads.length > 0 && Object.keys(leads[0]).map(col => (
+                <Box key={col}>
+                  <Checkbox
+                    checked={visibleColumns.includes(col)}
+                    onChange={() => handleColumnToggle(col)}
+                    size="small"
+                  />
+                  {col}
+                </Box>
+              ))}
+            </Box>
+          </Popover>
         </Box>
 
         <Table>
@@ -174,8 +175,8 @@ function LeadsTable() {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{lead[col]}</TableCell>
+                {visibleColumns.map((key, i) => (
+                  <TableCell key={i}>{lead[key]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(lead)}>
@@ -190,9 +191,13 @@ function LeadsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Lead Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-            ))}
+            <Grid container spacing={2}>
+              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+                <Grid item xs={6} key={key}>
+                  <Typography><strong>{key}:</strong> {value}</Typography>
+                </Grid>
+              ))}
+            </Grid>
           </DialogContent>
         </Dialog>
       </Box>

@@ -2,9 +2,11 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, ListItemText,
+  IconButton, Dialog, DialogTitle, DialogContent, Checkbox,
+  Menu, ListItemText, Button
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 const theme = createTheme({
@@ -24,16 +26,17 @@ function LeadsTable() {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec')
       .then(response => response.json())
       .then(data => {
         setLeads(data);
-        setLoading(false);
         if (data.length > 0) {
-          setVisibleColumns(Object.keys(data[0])); // Show all columns initially
+          setVisibleColumns(Object.keys(data[0]));
         }
+        setLoading(false);
       });
   }, []);
 
@@ -64,18 +67,32 @@ function LeadsTable() {
   const uniqueStatuses = [...new Set(leads.map(d => d['Lead Status']).filter(Boolean))];
   const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
-  const allHeaders = leads.length > 0 ? Object.keys(leads[0]) : [];
 
-  const handleColumnToggle = (column) => {
-    setVisibleColumns((prev) =>
+  const toggleColumn = (column) => {
+    setVisibleColumns(prev =>
       prev.includes(column)
-        ? prev.filter((col) => col !== column)
+        ? prev.filter(c => c !== column)
         : [...prev, column]
     );
   };
 
-  const handleSelectAll = () => setVisibleColumns(allHeaders);
-  const handleDeselectAll = () => setVisibleColumns([]);
+  const handleOpenMenu = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleCloseMenu = () => {
+    setAnchorEl(null);
+  };
+
+  const selectAllColumns = () => {
+    if (leads.length > 0) {
+      setVisibleColumns(Object.keys(leads[0]));
+    }
+  };
+
+  const deselectAllColumns = () => {
+    setVisibleColumns([]);
+  };
 
   if (loading) return <Typography>Loading leads...</Typography>;
 
@@ -123,33 +140,20 @@ function LeadsTable() {
               ))}
             </Select>
           </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Columns</InputLabel>
-            <Select
-              multiple
-              value={visibleColumns}
-              onChange={(e) => setVisibleColumns(e.target.value)}
-              renderValue={(selected) => selected.join(', ')}
-            >
-              <MenuItem disabled>
-                <em>Select Columns</em>
+
+          <IconButton onClick={handleOpenMenu}>
+            <ViewColumnIcon />
+          </IconButton>
+          <Menu anchorEl={anchorEl} open={Boolean(anchorEl)} onClose={handleCloseMenu}>
+            <MenuItem onClick={selectAllColumns}>Select All</MenuItem>
+            <MenuItem onClick={deselectAllColumns}>Deselect All</MenuItem>
+            {leads.length > 0 && Object.keys(leads[0]).map((col) => (
+              <MenuItem key={col} onClick={() => toggleColumn(col)}>
+                <Checkbox checked={visibleColumns.includes(col)} />
+                <ListItemText primary={col} />
               </MenuItem>
-              <MenuItem onClick={handleSelectAll}>
-                <Checkbox checked={visibleColumns.length === allHeaders.length} />
-                <ListItemText primary="Select All" />
-              </MenuItem>
-              <MenuItem onClick={handleDeselectAll}>
-                <Checkbox checked={visibleColumns.length === 0} />
-                <ListItemText primary="Deselect All" />
-              </MenuItem>
-              {allHeaders.map((col) => (
-                <MenuItem key={col} value={col}>
-                  <Checkbox checked={visibleColumns.includes(col)} />
-                  <ListItemText primary={col} />
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+            ))}
+          </Menu>
         </Box>
 
         <Table>
@@ -170,8 +174,8 @@ function LeadsTable() {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((col) => (
-                  <TableCell key={col}>{lead[col]}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{lead[col]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(lead)}>
@@ -197,4 +201,3 @@ function LeadsTable() {
 }
 
 export default LeadsTable;
-

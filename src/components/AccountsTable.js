@@ -18,8 +18,6 @@ function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStage, setFilterStage] = useState('');
-  const [filterType, setFilterType] = useState('');
   const [filterLeadSource, setFilterLeadSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
@@ -52,14 +50,10 @@ function AccountsTable() {
       ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead Status', 'Lead ID'].some(key =>
         (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
       ) &&
-      (!filterStage || acc['Lead Status'] === filterStage) &&
-      (!filterType || acc['Type'] === filterType) &&
       (!filterLeadSource || acc['Lead Source'] === filterLeadSource) &&
       (!filterOwner || acc['Lead Owner'] === filterOwner)
     );
 
-  const uniqueStages = [...new Set(accounts.map(d => d['Lead Status']).filter(Boolean))];
-  const uniqueTypes = [...new Set(accounts.map(d => d['Type']).filter(Boolean))];
   const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
 
@@ -81,24 +75,6 @@ function AccountsTable() {
             size="small"
             sx={{ minWidth: 200 }}
           />
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
-            <InputLabel>Stage</InputLabel>
-            <Select value={filterStage} onChange={e => setFilterStage(e.target.value)} label="Stage">
-              <MenuItem value="">All</MenuItem>
-              {uniqueStages.map(stage => (
-                <MenuItem key={stage} value={stage}>{stage}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
-            <InputLabel>Type</InputLabel>
-            <Select value={filterType} onChange={e => setFilterType(e.target.value)} label="Type">
-              <MenuItem value="">All</MenuItem>
-              {uniqueTypes.map(type => (
-                <MenuItem key={type} value={type}>{type}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
           <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Source</InputLabel>
             <Select value={filterLeadSource} onChange={e => setFilterLeadSource(e.target.value)} label="Lead Source">

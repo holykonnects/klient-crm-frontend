@@ -66,9 +66,9 @@ function LeadsTable() {
           variant="outlined"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          size="medium"
+          size="large"
         />
-        <FormControl size="medium">
+        <FormControl size="large">
           <InputLabel>Lead Source</InputLabel>
           <Select
             value={leadSourceFilter}
@@ -81,7 +81,7 @@ function LeadsTable() {
             ))}
           </Select>
         </FormControl>
-        <FormControl size="medium">
+        <FormControl size="large">
           <InputLabel>Lead Owner</InputLabel>
           <Select
             value={leadOwnerFilter}

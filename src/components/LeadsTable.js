@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, FormGroup, FormControlLabel
+  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, ListItemText,
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
@@ -23,7 +23,7 @@ function LeadsTable() {
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState({});
+  const [visibleColumns, setVisibleColumns] = useState([]);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec')
@@ -31,13 +31,8 @@ function LeadsTable() {
       .then(data => {
         setLeads(data);
         setLoading(false);
-        // Initialize all columns as visible
         if (data.length > 0) {
-          const initialColumns = Object.keys(data[0]).reduce((acc, key) => {
-            acc[key] = true;
-            return acc;
-          }, {});
-          setVisibleColumns(initialColumns);
+          setVisibleColumns(Object.keys(data[0])); // Show all columns initially
         }
       });
   }, []);
@@ -69,10 +64,18 @@ function LeadsTable() {
   const uniqueStatuses = [...new Set(leads.map(d => d['Lead Status']).filter(Boolean))];
   const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
+  const allHeaders = leads.length > 0 ? Object.keys(leads[0]) : [];
 
-  const toggleColumn = (column) => {
-    setVisibleColumns(prev => ({ ...prev, [column]: !prev[column] }));
+  const handleColumnToggle = (column) => {
+    setVisibleColumns((prev) =>
+      prev.includes(column)
+        ? prev.filter((col) => col !== column)
+        : [...prev, column]
+    );
   };
+
+  const handleSelectAll = () => setVisibleColumns(allHeaders);
+  const handleDeselectAll = () => setVisibleColumns([]);
 
   if (loading) return <Typography>Loading leads...</Typography>;
 
@@ -120,32 +123,39 @@ function LeadsTable() {
               ))}
             </Select>
           </FormControl>
-        </Box>
-
-        {/* ✅ Column Toggle */}
-        <Box marginBottom={2}>
-          <Typography fontWeight="bold" fontSize="0.8rem" marginBottom={1}>Select Columns:</Typography>
-          <FormGroup row>
-            {Object.keys(visibleColumns).map(column => (
-              <FormControlLabel
-                key={column}
-                control={
-                  <Checkbox
-                    checked={visibleColumns[column]}
-                    onChange={() => toggleColumn(column)}
-                    size="small"
-                  />
-                }
-                label={column}
-              />
-            ))}
-          </FormGroup>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Columns</InputLabel>
+            <Select
+              multiple
+              value={visibleColumns}
+              onChange={(e) => setVisibleColumns(e.target.value)}
+              renderValue={(selected) => selected.join(', ')}
+            >
+              <MenuItem disabled>
+                <em>Select Columns</em>
+              </MenuItem>
+              <MenuItem onClick={handleSelectAll}>
+                <Checkbox checked={visibleColumns.length === allHeaders.length} />
+                <ListItemText primary="Select All" />
+              </MenuItem>
+              <MenuItem onClick={handleDeselectAll}>
+                <Checkbox checked={visibleColumns.length === 0} />
+                <ListItemText primary="Deselect All" />
+              </MenuItem>
+              {allHeaders.map((col) => (
+                <MenuItem key={col} value={col}>
+                  <Checkbox checked={visibleColumns.includes(col)} />
+                  <ListItemText primary={col} />
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
         </Box>
 
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {Object.keys(visibleColumns).filter(col => visibleColumns[col]).map(header => (
+              {visibleColumns.map(header => (
                 <TableCell
                   key={header}
                   onClick={() => handleSort(header)}
@@ -160,8 +170,8 @@ function LeadsTable() {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {Object.keys(visibleColumns).filter(col => visibleColumns[col]).map((key, i) => (
-                  <TableCell key={i}>{lead[key]}</TableCell>
+                {visibleColumns.map((col) => (
+                  <TableCell key={col}>{lead[col]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(lead)}>
@@ -176,13 +186,9 @@ function LeadsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Lead Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && (
-              <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
-                {Object.entries(selectedRow).map(([key, value]) => (
-                  <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-                ))}
-              </Box>
-            )}
+            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
+            ))}
           </DialogContent>
         </Dialog>
       </Box>
@@ -191,3 +197,4 @@ function LeadsTable() {
 }
 
 export default LeadsTable;
+

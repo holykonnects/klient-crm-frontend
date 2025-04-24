@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox,
-  FormGroup, FormControlLabel, Menu, Button
+  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, FormGroup, FormControlLabel,
+  Menu, Button, Grid
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -21,9 +21,9 @@ function DealsTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStage, setFilterStage] = useState('');
-  const [filterType, setFilterType] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
+  const [filterType, setFilterType] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -39,7 +39,7 @@ function DealsTable() {
       });
   }, []);
 
-  const handleSort = key => {
+  const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
   };
@@ -56,7 +56,7 @@ function DealsTable() {
   const filteredDeals = sortedDeals
     .filter(deal =>
       ['Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
-        String(deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
       ) &&
       (!filterStage || deal['Stage'] === filterStage) &&
       (!filterType || deal['Type'] === filterType) &&
@@ -135,7 +135,7 @@ function DealsTable() {
               <FormGroup>
                 <Button onClick={handleSelectAll}>Select All</Button>
                 <Button onClick={handleDeselectAll}>Deselect All</Button>
-                {(deals[0] && Object.keys(deals[0])).map(col => (
+                {Object.keys(deals[0] || {}).map(col => (
                   <FormControlLabel
                     key={col}
                     control={
@@ -186,9 +186,15 @@ function DealsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Deal Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-            ))}
+            {selectedRow && (
+              <Grid container spacing={2}>
+                {Object.entries(selectedRow).map(([key, value]) => (
+                  <Grid item xs={6} key={key}>
+                    <Typography><strong>{key}:</strong> {value}</Typography>
+                  </Grid>
+                ))}
+              </Grid>
+            )}
           </DialogContent>
         </Dialog>
       </Box>
@@ -197,3 +203,4 @@ function DealsTable() {
 }
 
 export default DealsTable;
+

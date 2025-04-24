@@ -55,7 +55,7 @@ function LeadsTable() {
     <Box padding={4}>
       <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
         {/* 🔷 Logo */}
-        <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 40 }} />
+        <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
       </Box>
 
@@ -66,9 +66,9 @@ function LeadsTable() {
           variant="outlined"
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
-          size="large"
+          size="small"
         />
-        <FormControl size="large">
+        <FormControl size="small">
           <InputLabel>Lead Source</InputLabel>
           <Select
             value={leadSourceFilter}
@@ -81,7 +81,7 @@ function LeadsTable() {
             ))}
           </Select>
         </FormControl>
-        <FormControl size="large">
+        <FormControl size="small">
           <InputLabel>Lead Owner</InputLabel>
           <Select
             value={leadOwnerFilter}

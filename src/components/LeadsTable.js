@@ -5,6 +5,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import '@fontsource/montserrat/400.css';
 
 function LeadsTable() {
   const [leads, setLeads] = useState([]);
@@ -59,7 +60,7 @@ function LeadsTable() {
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
-    <Box padding={4} fontFamily="Montserrat" fontSize={9}>
+    <Box padding={4} sx={{ fontFamily: 'Montserrat', fontSize: '9px' }}>
       <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
         <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
@@ -72,9 +73,9 @@ function LeadsTable() {
           value={searchTerm}
           onChange={e => setSearchTerm(e.target.value)}
           size="small"
-          style={{ minWidth: 200 }}
+          sx={{ minWidth: 200, fontFamily: 'Montserrat', border: '1px solid rgba(0,0,0,0.3)', borderRadius: 1 }}
         />
-        <FormControl size="small" style={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Lead Status</InputLabel>
           <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} label="Lead Status">
             <MenuItem value="">All</MenuItem>
@@ -83,7 +84,7 @@ function LeadsTable() {
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" style={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Stage</InputLabel>
           <Select value={filterStage} onChange={e => setFilterStage(e.target.value)} label="Stage">
             <MenuItem value="">All</MenuItem>
@@ -92,7 +93,7 @@ function LeadsTable() {
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" style={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Lead Source</InputLabel>
           <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
             <MenuItem value="">All</MenuItem>
@@ -101,7 +102,7 @@ function LeadsTable() {
             ))}
           </Select>
         </FormControl>
-        <FormControl size="small" style={{ minWidth: 200 }}>
+        <FormControl size="small" sx={{ minWidth: 200 }}>
           <InputLabel>Lead Owner</InputLabel>
           <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
             <MenuItem value="">All</MenuItem>

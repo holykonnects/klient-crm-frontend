@@ -6,6 +6,7 @@ import LeadForm from './components/LeadForm';
 import LeadsTable from './components/LeadsTable';
 import AccountsTable from './components/AccountsTable';
 import DealsTable from './components/DealsTable';
+import OrdersTable from './components/OrdersTable';
 
 function App() {
   return (
@@ -17,6 +18,7 @@ function App() {
         <Route path="/view-leads" element={<LeadsTable />} />
         <Route path="/view-accounts" element={<AccountsTable />} />
         <Route path="/view-deals" element={<DealsTable />} />
+        <Route path="/view-orders" element={<OrdersTable />} />
       </Routes>
     </Router>
   );

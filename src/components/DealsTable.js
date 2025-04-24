@@ -19,9 +19,9 @@ function DealsTable() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStage, setFilterStage] = useState('');
-  const [filterSource, setFilterSource] = useState('');
-  const [filterOwner, setFilterOwner] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [filterLeadSource, setFilterLeadSource] = useState('');
+  const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
 
@@ -54,15 +54,15 @@ function DealsTable() {
         (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
       ) &&
       (!filterStage || deal['Stage'] === filterStage) &&
-      (!filterSource || deal['Lead Source'] === filterSource) &&
-      (!filterOwner || deal['Account Owner'] === filterOwner) &&
-      (!filterType || deal['Type'] === filterType)
+      (!filterType || deal['Type'] === filterType) &&
+      (!filterLeadSource || deal['Lead Source'] === filterLeadSource) &&
+      (!filterOwner || deal['Account Owner'] === filterOwner)
     );
 
   const uniqueStages = [...new Set(deals.map(d => d['Stage']).filter(Boolean))];
+  const uniqueTypes = [...new Set(deals.map(d => d['Type']).filter(Boolean))];
   const uniqueSources = [...new Set(deals.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(deals.map(d => d['Account Owner']).filter(Boolean))];
-  const uniqueTypes = [...new Set(deals.map(d => d['Type']).filter(Boolean))];
 
   if (loading) return <Typography>Loading deals...</Typography>;
 
@@ -93,8 +93,17 @@ function DealsTable() {
             </Select>
           </FormControl>
           <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
+            <InputLabel>Type</InputLabel>
+            <Select value={filterType} onChange={e => setFilterType(e.target.value)} label="Type">
+              <MenuItem value="">All</MenuItem>
+              {uniqueTypes.map(type => (
+                <MenuItem key={type} value={type}>{type}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Source</InputLabel>
-            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+            <Select value={filterLeadSource} onChange={e => setFilterLeadSource(e.target.value)} label="Lead Source">
               <MenuItem value="">All</MenuItem>
               {uniqueSources.map(src => (
                 <MenuItem key={src} value={src}>{src}</MenuItem>
@@ -102,20 +111,11 @@ function DealsTable() {
             </Select>
           </FormControl>
           <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Owner</InputLabel>
-            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
+            <InputLabel>Account Owner</InputLabel>
+            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Account Owner">
               <MenuItem value="">All</MenuItem>
               {uniqueOwners.map(owner => (
                 <MenuItem key={owner} value={owner}>{owner}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
-            <InputLabel>Type</InputLabel>
-            <Select value={filterType} onChange={e => setFilterType(e.target.value)} label="Type">
-              <MenuItem value="">All</MenuItem>
-              {uniqueTypes.map(type => (
-                <MenuItem key={type} value={type}>{type}</MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -155,9 +155,18 @@ function DealsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Deal Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-            ))}
+            <Box display="flex" flexWrap="wrap" columnGap={4} rowGap={2}>
+              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+                <Box key={key} width="45%">
+                  <Typography fontWeight="bold" fontSize={9} color="#555">
+                    {key}
+                  </Typography>
+                  <Typography fontSize={9} color="#222">
+                    {value}
+                  </Typography>
+                </Box>
+              ))}
+            </Box>
           </DialogContent>
         </Dialog>
       </Box>

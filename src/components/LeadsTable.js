@@ -10,8 +10,9 @@ function LeadsTable() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [leadSourceFilter, setLeadSourceFilter] = useState('');
-  const [leadOwnerFilter, setLeadOwnerFilter] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
 
@@ -38,28 +39,29 @@ function LeadsTable() {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredLeads = sortedLeads.filter(lead =>
-    ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
-      (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-    ) &&
-    (!leadSourceFilter || lead['Lead Source'] === leadSourceFilter) &&
-    (!leadOwnerFilter || lead['Lead Owner'] === leadOwnerFilter)
-  );
+  const filteredLeads = sortedLeads
+    .filter(lead =>
+      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+      ) &&
+      (!filterStatus || lead['Lead Status'] === filterStatus) &&
+      (!filterSource || lead['Lead Source'] === filterSource) &&
+      (!filterOwner || lead['Lead Owner'] === filterOwner)
+    );
 
-  const uniqueLeadSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
-  const uniqueLeadOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
+  const uniqueStatuses = [...new Set(leads.map(d => d['Lead Status']).filter(Boolean))];
+  const uniqueSources = [...new Set(leads.map(d => d['Lead Source']).filter(Boolean))];
+  const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
 
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
     <Box padding={4}>
       <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
-        {/* 🔷 Logo */}
         <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
       </Box>
 
-      {/* 🔍 Search + Filters */}
       <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
         <TextField
           label="Search"
@@ -69,47 +71,47 @@ function LeadsTable() {
           size="small"
         />
         <FormControl size="small">
-          <InputLabel>Lead Source</InputLabel>
-          <Select
-            value={leadSourceFilter}
-            onChange={e => setLeadSourceFilter(e.target.value)}
-            label="Lead Source"
-          >
+          <InputLabel>Lead Status</InputLabel>
+          <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} label="Lead Status">
             <MenuItem value="">All</MenuItem>
-            {uniqueLeadSources.map(src => (
-              <MenuItem key={src} value={src}>{src}</MenuItem>
+            {uniqueStatuses.map(status => (
+              <MenuItem key={status} value={status}>{status}</MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+        <FormControl size="small">
+          <InputLabel>Lead Source</InputLabel>
+          <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+            <MenuItem value="">All</MenuItem>
+            {uniqueSources.map(source => (
+              <MenuItem key={source} value={source}>{source}</MenuItem>
             ))}
           </Select>
         </FormControl>
         <FormControl size="small">
           <InputLabel>Lead Owner</InputLabel>
-          <Select
-            value={leadOwnerFilter}
-            onChange={e => setLeadOwnerFilter(e.target.value)}
-            label="Lead Owner"
-          >
+          <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
             <MenuItem value="">All</MenuItem>
-            {uniqueLeadOwners.map(owner => (
+            {uniqueOwners.map(owner => (
               <MenuItem key={owner} value={owner}>{owner}</MenuItem>
             ))}
           </Select>
         </FormControl>
       </Box>
 
-      {/* 🧾 Data Table */}
       <Table>
         <TableHead>
-          <TableRow>
+          <TableRow style={{ backgroundColor: '#6495ED' }}>
             {Object.keys(leads[0]).map(header => (
               <TableCell
                 key={header}
                 onClick={() => handleSort(header)}
-                style={{ cursor: 'pointer', fontWeight: 'bold' }}
+                style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
               >
                 {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
               </TableCell>
             ))}
-            <TableCell><strong>Actions</strong></TableCell>
+            <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -128,7 +130,6 @@ function LeadsTable() {
         </TableBody>
       </Table>
 
-      {/* 👁 View Modal */}
       <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
         <DialogTitle>Lead Details</DialogTitle>
         <DialogContent dividers>

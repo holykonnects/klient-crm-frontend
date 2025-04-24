@@ -16,6 +16,7 @@ function Dashboard() {
         <button>Edit Accounts</button>
         <button onClick={() => navigate('/view-deals')}>View Deals</button>
         <button>Edit Deals</button>
+        <button onClick={() => navigate('/view-orders')}>View Orders</button>
         <button>Edit Orders</button>
       </div>
     </div>

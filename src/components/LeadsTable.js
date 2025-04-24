@@ -78,7 +78,11 @@ function LeadsTable() {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             size="small"
-            sx={{ minWidth: 200 }}
+            sx={{
+              minWidth: 200,
+              border: '1px solid rgba(0,0,0,0.3)',
+              borderRadius: '4px'
+            }}
           />
           <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Status</InputLabel>
@@ -143,9 +147,21 @@ function LeadsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Lead Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-            ))}
+            <Box
+              display="grid"
+              gridTemplateColumns="1fr 1fr"
+              rowGap={2}
+              columnGap={4}
+              fontSize="9px"
+              fontFamily="'Montserrat', sans-serif"
+            >
+              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+                <Box key={key} display="flex" flexDirection="column">
+                  <Typography variant="caption" sx={{ fontWeight: 600 }}>{key}</Typography>
+                  <Typography variant="body2">{value}</Typography>
+                </Box>
+              ))}
+            </Box>
           </DialogContent>
         </Dialog>
       </Box>

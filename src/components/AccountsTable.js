@@ -2,8 +2,8 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox, FormGroup, FormControlLabel,
-  Menu, Button
+  IconButton, Dialog, DialogTitle, DialogContent, Grid,
+  Checkbox, FormGroup, FormControlLabel, Menu, Button
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -12,7 +12,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9
+    fontSize: 9,
   }
 });
 
@@ -106,7 +106,7 @@ function AccountsTable() {
             </Select>
           </FormControl>
 
-          {/* 👁 Column Selector Icon */}
+          {/* Column Selector */}
           <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
@@ -116,10 +116,15 @@ function AccountsTable() {
               <FormGroup>
                 <Button onClick={handleSelectAll}>Select All</Button>
                 <Button onClick={handleDeselectAll}>Deselect All</Button>
-                {(accounts[0] && Object.keys(accounts[0])).map(col => (
+                {accounts[0] && Object.keys(accounts[0]).map(col => (
                   <FormControlLabel
                     key={col}
-                    control={<Checkbox checked={visibleColumns.includes(col)} onChange={() => handleColumnToggle(col)} />}
+                    control={
+                      <Checkbox
+                        checked={visibleColumns.includes(col)}
+                        onChange={() => handleColumnToggle(col)}
+                      />
+                    }
                     label={col}
                   />
                 ))}
@@ -146,8 +151,8 @@ function AccountsTable() {
           <TableBody>
             {filteredAccounts.map((acc, index) => (
               <TableRow key={index}>
-                {visibleColumns.map(col => (
-                  <TableCell key={col}>{acc[col]}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(acc)}>
@@ -162,9 +167,13 @@ function AccountsTable() {
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Account Details</DialogTitle>
           <DialogContent dividers>
-            {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-              <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-            ))}
+            <Grid container spacing={2}>
+              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+                <Grid item xs={6} key={key}>
+                  <Typography><strong>{key}:</strong> {value}</Typography>
+                </Grid>
+              ))}
+            </Grid>
           </DialogContent>
         </Dialog>
       </Box>

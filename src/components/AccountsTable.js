@@ -62,10 +62,13 @@ function AccountsTable() {
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
-        <Typography variant="h5" fontWeight="bold" gutterBottom>
-          Accounts Records
-        </Typography>
+        {/* ✅ Header Row with Logo and Title */}
+        <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+          <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
+        </Box>
 
+        {/* 🔍 Filters */}
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"

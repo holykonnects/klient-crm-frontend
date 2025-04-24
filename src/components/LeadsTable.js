@@ -2,7 +2,6 @@ IconButton, Dialog, DialogTitle, DialogContent
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',

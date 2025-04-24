@@ -5,13 +5,12 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-
- const theme = createTheme({
-   typography: {
-     fontFamily: 'Montserrat, sans-serif',
-     fontSize: 9
-   }
- });
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 9
+  }
+});
 
 function LeadsTable() {
   const [leads, setLeads] = useState([]);

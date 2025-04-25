@@ -6,6 +6,7 @@ import AccountsTable from './components/AccountsTable';
 import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
 import AddLeadForm from './components/AddLeadForm'; // Create this if not available
+import LeadForm from './components/LeadForm';
 
 function App() {
   return (
@@ -16,7 +17,8 @@ function App() {
           <Route path="/view-accounts" element={<AccountsTable />} />
           <Route path="/view-deals" element={<DealsTable />} />
           <Route path="/view-orders" element={<OrdersTable />} />
-          <Route path="/add-lead" element={<AddLeadForm />} />
+          <Route path="/add-lead" element={<DashboardLayout><AddLeadForm /></DashboardLayout>} />
+          <Route path='/
         </Routes>
       </DashboardLayout>
     </Router>

@@ -1,10 +1,18 @@
 // DashboardLayout.js
 import React, { useState } from 'react';
-import { Box, Drawer, List, ListItem, ListItemIcon, ListItemText, IconButton, Tooltip } from '@mui/material';
-import { Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle, Menu } from '@mui/icons-material';
+import {
+  Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
+  IconButton, Tooltip, Typography
+} from '@mui/material';
+import {
+  ChevronLeft, ChevronRight,
+  Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle
+} from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 
 const drawerWidth = 240;
+const cornflowerBlue = '#6495ED';
+const sidebarBackground = '#fdfdfd'; // Slight white
 
 const menuItems = [
   { label: 'Leads', icon: <Dashboard />, route: '/view-leads' },
@@ -15,43 +23,51 @@ const menuItems = [
 ];
 
 function DashboardLayout({ children }) {
-  const [collapsed, setCollapsed] = useState(false);
+  const [open, setOpen] = useState(true);
+
+  const toggleDrawer = () => setOpen(!open);
 
   return (
     <Box display="flex">
       <Drawer
         variant="permanent"
+        open={open}
         sx={{
-          width: collapsed ? 72 : drawerWidth,
+          width: open ? drawerWidth : 60,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: collapsed ? 72 : drawerWidth,
-            boxSizing: 'border-box',
-            backgroundColor: '#f5f5f5'
+            width: open ? drawerWidth : 60,
+            backgroundColor: sidebarBackground,
+            transition: 'width 0.3s',
+            overflowX: 'hidden',
+            boxShadow: '2px 0 6px rgba(0,0,0,0.05)'
           }
         }}
       >
-        <Box display="flex" justifyContent="center" alignItems="center" mt={2}>
-          <IconButton onClick={() => setCollapsed(!collapsed)}>
-            <Menu />
+        <Box display="flex" justifyContent="center" alignItems="center" height={64}>
+          <IconButton onClick={toggleDrawer}>
+            {open ? <ChevronLeft /> : <ChevronRight />}
           </IconButton>
         </Box>
 
         <List>
-          {menuItems.map((item) => (
-            <Link to={item.route} key={item.label} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <Tooltip title={collapsed ? item.label : ''} placement="right">
-                <ListItem button>
-                  <ListItemIcon>{item.icon}</ListItemIcon>
-                  {!collapsed && <ListItemText primary={item.label} />}
-                </ListItem>
-              </Tooltip>
-            </Link>
+          {menuItems.map(({ label, icon, route }) => (
+            <Tooltip key={label} title={open ? '' : label} placement="right">
+              <ListItem button component={Link} to={route}>
+                <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
+                {open && (
+                  <ListItemText
+                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 600 }}>{label}</Typography>}
+                  />
+                )}
+              </ListItem>
+            </Tooltip>
           ))}
         </List>
       </Drawer>
 
-      <Box component="main" sx={{ flexGrow: 1, p: 3 }}>
+      {/* Content Area */}
+      <Box flexGrow={1} p={3}>
         {children}
       </Box>
     </Box>

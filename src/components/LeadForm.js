@@ -13,7 +13,7 @@ const theme = createTheme({
 
 function LeadForm() {
   const [lead, setLead] = useState({
-    leadOwner: '', firstName: '', lastName: '', company: '',
+    leadOwner: '', company: '', firstName: '', lastName: '', 
     mobile: '', email: '', fax: '', website: '', leadSource: '',
     leadStatus: '', industry: '', employees: '', revenue: '',
     social: '', description: '', street: '', city: '', state: '',

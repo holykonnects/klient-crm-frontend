@@ -1,5 +1,5 @@
 // DashboardLayout.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
   IconButton, Tooltip, Typography
@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight,
   Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle
 } from '@mui/icons-material';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 
 const drawerWidth = 240;
 const cornflowerBlue = '#6495ED';
@@ -24,8 +24,14 @@ const menuItems = [
 
 function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
+  const location = useLocation();
 
-  const toggleDrawer = () => setOpen(!open);
+  // 🔁 Reset drawer to open state on route change
+  useEffect(() => {
+    setOpen(true);
+  }, [location.pathname]);
+
+  const toggleDrawer = () => setOpen(prev => !prev);
 
   return (
     <Box display="flex">
@@ -44,12 +50,14 @@ function DashboardLayout({ children }) {
           }
         }}
       >
+        {/* Toggle Button */}
         <Box display="flex" justifyContent="center" alignItems="center" height={64}>
           <IconButton onClick={toggleDrawer}>
             {open ? <ChevronLeft /> : <ChevronRight />}
           </IconButton>
         </Box>
 
+        {/* Menu Items */}
         <List>
           {menuItems.map(({ label, icon, route }) => (
             <Tooltip key={label} title={open ? '' : label} placement="right">
@@ -66,7 +74,7 @@ function DashboardLayout({ children }) {
         </List>
       </Drawer>
 
-      {/* Content Area */}
+      {/* Main Content */}
       <Box flexGrow={1} p={3}>
         {children}
       </Box>

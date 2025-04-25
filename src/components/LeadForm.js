@@ -1,29 +1,23 @@
 import React, { useState } from 'react';
-import './LeadForm.css';
+import {
+  Box, Typography, TextField, Button, Grid, MenuItem,
+  createTheme, ThemeProvider, Paper
+} from '@mui/material';
+
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 9
+  }
+});
 
 function LeadForm() {
   const [lead, setLead] = useState({
-    leadOwner: '',
-    firstName: '',
-    lastName: '',
-    company: '',
-    mobile: '',
-    email: '',
-    fax: '',
-    website: '',
-    leadSource: '',
-    leadStatus: '',
-    industry: '',
-    employees: '',
-    revenue: '',
-    social: '',
-    description: '',
-    street: '',
-    city: '',
-    state: '',
-    country: '',
-    pincode: '',
-    additionalDescription: ''
+    leadOwner: '', firstName: '', lastName: '', company: '',
+    mobile: '', email: '', fax: '', website: '', leadSource: '',
+    leadStatus: '', industry: '', employees: '', revenue: '',
+    social: '', description: '', street: '', city: '', state: '',
+    country: '', pincode: '', additionalDescription: ''
   });
 
   const handleChange = (e) => {
@@ -37,81 +31,99 @@ function LeadForm() {
   };
 
   return (
-    <form onSubmit={handleSubmit} style={{ maxWidth: '700px', margin: '2rem auto', padding: '1.5rem', backgroundColor: '#fff', borderRadius: '8px' }}>
-      <h2>New Lead</h2>
+    <ThemeProvider theme={theme}>
+      <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3}>
+          Add New Lead
+        </Typography>
+        <Box component="form" onSubmit={handleSubmit}>
+          <Grid container spacing={2}>
+            {[
+              ['Lead Owner', 'leadOwner'],
+              ['First Name', 'firstName'],
+              ['Last Name', 'lastName'],
+              ['Company', 'company'],
+              ['Mobile', 'mobile'],
+              ['Email', 'email'],
+              ['Fax', 'fax'],
+              ['Website', 'website'],
+              ['Lead Source', 'leadSource'],
+              ['Industry', 'industry'],
+              ['No. of Employees', 'employees'],
+              ['Annual Revenue', 'revenue'],
+              ['Social Media', 'social'],
+              ['Street', 'street'],
+              ['City', 'city'],
+              ['State', 'state'],
+              ['Country', 'country'],
+              ['Pincode', 'pincode']
+            ].map(([label, name]) => (
+              <Grid item xs={12} sm={6} key={name}>
+                <TextField
+                  fullWidth
+                  label={label}
+                  name={name}
+                  value={lead[name]}
+                  onChange={handleChange}
+                  size="small"
+                />
+              </Grid>
+            ))}
 
-      <div className="form-grid">
-        <label>Lead Owner</label>
-        <input type="text" name="leadOwner" onChange={handleChange} />
+            {/* Lead Status Dropdown */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Lead Status"
+                name="leadStatus"
+                value={lead.leadStatus}
+                onChange={handleChange}
+                size="small"
+              >
+                {['New', 'Contacted', 'Qualified'].map(option => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
 
-        <label>First Name</label>
-        <input type="text" name="firstName" onChange={handleChange} />
+            {/* Description TextArea */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="Description"
+                name="description"
+                value={lead.description}
+                onChange={handleChange}
+                size="small"
+              />
+            </Grid>
 
-        <label>Last Name</label>
-        <input type="text" name="lastName" onChange={handleChange} />
+            {/* Additional Description */}
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                multiline
+                minRows={2}
+                label="Additional Description"
+                name="additionalDescription"
+                value={lead.additionalDescription}
+                onChange={handleChange}
+                size="small"
+              />
+            </Grid>
+          </Grid>
 
-        <label>Company</label>
-        <input type="text" name="company" onChange={handleChange} />
-
-        <label>Mobile</label>
-        <input type="text" name="mobile" onChange={handleChange} />
-
-        <label>Email</label>
-        <input type="email" name="email" onChange={handleChange} />
-
-        <label>Fax</label>
-        <input type="text" name="fax" onChange={handleChange} />
-
-        <label>Website</label>
-        <input type="text" name="website" onChange={handleChange} />
-
-        <label>Lead Source</label>
-        <input type="text" name="leadSource" onChange={handleChange} />
-
-        <label>Lead Status</label>
-        <select name="leadStatus" onChange={handleChange}>
-          <option value="">Select</option>
-          <option value="New">New</option>
-          <option value="Contacted">Contacted</option>
-          <option value="Qualified">Qualified</option>
-        </select>
-
-        <label>Industry</label>
-        <input type="text" name="industry" onChange={handleChange} />
-
-        <label>No. of Employees</label>
-        <input type="number" name="employees" onChange={handleChange} />
-
-        <label>Annual Revenue</label>
-        <input type="text" name="revenue" onChange={handleChange} />
-
-        <label>Social Media</label>
-        <input type="text" name="social" onChange={handleChange} />
-
-        <label>Description</label>
-        <textarea name="description" onChange={handleChange}></textarea>
-
-        <label>Street</label>
-        <input type="text" name="street" onChange={handleChange} />
-
-        <label>City</label>
-        <input type="text" name="city" onChange={handleChange} />
-
-        <label>State</label>
-        <input type="text" name="state" onChange={handleChange} />
-
-        <label>Country</label>
-        <input type="text" name="country" onChange={handleChange} />
-
-        <label>Pincode</label>
-        <input type="text" name="pincode" onChange={handleChange} />
-
-        <label>Additional Description</label>
-        <textarea name="additionalDescription" onChange={handleChange}></textarea>
-      </div>
-
-      <button type="submit" style={{ marginTop: '1rem' }}>Submit Lead</button>
-    </form>
+          <Box mt={3} display="flex" justifyContent="flex-end">
+            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }}>
+              Submit Lead
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+    </ThemeProvider>
   );
 }
 

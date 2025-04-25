@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import {
   Box, TextField, Typography, Button, MenuItem, Grid
 } from '@mui/material';
-import DashboardLayout from '../layouts/DashboardLayout';
+import DashboardLayout from '../components/DashboardLayout';
 
 const initialState = {
   leadOwner: '', firstName: '', lastName: '', company: '', mobile: '', email: '',

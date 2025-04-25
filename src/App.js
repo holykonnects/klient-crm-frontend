@@ -8,6 +8,7 @@ import OrdersTable from './components/OrdersTable';
 //import AddLeadForm from './components/AddLeadForm'; // Create this if not available
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
+import { Navigate } from 'react-router-dom'; // ✅ Ensure this is imported at the top
 
 function App() {
   return (
@@ -20,6 +21,7 @@ function App() {
           <Route path="/view-orders" element={<OrdersTable />} />
           <Route path="/add-lead" element={<DashboardLayout><LeadForm /></DashboardLayout>} />
           <Route path="/dashboard" element={<Dashboard />} />
+          <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>
       </DashboardLayout>
     </Router>

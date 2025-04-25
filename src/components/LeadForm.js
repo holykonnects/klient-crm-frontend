@@ -1,18 +1,24 @@
 import React, { useState } from 'react';
 import {
-  Box, TextField, Typography, Button, MenuItem, Grid
+  Box, Typography, TextField, Button, Grid, MenuItem,
+  createTheme, ThemeProvider, Paper
 } from '@mui/material';
-import DashboardLayout from '../components/DashboardLayout';
 
-const initialState = {
-  leadOwner: '', firstName: '', lastName: '', company: '', mobile: '', email: '',
-  fax: '', website: '', leadSource: '', leadStatus: '', industry: '',
-  employees: '', revenue: '', social: '', description: '', street: '', city: '',
-  state: '', country: '', pincode: '', additionalDescription: ''
-};
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 9
+  }
+});
 
 function LeadForm() {
-  const [lead, setLead] = useState(initialState);
+  const [lead, setLead] = useState({
+    leadOwner: '', firstName: '', lastName: '', company: '',
+    mobile: '', email: '', fax: '', website: '', leadSource: '',
+    leadStatus: '', industry: '', employees: '', revenue: '',
+    social: '', description: '', street: '', city: '', state: '',
+    country: '', pincode: '', additionalDescription: ''
+  });
 
   const handleChange = (e) => {
     setLead({ ...lead, [e.target.name]: e.target.value });
@@ -21,87 +27,103 @@ function LeadForm() {
   const handleSubmit = (e) => {
     e.preventDefault();
     alert('Submitting lead:\n' + JSON.stringify(lead, null, 2));
-    // TODO: connect to backend or Google Apps Script
+    // TODO: Connect to Apps Script endpoint via fetch
   };
 
   return (
-    <DashboardLayout>
-      <Box sx={{ maxWidth: '900px', margin: '0 auto', padding: 4 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 80 }} />
-          <Typography variant="h5" fontWeight="bold" sx={{ fontFamily: 'Montserrat' }}>
-            Add New Lead
-          </Typography>
-        </Box>
-
-        <form onSubmit={handleSubmit}>
+    <ThemeProvider theme={theme}>
+      <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3}>
+          Add New Lead
+        </Typography>
+        <Box component="form" onSubmit={handleSubmit}>
           <Grid container spacing={2}>
             {[
-              { label: 'Lead Owner', name: 'leadOwner' },
-              { label: 'First Name', name: 'firstName' },
-              { label: 'Last Name', name: 'lastName' },
-              { label: 'Company', name: 'company' },
-              { label: 'Mobile', name: 'mobile' },
-              { label: 'Email', name: 'email', type: 'email' },
-              { label: 'Fax', name: 'fax' },
-              { label: 'Website', name: 'website' },
-              { label: 'Lead Source', name: 'leadSource' },
-              {
-                label: 'Lead Status', name: 'leadStatus', type: 'select', options: ['New', 'Contacted', 'Qualified']
-              },
-              { label: 'Industry', name: 'industry' },
-              { label: 'No. of Employees', name: 'employees', type: 'number' },
-              { label: 'Annual Revenue', name: 'revenue' },
-              { label: 'Social Media', name: 'social' },
-              { label: 'Street', name: 'street' },
-              { label: 'City', name: 'city' },
-              { label: 'State', name: 'state' },
-              { label: 'Country', name: 'country' },
-              { label: 'Pincode', name: 'pincode' },
-            ].map(({ label, name, type = 'text', options }, idx) => (
-              <Grid item xs={12} sm={6} key={idx}>
-                {type === 'select' ? (
-                  <TextField
-                    fullWidth select label={label} name={name} value={lead[name]} onChange={handleChange}
-                    size="small" variant="outlined"
-                  >
-                    <MenuItem value="">Select</MenuItem>
-                    {options.map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                  </TextField>
-                ) : (
-                  <TextField
-                    fullWidth label={label} name={name} type={type} value={lead[name]}
-                    onChange={handleChange} size="small" variant="outlined"
-                  />
-                )}
+              ['Lead Owner', 'leadOwner'],
+              ['First Name', 'firstName'],
+              ['Last Name', 'lastName'],
+              ['Company', 'company'],
+              ['Mobile', 'mobile'],
+              ['Email', 'email'],
+              ['Fax', 'fax'],
+              ['Website', 'website'],
+              ['Lead Source', 'leadSource'],
+              ['Industry', 'industry'],
+              ['No. of Employees', 'employees'],
+              ['Annual Revenue', 'revenue'],
+              ['Social Media', 'social'],
+              ['Street', 'street'],
+              ['City', 'city'],
+              ['State', 'state'],
+              ['Country', 'country'],
+              ['Pincode', 'pincode']
+            ].map(([label, name]) => (
+              <Grid item xs={12} sm={6} key={name}>
+                <TextField
+                  fullWidth
+                  label={label}
+                  name={name}
+                  value={lead[name]}
+                  onChange={handleChange}
+                  size="small"
+                />
               </Grid>
             ))}
 
+            {/* Lead Status Dropdown */}
+            <Grid item xs={12} sm={6}>
+              <TextField
+                select
+                fullWidth
+                label="Lead Status"
+                name="leadStatus"
+                value={lead.leadStatus}
+                onChange={handleChange}
+                size="small"
+              >
+                {['New', 'Contacted', 'Qualified'].map(option => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </TextField>
+            </Grid>
+
+            {/* Description TextArea */}
             <Grid item xs={12}>
               <TextField
-                fullWidth multiline rows={3}
-                label="Description" name="description" value={lead.description}
-                onChange={handleChange} size="small" variant="outlined"
+                fullWidth
+                multiline
+                minRows={2}
+                label="Description"
+                name="description"
+                value={lead.description}
+                onChange={handleChange}
+                size="small"
               />
             </Grid>
 
+            {/* Additional Description */}
             <Grid item xs={12}>
               <TextField
-                fullWidth multiline rows={3}
-                label="Additional Description" name="additionalDescription" value={lead.additionalDescription}
-                onChange={handleChange} size="small" variant="outlined"
+                fullWidth
+                multiline
+                minRows={2}
+                label="Additional Description"
+                name="additionalDescription"
+                value={lead.additionalDescription}
+                onChange={handleChange}
+                size="small"
               />
-            </Grid>
-
-            <Grid item xs={12}>
-              <Button variant="contained" type="submit" sx={{ backgroundColor: '#6495ED' }}>
-                Submit Lead
-              </Button>
             </Grid>
           </Grid>
-        </form>
-      </Box>
-    </DashboardLayout>
+
+          <Box mt={3} display="flex" justifyContent="flex-end">
+            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }}>
+              Submit Lead
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
+    </ThemeProvider>
   );
 }
 

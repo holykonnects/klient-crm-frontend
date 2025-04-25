@@ -19,7 +19,7 @@ function App() {
           <Route path="/view-accounts" element={<AccountsTable />} />
           <Route path="/view-deals" element={<DealsTable />} />
           <Route path="/view-orders" element={<OrdersTable />} />
-          <Route path="/add-lead" element={<DashboardLayout><LeadForm />} />
+          <Route path="/add-lead" element={<LeadForm /></DashboardLayout>} />
           <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/" element={<Navigate to="/dashboard" />} />
           </Routes>

@@ -18,8 +18,7 @@ function App() {
           <Route path="/view-deals" element={<DealsTable />} />
           <Route path="/view-orders" element={<OrdersTable />} />
           <Route path="/add-lead" element={<DashboardLayout><AddLeadForm /></DashboardLayout>} />
-          <Route path='/
-        </Routes>
+          </Routes>
       </DashboardLayout>
     </Router>
   );

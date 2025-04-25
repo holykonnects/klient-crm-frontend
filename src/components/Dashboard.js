@@ -6,7 +6,7 @@ function Dashboard() {
   return (
     <Box padding={4}>
       <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100, marginBottom: 20 }} />
-      <Typography variant="h5" fontWeight="bold" mb={2}>Your Dashboard</Typography>
+      //<Typography variant="h5" fontWeight="bold" mb={2}>Your Dashboard</Typography>
       <iframe
         title="Looker Studio Report"
         width="100%"

@@ -44,9 +44,11 @@ function DashboardLayout({ children }) {
           '& .MuiDrawer-paper': {
             width: open ? drawerWidth : 60,
             backgroundColor: sidebarBackground,
-            transition: 'width 0.3s',
+            transition: 'width 0.3s ease',
             overflowX: 'hidden',
-            boxShadow: '2px 0 6px rgba(0,0,0,0.05)'
+            boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
+            position: 'relative',
+            zIndex: 1200 
           }
         }}
       >

@@ -46,9 +46,9 @@ function LeadForm() {
             <Grid container spacing={2}>
               {[
                 ['Lead Owner', 'leadOwner'],
+                ['Company', 'company'],
                 ['First Name', 'firstName'],
                 ['Last Name', 'lastName'],
-                ['Company', 'company'],
                 ['Mobile', 'mobile'],
                 ['Email', 'email'],
                 ['Fax', 'fax'],

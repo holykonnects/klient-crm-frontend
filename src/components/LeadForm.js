@@ -16,12 +16,14 @@ function LeadForm() {
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [formValues, setFormValues] = useState({});
   const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  // Fetch fields (headers) from Form Responses 1
+  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec'; // ✅ Confirm the correct Apps Script deployment URL here
+
   useEffect(() => {
     const fetchFields = async () => {
       try {
-        const response = await fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec');
+        const response = await fetch(formSubmitUrl);
         const data = await response.json();
         const fieldNames = Object.keys(data[0] || {});
         setFields(fieldNames);
@@ -68,11 +70,34 @@ function LeadForm() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    console.log('Submitting form:', formValues);
-    alert('Submitting Lead:\n' + JSON.stringify(formValues, null, 2));
-    // TODO: Later connect to Google Apps Script POST
+    setSubmitting(true);
+    try {
+      const response = await fetch(formSubmitUrl, {
+        method: 'POST',
+        mode: 'no-cors', // Important for Google Apps Script
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(formValues)
+      });
+
+      alert('✅ Lead submitted successfully!');
+      console.log('Lead submitted:', formValues);
+      
+      // Optionally reset form
+      setFormValues(prev => {
+        const reset = {};
+        Object.keys(prev).forEach(key => (reset[key] = ''));
+        return reset;
+      });
+
+    } catch (error) {
+      console.error('❌ Error submitting lead:', error);
+      alert('❌ Submission failed. Please try again.');
+    }
+    setSubmitting(false);
   };
 
   if (loading) {
@@ -124,8 +149,8 @@ function LeadForm() {
           </Grid>
 
           <Box mt={3} display="flex" justifyContent="flex-end">
-            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }}>
-              Submit Lead
+            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }} disabled={submitting}>
+              {submitting ? 'Submitting...' : 'Submit Lead'}
             </Button>
           </Box>
         </Box>

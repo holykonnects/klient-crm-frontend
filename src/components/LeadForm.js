@@ -1,8 +1,7 @@
-// LeadForm.js
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, TextField, Button, Grid, MenuItem,
-  createTheme, ThemeProvider, Paper, CircularProgress
+  createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
 } from '@mui/material';
 
 const theme = createTheme({
@@ -12,81 +11,112 @@ const theme = createTheme({
   }
 });
 
-const validationURL = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec'; // ✅ Your validation fetch URL
-
 function LeadForm() {
-  const [fields, setFields] = useState({});
-  const [formData, setFormData] = useState({});
+  const [fields, setFields] = useState([]);
+  const [dropdownOptions, setDropdownOptions] = useState({});
+  const [formValues, setFormValues] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // Fetch fields (headers) from Form Responses 1
   useEffect(() => {
-    fetch(validationURL)
-      .then(response => response.json())
-      .then(data => {
-        setFields(data);
-        // Initialize form data
-        const initialForm = {};
-        Object.keys(data).forEach(field => initialForm[field] = '');
-        setFormData(initialForm);
-        setLoading(false);
+    const fetchFields = async () => {
+      try {
+        const response = await fetch('https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec');
+        const data = await response.json();
+        const fieldNames = Object.keys(data[0] || {});
+        setFields(fieldNames);
+        initializeForm(fieldNames);
+      } catch (error) {
+        console.error('Error fetching fields:', error);
+      }
+    };
+
+    const fetchDropdowns = async () => {
+      try {
+        const response = await fetch('https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec');
+        const data = await response.json();
+        const dropdowns = {};
+        for (let field in data) {
+          if (data[field].length > 0) {
+            dropdowns[field] = data[field];
+          }
+        }
+        setDropdownOptions(dropdowns);
+      } catch (error) {
+        console.error('Error fetching dropdown options:', error);
+      }
+    };
+
+    const initializeForm = (fieldNames) => {
+      const initialForm = {};
+      fieldNames.forEach(field => {
+        initialForm[field] = '';
       });
+      setFormValues(initialForm);
+      setLoading(false);
+    };
+
+    fetchFields();
+    fetchDropdowns();
   }, []);
 
   const handleChange = (e) => {
-    setFormData(prev => ({
+    const { name, value } = e.target;
+    setFormValues(prev => ({
       ...prev,
-      [e.target.name]: e.target.value
+      [name]: value
     }));
   };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    alert('Submitting lead:\n' + JSON.stringify(formData, null, 2));
-    // TODO: Add submit logic to Google Sheet
+    console.log('Submitting form:', formValues);
+    alert('Submitting Lead:\n' + JSON.stringify(formValues, null, 2));
+    // TODO: Later connect to Google Apps Script POST
   };
 
   if (loading) {
-    return <Box display="flex" justifyContent="center" alignItems="center" height="80vh">
-      <CircularProgress />
-    </Box>;
+    return <Typography>Loading Lead Form...</Typography>;
   }
 
   return (
     <ThemeProvider theme={theme}>
-      <Paper elevation={3} sx={{ maxWidth: 1000, margin: '2rem auto', padding: 4 }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={3}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 80 }} />
-          <Typography variant="h5" fontWeight="bold" color="#6495ED">
-            Add New Lead
-          </Typography>
+      <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
+        {/* Klient Konnect Logo */}
+        <Box display="flex" justifyContent="center" mb={3}>
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         </Box>
+
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
+          Add New Lead
+        </Typography>
 
         <Box component="form" onSubmit={handleSubmit}>
           <Grid container spacing={2}>
-            {Object.keys(fields).map((field) => (
-              <Grid item xs={12} sm={6} key={field}>
-                {fields[field].length > 0 ? (
-                  <TextField
-                    select
-                    fullWidth
-                    size="small"
-                    label={field}
-                    name={field}
-                    value={formData[field]}
-                    onChange={handleChange}
-                  >
-                    {fields[field].map(option => (
-                      <MenuItem key={option} value={option}>{option}</MenuItem>
-                    ))}
-                  </TextField>
+            {fields.map((field, index) => (
+              <Grid item xs={12} sm={6} key={index}>
+                {dropdownOptions[field] ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>{field}</InputLabel>
+                    <Select
+                      label={field}
+                      name={field}
+                      value={formValues[field]}
+                      onChange={handleChange}
+                    >
+                      {dropdownOptions[field].map((option, idx) => (
+                        <MenuItem key={idx} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 ) : (
                   <TextField
                     fullWidth
-                    size="small"
                     label={field}
                     name={field}
-                    value={formData[field]}
+                    value={formValues[field]}
                     onChange={handleChange}
+                    size="small"
                   />
                 )}
               </Grid>

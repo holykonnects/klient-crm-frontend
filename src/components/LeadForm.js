@@ -71,34 +71,38 @@ function LeadForm() {
   };
 
   const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
-    try {
-      const response = await fetch(formSubmitUrl, {
-        method: 'POST',
-        mode: 'no-cors', // Important for Google Apps Script
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(formValues)
-      });
-
-      alert('✅ Lead submitted successfully!');
-      console.log('Lead submitted:', formValues);
-      
-      // Optionally reset form
-      setFormValues(prev => {
-        const reset = {};
-        Object.keys(prev).forEach(key => (reset[key] = ''));
-        return reset;
-      });
-
-    } catch (error) {
-      console.error('❌ Error submitting lead:', error);
-      alert('❌ Submission failed. Please try again.');
-    }
-    setSubmitting(false);
+  e.preventDefault();
+  const timestamp = new Date().toLocaleString('en-GB', { timeZone: 'Asia/Kolkata' }).replace(',', '');
+  
+  const payload = {
+    ...lead,
+    Timestamp: timestamp // Add Timestamp field
   };
+
+  try {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec', {
+      method: 'POST',
+      mode: 'no-cors', // Important: Apps Script requires no-cors for POST
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
+
+    alert('✅ Lead Submitted Successfully!');
+    setLead({   // Reset the form
+      leadOwner: '', firstName: '', lastName: '', company: '',
+      mobile: '', email: '', fax: '', website: '', leadSource: '',
+      leadStatus: '', industry: '', employees: '', revenue: '',
+      social: '', description: '', street: '', city: '', state: '',
+      country: '', pincode: '', additionalDescription: ''
+    });
+  } catch (error) {
+    console.error('Error submitting lead:', error);
+    alert('❌ Submission failed. Please try again.');
+  }
+};
+
 
   if (loading) {
     return <Typography>Loading Lead Form...</Typography>;

@@ -2,16 +2,18 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
+  IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Button,
+  Grid, Popover, Checkbox
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
+import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9
+    fontSize: 8,
   }
 });
 
@@ -24,6 +26,7 @@ function LeadsTable() {
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [selectedRow, setSelectedRow] = useState(null);
+  const [editRow, setEditRow] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
 
@@ -32,10 +35,10 @@ function LeadsTable() {
       .then(response => response.json())
       .then(data => {
         setLeads(data);
-        setLoading(false);
         if (data.length) {
           setVisibleColumns(Object.keys(data[0]));
         }
+        setLoading(false);
       });
   }, []);
 
@@ -68,19 +71,26 @@ function LeadsTable() {
   const uniqueOwners = [...new Set(leads.map(d => d['Lead Owner']).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
-    if (visibleColumns.includes(col)) {
-      setVisibleColumns(visibleColumns.filter(c => c !== col));
-    } else {
-      setVisibleColumns([...visibleColumns, col]);
-    }
+    setVisibleColumns(prev =>
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+    );
   };
 
   const handleSelectAll = () => {
     if (leads.length) setVisibleColumns(Object.keys(leads[0]));
   };
 
-  const handleDeselectAll = () => {
-    setVisibleColumns([]);
+  const handleDeselectAll = () => setVisibleColumns([]);
+
+  const handleEditChange = (e) => {
+    const { name, value } = e.target;
+    setEditRow(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleUpdateSubmit = () => {
+    // TODO: Send editRow to Apps Script endpoint
+    alert('Lead updated:\n' + JSON.stringify(editRow, null, 2));
+    setEditRow(null);
   };
 
   if (loading) return <Typography>Loading leads...</Typography>;
@@ -88,12 +98,13 @@ function LeadsTable() {
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
+        <Box display="flex" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
+        {/* Filter Row */}
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
             variant="outlined"
@@ -102,36 +113,29 @@ function LeadsTable() {
             size="small"
             sx={{ minWidth: 200 }}
           />
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Status</InputLabel>
             <Select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} label="Lead Status">
               <MenuItem value="">All</MenuItem>
-              {uniqueStatuses.map(status => (
-                <MenuItem key={status} value={status}>{status}</MenuItem>
-              ))}
+              {uniqueStatuses.map(status => <MenuItem key={status} value={status}>{status}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Source</InputLabel>
             <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
               <MenuItem value="">All</MenuItem>
-              {uniqueSources.map(source => (
-                <MenuItem key={source} value={source}>{source}</MenuItem>
-              ))}
+              {uniqueSources.map(source => <MenuItem key={source} value={source}>{source}</MenuItem>)}
             </Select>
           </FormControl>
-          <FormControl size="small" variant="outlined" sx={{ minWidth: 200 }}>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Owner</InputLabel>
             <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
               <MenuItem value="">All</MenuItem>
-              {uniqueOwners.map(owner => (
-                <MenuItem key={owner} value={owner}>{owner}</MenuItem>
-              ))}
+              {uniqueOwners.map(owner => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
             </Select>
           </FormControl>
 
-          {/* 🧭 Column Selector */}
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
           <Popover
@@ -157,6 +161,7 @@ function LeadsTable() {
           </Popover>
         </Box>
 
+        {/* Data Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -175,19 +180,19 @@ function LeadsTable() {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((key, i) => (
-                  <TableCell key={i}>{lead[key]}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{lead[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setSelectedRow(lead)}>
-                    <VisibilityIcon />
-                  </IconButton>
+                  <IconButton onClick={() => setSelectedRow(lead)}><VisibilityIcon /></IconButton>
+                  <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
 
+        {/* View Modal */}
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Lead Details</DialogTitle>
           <DialogContent dividers>
@@ -199,6 +204,31 @@ function LeadsTable() {
               ))}
             </Grid>
           </DialogContent>
+        </Dialog>
+
+        {/* Edit Modal */}
+        <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle>Edit Lead</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              {editRow && Object.entries(editRow).map(([key, value]) => (
+                <Grid item xs={6} key={key}>
+                  <TextField
+                    label={key}
+                    name={key}
+                    value={value}
+                    onChange={handleEditChange}
+                    fullWidth
+                    size="small"
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setEditRow(null)} color="secondary">Cancel</Button>
+            <Button onClick={handleUpdateSubmit} variant="contained" sx={{ backgroundColor: '#6495ED' }}>Update Lead</Button>
+          </DialogActions>
         </Dialog>
       </Box>
     </ThemeProvider>

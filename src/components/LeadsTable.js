@@ -18,7 +18,7 @@ const theme = createTheme({
 
 const selectorStyle = {
   fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5
+  fontSize: 8
 };
 
 const LeadsTable = () => {
@@ -119,14 +119,17 @@ const LeadsTable = () => {
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
         </Box>
 
-        {/* Filters */}
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
           <TextField size="small" label="Search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
               <InputLabel>{filterKey}</InputLabel>
               <Select
-                value={filterKey === 'Lead Status' ? filterStatus : filterKey === 'Lead Source' ? filterSource : filterOwner}
+                value={
+                  filterKey === 'Lead Status' ? filterStatus :
+                  filterKey === 'Lead Source' ? filterSource :
+                  filterOwner
+                }
                 label={filterKey}
                 onChange={e =>
                   filterKey === 'Lead Status' ? setFilterStatus(e.target.value) :
@@ -162,7 +165,6 @@ const LeadsTable = () => {
           </Popover>
         </Box>
 
-        {/* Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -200,7 +202,13 @@ const LeadsTable = () => {
             <Grid container spacing={2}>
               {viewRow && Object.entries(viewRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
-                  <Typography><strong>{key}:</strong> {value}</Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label={key}
+                    value={value}
+                    InputProps={{ readOnly: true }}
+                  />
                 </Grid>
               ))}
             </Grid>

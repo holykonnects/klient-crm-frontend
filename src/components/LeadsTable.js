@@ -12,13 +12,13 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9
+    fontSize: 9.5
   }
 });
 
 const selectorStyle = {
   fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8
+  fontSize: 8.5
 };
 
 const LeadsTable = () => {

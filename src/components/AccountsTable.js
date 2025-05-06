@@ -5,9 +5,10 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, Grid,
   Checkbox, FormGroup, FormControlLabel, Menu, Button
 } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
+import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import CreateDealModal from './CreateDealModal';
 
 const theme = createTheme({
   typography: {
@@ -18,7 +19,7 @@ const theme = createTheme({
 
 const selectorStyle = {
   fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5,
+  fontSize: 8.5
 };
 
 function AccountsTable() {
@@ -28,9 +29,9 @@ function AccountsTable() {
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [selectedRow, setSelectedRow] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
+  const [createDealRow, setCreateDealRow] = useState(null);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
@@ -56,13 +57,14 @@ function AccountsTable() {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredAccounts = sortedAccounts.filter(acc =>
-    ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
-      (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-    ) &&
-    (!filterSource || acc['Lead Source'] === filterSource) &&
-    (!filterOwner || acc['Lead Owner'] === filterOwner)
-  );
+  const filteredAccounts = sortedAccounts
+    .filter(acc =>
+      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
+        (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+      ) &&
+      (!filterSource || acc['Lead Source'] === filterSource) &&
+      (!filterOwner || acc['Lead Owner'] === filterOwner)
+    );
 
   const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
@@ -161,8 +163,8 @@ function AccountsTable() {
                   <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setSelectedRow(acc)}>
-                    <VisibilityIcon />
+                  <IconButton onClick={() => setCreateDealRow(acc)}>
+                    <MonetizationOnIcon />
                   </IconButton>
                 </TableCell>
               </TableRow>
@@ -170,26 +172,14 @@ function AccountsTable() {
           </TableBody>
         </Table>
 
-        {/* View Modal */}
-        <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 'bold' }}>
-            Account Details
-          </DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={2}>
-              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-                <Grid item xs={6} key={key}>
-                  <Typography
-                    variant="body2"
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: 9.5 }}
-                  >
-                    <strong>{key}:</strong> {value}
-                  </Typography>
-                </Grid>
-              ))}
-            </Grid>
-          </DialogContent>
-        </Dialog>
+        {/* Create Deal Modal */}
+        {createDealRow && (
+          <CreateDealModal
+            open={!!createDealRow}
+            onClose={() => setCreateDealRow(null)}
+            accountData={createDealRow}
+          />
+        )}
       </Box>
     </ThemeProvider>
   );

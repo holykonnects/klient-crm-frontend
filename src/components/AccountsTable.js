@@ -7,9 +7,7 @@ import {
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import CreateIcon from '@mui/icons-material/AddCircleOutline';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import CreateDealModal from '../components/CreateDealModal';
 
 const theme = createTheme({
   typography: {
@@ -20,7 +18,7 @@ const theme = createTheme({
 
 const selectorStyle = {
   fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5
+  fontSize: 8.5,
 };
 
 function AccountsTable() {
@@ -33,7 +31,6 @@ function AccountsTable() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
-  const [createDealRow, setCreateDealRow] = useState(null);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
@@ -59,14 +56,13 @@ function AccountsTable() {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredAccounts = sortedAccounts
-    .filter(acc =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
-        (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterSource || acc['Lead Source'] === filterSource) &&
-      (!filterOwner || acc['Lead Owner'] === filterOwner)
-    );
+  const filteredAccounts = sortedAccounts.filter(acc =>
+    ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
+      (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+    ) &&
+    (!filterSource || acc['Lead Source'] === filterSource) &&
+    (!filterOwner || acc['Lead Owner'] === filterOwner)
+  );
 
   const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
   const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
@@ -115,7 +111,7 @@ function AccountsTable() {
             </Select>
           </FormControl>
 
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
           <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
@@ -168,9 +164,6 @@ function AccountsTable() {
                   <IconButton onClick={() => setSelectedRow(acc)}>
                     <VisibilityIcon />
                   </IconButton>
-                  <IconButton onClick={() => setCreateDealRow(acc)}>
-                    <CreateIcon />
-                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -197,13 +190,6 @@ function AccountsTable() {
             </Grid>
           </DialogContent>
         </Dialog>
-
-        {/* Create Deal Modal */}
-        <CreateDealModal
-          open={!!createDealRow}
-          onClose={() => setCreateDealRow(null)}
-          rowData={createDealRow}
-        />
       </Box>
     </ThemeProvider>
   );

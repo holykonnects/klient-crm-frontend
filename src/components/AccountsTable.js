@@ -3,18 +3,25 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid,
-  Checkbox, FormGroup, FormControlLabel, Menu, Button
+  Checkbox, Button, Popover
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import CreateIcon from '@mui/icons-material/AddCircleOutline';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import CreateDealModal from './CreateDealModal';
 
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9,
+    fontSize: 9.5,
   }
 });
+
+const selectorStyle = {
+  fontFamily: 'Montserrat, sans-serif',
+  fontSize: 8.5,
+};
 
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
@@ -23,16 +30,17 @@ function AccountsTable() {
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [selectedRow, setSelectedRow] = useState(null);
-  const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [viewRow, setViewRow] = useState(null);
+  const [dealRow, setDealRow] = useState(null);
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
-      .then(response => response.json())
+      .then(res => res.json())
       .then(data => {
         setAccounts(data);
-        setVisibleColumns(Object.keys(data[0] || {}));
+        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
         setLoading(false);
       });
   }, []);
@@ -51,33 +59,36 @@ function AccountsTable() {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredAccounts = sortedAccounts
-    .filter(acc =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
-        (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterSource || acc['Lead Source'] === filterSource) &&
-      (!filterOwner || acc['Lead Owner'] === filterOwner)
-    );
+  const filteredAccounts = sortedAccounts.filter(acc =>
+    ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
+      (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+    ) &&
+    (!filterSource || acc['Lead Source'] === filterSource) &&
+    (!filterOwner || acc['Lead Owner'] === filterOwner)
+  );
 
-  const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
-  const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
+  const unique = (key) => [...new Set(accounts.map(d => d[key]).filter(Boolean))];
 
-  const handleColumnToggle = (column) => {
+  const handleColumnToggle = (col) => {
     setVisibleColumns(prev =>
-      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
     );
   };
 
-  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
+  const handleSelectAll = () => {
+    if (accounts.length) setVisibleColumns(Object.keys(accounts[0]));
+  };
+
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+  };
 
   if (loading) return <Typography>Loading accounts...</Typography>;
 
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
@@ -85,7 +96,6 @@ function AccountsTable() {
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
-            variant="outlined"
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
             size="small"
@@ -95,42 +105,39 @@ function AccountsTable() {
             <InputLabel>Lead Source</InputLabel>
             <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
               <MenuItem value="">All</MenuItem>
-              {uniqueSources.map(src => <MenuItem key={src} value={src}>{src}</MenuItem>)}
+              {unique('Lead Source').map(source => (
+                <MenuItem key={source} value={source}>{source}</MenuItem>
+              ))}
             </Select>
           </FormControl>
           <FormControl size="small" sx={{ minWidth: 200 }}>
             <InputLabel>Lead Owner</InputLabel>
             <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
               <MenuItem value="">All</MenuItem>
-              {uniqueOwners.map(owner => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
+              {unique('Lead Owner').map(owner => (
+                <MenuItem key={owner} value={owner}>{owner}</MenuItem>
+              ))}
             </Select>
           </FormControl>
 
-          {/* Column Selector */}
           <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box p={2}>
-              <Typography variant="subtitle2">Column Visibility</Typography>
-              <FormGroup>
-                <Button onClick={handleSelectAll}>Select All</Button>
-                <Button onClick={handleDeselectAll}>Deselect All</Button>
-                {accounts[0] && Object.keys(accounts[0]).map(col => (
-                  <FormControlLabel
-                    key={col}
-                    control={
-                      <Checkbox
-                        checked={visibleColumns.includes(col)}
-                        onChange={() => handleColumnToggle(col)}
-                      />
-                    }
-                    label={col}
-                  />
-                ))}
-              </FormGroup>
+          <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+            <Box padding={2} sx={selectorStyle}>
+              <Button onClick={handleSelectAll}>Select All</Button>
+              <Button onClick={handleDeselectAll}>Deselect All</Button>
+              {accounts[0] && Object.keys(accounts[0]).map(col => (
+                <Box key={col}>
+                  <Checkbox
+                    size="small"
+                    checked={visibleColumns.includes(col)}
+                    onChange={() => handleColumnToggle(col)}
+                  /> {col}
+                </Box>
+              ))}
             </Box>
-          </Menu>
+          </Popover>
         </Box>
 
         <Table>
@@ -155,20 +162,20 @@ function AccountsTable() {
                   <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setSelectedRow(acc)}>
-                    <VisibilityIcon />
-                  </IconButton>
+                  <IconButton onClick={() => setViewRow(acc)}><VisibilityIcon /></IconButton>
+                  <IconButton onClick={() => setDealRow(acc)}><CreateIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
 
-        <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
+        {/* View Modal */}
+        <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Account Details</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
+              {viewRow && Object.entries(viewRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
                   <Typography><strong>{key}:</strong> {value}</Typography>
                 </Grid>
@@ -176,6 +183,9 @@ function AccountsTable() {
             </Grid>
           </DialogContent>
         </Dialog>
+
+        {/* Create Deal Modal */}
+        <CreateDealModal open={!!dealRow} onClose={() => setDealRow(null)} account={dealRow} />
       </Box>
     </ThemeProvider>
   );

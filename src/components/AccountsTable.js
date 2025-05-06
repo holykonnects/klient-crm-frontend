@@ -2,140 +2,173 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
-  Button, Popover
+  IconButton, Dialog, DialogTitle, DialogContent, Grid,
+  Checkbox, FormGroup, FormControlLabel, Menu, Button
 } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
-import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
-const tableTheme = createTheme({
+const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9.5
+    fontSize: 9,
   }
 });
 
-const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5
-};
-
-const AccountsTable = () => {
+function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
-  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [filterSource, setFilterSource] = useState('');
+  const [filterOwner, setFilterOwner] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [selectedRow, setSelectedRow] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
-  const [editRow, setEditRow] = useState(null);
-  const [validationOptions, setValidationOptions] = useState({});
-
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec'; // Replace with actual
-  const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
+  const [visibleColumns, setVisibleColumns] = useState([]);
 
   useEffect(() => {
-    fetch(dataUrl)
-      .then(res => res.json())
+    fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
+      .then(response => response.json())
       .then(data => {
         setAccounts(data);
-        if (data.length) setVisibleColumns(Object.keys(data[0]));
+        setVisibleColumns(Object.keys(data[0] || {}));
+        setLoading(false);
       });
-    fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationOptions);
   }, []);
 
-  const handleColumnToggle = (col) => {
+  const handleSort = (key) => {
+    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
+    setSortConfig({ key, direction });
+  };
+
+  const sortedAccounts = [...accounts].sort((a, b) => {
+    if (!sortConfig.key) return 0;
+    const aVal = a[sortConfig.key] || '';
+    const bVal = b[sortConfig.key] || '';
+    return sortConfig.direction === 'asc'
+      ? String(aVal).localeCompare(String(bVal))
+      : String(bVal).localeCompare(String(aVal));
+  });
+
+  const filteredAccounts = sortedAccounts
+    .filter(acc =>
+      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
+        (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+      ) &&
+      (!filterSource || acc['Lead Source'] === filterSource) &&
+      (!filterOwner || acc['Lead Owner'] === filterOwner)
+    );
+
+  const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
+  const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
+
+  const handleColumnToggle = (column) => {
     setVisibleColumns(prev =>
-      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
     );
   };
 
-  const handleUpdateChange = (e) => {
-    const { name, value } = e.target;
-    setEditRow(prev => ({ ...prev, [name]: value }));
-  };
+  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
+  const handleDeselectAll = () => setVisibleColumns([]);
 
-  const handleEditSubmit = async () => {
-    const updated = {
-      ...editRow,
-      'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
-    };
-    try {
-      await fetch(dataUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-      alert('✅ Account updated successfully');
-      setEditRow(null);
-    } catch {
-      alert('❌ Error updating account');
-    }
-  };
+  if (loading) return <Typography>Loading accounts...</Typography>;
 
   return (
-    <ThemeProvider theme={tableTheme}>
+    <ThemeProvider theme={theme}>
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} alignItems="center" mb={2} flexWrap="wrap">
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Source</InputLabel>
+            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+              <MenuItem value="">All</MenuItem>
+              {uniqueSources.map(src => <MenuItem key={src} value={src}>{src}</MenuItem>)}
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Owner</InputLabel>
+            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
+              <MenuItem value="">All</MenuItem>
+              {uniqueOwners.map(owner => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
+            </Select>
+          </FormControl>
+
+          {/* Column Selector */}
+          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box padding={2} sx={selectorStyle}>
-              <Button size="small" onClick={() => setVisibleColumns(Object.keys(accounts[0]))}>Select All</Button>
-              <Button size="small" onClick={() => setVisibleColumns([])}>Deselect All</Button>
-              {Object.keys(accounts[0] || {}).map(col => (
-                <Box key={col}>
-                  <Checkbox
-                    size="small"
-                    checked={visibleColumns.includes(col)}
-                    onChange={() => handleColumnToggle(col)}
-                  /> {col}
-                </Box>
-              ))}
+          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+            <Box p={2}>
+              <Typography variant="subtitle2">Column Visibility</Typography>
+              <FormGroup>
+                <Button onClick={handleSelectAll}>Select All</Button>
+                <Button onClick={handleDeselectAll}>Deselect All</Button>
+                {accounts[0] && Object.keys(accounts[0]).map(col => (
+                  <FormControlLabel
+                    key={col}
+                    control={
+                      <Checkbox
+                        checked={visibleColumns.includes(col)}
+                        onChange={() => handleColumnToggle(col)}
+                      />
+                    }
+                    label={col}
+                  />
+                ))}
+              </FormGroup>
             </Box>
-          </Popover>
+          </Menu>
         </Box>
 
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
               {visibleColumns.map(header => (
-                <TableCell key={header} style={{ color: 'white', fontWeight: 'bold' }}>
-                  {header}
+                <TableCell
+                  key={header}
+                  onClick={() => handleSort(header)}
+                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                 </TableCell>
               ))}
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {accounts.map((account, index) => (
+            {filteredAccounts.map((acc, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((key, i) => (
-                  <TableCell key={i}>{account[key]}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setViewRow(account)}><VisibilityIcon /></IconButton>
-                  <IconButton onClick={() => setEditRow(account)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => setSelectedRow(acc)}>
+                    <VisibilityIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
 
-        {/* View Modal */}
-        <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>View Account</DialogTitle>
+        <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle>Account Details</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {viewRow && Object.entries(viewRow).map(([key, value]) => (
+              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
                   <Typography><strong>{key}:</strong> {value}</Typography>
                 </Grid>
@@ -143,51 +176,9 @@ const AccountsTable = () => {
             </Grid>
           </DialogContent>
         </Dialog>
-
-        {/* Edit Modal */}
-        <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>Edit Account</DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={2}>
-              {editRow && Object.keys(editRow).map((key, i) => (
-                <Grid item xs={6} key={i}>
-                  {validationOptions[key] ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{key}</InputLabel>
-                      <Select
-                        name={key}
-                        value={editRow[key]}
-                        onChange={handleUpdateChange}
-                        label={key}
-                      >
-                        {validationOptions[key].map((opt, idx) => (
-                          <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <TextField
-                      fullWidth
-                      label={key}
-                      name={key}
-                      value={editRow[key]}
-                      onChange={handleUpdateChange}
-                      size="small"
-                    />
-                  )}
-                </Grid>
-              ))}
-            </Grid>
-            <Box mt={3} display="flex" justifyContent="flex-end">
-              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleEditSubmit}>
-                Save Changes
-              </Button>
-            </Box>
-          </DialogContent>
-        </Dialog>
       </Box>
     </ThemeProvider>
   );
-};
+}
 
 export default AccountsTable;

@@ -5,10 +5,11 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, Grid,
   Checkbox, FormGroup, FormControlLabel, Menu, Button
 } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import CreateDealModal from './CreateDealModal';
+import CreateDealModal from './CreateDealModal'; // Make sure this path is correct
 
 const theme = createTheme({
   typography: {
@@ -29,6 +30,7 @@ function AccountsTable() {
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [selectedRow, setSelectedRow] = useState(null);
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
@@ -113,31 +115,10 @@ function AccountsTable() {
             </Select>
           </FormControl>
 
+          {/* Column Selector */}
           <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box p={2} sx={selectorStyle}>
-              <Typography variant="subtitle2">Column Visibility</Typography>
-              <Button size="small" onClick={handleSelectAll}>Select All</Button>
-              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-              <FormGroup>
-                {accounts[0] && Object.keys(accounts[0]).map(col => (
-                  <FormControlLabel
-                    key={col}
-                    control={
-                      <Checkbox
-                        checked={visibleColumns.includes(col)}
-                        onChange={() => handleColumnToggle(col)}
-                        size="small"
-                      />
-                    }
-                    label={col}
-                  />
-                ))}
-              </FormGroup>
-            </Box>
-          </Menu>
         </Box>
 
         {/* Table */}
@@ -163,7 +144,10 @@ function AccountsTable() {
                   <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setCreateDealRow(acc)}>
+                  <IconButton onClick={() => {
+                    console.log("Clicked to create deal for:", acc); // Debugging
+                    setCreateDealRow(acc);
+                  }}>
                     <MonetizationOnIcon />
                   </IconButton>
                 </TableCell>

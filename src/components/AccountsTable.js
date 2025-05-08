@@ -82,6 +82,21 @@ function AccountsTable() {
     setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
+  const handleDealSubmit = async () => {
+    try {
+      await fetch(formSubmitUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formValues)
+      });
+      alert('✅ Deal Created Successfully');
+      setCreateDealRow(null);
+    } catch (error) {
+      console.error('Error creating deal:', error);
+      alert('❌ Error creating deal. Please try again.');
+    }
+  };
+
   if (loading) return <Typography>Loading accounts...</Typography>;
 
   return (
@@ -94,27 +109,30 @@ function AccountsTable() {
 
         {/* Filters */}
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField label="Search" variant="outlined" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} size="small" sx={{ minWidth: 200 }} />
-          
-          {/* Column Selector */}
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Source</InputLabel>
+            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Owner</InputLabel>
+            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+
           <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box p={2} sx={selectorStyle}>
-              <Button size="small" onClick={handleSelectAll}>Select All</Button>
-              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-              <FormGroup>
-                {accounts[0] && Object.keys(accounts[0]).map(col => (
-                  <FormControlLabel
-                    key={col}
-                    control={<Checkbox checked={visibleColumns.includes(col)} onChange={() => handleColumnToggle(col)} size="small" />}
-                    label={col}
-                  />
-                ))}
-              </FormGroup>
-            </Box>
-          </Menu>
         </Box>
 
         {/* Table */}
@@ -145,25 +163,36 @@ function AccountsTable() {
           </TableBody>
         </Table>
 
-        {/* Create Deal Modal */}
+        {/* Modal for Deal Creation */}
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>Create Deal</DialogTitle>
+          <DialogTitle>Create New Deal</DialogTitle>
           <DialogContent dividers>
-            {/* Deal Details Accordion */}
-            <Accordion defaultExpanded>
+            <Accordion>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography fontWeight="bold">Deal Details</Typography>
+                <Typography>Deal Details</Typography>
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
-                  {['DealName', 'DealValue', 'Stage', 'ExpectedCloseDate', 'DealOwner', 'Type'].map((field, index) => (
-                    <Grid item xs={6} key={index}>
-                      <TextField fullWidth label={field} name={field} value={formValues[field]} onChange={handleChange} size="small" />
+                  {Object.keys(formValues).map((field, idx) => (
+                    <Grid item xs={6} key={idx}>
+                      <TextField
+                        label={field}
+                        name={field}
+                        value={formValues[field]}
+                        onChange={handleChange}
+                        fullWidth
+                        size="small"
+                      />
                     </Grid>
                   ))}
                 </Grid>
               </AccordionDetails>
             </Accordion>
+            <Box mt={2} display="flex" justifyContent="flex-end">
+              <Button variant="contained" color="primary" onClick={handleDealSubmit}>
+                Submit Deal
+              </Button>
+            </Box>
           </DialogContent>
         </Dialog>
       </Box>

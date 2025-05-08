@@ -36,6 +36,7 @@ function AccountsTable() {
   const [formValues, setFormValues] = useState({});
   const formSubmitUrl = 'https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec';
 
+  // Initial Fetch
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
       .then(response => response.json())
@@ -46,11 +47,13 @@ function AccountsTable() {
       });
   }, []);
 
+  // Sort Handler
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
   };
 
+  // Toggle Column Visibility
   const handleColumnToggle = (column) => {
     setVisibleColumns(prev =>
       prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
@@ -60,6 +63,7 @@ function AccountsTable() {
   const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
   const handleDeselectAll = () => setVisibleColumns([]);
 
+  // Open Modal with prefilled data
   const handleCreateDeal = (row) => {
     setCreateDealRow(row);
 
@@ -73,15 +77,20 @@ function AccountsTable() {
       Type: '',
       Description: '',
       SocialMedia: '',
-      AdditionalDescription: ''
+      AdditionalDescription: '',
+      BillingType: '',
+      OrderNumber: '',
+      ProductDetails: ''
     });
   };
 
+  // Form Change Handler
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
+  // Form Submission
   const handleDealSubmit = async () => {
     try {
       await fetch(formSubmitUrl, {
@@ -163,31 +172,22 @@ function AccountsTable() {
           </TableBody>
         </Table>
 
-        {/* Modal for Deal Creation */}
+        {/* Deal Modal */}
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Create New Deal</DialogTitle>
           <DialogContent dividers>
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>Deal Details</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  {Object.keys(formValues).map((field, idx) => (
-                    <Grid item xs={6} key={idx}>
-                      <TextField
-                        label={field}
-                        name={field}
-                        value={formValues[field]}
-                        onChange={handleChange}
-                        fullWidth
-                        size="small"
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
+            {['Deal Details', 'Company Details', 'Contact Information', 'Location Information'].map((section) => (
+              <Accordion key={section}>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography>{section}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    {/* Map all inputs here dynamically */}
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))}
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" color="primary" onClick={handleDealSubmit}>
                 Submit Deal

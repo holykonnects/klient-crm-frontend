@@ -1,11 +1,12 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
-  TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
-  Grid, Button
+  TableBody, IconButton, Dialog, DialogTitle, DialogContent,
+  DialogActions, Grid, Button, Accordion, AccordionSummary,
+  AccordionDetails, TextField, Select, MenuItem
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 const theme = createTheme({
@@ -20,7 +21,7 @@ const AccountsTable = () => {
   const [loading, setLoading] = useState(true);
   const [createDealRow, setCreateDealRow] = useState(null);
   const [formValues, setFormValues] = useState({});
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
+  const formSubmitUrl = 'https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec';
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
@@ -33,7 +34,20 @@ const AccountsTable = () => {
 
   const handleCreateDeal = (row) => {
     setCreateDealRow(row);
-    setFormValues(row);
+
+    // Prefill form with account information and placeholders for deal
+    setFormValues({
+      ...row,
+      DealName: '',
+      DealValue: '',
+      Stage: '',
+      ExpectedCloseDate: '',
+      DealOwner: '',
+      Type: '',
+      Description: '',
+      SocialMedia: '',
+      AdditionalDescription: ''
+    });
   };
 
   const handleChange = (e) => {
@@ -100,20 +114,53 @@ const AccountsTable = () => {
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Create Deal</DialogTitle>
           <DialogContent dividers>
-            <Grid container spacing={2}>
-              {Object.keys(formValues).map((key, index) => (
-                <Grid item xs={6} key={index}>
-                  <TextField
-                    fullWidth
-                    label={key}
-                    name={key}
-                    value={formValues[key]}
-                    onChange={handleChange}
-                    size="small"
-                  />
+
+            {/* Basic Information */}
+            <Accordion defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography fontWeight="bold">Basic Information</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {['DealName', 'DealValue', 'Stage', 'ExpectedCloseDate', 'DealOwner', 'Type'].map((field, index) => (
+                    <Grid item xs={6} key={index}>
+                      <TextField
+                        fullWidth
+                        label={field}
+                        name={field}
+                        value={formValues[field]}
+                        onChange={handleChange}
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
                 </Grid>
-              ))}
-            </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Company Details */}
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography fontWeight="bold">Company Details</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {['Company', 'Mobile Number', 'Email ID', 'Website', 'Industry'].map((field, index) => (
+                    <Grid item xs={6} key={index}>
+                      <TextField
+                        fullWidth
+                        label={field}
+                        name={field}
+                        value={formValues[field]}
+                        size="small"
+                        disabled
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
           </DialogContent>
           <DialogActions>
             <Button onClick={handleSubmit} variant="contained" sx={{ backgroundColor: '#6495ED' }}>

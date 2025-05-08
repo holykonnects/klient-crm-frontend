@@ -36,7 +36,7 @@ function AccountsTable() {
   const [formValues, setFormValues] = useState({});
   const formSubmitUrl = 'https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec';
 
-  // Initial Fetch
+  // Fetch Data
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
       .then(response => response.json())
@@ -47,13 +47,13 @@ function AccountsTable() {
       });
   }, []);
 
-  // Sort Handler
+  // Sorting Handler
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
   };
 
-  // Toggle Column Visibility
+  // Column Visibility
   const handleColumnToggle = (column) => {
     setVisibleColumns(prev =>
       prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
@@ -63,34 +63,30 @@ function AccountsTable() {
   const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
   const handleDeselectAll = () => setVisibleColumns([]);
 
-  // Open Modal with prefilled data
+  // Open Modal
   const handleCreateDeal = (row) => {
     setCreateDealRow(row);
-
     setFormValues({
-      ...row,
       DealName: '',
       DealValue: '',
       Stage: '',
       ExpectedCloseDate: '',
       DealOwner: '',
       Type: '',
-      Description: '',
-      SocialMedia: '',
-      AdditionalDescription: '',
       BillingType: '',
       OrderNumber: '',
-      ProductDetails: ''
+      ProductDetails: '',
+      ...row
     });
   };
 
-  // Form Change Handler
+  // Handle Form Change
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
-  // Form Submission
+  // Submit the Form
   const handleDealSubmit = async () => {
     try {
       await fetch(formSubmitUrl, {
@@ -138,10 +134,6 @@ function AccountsTable() {
               <MenuItem value="">All</MenuItem>
             </Select>
           </FormControl>
-
-          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
         </Box>
 
         {/* Table */}
@@ -176,23 +168,30 @@ function AccountsTable() {
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Create New Deal</DialogTitle>
           <DialogContent dividers>
-            {['Deal Details', 'Company Details', 'Contact Information', 'Location Information'].map((section) => (
-              <Accordion key={section}>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                  <Typography>{section}</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    {/* Map all inputs here dynamically */}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            <Box mt={2} display="flex" justifyContent="flex-end">
-              <Button variant="contained" color="primary" onClick={handleDealSubmit}>
-                Submit Deal
-              </Button>
-            </Box>
+            <Accordion defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Deal Details</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {Object.keys(formValues).map((field, index) => (
+                    <Grid item xs={6} key={index}>
+                      <TextField
+                        fullWidth
+                        label={field}
+                        name={field}
+                        value={formValues[field]}
+                        onChange={handleChange}
+                        size="small"
+                      />
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+            <Button variant="contained" color="primary" onClick={handleDealSubmit}>
+              Submit Deal
+            </Button>
           </DialogContent>
         </Dialog>
       </Box>

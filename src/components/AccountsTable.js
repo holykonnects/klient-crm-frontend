@@ -2,14 +2,11 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid,
-  Checkbox, FormGroup, FormControlLabel, Menu, Button
+  IconButton, Dialog, DialogTitle, DialogContent, DialogActions,
+  Grid, Button
 } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import MonetizationOnIcon from '@mui/icons-material/MonetizationOn';
-import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import AddCircleIcon from '@mui/icons-material/AddCircle';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import CreateDealModal from './CreateDealModal'; // Make sure this path is correct
 
 const theme = createTheme({
   typography: {
@@ -18,67 +15,46 @@ const theme = createTheme({
   }
 });
 
-const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5
-};
-
-function AccountsTable() {
+const AccountsTable = () => {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterSource, setFilterSource] = useState('');
-  const [filterOwner, setFilterOwner] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [selectedRow, setSelectedRow] = useState(null);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
+  const [formValues, setFormValues] = useState({});
+  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
 
   useEffect(() => {
     fetch('https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec')
       .then(response => response.json())
       .then(data => {
         setAccounts(data);
-        setVisibleColumns(Object.keys(data[0] || {}));
         setLoading(false);
       });
   }, []);
 
-  const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-    setSortConfig({ key, direction });
+  const handleCreateDeal = (row) => {
+    setCreateDealRow(row);
+    setFormValues(row);
   };
 
-  const sortedAccounts = [...accounts].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
-
-  const filteredAccounts = sortedAccounts
-    .filter(acc =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number', 'Lead ID'].some(key =>
-        (acc[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterSource || acc['Lead Source'] === filterSource) &&
-      (!filterOwner || acc['Lead Owner'] === filterOwner)
-    );
-
-  const uniqueSources = [...new Set(accounts.map(d => d['Lead Source']).filter(Boolean))];
-  const uniqueOwners = [...new Set(accounts.map(d => d['Lead Owner']).filter(Boolean))];
-
-  const handleColumnToggle = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
-    );
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
+  const handleSubmit = async () => {
+    try {
+      await fetch(formSubmitUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formValues)
+      });
+      alert('✅ Deal Created Successfully');
+      setCreateDealRow(null);
+    } catch (error) {
+      console.error('❌ Error creating deal:', error);
+      alert('❌ Error creating deal. Please try again.');
+    }
+  };
 
   if (loading) return <Typography>Loading accounts...</Typography>;
 
@@ -90,65 +66,29 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
-        {/* Filters and Column Selector */}
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Source</InputLabel>
-            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
-              <MenuItem value="">All</MenuItem>
-              {uniqueSources.map(src => <MenuItem key={src} value={src}>{src}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Owner</InputLabel>
-            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
-              <MenuItem value="">All</MenuItem>
-              {uniqueOwners.map(owner => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
-            </Select>
-          </FormControl>
-
-          {/* Column Selector */}
-          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
-        </Box>
-
-        {/* Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {visibleColumns.map(header => (
+              {Object.keys(accounts[0] || {}).map(header => (
                 <TableCell
                   key={header}
-                  onClick={() => handleSort(header)}
-                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ color: 'white', fontWeight: 'bold' }}
                 >
-                  {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  {header}
                 </TableCell>
               ))}
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredAccounts.map((acc, index) => (
+            {accounts.map((acc, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{acc[col]}</TableCell>
+                {Object.values(acc).map((value, i) => (
+                  <TableCell key={i}>{value}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => {
-                    console.log("Clicked to create deal for:", acc); // Debugging
-                    setCreateDealRow(acc);
-                  }}>
-                    <MonetizationOnIcon />
+                  <IconButton onClick={() => handleCreateDeal(acc)}>
+                    <AddCircleIcon />
                   </IconButton>
                 </TableCell>
               </TableRow>
@@ -157,16 +97,36 @@ function AccountsTable() {
         </Table>
 
         {/* Create Deal Modal */}
-        {createDealRow && (
-          <CreateDealModal
-            open={!!createDealRow}
-            onClose={() => setCreateDealRow(null)}
-            accountData={createDealRow}
-          />
-        )}
+        <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle>Create Deal</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              {Object.keys(formValues).map((key, index) => (
+                <Grid item xs={6} key={index}>
+                  <TextField
+                    fullWidth
+                    label={key}
+                    name={key}
+                    value={formValues[key]}
+                    onChange={handleChange}
+                    size="small"
+                  />
+                </Grid>
+              ))}
+            </Grid>
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={handleSubmit} variant="contained" sx={{ backgroundColor: '#6495ED' }}>
+              Submit Deal
+            </Button>
+            <Button onClick={() => setCreateDealRow(null)} color="secondary">
+              Cancel
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Box>
     </ThemeProvider>
   );
-}
+};
 
 export default AccountsTable;

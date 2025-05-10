@@ -73,15 +73,6 @@ function AccountsTable() {
     }
   };
 
-  const handleColumnToggle = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
-    );
-  };
-
-  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
-
   if (loading) return <Typography>Loading accounts...</Typography>;
 
   return (
@@ -90,55 +81,6 @@ function AccountsTable() {
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
-        </Box>
-
-        {/* Filters */}
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Source</InputLabel>
-            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
-              <MenuItem value="">All</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Owner</InputLabel>
-            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
-              <MenuItem value="">All</MenuItem>
-            </Select>
-          </FormControl>
-
-          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
-          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box p={2} sx={selectorStyle}>
-              <Button size="small" onClick={handleSelectAll}>Select All</Button>
-              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-              <FormGroup>
-                {accounts[0] && Object.keys(accounts[0]).map(col => (
-                  <FormControlLabel
-                    key={col}
-                    control={
-                      <Checkbox
-                        checked={visibleColumns.includes(col)}
-                        onChange={() => handleColumnToggle(col)}
-                        size="small"
-                      />
-                    }
-                    label={col}
-                  />
-                ))}
-              </FormGroup>
-            </Box>
-          </Menu>
         </Box>
 
         {/* Table */}
@@ -171,6 +113,57 @@ function AccountsTable() {
             ))}
           </TableBody>
         </Table>
+
+        {/* Modal */}
+        <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle>Create Deal</DialogTitle>
+          <DialogContent dividers>
+
+            {/* Deal Details */}
+            <Accordion defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography fontWeight="bold">Deal Details</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}><TextField fullWidth label="Deal Name" name="Deal Name" onChange={handleChange} /></Grid>
+                  <Grid item xs={6}><TextField fullWidth label="Deal Value" name="Deal Value" onChange={handleChange} /></Grid>
+                  <Grid item xs={6}><TextField fullWidth label="Expected Close Date" name="Expected Close Date" onChange={handleChange} /></Grid>
+                  <Grid item xs={6}><TextField fullWidth label="Stage" name="Stage" onChange={handleChange} /></Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Payment & Delivery Details */}
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography fontWeight="bold">Payment & Delivery</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}><TextField fullWidth label="Billing Type" name="Billing Type" onChange={handleChange} /></Grid>
+                  <Grid item xs={6}><TextField fullWidth label="Payment Terms" name="Payment Terms" onChange={handleChange} /></Grid>
+                  <Grid item xs={6}><TextField fullWidth label="Delivery Date" name="Delivery Date" onChange={handleChange} /></Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+
+            {/* Additional Information */}
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography fontWeight="bold">Additional Information</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  <Grid item xs={12}><TextField fullWidth label="Description" name="Description" onChange={handleChange} /></Grid>
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          </DialogContent>
+          <Button variant="contained" onClick={handleDealSubmit} sx={{ m: 2 }}>
+            Submit Deal
+          </Button>
+        </Dialog>
       </Box>
     </ThemeProvider>
   );

@@ -3,8 +3,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid,
-  Checkbox, FormGroup, FormControlLabel, Menu, Button,
-  Accordion, AccordionSummary, AccordionDetails
+  Accordion, AccordionSummary, AccordionDetails, Button
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -18,11 +17,6 @@ const theme = createTheme({
   }
 });
 
-const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8.5
-};
-
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,8 +24,6 @@ function AccountsTable() {
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
   const [formValues, setFormValues] = useState({});
   const formSubmitUrl = 'https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec';
@@ -42,26 +34,9 @@ function AccountsTable() {
       .then(response => response.json())
       .then(data => {
         setAccounts(data);
-        setVisibleColumns(Object.keys(data[0] || {}));
         setLoading(false);
       });
   }, []);
-
-  // Sorting Handler
-  const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-    setSortConfig({ key, direction });
-  };
-
-  // Column Visibility
-  const handleColumnToggle = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
-    );
-  };
-
-  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
 
   // Open Modal
   const handleCreateDeal = (row) => {
@@ -73,10 +48,21 @@ function AccountsTable() {
       ExpectedCloseDate: '',
       DealOwner: '',
       Type: '',
-      BillingType: '',
       OrderNumber: '',
-      ProductDetails: '',
-      ...row
+      CompanyName: row['Company'] || '',
+      ContactPerson: `${row['First Name']} ${row['Last Name']}`,
+      MobileNumber: row['Mobile Number'],
+      EmailID: row['Email ID'],
+      Street: row['Street'],
+      City: row['City'],
+      State: row['State'],
+      Country: row['Country'],
+      Pincode: row['PinCode'],
+      BillingAddress: '',
+      ShippingAddress: '',
+      PaymentTerms: '',
+      PaymentMode: '',
+      AdditionalNotes: ''
     });
   };
 
@@ -112,48 +98,26 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
-        {/* Filters */}
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Source</InputLabel>
-            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
-              <MenuItem value="">All</MenuItem>
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Owner</InputLabel>
-            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
-              <MenuItem value="">All</MenuItem>
-            </Select>
-          </FormControl>
-        </Box>
-
         {/* Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {visibleColumns.map(header => (
-                <TableCell key={header} style={{ color: 'white', fontWeight: 'bold' }}>
-                  {header}
-                </TableCell>
-              ))}
+              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Company</TableCell>
+              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>First Name</TableCell>
+              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Last Name</TableCell>
+              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Mobile Number</TableCell>
+              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Email ID</TableCell>
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {accounts.map((acc, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{acc[col]}</TableCell>
-                ))}
+                <TableCell>{acc['Company']}</TableCell>
+                <TableCell>{acc['First Name']}</TableCell>
+                <TableCell>{acc['Last Name']}</TableCell>
+                <TableCell>{acc['Mobile Number']}</TableCell>
+                <TableCell>{acc['Email ID']}</TableCell>
                 <TableCell>
                   <IconButton onClick={() => handleCreateDeal(acc)}>
                     <AddCircleIcon />
@@ -168,13 +132,15 @@ function AccountsTable() {
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Create New Deal</DialogTitle>
           <DialogContent dividers>
+
+            {/* Accordion Sections */}
             <Accordion defaultExpanded>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
                 <Typography>Deal Details</Typography>
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
-                  {Object.keys(formValues).map((field, index) => (
+                  {['DealName', 'DealValue', 'Stage', 'ExpectedCloseDate', 'DealOwner', 'Type', 'OrderNumber'].map((field, index) => (
                     <Grid item xs={6} key={index}>
                       <TextField
                         fullWidth
@@ -189,7 +155,25 @@ function AccountsTable() {
                 </Grid>
               </AccordionDetails>
             </Accordion>
-            <Button variant="contained" color="primary" onClick={handleDealSubmit}>
+
+            {/* Additional Accordions */}
+            <Accordion>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                <Typography>Billing & Payment Details</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <TextField
+                  fullWidth
+                  label="Billing Address"
+                  name="BillingAddress"
+                  value={formValues['BillingAddress']}
+                  onChange={handleChange}
+                  size="small"
+                />
+              </AccordionDetails>
+            </Accordion>
+
+            <Button variant="contained" color="primary" onClick={handleDealSubmit} sx={{ mt: 2 }}>
               Submit Deal
             </Button>
           </DialogContent>

@@ -3,7 +3,8 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid,
-  Accordion, AccordionSummary, AccordionDetails, Button
+  Accordion, AccordionSummary, AccordionDetails, Button,
+  Checkbox, FormGroup, FormControlLabel, Menu
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -17,6 +18,11 @@ const theme = createTheme({
   }
 });
 
+const selectorStyle = {
+  fontFamily: 'Montserrat, sans-serif',
+  fontSize: 8.5
+};
+
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -26,6 +32,9 @@ function AccountsTable() {
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
   const [createDealRow, setCreateDealRow] = useState(null);
   const [formValues, setFormValues] = useState({});
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
+
   const formSubmitUrl = 'https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec';
 
   // Fetch Data
@@ -34,45 +43,21 @@ function AccountsTable() {
       .then(response => response.json())
       .then(data => {
         setAccounts(data);
+        setVisibleColumns(Object.keys(data[0] || {}));
         setLoading(false);
       });
   }, []);
 
-  // Open Modal
   const handleCreateDeal = (row) => {
     setCreateDealRow(row);
-    setFormValues({
-      DealName: '',
-      DealValue: '',
-      Stage: '',
-      ExpectedCloseDate: '',
-      DealOwner: '',
-      Type: '',
-      OrderNumber: '',
-      CompanyName: row['Company'] || '',
-      ContactPerson: `${row['First Name']} ${row['Last Name']}`,
-      MobileNumber: row['Mobile Number'],
-      EmailID: row['Email ID'],
-      Street: row['Street'],
-      City: row['City'],
-      State: row['State'],
-      Country: row['Country'],
-      Pincode: row['PinCode'],
-      BillingAddress: '',
-      ShippingAddress: '',
-      PaymentTerms: '',
-      PaymentMode: '',
-      AdditionalNotes: ''
-    });
+    setFormValues(row);
   };
 
-  // Handle Form Change
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
-  // Submit the Form
   const handleDealSubmit = async () => {
     try {
       await fetch(formSubmitUrl, {
@@ -88,6 +73,15 @@ function AccountsTable() {
     }
   };
 
+  const handleColumnToggle = (column) => {
+    setVisibleColumns(prev =>
+      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
+    );
+  };
+
+  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
+  const handleDeselectAll = () => setVisibleColumns([]);
+
   if (loading) return <Typography>Loading accounts...</Typography>;
 
   return (
@@ -98,26 +92,76 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
+        {/* Filters */}
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Source</InputLabel>
+            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Owner</InputLabel>
+            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+
+          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
+            <ViewColumnIcon />
+          </IconButton>
+          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+            <Box p={2} sx={selectorStyle}>
+              <Button size="small" onClick={handleSelectAll}>Select All</Button>
+              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+              <FormGroup>
+                {accounts[0] && Object.keys(accounts[0]).map(col => (
+                  <FormControlLabel
+                    key={col}
+                    control={
+                      <Checkbox
+                        checked={visibleColumns.includes(col)}
+                        onChange={() => handleColumnToggle(col)}
+                        size="small"
+                      />
+                    }
+                    label={col}
+                  />
+                ))}
+              </FormGroup>
+            </Box>
+          </Menu>
+        </Box>
+
         {/* Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Company</TableCell>
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>First Name</TableCell>
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Last Name</TableCell>
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Mobile Number</TableCell>
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Email ID</TableCell>
+              {visibleColumns.map(header => (
+                <TableCell
+                  key={header}
+                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                >
+                  {header}
+                </TableCell>
+              ))}
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {accounts.map((acc, index) => (
               <TableRow key={index}>
-                <TableCell>{acc['Company']}</TableCell>
-                <TableCell>{acc['First Name']}</TableCell>
-                <TableCell>{acc['Last Name']}</TableCell>
-                <TableCell>{acc['Mobile Number']}</TableCell>
-                <TableCell>{acc['Email ID']}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{acc[col]}</TableCell>
+                ))}
                 <TableCell>
                   <IconButton onClick={() => handleCreateDeal(acc)}>
                     <AddCircleIcon />
@@ -127,57 +171,6 @@ function AccountsTable() {
             ))}
           </TableBody>
         </Table>
-
-        {/* Deal Modal */}
-        <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>Create New Deal</DialogTitle>
-          <DialogContent dividers>
-
-            {/* Accordion Sections */}
-            <Accordion defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>Deal Details</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  {['DealName', 'DealValue', 'Stage', 'ExpectedCloseDate', 'DealOwner', 'Type', 'OrderNumber'].map((field, index) => (
-                    <Grid item xs={6} key={index}>
-                      <TextField
-                        fullWidth
-                        label={field}
-                        name={field}
-                        value={formValues[field]}
-                        onChange={handleChange}
-                        size="small"
-                      />
-                    </Grid>
-                  ))}
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Additional Accordions */}
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography>Billing & Payment Details</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <TextField
-                  fullWidth
-                  label="Billing Address"
-                  name="BillingAddress"
-                  value={formValues['BillingAddress']}
-                  onChange={handleChange}
-                  size="small"
-                />
-              </AccordionDetails>
-            </Accordion>
-
-            <Button variant="contained" color="primary" onClick={handleDealSubmit} sx={{ mt: 2 }}>
-              Submit Deal
-            </Button>
-          </DialogContent>
-        </Dialog>
       </Box>
     </ThemeProvider>
   );

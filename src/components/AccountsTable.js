@@ -83,6 +83,30 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
+        {/* Filters and Column Selector */}
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Source</InputLabel>
+            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+          <FormControl size="small" sx={{ minWidth: 200 }}>
+            <InputLabel>Lead Owner</InputLabel>
+            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
+              <MenuItem value="">All</MenuItem>
+            </Select>
+          </FormControl>
+        </Box>
+
         {/* Table */}
         <Table>
           <TableHead>
@@ -118,47 +142,19 @@ function AccountsTable() {
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Create Deal</DialogTitle>
           <DialogContent dividers>
-
-            {/* Deal Details */}
-            <Accordion defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography fontWeight="bold">Deal Details</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}><TextField fullWidth label="Deal Name" name="Deal Name" onChange={handleChange} /></Grid>
-                  <Grid item xs={6}><TextField fullWidth label="Deal Value" name="Deal Value" onChange={handleChange} /></Grid>
-                  <Grid item xs={6}><TextField fullWidth label="Expected Close Date" name="Expected Close Date" onChange={handleChange} /></Grid>
-                  <Grid item xs={6}><TextField fullWidth label="Stage" name="Stage" onChange={handleChange} /></Grid>
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Payment & Delivery Details */}
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography fontWeight="bold">Payment & Delivery</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}><TextField fullWidth label="Billing Type" name="Billing Type" onChange={handleChange} /></Grid>
-                  <Grid item xs={6}><TextField fullWidth label="Payment Terms" name="Payment Terms" onChange={handleChange} /></Grid>
-                  <Grid item xs={6}><TextField fullWidth label="Delivery Date" name="Delivery Date" onChange={handleChange} /></Grid>
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Additional Information */}
-            <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography fontWeight="bold">Additional Information</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  <Grid item xs={12}><TextField fullWidth label="Description" name="Description" onChange={handleChange} /></Grid>
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
+            {/* Accordion Sections */}
+            {["Deal Details", "Customer & Billing Information", "Product Details", "Payment & Delivery", "Additional Information"].map(section => (
+              <Accordion key={section} defaultExpanded>
+                <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+                  <Typography fontWeight="bold">{section}</Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}><TextField fullWidth label={section} name={section} onChange={handleChange} /></Grid>
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))}
           </DialogContent>
           <Button variant="contained" onClick={handleDealSubmit} sx={{ m: 2 }}>
             Submit Deal

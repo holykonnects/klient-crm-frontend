@@ -224,7 +224,15 @@ function AccountsTable() {
             {/* Accordion: Customer & Billing */}
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                Customer Details
+               sx={{  
+                  backgroundColor: '#f0f4ff',
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontWeight: 'bold'
+                }}
+              >
+                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                  Customer Details
+                <Typography>   
               </AccordionSummary>
               <AccordionDetails>
                 {['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number', 'Email ID',
@@ -247,7 +255,15 @@ function AccountsTable() {
             {/* Accordion: Address */}
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                Address Details
+              sx={{  
+                  backgroundColor: '#f0f4ff',
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontWeight: 'bold'
+                }}
+              >
+                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                  Address Details
+                <Typography>
               </AccordionSummary>
               <AccordionDetails>
                 {['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID'].map(field => (
@@ -268,7 +284,15 @@ function AccountsTable() {
             {/* Accordion: Banking */}
             <Accordion>
               <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                Customer Banking Details
+              sx={{  
+                  backgroundColor: '#f0f4ff',
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontWeight: 'bold'
+                }}
+              >
+                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                  Customer Banking Details
+                <Typography>
               </AccordionSummary>
               <AccordionDetails>
                 {['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks'].map(field => (

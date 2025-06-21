@@ -224,7 +224,7 @@ function AccountsTable() {
             {/* Accordion: Customer & Billing */}
             <Accordion>
               <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}>
+                expandIcon={<ExpandMoreIcon />}
                 sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',
@@ -256,7 +256,7 @@ function AccountsTable() {
             {/* Accordion: Address */}
             <Accordion>
               <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}>
+                expandIcon={<ExpandMoreIcon />}
                 sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',

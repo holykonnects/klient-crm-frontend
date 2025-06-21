@@ -233,7 +233,7 @@ function AccountsTable() {
               >
                 <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
                   Customer Details
-                <Typography>   
+                </Typography>   
               </AccordionSummary>
               <AccordionDetails>
                 {['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number', 'Email ID',
@@ -265,7 +265,7 @@ function AccountsTable() {
               >
                 <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
                   Address Details
-                <Typography>
+                </Typography>
               </AccordionSummary>
               <AccordionDetails>
                 {['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID'].map(field => (
@@ -295,7 +295,7 @@ function AccountsTable() {
               >
                 <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
                   Customer Banking Details
-                <Typography>
+                    </Typography>
               </AccordionSummary>
               <AccordionDetails>
                 {['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks'].map(field => (

@@ -286,7 +286,7 @@ function AccountsTable() {
             {/* Accordion: Banking */}
             <Accordion>
               <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}>
+                expandIcon={<ExpandMoreIcon />}
                 sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',

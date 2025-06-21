@@ -223,8 +223,9 @@ function AccountsTable() {
 
             {/* Accordion: Customer & Billing */}
             <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-               sx={{  
+              <AccordionSummary 
+                expandIcon={<ExpandMoreIcon />}>
+                sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',
                   fontWeight: 'bold'
@@ -254,8 +255,9 @@ function AccountsTable() {
 
             {/* Accordion: Address */}
             <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              sx={{  
+              <AccordionSummary 
+                expandIcon={<ExpandMoreIcon />}>
+                sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',
                   fontWeight: 'bold'
@@ -283,8 +285,9 @@ function AccountsTable() {
 
             {/* Accordion: Banking */}
             <Accordion>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-              sx={{  
+              <AccordionSummary 
+                expandIcon={<ExpandMoreIcon />}>
+                sx={{  
                   backgroundColor: '#f0f4ff',
                   fontFamily: 'Montserrat, sans-serif',
                   fontWeight: 'bold'

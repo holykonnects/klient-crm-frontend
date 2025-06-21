@@ -110,3 +110,5 @@
 </ThemeProvider>
 );
 }
+
+export default AccountsTable;

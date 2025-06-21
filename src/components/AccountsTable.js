@@ -193,8 +193,17 @@ function AccountsTable() {
 
             {/* Accordion: Deal Details */}
             <Accordion defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ fontFamily: 'Montserrat' }}>
-                Deal Details
+              <AccordionSummary 
+                expandIcon={<ExpandMoreIcon />} 
+                sx={{  
+                  backgroundColor: '#f0f4ff',
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontWeight: 'bold'
+                }}
+              >
+                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                  Deal Details
+                </Typography>
               </AccordionSummary>
               <AccordionDetails>
                 {['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage'].map(field => (

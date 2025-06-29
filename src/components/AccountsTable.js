@@ -188,7 +188,7 @@ function AccountsTable() {
 
         {/* Deal Modal */}
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ fontFamily: 'Montserrat', fontWeight: 600 }}>Create Deal</DialogTitle>
+          <DialogTitle sx={{ backgoundColor:'#f0f0f0',fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Create Deal</DialogTitle>
           <DialogContent dividers>
 
             {/* Accordion: Deal Details */}

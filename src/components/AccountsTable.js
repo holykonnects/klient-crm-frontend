@@ -100,7 +100,7 @@ function AccountsTable() {
     setDealFormData(acc);
   };
 
-  const handleSubmitDeal = async () => {
+   const handleSubmitDeal = async () => {
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
     const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -108,7 +108,8 @@ function AccountsTable() {
     const payload = {
       ...dealFormData,
       'Timestamp': timestamp,
-	 'Account Owner': dealFormData['Account Owner'] || dealFormData['Lead Owner'] || ''
+      'Account Owner': dealFormData['Account Owner'] || dealFormData['Lead Owner'] || '',
+      'Lead Owner': dealFormData['Lead Owner'] || dealFormData['Account Owner'] || ''
     };
 
     try {

@@ -107,7 +107,8 @@ function AccountsTable() {
 
     const payload = {
       ...dealFormData,
-      'Timestamp': timestamp
+      'Timestamp': timestamp,
+	 'Account Owner': dealFormData['Account Owner'] || dealFormData['Lead Owner'] || ''
     };
 
     try {

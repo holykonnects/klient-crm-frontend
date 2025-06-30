@@ -101,9 +101,13 @@ function AccountsTable() {
   };
 
   const handleSubmitDeal = async () => {
+    const now = new Date();
+    const pad = n => String(n).padStart(2, '0');
+    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+
     const payload = {
       ...dealFormData,
-      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false })
+      'Timestamp': timestamp
     };
 
     try {

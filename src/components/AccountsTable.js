@@ -75,13 +75,19 @@ function AccountsTable() {
         ? String(aVal).localeCompare(String(bVal))
         : String(bVal).localeCompare(String(aVal));
     })
-    .filter(acc =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(field =>
-        (acc[field] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterSource || acc['Lead Source'] === filterSource) &&
-      (!filterOwner || acc['Lead Owner'] === filterOwner)
-    );
+    .filter(acc => {
+      try {
+        return (
+          ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(field =>
+            (acc[field] || '').toLowerCase().includes(searchTerm.toLowerCase())
+          ) &&
+          (!filterSource || acc['Lead Source'] === filterSource) &&
+          (!filterOwner || acc['Lead Owner'] === filterOwner)
+        );
+      } catch (error) {
+        return false;
+      }
+    });
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
@@ -196,7 +202,6 @@ function AccountsTable() {
         </Table>
 
         {/* Deal Modal remains unchanged */}
-
 
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>

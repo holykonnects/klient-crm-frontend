@@ -80,7 +80,7 @@ function AccountsTable() {
         (acc[field] || '').toLowerCase().includes(searchTerm.toLowerCase())
       ) &&
       (!filterSource || acc['Lead Source'] === filterSource) &&
-      (!filterOwner || acc['Lead Owner'] === filterOwner)
+      (!filterOwner || acc['Account Owner'] === filterOwner)
     );
 
   const handleFieldChange = (e) => {

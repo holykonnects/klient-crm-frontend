@@ -195,134 +195,73 @@ function AccountsTable() {
           </TableBody>
         </Table>
 
-        {/* Deal Modal */}
+        {/* Deal Modal remains unchanged */}
+
+
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ backgoundColor:'#f0f0f0',fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Create Deal</DialogTitle>
+          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+            Create Deal
+          </DialogTitle>
           <DialogContent dividers>
+            {[{
+              title: 'Deal Details',
+              fields: ['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage']
+            }, {
+              title: 'Customer Details',
+              fields: ['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number',
+                'Email ID', 'Fax', 'Website', 'Lead Source', 'Lead Status', 'Industry',
+                'Number of Employees', 'Annual Revenue', 'Social Media', 'Description']
+            }, {
+              title: 'Address Details',
+              fields: ['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID']
+            }, {
+              title: 'Customer Banking Details',
+              fields: ['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks']
+            }].map(section => (
+              <Accordion key={section.title} defaultExpanded>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif', fontWeight: 'bold' }}
+                >
+                  <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                    {section.title}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    {section.fields.map(field => (
+                      <Grid item xs={6} key={field}>
+                        {validationData[field] ? (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>{field}</InputLabel>
+                            <Select
+                              label={field}
+                              name={field}
+                              value={dealFormData[field] || ''}
+                              onChange={handleFieldChange}
+                            >
+                              {validationData[field].map((opt, idx) => (
+                                <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            fullWidth
+                            label={field}
+                            name={field}
+                            value={dealFormData[field] || ''}
+                            onChange={handleFieldChange}
+                            size="small"
+                          />
+                        )}
+                      </Grid>
+                    ))}
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))}
 
-            {/* Accordion: Deal Details */}
-            <Accordion defaultExpanded>
-              <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />} 
-                sx={{  
-                  backgroundColor: '#f0f4ff',
-                  fontFamily: 'Montserrat, sans-serif',
-                  fontWeight: 'bold'
-                }}
-              >
-                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
-                  Deal Details
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                {['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage'].map(field => (
-                  <TextField
-                    fullWidth
-                    margin="dense"
-                    key={field}
-                    name={field}
-                    label={field}
-                    value={dealFormData[field] || ''}
-                    onChange={handleFieldChange}
-                    size="small"
-                  />
-                ))}
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Accordion: Customer & Billing */}
-            <Accordion>
-              <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}
-                sx={{  
-                  backgroundColor: '#f0f4ff',
-                  fontFamily: 'Montserrat, sans-serif',
-                  fontWeight: 'bold'
-                }}
-              >
-                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
-                  Customer Details
-                </Typography>   
-              </AccordionSummary>
-              <AccordionDetails>
-                {['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number', 'Email ID',
-                  'Fax', 'Website', 'Lead Source', 'Lead Status', 'Industry', 'Number of Employees',
-                  'Annual Revenue', 'Social Media', 'Description'].map(field => (
-                  <TextField
-                    fullWidth
-                    margin="dense"
-                    key={field}
-                    name={field}
-                    label={field}
-                    value={dealFormData[field] || ''}
-                    onChange={handleFieldChange}
-                    size="small"
-                  />
-                ))}
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Accordion: Address */}
-            <Accordion>
-              <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}
-                sx={{  
-                  backgroundColor: '#f0f4ff',
-                  fontFamily: 'Montserrat, sans-serif',
-                  fontWeight: 'bold'
-                }}
-              >
-                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
-                  Address Details
-                </Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                {['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID'].map(field => (
-                  <TextField
-                    fullWidth
-                    margin="dense"
-                    key={field}
-                    name={field}
-                    label={field}
-                    value={dealFormData[field] || ''}
-                    onChange={handleFieldChange}
-                    size="small"
-                  />
-                ))}
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Accordion: Banking */}
-            <Accordion>
-              <AccordionSummary 
-                expandIcon={<ExpandMoreIcon />}
-                sx={{  
-                  backgroundColor: '#f0f4ff',
-                  fontFamily: 'Montserrat, sans-serif',
-                  fontWeight: 'bold'
-                }}
-              >
-                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
-                  Customer Banking Details
-                    </Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                {['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks'].map(field => (
-                  <TextField
-                    fullWidth
-                    margin="dense"
-                    key={field}
-                    name={field}
-                    label={field}
-                    value={dealFormData[field] || ''}
-                    onChange={handleFieldChange}
-                    size="small"
-                  />
-                ))}
-              </AccordionDetails>
-            </Accordion>
-
-            {/* Submit */}
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>
                 Submit Deal

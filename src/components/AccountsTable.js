@@ -114,7 +114,6 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
 
-        {/* Filters and Search */}
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
@@ -150,7 +149,6 @@ function AccountsTable() {
             </Select>
           </FormControl>
 
-          {/* Column Selector */}
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
@@ -171,7 +169,6 @@ function AccountsTable() {
           </Popover>
         </Box>
 
-        {/* Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -200,8 +197,6 @@ function AccountsTable() {
             ))}
           </TableBody>
         </Table>
-
-        {/* Deal Modal remains unchanged */}
 
         <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
@@ -236,7 +231,16 @@ function AccountsTable() {
                   <Grid container spacing={2}>
                     {section.fields.map(field => (
                       <Grid item xs={6} key={field}>
-                        {validationData[field] ? (
+                        {field === 'Account Owner' ? (
+                          <TextField
+                            fullWidth
+                            label={field}
+                            name={field}
+                            value={dealFormData['Account Owner'] || dealFormData['Lead Owner'] || ''}
+                            InputProps={{ readOnly: true }}
+                            size="small"
+                          />
+                        ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
                             <Select

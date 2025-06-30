@@ -95,22 +95,28 @@ function AccountsTable() {
     setDealFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const openDealModal = (acc) => {
-    setCreateDealRow(acc);
-    setDealFormData(acc);
-  };
-
-   const handleSubmitDeal = async () => {
+    const openDealModal = (acc) => {
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
     const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
+    const accountOwner = acc['Lead Owner'] || acc['Account Owner'] || '';
 
+    setCreateDealRow(acc);
+    setDealFormData({
+      ...acc,
+      'Account Owner': accountOwner,
+      'Timestamp': timestamp
+    });
+  };
+
+  const handleSubmitDeal = async () => {
     const payload = {
       ...dealFormData,
-      'Timestamp': timestamp,
       'Account Owner': dealFormData['Account Owner'] || dealFormData['Lead Owner'] || '',
-      'Lead Owner': dealFormData['Lead Owner'] || dealFormData['Account Owner'] || ''
+      'Lead Owner': dealFormData['Lead Owner'] || dealFormData['Account Owner'] || '',
+      'Timestamp': dealFormData['Timestamp']
     };
+
 
     try {
       await fetch(submitUrl, {

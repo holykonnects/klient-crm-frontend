@@ -37,6 +37,7 @@ function AccountsTable() {
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
+  const submitUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
 
   useEffect(() => {
     fetch(dataUrl)
@@ -99,8 +100,26 @@ function AccountsTable() {
     setDealFormData(acc);
   };
 
-  const handleSubmitDeal = () => {
-    alert(JSON.stringify(dealFormData, null, 2));
+  const handleSubmitDeal = async () => {
+    const payload = {
+      ...dealFormData,
+      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false })
+    };
+
+    try {
+      await fetch(submitUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+      alert('✅ Deal submitted successfully');
+    } catch (err) {
+      alert('❌ Error submitting deal');
+    }
+
     setCreateDealRow(null);
   };
 

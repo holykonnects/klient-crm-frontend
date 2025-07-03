@@ -2,11 +2,13 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
+  Button, Popover, Accordion, AccordionSummary, AccordionDetails,
+  Menu, FormGroup, FormControlLabel
 } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 const theme = createTheme({
@@ -21,35 +23,31 @@ const selectorStyle = {
   fontSize: 8
 };
 
-const LeadsTable = () => {
-  const [leads, setLeads] = useState([]);
+function DealsTable() {
+  const [deals, setDeals] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
+  const [filterStage, setFilterStage] = useState('');
+  const [filterType, setFilterType] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [visibleColumns, setVisibleColumns] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
-  const [editRow, setEditRow] = useState(null);
-  const [validationOptions, setValidationOptions] = useState({});
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [selectedRow, setSelectedRow] = useState(null);
+  const [dealFormData, setDealFormData] = useState({});
 
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
+  const dataUrl = 'https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec';
+  const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
 
   useEffect(() => {
-    fetch(formSubmitUrl)
+    fetch(dataUrl)
       .then(res => res.json())
       .then(data => {
-        setLeads(data);
+        setDeals(data);
         setVisibleColumns(data.length ? Object.keys(data[0]) : []);
         setLoading(false);
       });
-
-    fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationOptions);
   }, []);
 
   const handleSort = (key) => {
@@ -57,7 +55,7 @@ const LeadsTable = () => {
     setSortConfig({ key, direction });
   };
 
-  const sortedLeads = [...leads].sort((a, b) => {
+  const sortedDeals = [...deals].sort((a, b) => {
     if (!sortConfig.key) return 0;
     const aVal = a[sortConfig.key] || '';
     const bVal = b[sortConfig.key] || '';
@@ -66,17 +64,23 @@ const LeadsTable = () => {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredLeads = sortedLeads
-    .filter(lead =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterStatus || lead['Lead Status'] === filterStatus) &&
-      (!filterSource || lead['Lead Source'] === filterSource) &&
-      (!filterOwner || lead['Lead Owner'] === filterOwner)
-    );
+  const filteredDeals = sortedDeals.filter(deal => {
+    try {
+      return (
+        ['Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
+          (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        ) &&
+        (!filterStage || deal['Stage'] === filterStage) &&
+        (!filterType || deal['Type'] === filterType) &&
+        (!filterSource || deal['Lead Source'] === filterSource) &&
+        (!filterOwner || deal['Account Owner'] === filterOwner)
+      );
+    } catch {
+      return false;
+    }
+  });
 
-  const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
+  const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev =>
@@ -84,83 +88,96 @@ const LeadsTable = () => {
     );
   };
 
-  const handleUpdateChange = (e) => {
+  const handleFieldChange = (e) => {
     const { name, value } = e.target;
-    setEditRow(prev => ({ ...prev, [name]: value }));
+    setDealFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleEditSubmit = async () => {
-    const updated = {
-      ...editRow,
-      'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
-    };
+  const handleEditClick = (deal) => {
+    setSelectedRow(deal);
+    setDealFormData(deal);
+  };
 
+  const handleSubmitDeal = async () => {
     try {
-      await fetch(formSubmitUrl, {
+      await fetch(submitUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
+        body: JSON.stringify(dealFormData)
       });
-      alert('✅ Lead updated successfully');
-      setEditRow(null);
+      alert('✅ Deal updated successfully');
     } catch {
-      alert('❌ Error updating lead');
+      alert('❌ Error updating deal');
     }
+    setSelectedRow(null);
   };
 
-  if (loading) return <Typography>Loading leads...</Typography>;
+  if (loading) return <Typography>Loading deals...</Typography>;
 
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-          <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
+          <Typography variant="h5" fontWeight="bold">Deals Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
-          <TextField size="small" label="Search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
-          {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
-            <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
-              <InputLabel>{filterKey}</InputLabel>
+        {/* Filters and Search */}
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchTerm(e.target.value);
+            }}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          {['Stage', 'Type', 'Lead Source', 'Account Owner'].map((label, index) => (
+            <FormControl size="small" sx={{ minWidth: 200 }} key={index}>
+              <InputLabel>{label}</InputLabel>
               <Select
                 value={
-                  filterKey === 'Lead Status' ? filterStatus :
-                  filterKey === 'Lead Source' ? filterSource :
+                  label === 'Stage' ? filterStage :
+                  label === 'Type' ? filterType :
+                  label === 'Lead Source' ? filterSource :
                   filterOwner
                 }
-                label={filterKey}
-                onChange={e =>
-                  filterKey === 'Lead Status' ? setFilterStatus(e.target.value) :
-                  filterKey === 'Lead Source' ? setFilterSource(e.target.value) :
-                  setFilterOwner(e.target.value)
-                }
+                onChange={e => {
+                  if (label === 'Stage') setFilterStage(e.target.value);
+                  else if (label === 'Type') setFilterType(e.target.value);
+                  else if (label === 'Lead Source') setFilterSource(e.target.value);
+                  else setFilterOwner(e.target.value);
+                }}
+                label={label}
               >
                 <MenuItem value="">All</MenuItem>
-                {unique(filterKey).map(item => (
-                  <MenuItem key={item} value={item}>{item}</MenuItem>
+                {unique(label).map(option => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
                 ))}
               </Select>
             </FormControl>
           ))}
-
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box padding={2} sx={selectorStyle}>
-              <Button size="small" onClick={() => setVisibleColumns(Object.keys(leads[0]))}>Select All</Button>
-              <Button size="small" onClick={() => setVisibleColumns([])}>Deselect All</Button>
-              {Object.keys(leads[0] || {}).map(col => (
-                <Box key={col}>
-                  <Checkbox
-                    size="small"
-                    checked={visibleColumns.includes(col)}
-                    onChange={() => handleColumnToggle(col)}
-                  /> {col}
-                </Box>
-              ))}
+            <Box p={2} sx={selectorStyle}>
+              <Typography variant="subtitle2">Column Visibility</Typography>
+              <Button onClick={() => setVisibleColumns(Object.keys(deals[0]))}>Select All</Button>
+              <Button onClick={() => setVisibleColumns([])}>Deselect All</Button>
+              <FormGroup>
+                {Object.keys(deals[0] || {}).map(col => (
+                  <FormControlLabel
+                    key={col}
+                    control={<Checkbox checked={visibleColumns.includes(col)} onChange={() => handleColumnToggle(col)} />}
+                    label={col}
+                  />
+                ))}
+              </FormGroup>
             </Box>
           </Popover>
         </Box>
@@ -181,77 +198,73 @@ const LeadsTable = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredLeads.map((lead, index) => (
+            {filteredDeals.map((deal, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((key, i) => (
-                  <TableCell key={i}>{lead[key]}</TableCell>
+                {visibleColumns.map((col, i) => (
+                  <TableCell key={i}>{deal[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setViewRow(lead)}><VisibilityIcon /></IconButton>
-                  <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleEditClick(deal)}><EditIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
 
-        {/* View Modal */}
-        <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>View Lead</DialogTitle>
+        <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+            Edit Deal
+          </DialogTitle>
           <DialogContent dividers>
-            <Grid container spacing={2}>
-              {viewRow && Object.entries(viewRow).map(([key, value]) => (
-                <Grid item xs={6} key={key}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={key}
-                    value={value}
-                    InputProps={{ readOnly: true }}
-                  />
-                </Grid>
-              ))}
-            </Grid>
-          </DialogContent>
-        </Dialog>
-
-        {/* Edit Modal */}
-        <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>Edit Lead</DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={2}>
-              {editRow && Object.keys(editRow).map((key, i) => (
-                <Grid item xs={6} key={i}>
-                  {validationOptions[key] ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{key}</InputLabel>
-                      <Select
-                        name={key}
-                        value={editRow[key]}
-                        onChange={handleUpdateChange}
-                        label={key}
-                      >
-                        {validationOptions[key].map((opt, idx) => (
-                          <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <TextField
-                      fullWidth
-                      label={key}
-                      name={key}
-                      value={editRow[key]}
-                      onChange={handleUpdateChange}
-                      size="small"
-                    />
-                  )}
-                </Grid>
-              ))}
-            </Grid>
-            <Box mt={3} display="flex" justifyContent="flex-end">
-              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleEditSubmit}>
-                Save Changes
+            {[{
+              title: 'Order Details',
+              fields: ['Order ID', 'Order Amount', 'Order Product Description', 'Order Details', 'Order Delivery Details', 'Order Delivery Date', 'Order Remarks']
+            }, {
+              title: 'Deal Details',
+              fields: ['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage']
+            }, {
+              title: 'Customer Details',
+              fields: ['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number',
+                'Email ID', 'Fax', 'Website', 'Lead Source', 'Lead Status', 'Industry',
+                'Number of Employees', 'Annual Revenue', 'Social Media', 'Description']
+            }, {
+              title: 'Address Details',
+              fields: ['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID']
+            }, {
+              title: 'Customer Banking Details',
+              fields: ['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks']
+            }].map(section => (
+              <Accordion key={section.title} defaultExpanded>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif', fontWeight: 'bold' }}
+                >
+                  <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                    {section.title}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    {section.fields.map(field => (
+                      <Grid item xs={6} key={field}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          name={field}
+                          label={field}
+                          value={dealFormData[field] || ''}
+                          onChange={handleFieldChange}
+                          InputProps={{ readOnly: field === 'Order ID' }}
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
+                </AccordionDetails>
+              </Accordion>
+            ))}
+            <Box mt={2} display="flex" justifyContent="flex-end">
+              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>
+                Update Deal
               </Button>
             </Box>
           </DialogContent>
@@ -259,6 +272,6 @@ const LeadsTable = () => {
       </Box>
     </ThemeProvider>
   );
-};
+}
 
-export default LeadsTable;
+export default DealsTable;

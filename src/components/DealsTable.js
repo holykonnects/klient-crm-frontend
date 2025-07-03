@@ -113,7 +113,7 @@ function DealsTable() {
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Deals Records</Typography>
         </Box>
-         
+
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>

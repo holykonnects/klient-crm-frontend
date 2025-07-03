@@ -121,11 +121,15 @@ const LeadsTable = () => {
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
           <TextField
-            size="small"
             label="Search"
+            variant="outlined"
             value={searchTerm}
-            onChange={(e) => {setSearchTerm(e.target.value)}}
-            sx={{ minWidth:200 }}  
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchTerm(e.target.value);
+            }}
+            size="small"
+            sx={{ minWidth: 200 }}
           />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>

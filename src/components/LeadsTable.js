@@ -124,10 +124,7 @@ const LeadsTable = () => {
             size="small"
             label="Search"
             value={searchTerm}
-            onChange={(e) => {
-              e.preventDefault(); // This is safe even in onChange, prevents unintentional form behavior
-              setSearchTerm(e.target.value);
-            }}
+            onChange={(e) => {setSearchTerm(e.target.value)}
           />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>

@@ -113,7 +113,15 @@ function DealsTable() {
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Deals Records</Typography>
         </Box>
-
+         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>

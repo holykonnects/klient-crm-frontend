@@ -18,7 +18,6 @@ const theme = createTheme({
   }
 });
 
-
 const selectorStyle = {
   fontFamily: 'Montserrat, sans-serif',
   fontSize: 8
@@ -37,9 +36,11 @@ function DealsTable() {
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [selectedRow, setSelectedRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
+  const [validationData, setValidationData] = useState({});
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec';
   const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
+  const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
 
   useEffect(() => {
     fetch(dataUrl)
@@ -49,6 +50,10 @@ function DealsTable() {
         setVisibleColumns(data.length ? Object.keys(data[0]) : []);
         setLoading(false);
       });
+
+    fetch(validationUrl)
+      .then(res => res.json())
+      .then(setValidationData);
   }, []);
 
   const handleSort = (key) => {
@@ -248,15 +253,31 @@ function DealsTable() {
                   <Grid container spacing={2}>
                     {section.fields.map(field => (
                       <Grid item xs={6} key={field}>
-                        <TextField
-                          fullWidth
-                          size="small"
-                          name={field}
-                          label={field}
-                          value={dealFormData[field] || ''}
-                          onChange={handleFieldChange}
-                          InputProps={{ readOnly: field === 'Order ID' }}
-                        />
+                        {validationData[field] ? (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>{field}</InputLabel>
+                            <Select
+                              name={field}
+                              value={dealFormData[field] || ''}
+                              label={field}
+                              onChange={handleFieldChange}
+                            >
+                              {validationData[field].map((opt, idx) => (
+                                <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            name={field}
+                            label={field}
+                            value={dealFormData[field] || ''}
+                            onChange={handleFieldChange}
+                            InputProps={{ readOnly: field === 'Order ID' }}
+                          />
+                        )}
                       </Grid>
                     ))}
                   </Grid>

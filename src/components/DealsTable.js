@@ -3,7 +3,8 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
-  Button, Popover, Accordion, AccordionSummary, AccordionDetails
+  Button, Popover, Accordion, AccordionSummary, AccordionDetails,
+  Menu, FormGroup, FormControlLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -73,6 +74,8 @@ function DealsTable() {
     (!filterOwner || deal['Account Owner'] === filterOwner)
   );
 
+  const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))];
+
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev =>
       prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
@@ -114,6 +117,62 @@ function DealsTable() {
           <Typography variant="h5" fontWeight="bold">Deals Records</Typography>
         </Box>
 
+        {/* Filters and Search */}
+        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <TextField
+            label="Search"
+            variant="outlined"
+            value={searchTerm}
+            onChange={e => setSearchTerm(e.target.value)}
+            size="small"
+            sx={{ minWidth: 200 }}
+          />
+          {['Stage', 'Type', 'Lead Source', 'Account Owner'].map((label, index) => (
+            <FormControl size="small" sx={{ minWidth: 200 }} key={index}>
+              <InputLabel>{label}</InputLabel>
+              <Select
+                value={
+                  label === 'Stage' ? filterStage :
+                  label === 'Type' ? filterType :
+                  label === 'Lead Source' ? filterSource :
+                  filterOwner
+                }
+                onChange={e => {
+                  if (label === 'Stage') setFilterStage(e.target.value);
+                  else if (label === 'Type') setFilterType(e.target.value);
+                  else if (label === 'Lead Source') setFilterSource(e.target.value);
+                  else setFilterOwner(e.target.value);
+                }}
+                label={label}
+              >
+                <MenuItem value="">All</MenuItem>
+                {unique(label).map(option => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
+          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
+            <ViewColumnIcon />
+          </IconButton>
+          <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+            <Box p={2} sx={selectorStyle}>
+              <Typography variant="subtitle2">Column Visibility</Typography>
+              <Button onClick={() => setVisibleColumns(Object.keys(deals[0]))}>Select All</Button>
+              <Button onClick={() => setVisibleColumns([])}>Deselect All</Button>
+              <FormGroup>
+                {Object.keys(deals[0] || {}).map(col => (
+                  <FormControlLabel
+                    key={col}
+                    control={<Checkbox checked={visibleColumns.includes(col)} onChange={() => handleColumnToggle(col)} />}
+                    label={col}
+                  />
+                ))}
+              </FormGroup>
+            </Box>
+          </Popover>
+        </Box>
+
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -149,6 +208,9 @@ function DealsTable() {
           </DialogTitle>
           <DialogContent dividers>
             {[{
+              title: 'Order Details',
+              fields: ['Order ID', 'Order Amount', 'Order Product Description', 'Order Details', 'Order Delivery Details', 'Order Delivery Date', 'Order Remarks']
+            }, {
               title: 'Deal Details',
               fields: ['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage']
             }, {
@@ -162,9 +224,6 @@ function DealsTable() {
             }, {
               title: 'Customer Banking Details',
               fields: ['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks']
-            }, {
-              title: 'Order Details',
-              fields: ['Order ID', 'Order Amount', 'Order Product Description', 'Order Details', 'Order Delivery Details', 'Order Delivery Date', 'Order Remarks']
             }].map(section => (
               <Accordion key={section.title} defaultExpanded>
                 <AccordionSummary

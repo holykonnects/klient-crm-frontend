@@ -261,6 +261,7 @@ function DealsTable() {
                               value={dealFormData[field] || ''}
                               label={field}
                               onChange={handleFieldChange}
+                              disabled={field === 'Account Owner'} 
                             >
                               {validationData[field].map((opt, idx) => (
                                 <MenuItem key={idx} value={opt}>{opt}</MenuItem>
@@ -275,7 +276,7 @@ function DealsTable() {
                             label={field}
                             value={dealFormData[field] || ''}
                             onChange={handleFieldChange}
-                            disabled={field === 'Order ID' || field === 'Account Owner'}
+                            disabled={field === 'Order ID'}
                           />
                         )}
                       </Grid>

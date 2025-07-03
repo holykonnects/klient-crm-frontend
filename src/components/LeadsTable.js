@@ -120,7 +120,15 @@ const LeadsTable = () => {
         </Box>
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
-          <TextField size="small" label="Search" value={searchTerm} onChange={e => setSearchTerm(e.target.value)} />
+          <TextField
+            size="small"
+            label="Search"
+            value={searchTerm}
+            onChange={(e) => {
+              e.preventDefault(); // This is safe even in onChange, prevents unintentional form behavior
+              setSearchTerm(e.target.value);
+            }}
+          />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
               <InputLabel>{filterKey}</InputLabel>

@@ -64,15 +64,21 @@ function DealsTable() {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredDeals = sortedDeals.filter(deal =>
-    ['Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
-      (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-    ) &&
-    (!filterStage || deal['Stage'] === filterStage) &&
-    (!filterType || deal['Type'] === filterType) &&
-    (!filterSource || deal['Lead Source'] === filterSource) &&
-    (!filterOwner || deal['Account Owner'] === filterOwner)
-  );
+  const filteredDeals = sortedDeals.filter(deal => {
+    try {
+      return (
+        ['Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
+          (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        ) &&
+        (!filterStage || deal['Stage'] === filterStage) &&
+        (!filterType || deal['Type'] === filterType) &&
+        (!filterSource || deal['Lead Source'] === filterSource) &&
+        (!filterOwner || deal['Account Owner'] === filterOwner)
+      );
+    } catch {
+      return false;
+    }
+  });
 
   const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))];
 
@@ -123,7 +129,10 @@ function DealsTable() {
             label="Search"
             variant="outlined"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchTerm(e.target.value);
+            }}
             size="small"
             sx={{ minWidth: 200 }}
           />

@@ -276,7 +276,7 @@ function DealsTable() {
                             label={field}
                             value={dealFormData[field] || ''}
                             onChange={handleFieldChange}
-                            disabled={field === 'Order ID'}
+                            disabled={field === 'Order ID' || field === 'Account ID'}
                           />
                         )}
                       </Grid>

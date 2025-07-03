@@ -275,9 +275,7 @@ function DealsTable() {
                             label={field}
                             value={dealFormData[field] || ''}
                             onChange={handleFieldChange}
-                            InputProps={{ 
-                              readOnly: field === 'Order ID' || field === 'Account Owner' 
-                            }}
+                            disabled={field === 'Order ID' || field === 'Account Owner'}
                           />
                         )}
                       </Grid>

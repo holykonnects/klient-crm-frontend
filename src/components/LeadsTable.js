@@ -2,13 +2,11 @@ import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
-  Button, Popover, Accordion, AccordionSummary, AccordionDetails,
-  Menu, FormGroup, FormControlLabel
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
 } from '@mui/material';
+import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
@@ -24,11 +22,11 @@ const selectorStyle = {
   fontSize: 8
 };
 
-function LeadsTable() {
+const LeadsTable = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [inputValue, setInputValue] = useState('');
-  const [searchTerm, setSearchTerm] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
@@ -73,7 +71,7 @@ function LeadsTable() {
   const filteredLeads = sortedLeads
     .filter(lead =>
       ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        (lead[key] || '').toLowerCase().includes(activeSearch.toLowerCase())
       ) &&
       (!filterStatus || lead['Lead Status'] === filterStatus) &&
       (!filterSource || lead['Lead Source'] === filterSource) &&
@@ -113,8 +111,6 @@ function LeadsTable() {
     }
   };
 
-  const handleSearchTrigger = () => setSearchTerm(inputValue);
-
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
@@ -126,15 +122,21 @@ function LeadsTable() {
         </Box>
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            size="small"
-            label="Search"
-            value={inputValue}
-            onChange={e => setInputValue(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleSearchTrigger()}
-            sx={{ minWidth: 240 }}
-          />
-          <IconButton onClick={handleSearchTrigger}><SearchIcon /></IconButton>
+          <Box display="flex" alignItems="center">
+            <TextField
+              size="small"
+              label="Search"
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') setActiveSearch(searchInput);
+              }}
+              sx={{ minWidth: 240 }}
+            />
+            <IconButton onClick={() => setActiveSearch(searchInput)} sx={{ ml: 1 }}>
+              <SearchIcon />
+            </IconButton>
+          </Box>
 
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>

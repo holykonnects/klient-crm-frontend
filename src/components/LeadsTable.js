@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -24,7 +24,6 @@ const selectorStyle = {
 const LeadsTable = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
   const [rawSearch, setRawSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -43,15 +42,11 @@ const LeadsTable = () => {
     fetch(formSubmitUrl)
       .then(res => res.json())
       .then(data => {
-        const latestMap = {};
-        data.forEach(row => {
-          const id = row['Lead ID'];
-          const time = new Date(row.Timestamp);
-          if (!latestMap[id] || new Date(latestMap[id].Timestamp) < time) {
-            latestMap[id] = row;
-          }
-        });
-        const uniqueLeads = Object.values(latestMap);
+        const latestLeads = data.reduce((acc, curr) => {
+          acc[curr['Lead ID']] = curr;
+          return acc;
+        }, {});
+        const uniqueLeads = Object.values(latestLeads);
         setLeads(uniqueLeads);
         setVisibleColumns(uniqueLeads.length ? Object.keys(uniqueLeads[0]) : []);
         setLoading(false);
@@ -62,30 +57,26 @@ const LeadsTable = () => {
       .then(setValidationOptions);
   }, []);
 
-  useEffect(() => {
-    const handler = setTimeout(() => {
-      setSearchTerm(rawSearch);
-    }, 300);
-    return () => clearTimeout(handler);
-  }, [rawSearch]);
-
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
     setSortConfig({ key, direction });
   };
 
-  const sortedLeads = [...leads].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
+  const sortedLeads = useMemo(() => {
+    return [...leads].sort((a, b) => {
+      if (!sortConfig.key) return 0;
+      const aVal = a[sortConfig.key] || '';
+      const bVal = b[sortConfig.key] || '';
+      return sortConfig.direction === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [leads, sortConfig]);
 
+  const search = rawSearch.toLowerCase();
   const filteredLeads = sortedLeads.filter(lead =>
     ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-      (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+      (lead[key] || '').toLowerCase().includes(search)
     ) &&
     (!filterStatus || lead['Lead Status'] === filterStatus) &&
     (!filterSource || lead['Lead Source'] === filterSource) &&
@@ -141,7 +132,7 @@ const LeadsTable = () => {
             label="Search"
             value={rawSearch}
             onChange={e => setRawSearch(e.target.value)}
-            sx={{ minWidth: 300 }}
+            sx={{ minWidth: 250 }}
           />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>

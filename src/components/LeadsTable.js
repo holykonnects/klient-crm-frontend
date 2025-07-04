@@ -39,17 +39,23 @@ const LeadsTable = () => {
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   useEffect(() => {
-    fetch(formSubmitUrl)
-      .then(res => res.json())
-      .then(data => {
-        setLeads(data);
-        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
-        setLoading(false);
+    Promise.all([
+      fetch(formSubmitUrl).then(res => res.json()),
+      fetch(validationUrl).then(res => res.json())
+    ]).then(([leadData, validationData]) => {
+      const latestLeadsMap = {};
+      leadData.forEach(entry => {
+        const id = entry['Lead ID'];
+        if (!latestLeadsMap[id] || new Date(entry['Timestamp']) > new Date(latestLeadsMap[id]['Timestamp'])) {
+          latestLeadsMap[id] = entry;
+        }
       });
-
-    fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationOptions);
+      const uniqueLeads = Object.values(latestLeadsMap);
+      setLeads(uniqueLeads);
+      setVisibleColumns(uniqueLeads.length ? Object.keys(uniqueLeads[0]) : []);
+      setValidationOptions(validationData);
+      setLoading(false);
+    });
   }, []);
 
   const handleSort = (key) => {
@@ -66,15 +72,14 @@ const LeadsTable = () => {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredLeads = sortedLeads
-    .filter(lead =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterStatus || lead['Lead Status'] === filterStatus) &&
-      (!filterSource || lead['Lead Source'] === filterSource) &&
-      (!filterOwner || lead['Lead Owner'] === filterOwner)
-    );
+  const filteredLeads = sortedLeads.filter(lead =>
+    ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+      (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+    ) &&
+    (!filterStatus || lead['Lead Status'] === filterStatus) &&
+    (!filterSource || lead['Lead Source'] === filterSource) &&
+    (!filterOwner || lead['Lead Owner'] === filterOwner)
+  );
 
   const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
 
@@ -121,12 +126,13 @@ const LeadsTable = () => {
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
           <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={(e) => {setSearchTerm(e.target.value)}
             size="small"
-            sx={{ minWidth: 200 }}
+            label="Search"
+            value={searchTerm}
+            onChange={(e) => {
+              e.preventDefault();
+              setSearchTerm(e.target.value);
+            }}
           />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
@@ -202,7 +208,6 @@ const LeadsTable = () => {
           </TableBody>
         </Table>
 
-        {/* View Modal */}
         <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>View Lead</DialogTitle>
           <DialogContent dividers>
@@ -222,7 +227,6 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Modal */}
         <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Edit Lead</DialogTitle>
           <DialogContent dividers>

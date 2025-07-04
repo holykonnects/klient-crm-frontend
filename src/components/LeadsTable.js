@@ -124,10 +124,7 @@ const LeadsTable = () => {
             label="Search"
             variant="outlined"
             value={searchTerm}
-            onChange={(e) => {
-              e.preventDefault();
-              setSearchTerm(e.target.value);
-            }}
+            onChange={(e) => {setSearchTerm(e.target.value)}
             size="small"
             sx={{ minWidth: 200 }}
           />

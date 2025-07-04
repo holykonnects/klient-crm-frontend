@@ -1,12 +1,15 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
+  Button, Popover, Accordion, AccordionSummary, AccordionDetails,
+  Menu, FormGroup, FormControlLabel
 } from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
+import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 
 const theme = createTheme({
@@ -21,10 +24,11 @@ const selectorStyle = {
   fontSize: 8
 };
 
-const LeadsTable = () => {
+function LeadsTable() {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [rawSearch, setRawSearch] = useState('');
+  const [inputValue, setInputValue] = useState('');
+  const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
@@ -42,13 +46,8 @@ const LeadsTable = () => {
     fetch(formSubmitUrl)
       .then(res => res.json())
       .then(data => {
-        const latestLeads = data.reduce((acc, curr) => {
-          acc[curr['Lead ID']] = curr;
-          return acc;
-        }, {});
-        const uniqueLeads = Object.values(latestLeads);
-        setLeads(uniqueLeads);
-        setVisibleColumns(uniqueLeads.length ? Object.keys(uniqueLeads[0]) : []);
+        setLeads(data);
+        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
         setLoading(false);
       });
 
@@ -62,26 +61,24 @@ const LeadsTable = () => {
     setSortConfig({ key, direction });
   };
 
-  const sortedLeads = useMemo(() => {
-    return [...leads].sort((a, b) => {
-      if (!sortConfig.key) return 0;
-      const aVal = a[sortConfig.key] || '';
-      const bVal = b[sortConfig.key] || '';
-      return sortConfig.direction === 'asc'
-        ? String(aVal).localeCompare(String(bVal))
-        : String(bVal).localeCompare(String(aVal));
-    });
-  }, [leads, sortConfig]);
+  const sortedLeads = [...leads].sort((a, b) => {
+    if (!sortConfig.key) return 0;
+    const aVal = a[sortConfig.key] || '';
+    const bVal = b[sortConfig.key] || '';
+    return sortConfig.direction === 'asc'
+      ? String(aVal).localeCompare(String(bVal))
+      : String(bVal).localeCompare(String(aVal));
+  });
 
-  const search = rawSearch.toLowerCase();
-  const filteredLeads = sortedLeads.filter(lead =>
-    ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-      (lead[key] || '').toLowerCase().includes(search)
-    ) &&
-    (!filterStatus || lead['Lead Status'] === filterStatus) &&
-    (!filterSource || lead['Lead Source'] === filterSource) &&
-    (!filterOwner || lead['Lead Owner'] === filterOwner)
-  );
+  const filteredLeads = sortedLeads
+    .filter(lead =>
+      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+      ) &&
+      (!filterStatus || lead['Lead Status'] === filterStatus) &&
+      (!filterSource || lead['Lead Source'] === filterSource) &&
+      (!filterOwner || lead['Lead Owner'] === filterOwner)
+    );
 
   const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
 
@@ -116,6 +113,8 @@ const LeadsTable = () => {
     }
   };
 
+  const handleSearchTrigger = () => setSearchTerm(inputValue);
+
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
@@ -130,10 +129,13 @@ const LeadsTable = () => {
           <TextField
             size="small"
             label="Search"
-            value={rawSearch}
-            onChange={e => setRawSearch(e.target.value)}
-            sx={{ minWidth: 250 }}
+            value={inputValue}
+            onChange={e => setInputValue(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleSearchTrigger()}
+            sx={{ minWidth: 240 }}
           />
+          <IconButton onClick={handleSearchTrigger}><SearchIcon /></IconButton>
+
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
               <InputLabel>{filterKey}</InputLabel>

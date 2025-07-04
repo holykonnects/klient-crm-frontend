@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -39,23 +39,17 @@ const LeadsTable = () => {
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   useEffect(() => {
-    Promise.all([
-      fetch(formSubmitUrl).then(res => res.json()),
-      fetch(validationUrl).then(res => res.json())
-    ]).then(([leadData, validationData]) => {
-      const latestLeadsMap = {};
-      leadData.forEach(entry => {
-        const id = entry['Lead ID'];
-        if (!latestLeadsMap[id] || new Date(entry['Timestamp']) > new Date(latestLeadsMap[id]['Timestamp'])) {
-          latestLeadsMap[id] = entry;
-        }
+    fetch(formSubmitUrl)
+      .then(res => res.json())
+      .then(data => {
+        setLeads(data);
+        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
+        setLoading(false);
       });
-      const uniqueLeads = Object.values(latestLeadsMap);
-      setLeads(uniqueLeads);
-      setVisibleColumns(uniqueLeads.length ? Object.keys(uniqueLeads[0]) : []);
-      setValidationOptions(validationData);
-      setLoading(false);
-    });
+
+    fetch(validationUrl)
+      .then(res => res.json())
+      .then(setValidationOptions);
   }, []);
 
   const handleSort = (key) => {
@@ -63,23 +57,33 @@ const LeadsTable = () => {
     setSortConfig({ key, direction });
   };
 
-  const sortedLeads = [...leads].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
+  const sortedLeads = useMemo(() => {
+    return [...leads].sort((a, b) => {
+      if (!sortConfig.key) return 0;
+      const aVal = a[sortConfig.key] || '';
+      const bVal = b[sortConfig.key] || '';
+      return sortConfig.direction === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+  }, [leads, sortConfig]);
 
-  const filteredLeads = sortedLeads.filter(lead =>
-    ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-      (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-    ) &&
-    (!filterStatus || lead['Lead Status'] === filterStatus) &&
-    (!filterSource || lead['Lead Source'] === filterSource) &&
-    (!filterOwner || lead['Lead Owner'] === filterOwner)
-  );
+  const filteredLeads = useMemo(() => {
+    const seen = new Set();
+    return sortedLeads.filter(lead => {
+      const id = lead['Lead ID'];
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return (
+        ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+          (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+        ) &&
+        (!filterStatus || lead['Lead Status'] === filterStatus) &&
+        (!filterSource || lead['Lead Source'] === filterSource) &&
+        (!filterOwner || lead['Lead Owner'] === filterOwner)
+      );
+    });
+  }, [sortedLeads, searchTerm, filterStatus, filterSource, filterOwner]);
 
   const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
 
@@ -87,6 +91,11 @@ const LeadsTable = () => {
     setVisibleColumns(prev =>
       prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
     );
+  };
+
+  const handleSearchChange = (e) => {
+    e.preventDefault();
+    setSearchTerm(e.target.value);
   };
 
   const handleUpdateChange = (e) => {
@@ -125,15 +134,7 @@ const LeadsTable = () => {
         </Box>
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            size="small"
-            label="Search"
-            value={searchTerm}
-            onChange={(e) => {
-              e.preventDefault();
-              setSearchTerm(e.target.value);
-            }}
-          />
+          <TextField size="small" label="Search" value={searchTerm} onChange={handleSearchChange} />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
               <InputLabel>{filterKey}</InputLabel>
@@ -208,6 +209,7 @@ const LeadsTable = () => {
           </TableBody>
         </Table>
 
+        {/* View Modal */}
         <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>View Lead</DialogTitle>
           <DialogContent dividers>
@@ -227,6 +229,7 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Modal */}
         <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Edit Lead</DialogTitle>
           <DialogContent dividers>

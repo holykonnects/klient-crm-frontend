@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -24,8 +24,8 @@ const selectorStyle = {
 const LeadsTable = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [rawSearch, setRawSearch] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
+  const [rawSearch, setRawSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
@@ -43,16 +43,17 @@ const LeadsTable = () => {
     fetch(formSubmitUrl)
       .then(res => res.json())
       .then(data => {
-        const latestByLeadID = {};
+        const latestMap = {};
         data.forEach(row => {
           const id = row['Lead ID'];
-          if (!latestByLeadID[id] || new Date(row['Timestamp']) > new Date(latestByLeadID[id]['Timestamp'])) {
-            latestByLeadID[id] = row;
+          const time = new Date(row.Timestamp);
+          if (!latestMap[id] || new Date(latestMap[id].Timestamp) < time) {
+            latestMap[id] = row;
           }
         });
-        const uniqueRows = Object.values(latestByLeadID);
-        setLeads(uniqueRows);
-        setVisibleColumns(uniqueRows.length ? Object.keys(uniqueRows[0]) : []);
+        const uniqueLeads = Object.values(latestMap);
+        setLeads(uniqueLeads);
+        setVisibleColumns(uniqueLeads.length ? Object.keys(uniqueLeads[0]) : []);
         setLoading(false);
       });
 
@@ -62,10 +63,10 @@ const LeadsTable = () => {
   }, []);
 
   useEffect(() => {
-    const timeout = setTimeout(() => {
+    const handler = setTimeout(() => {
       setSearchTerm(rawSearch);
     }, 300);
-    return () => clearTimeout(timeout);
+    return () => clearTimeout(handler);
   }, [rawSearch]);
 
   const handleSort = (key) => {
@@ -82,16 +83,14 @@ const LeadsTable = () => {
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredLeads = useMemo(() => {
-    return sortedLeads.filter(lead =>
-      ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
-        (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterStatus || lead['Lead Status'] === filterStatus) &&
-      (!filterSource || lead['Lead Source'] === filterSource) &&
-      (!filterOwner || lead['Lead Owner'] === filterOwner)
-    );
-  }, [sortedLeads, searchTerm, filterStatus, filterSource, filterOwner]);
+  const filteredLeads = sortedLeads.filter(lead =>
+    ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(key =>
+      (lead[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
+    ) &&
+    (!filterStatus || lead['Lead Status'] === filterStatus) &&
+    (!filterSource || lead['Lead Source'] === filterSource) &&
+    (!filterOwner || lead['Lead Owner'] === filterOwner)
+  );
 
   const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
 
@@ -137,7 +136,13 @@ const LeadsTable = () => {
         </Box>
 
         <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
-          <TextField size="small" label="Search" value={rawSearch} onChange={e => setRawSearch(e.target.value)} />
+          <TextField
+            size="small"
+            label="Search"
+            value={rawSearch}
+            onChange={e => setRawSearch(e.target.value)}
+            sx={{ minWidth: 300 }}
+          />
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
             <FormControl size="small" sx={{ minWidth: 160 }} key={filterKey}>
               <InputLabel>{filterKey}</InputLabel>
@@ -212,6 +217,7 @@ const LeadsTable = () => {
           </TableBody>
         </Table>
 
+        {/* View Modal */}
         <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>View Lead</DialogTitle>
           <DialogContent dividers>
@@ -231,6 +237,7 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Edit Modal */}
         <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Edit Lead</DialogTitle>
           <DialogContent dividers>

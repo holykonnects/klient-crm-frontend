@@ -10,7 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './components/AuthContext'; // adjust path if needed
+import { useAuth } from './AuthContext'; // adjust path if needed
 
 
 const theme = createTheme({

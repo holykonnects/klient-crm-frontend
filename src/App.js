@@ -8,8 +8,8 @@ import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
-import { AuthProvider } from './AuthContext';
-import ProtectedRoute from './ProtectedRoute';
+import { AuthProvider } from './components/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
 
 
 function App() {

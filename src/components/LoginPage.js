@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../AuthContext'; // adjust path accordingly
+import { useAuth } from '../components/AuthContext'; // adjust path accordingly
 
 
 const theme = createTheme({

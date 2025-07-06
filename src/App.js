@@ -8,24 +8,35 @@ import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
+import { AuthProvider } from './AuthContext';
+import ProtectedRoute from './ProtectedRoute';
+
 
 function App() {
   return (
-    <Router>
-      <DashboardLayout>
+    <AuthProvider>
+      <Router>
         <Routes>
-          <Route path="/view-leads" element={<LeadsTable />} />
-          <Route path="/view-accounts" element={<AccountsTable />} />
-          <Route path="/view-deals" element={<DealsTable />} />
-          <Route path="/view-orders" element={<OrdersTable />} />
-          <Route path="/add-lead" element={<LeadForm />} /> {/* ✅ FIXED */}
-          <Route path="/dashboard" element={<Dashboard />} />
           <Route path="/" element={<LoginPage />} />
-          //<Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route
+            path="/*"
+            element={
+              <ProtectedRoute>
+                <DashboardLayout>
+                  <Routes>
+                    <Route path="dashboard" element={<Dashboard />} />
+                    <Route path="view-leads" element={<LeadsTable />} />
+                    <Route path="view-accounts" element={<AccountsTable />} />
+                    <Route path="view-deals" element={<DealsTable />} />
+                    <Route path="view-orders" element={<OrdersTable />} />
+                    <Route path="add-lead" element={<LeadForm />} />
+                  </Routes>
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
         </Routes>
-      </DashboardLayout>
-    </Router>
+      </Router>
+    </AuthProvider>
   );
 }
-
-export default App;

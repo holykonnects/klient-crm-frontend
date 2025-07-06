@@ -3,6 +3,9 @@ import {
   Box, Button, TextField, Typography, Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useNavigate } from 'react-router-dom';
+import { useAuth } from '../AuthContext'; // adjust path accordingly
+
 
 const theme = createTheme({
   typography: {
@@ -14,10 +17,12 @@ const theme = createTheme({
 function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const { login } = useAuth();
+  const navigate = useNavigate();
 
   const handleLogin = () => {
-    alert(`Logging in with Email: ${email}, Password: ${password}`);
-    // TODO: Implement login logic and user role-based routing
+    login();
+    navigate('/dashboard');
   };
 
   return (

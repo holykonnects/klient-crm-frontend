@@ -9,6 +9,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useAuth } from './AuthContext'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -34,24 +35,35 @@ function AccountsTable() {
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
+  const { username, role } = useAuth();
+ 
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
   const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
 
-  useEffect(() => {
-    fetch(dataUrl)
-      .then(res => res.json())
-      .then(data => {
-        setAccounts(data);
-        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
-        setLoading(false);
-      });
+ useEffect(() => {
+  fetch(dataUrl)
+    .then(res => res.json())
+    .then(data => {
+      let filteredDeals = data;
 
-    fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationData);
-  }, []);
+      if (role === 'End User') {
+        filteredDeals = data.filter(deal =>
+          deal['Account Owner'] === username || deal['Lead Owner'] === username || deal['Owner'] === username
+        );
+      }
+
+      setDeals(filteredDeals);
+      setVisibleColumns(filteredDeals.length ? Object.keys(filteredDeals[0]) : []);
+      setLoading(false);
+    });
+
+  fetch(validationUrl)
+    .then(res => res.json())
+    .then(setValidationData);
+  }, [username, role]); // re-run if user/role changes
+
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';

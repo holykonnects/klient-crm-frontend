@@ -1,5 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import LoginPage from './LoginPage';
 import DashboardLayout from './components/DashboardLayout';
 import LeadsTable from './components/LeadsTable';
 import AccountsTable from './components/AccountsTable';
@@ -19,7 +20,8 @@ function App() {
           <Route path="/view-orders" element={<OrdersTable />} />
           <Route path="/add-lead" element={<LeadForm />} /> {/* ✅ FIXED */}
           <Route path="/dashboard" element={<Dashboard />} />
-          <Route path="/" element={<Navigate to="/dashboard" />} />
+          <Route path="/" element={<LoginPage />} />
+          //<Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </DashboardLayout>
     </Router>

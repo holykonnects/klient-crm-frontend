@@ -1,6 +1,6 @@
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import LoginPage from './LoginPage';
+import LoginPage from './components/LoginPage';
 import DashboardLayout from './components/DashboardLayout';
 import LeadsTable from './components/LeadsTable';
 import AccountsTable from './components/AccountsTable';

@@ -6,7 +6,6 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../components/AuthContext'; // adjust path accordingly
 
-
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',

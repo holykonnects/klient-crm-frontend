@@ -19,10 +19,21 @@ function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = () => {
-    login();
-    navigate('/dashboard');
+  const handleLogin = async () => {
+    const res = await fetch('https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+      headers: { 'Content-Type': 'application/json' },
+    });
+    const result = await res.json();
+    if (result.success) {
+      login({ username: result.username, role: result.role }); // update context
+      navigate('/dashboard');
+    } else {
+      setError('Invalid email or password');
+    }
   };
+
 
   return (
     <ThemeProvider theme={theme}>

@@ -9,6 +9,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
+import { useAuth } from './AuthContext'; // adjust path if needed
+
 
 const theme = createTheme({
   typography: {
@@ -36,23 +38,34 @@ const LeadsTable = () => {
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  const { username, role } = useAuth();
+
 
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   useEffect(() => {
-    fetch(formSubmitUrl)
-      .then(res => res.json())
-      .then(data => {
-        setLeads(data);
-        setVisibleColumns(data.length ? Object.keys(data[0]) : []);
-        setLoading(false);
-      });
+  fetch(dataUrl)
+    .then(res => res.json())
+    .then(data => {
+      let filteredDeals = data;
 
-    fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationOptions);
-  }, []);
+      if (role === 'End User') {
+        filteredDeals = data.filter(deal =>
+          deal['Account Owner'] === username || deal['Lead Owner'] === username || deal['Owner'] === username
+        );
+      }
+
+      setDeals(filteredDeals);
+      setVisibleColumns(filteredDeals.length ? Object.keys(filteredDeals[0]) : []);
+      setLoading(false);
+    });
+
+  fetch(validationUrl)
+    .then(res => res.json())
+    .then(setValidationData);
+  }, [username, role]); // re-run if user/role changes
+
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';

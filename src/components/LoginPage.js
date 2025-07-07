@@ -16,25 +16,32 @@ const theme = createTheme({
 function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async () => {
-    const res = await fetch('https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec', {
-      //https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec
-      method: 'POST',
-      body: JSON.stringify({ email, password }),
-      headers: { 'Content-Type': 'application/json' },
-    });
-    const result = await res.json();
-    if (result.success) {
-      login({ username: result.username, role: result.role }); // update context
-      navigate('/dashboard');
-    } else {
-      setError('Invalid email or password');
+    try {
+      const res = await fetch('https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec', {
+        method: 'POST',
+        body: JSON.stringify({ email, password }),
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const result = await res.json();
+      console.log('Login result:', result);
+
+      if (result.success) {
+        login({ username: result.username, role: result.role });
+        navigate('/dashboard');
+      } else {
+        setError('Invalid email or password');
+      }
+    } catch (err) {
+      console.error('Login error:', err);
+      setError('Unable to login. Please try again.');
     }
   };
-
 
   return (
     <ThemeProvider theme={theme}>
@@ -45,7 +52,7 @@ function LoginPage() {
         minHeight="100vh"
         sx={{ backgroundColor: '#f7faff' }}
       >
-        <Paper elevation={3} sx={{ padding: 4, width: 250, textAlign: 'center' }}>
+        <Paper elevation={3} sx={{ padding: 4, width: 300, textAlign: 'center' }}>
           <img
             src="/assets/kk-logo.png"
             alt="Klient Konnect"
@@ -81,6 +88,11 @@ function LoginPage() {
           >
             Login
           </Button>
+          {error && (
+            <Typography color="error" variant="body2" sx={{ marginTop: 1 }}>
+              {error}
+            </Typography>
+          )}
         </Paper>
       </Box>
     </ThemeProvider>

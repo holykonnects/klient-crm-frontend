@@ -52,7 +52,7 @@ function LoginPage() {
         minHeight="100vh"
         sx={{ backgroundColor: '#f7faff' }}
       >
-        <Paper elevation={3} sx={{ padding: 4, width: 300, textAlign: 'center' }}>
+        <Paper elevation={3} sx={{ padding: 4, width: 200, textAlign: 'center' }}>
           <img
             src="/assets/kk-logo.png"
             alt="Klient Konnect"

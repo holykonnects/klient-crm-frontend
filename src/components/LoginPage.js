@@ -21,6 +21,7 @@ function LoginPage() {
 
   const handleLogin = async () => {
     const res = await fetch('https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec', {
+      //https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec
       method: 'POST',
       body: JSON.stringify({ email, password }),
       headers: { 'Content-Type': 'application/json' },
@@ -44,7 +45,7 @@ function LoginPage() {
         minHeight="100vh"
         sx={{ backgroundColor: '#f7faff' }}
       >
-        <Paper elevation={3} sx={{ padding: 4, width: 400, textAlign: 'center' }}>
+        <Paper elevation={3} sx={{ padding: 4, width: 300, textAlign: 'center' }}>
           <img
             src="/assets/kk-logo.png"
             alt="Klient Konnect"

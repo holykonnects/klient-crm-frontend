@@ -22,7 +22,8 @@ function LoginPage() {
 
   const handleLogin = async () => {
     try {
-      const res = await fetch('https://script.google.com/macros/s/AKfycbxZLaEeuh7VldIjnlPQEE9_xw4x02nbB0-NzDhNPwIhDp4idp-Bbwu5tfyCIHK3aQ8yvA/exec', {
+      const res = await fetch('https://script.google.com/macros/s/AKfycbzl-2rhvZEeVj3vvV1tLvv1zJlOQ6xxDlttVXOePHwJ0A_0JCp3a_TWIC-dpPE_2g3wZA/exec', {
+        //https://script.google.com/macros/s/AKfycbzl-2rhvZEeVj3vvV1tLvv1zJlOQ6xxDlttVXOePHwJ0A_0JCp3a_TWIC-dpPE_2g3wZA/exec
         method: 'POST',
         body: JSON.stringify({ email, password }),
         headers: { 'Content-Type': 'application/json' },

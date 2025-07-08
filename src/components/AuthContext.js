@@ -1,32 +1,31 @@
-import React, { createContext, useContext, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 
 const AuthContext = createContext();
 
 export function AuthProvider({ children }) {
-  const [auth, setAuth] = useState({
-    isAuthenticated: false,
-    username: '',
-    role: ''
-  });
+  const [user, setUser] = useState(null);
+
+  // Load from localStorage on mount
+  useEffect(() => {
+    const cached = localStorage.getItem('crmUser');
+    if (cached) {
+      setUser(JSON.parse(cached));
+    }
+  }, []);
 
   const login = ({ username, role }) => {
-    setAuth({
-      isAuthenticated: true,
-      username,
-      role
-    });
+    const userData = { username, role };
+    setUser(userData);
+    localStorage.setItem('crmUser', JSON.stringify(userData));
   };
 
   const logout = () => {
-    setAuth({
-      isAuthenticated: false,
-      username: '',
-      role: ''
-    });
+    setUser(null);
+    localStorage.removeItem('crmUser');
   };
 
   return (
-    <AuthContext.Provider value={{ ...auth, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout }}>
       {children}
     </AuthContext.Provider>
   );

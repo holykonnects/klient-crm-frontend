@@ -3,8 +3,8 @@ import { Navigate } from 'react-router-dom';
 import { useAuth } from './AuthContext'; // adjust path
 
 const ProtectedRoute = ({ children }) => {
-  const { authenticated } = useAuth();
-  return authenticated ? children : <Navigate to="/" />;
+  const { isAuthenticated } = useAuth(); // ✅ corrected here
+  return isAuthenticated ? children : <Navigate to="/" />;
 };
 
 export default ProtectedRoute;

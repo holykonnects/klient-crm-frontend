@@ -10,7 +10,7 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
-import 'fontsource/montserrat';
+import '@fontsource/montserrat';
 
 const theme = createTheme({
   typography: {

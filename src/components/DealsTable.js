@@ -15,13 +15,13 @@ import { useAuth } from './AuthContext'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
-    fontFamily: 'Montserrat, sans-serif',
+    fontFamily: 'Montserrat, Montserrat',
     fontSize: 12
   }
 });
 
 const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
+  fontFamily: 'Montserrat, Montserrat',
   fontSize: 8
 };
 

@@ -12,6 +12,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
 
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',

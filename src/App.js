@@ -9,34 +9,40 @@ import OrdersTable from './components/OrdersTable';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
 import { AuthProvider } from './components/AuthContext';
+import { useAuth } from './components/AuthContext'; // ✅ NEW: import useAuth hook
 import ProtectedRoute from './components/ProtectedRoute';
+
+const AppRoutes = () => {
+  const { user } = useAuth(); // ✅ NEW: get user from useAuth
+
+  return user ? (
+    <DashboardLayout>
+      <Routes>
+        <Route path="dashboard" element={<Dashboard />} />
+        <Route path="view-leads" element={<LeadsTable />} />
+        <Route path="view-accounts" element={<AccountsTable />} />
+        <Route path="view-deals" element={<DealsTable />} />
+        <Route path="view-orders" element={<OrdersTable />} />
+        <Route path="add-lead" element={<LeadForm />} />
+      </Routes>
+    </DashboardLayout>
+  ) : (
+    <Routes>
+      <Route path="*" element={<LoginPage />} />
+    </Routes>
+  );
+};
 
 function App() {
   return (
     <AuthProvider>
       <Router>
         <Routes>
-          <Route path="/" element={<LoginPage />} />
-          <Route
-            path="/*"
-            element={
-              <ProtectedRoute>
-                <DashboardLayout>
-                  <Routes>
-                    <Route path="dashboard" element={<Dashboard />} />
-                    <Route path="view-leads" element={<LeadsTable />} />
-                    <Route path="view-accounts" element={<AccountsTable />} />
-                    <Route path="view-deals" element={<DealsTable />} />
-                    <Route path="view-orders" element={<OrdersTable />} />
-                    <Route path="add-lead" element={<LeadForm />} />
-                  </Routes>
-                </DashboardLayout>
-              </ProtectedRoute>
-            }
-          />
+          <Route path="/*" element={<AppRoutes />} />
         </Routes>
       </Router>
     </AuthProvider>
   );
 }
+
 export default App;

@@ -13,13 +13,13 @@ import { useAuth } from './AuthContext'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
-    fontFamily: 'Montserrat, Montserrat',
+    fontFamily: 'Montserrat',
     fontSize: 12
   }
 });
 
 const selectorStyle = {
-  fontFamily: 'Montserrat, Montserrat',
+  fontFamily: 'Montserrat',
   fontSize: 8
 };
 
@@ -55,15 +55,17 @@ function AccountsTable() {
         }
 
         setAccounts(filteredAccounts);
-        setVisibleColumns(filteredAccounts.length ? Object.keys(filteredAccounts[0]) : []);
+        setVisibleColumns(
+          JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
+          (filteredAccounts.length ? Object.keys(filteredAccounts[0]) : [])
+        );
         setLoading(false);
       });
 
     fetch(validationUrl)
       .then(res => res.json())
       .then(setValidationData);
-  }, [username, role]); // re-run if user/role changes
-
+  }, [username, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -71,13 +73,25 @@ function AccountsTable() {
   };
 
   const handleColumnToggle = (col) => {
-    setVisibleColumns(prev =>
-      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
-    );
+    setVisibleColumns(prev => {
+      const updated = prev.includes(col)
+        ? prev.filter(c => c !== col)
+        : [...prev, col];
+      localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
-  const handleSelectAll = () => setVisibleColumns(Object.keys(accounts[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
+  const handleSelectAll = () => {
+    const all = Object.keys(accounts[0] || {});
+    setVisibleColumns(all);
+    localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify(all));
+  };
+
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify([]));
+  };
 
   const filteredAccounts = [...accounts]
     .sort((a, b) => {

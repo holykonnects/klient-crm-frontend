@@ -1,7 +1,0 @@
-{
-  "functions": {
-    "api/login.js": {
-      "runtime": "edge"
-    }
-  }
-}

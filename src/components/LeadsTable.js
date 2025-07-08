@@ -11,7 +11,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 
-
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -40,32 +39,29 @@ const LeadsTable = () => {
   const [validationOptions, setValidationOptions] = useState({});
   const { username, role } = useAuth();
 
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
+  const dataUrl = 'https://script.google.com/macros/s/AKfycbxZtqF_zLfGaTmkMdNN54yFffBPU2PEuMOGXTo3Z_nIRkuGnZBqX-bD6RkRGl9fBR0w/exec'; // Leads data URL
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   useEffect(() => {
-  fetch(dataUrl)
-    .then(res => res.json())
-    .then(data => {
-      let filteredDeals = data;
+    fetch(dataUrl)
+      .then(res => res.json())
+      .then(data => {
+        let filteredLeads = data;
+        if (role === 'End User') {
+          filteredLeads = data.filter(lead =>
+            lead['Lead Owner'] === username
+          );
+        }
+        setLeads(filteredLeads);
+        setVisibleColumns(filteredLeads.length ? Object.keys(filteredLeads[0]) : []);
+        setLoading(false);
+      });
 
-      if (role === 'End User') {
-        filteredDeals = data.filter(deal =>
-          deal['Account Owner'] === username || deal['Lead Owner'] === username || deal['Owner'] === username
-        );
-      }
-
-      setDeals(filteredDeals);
-      setVisibleColumns(filteredDeals.length ? Object.keys(filteredDeals[0]) : []);
-      setLoading(false);
-    });
-
-  fetch(validationUrl)
-    .then(res => res.json())
-    .then(setValidationData);
-  }, [username, role]); // re-run if user/role changes
-
+    fetch(validationUrl)
+      .then(res => res.json())
+      .then(setValidationOptions);
+  }, [username, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';

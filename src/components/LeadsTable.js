@@ -55,7 +55,11 @@ const LeadsTable = () => {
           );
         }
         setLeads(filteredLeads);
-        setVisibleColumns(filteredLeads.length ? Object.keys(filteredLeads[0]) : []);
+        setVisibleColumns(
+          JSON.parse(localStorage.getItem(`visibleColumns-${username}-leads`)) ||
+          (filteredLeads.length ? Object.keys(filteredLeads[0]) : [])
+        );
+
         setLoading(false);
       });
 
@@ -91,11 +95,27 @@ const LeadsTable = () => {
   const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
-    setVisibleColumns(prev =>
-      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
-    );
+    setVisibleColumns(prev => {
+      const updated = prev.includes(col)
+        ? prev.filter(c => c !== col)
+        : [...prev, col];
+      localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(updated)); // or -deals
+      return updated;
+      });
   };
 
+  const handleSelectAll = () => {
+    const all = Object.keys(leads[0] || {}); // or deals[0]
+    setVisibleColumns(all);
+    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(all)); // or -deals
+  };
+
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([])); // or -deals
+  };
+
+  
   const handleUpdateChange = (e) => {
     const { name, value } = e.target;
     setEditRow(prev => ({ ...prev, [name]: value }));

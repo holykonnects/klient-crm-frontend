@@ -59,7 +59,11 @@ function DealsTable() {
       }
 
       setDeals(filteredDeals);
-      setVisibleColumns(filteredDeals.length ? Object.keys(filteredDeals[0]) : []);
+      setVisibleColumns(
+        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) ||
+        (filteredDeals.length ? Object.keys(filteredDeals[0]) : [])
+      );
+
       setLoading(false);
     });
 
@@ -102,10 +106,26 @@ function DealsTable() {
   const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
-    setVisibleColumns(prev =>
-      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
-    );
-  };
+  setVisibleColumns(prev => {
+    const updated = prev.includes(col)
+      ? prev.filter(c => c !== col)
+      : [...prev, col];
+    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated)); // or -deals
+    return updated;
+  });
+};
+
+  const handleSelectAll = () => {
+  const all = Object.keys(leads[0] || {}); // or deals[0]
+  setVisibleColumns(all);
+  localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all)); // or -deals
+};
+
+const handleDeselectAll = () => {
+  setVisibleColumns([]);
+  localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([])); // or -deals
+};
+
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;

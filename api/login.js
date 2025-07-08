@@ -1,5 +1,14 @@
-// api/login.js
 export default async function handler(req, res) {
+  // Add CORS headers to all responses
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+  // Handle preflight request
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end(); // preflight OK
+  }
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method Not Allowed' });
   }
@@ -12,9 +21,9 @@ export default async function handler(req, res) {
     });
 
     const data = await response.json();
-    res.status(200).json(data);
+    return res.status(200).json(data);
   } catch (error) {
-    console.error('Proxy error:', error.message);
-    res.status(500).json({ success: false, error: error.message });
+    console.error('🔴 Proxy error:', error.message);
+    return res.status(500).json({ success: false, error: error.message });
   }
 }

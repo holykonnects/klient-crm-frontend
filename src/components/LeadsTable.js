@@ -10,16 +10,17 @@ import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
+import '@fontsource/montserrat';
 
 const theme = createTheme({
   typography: {
-    fontFamily: 'Montserrat, Montserrat',
-    fontSize: 12
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 10.5
   }
 });
 
 const selectorStyle = {
-  fontFamily: 'Montserrat, Montserrat',
+  fontFamily: 'Montserrat, sans-serif',
   fontSize: 8
 };
 

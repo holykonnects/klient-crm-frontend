@@ -16,7 +16,7 @@ import { useAuth } from './AuthContext'; // adjust path if needed
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9.5
+    fontSize: 12
   }
 });
 

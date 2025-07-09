@@ -9,7 +9,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './components/AuthContext'; // adjust path if needed
+import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
 
 const theme = createTheme({

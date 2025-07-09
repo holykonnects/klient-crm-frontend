@@ -10,7 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './AuthContext'; // adjust path if needed
+import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 
 const theme = createTheme({
@@ -39,39 +39,42 @@ function DealsTable() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
   const [validationData, setValidationData] = useState({});
-  const { username, role } = useAuth();
 
+  const { user } = useAuth();
+  const username = user?.username;
+  const role = user?.role;
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec';
   const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
 
   useEffect(() => {
-  fetch(dataUrl)
-    .then(res => res.json())
-    .then(data => {
-      let filteredDeals = data;
+    fetch(dataUrl)
+      .then(res => res.json())
+      .then(data => {
+        let filteredDeals = data;
 
-      if (role === 'End User') {
-        filteredDeals = data.filter(deal =>
-          deal['Account Owner'] === username || deal['Lead Owner'] === username || deal['Owner'] === username
+        if (role === 'End User') {
+          filteredDeals = data.filter(deal =>
+            deal['Account Owner'] === username ||
+            deal['Lead Owner'] === username ||
+            deal['Owner'] === username
+          );
+        }
+
+        setDeals(filteredDeals);
+        setVisibleColumns(
+          JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) ||
+          (filteredDeals.length ? Object.keys(filteredDeals[0]) : [])
         );
-      }
 
-      setDeals(filteredDeals);
-      setVisibleColumns(
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) ||
-        (filteredDeals.length ? Object.keys(filteredDeals[0]) : [])
-      );
+        setLoading(false);
+      });
 
-      setLoading(false);
-    });
-
-  fetch(validationUrl)
-    .then(res => res.json())
-    .then(setValidationData);
-  }, [username, role]); // re-run if user/role changes
-
+    fetch(validationUrl)
+      .then(res => res.json())
+      .then(setValidationData);
+  }, [username, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -106,26 +109,25 @@ function DealsTable() {
   const unique = (key) => [...new Set(deals.map(d => d[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
-  setVisibleColumns(prev => {
-    const updated = prev.includes(col)
-      ? prev.filter(c => c !== col)
-      : [...prev, col];
-    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated)); // or -deals
-    return updated;
-  });
-};
+    setVisibleColumns(prev => {
+      const updated = prev.includes(col)
+        ? prev.filter(c => c !== col)
+        : [...prev, col];
+      localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated));
+      return updated;
+    });
+  };
 
   const handleSelectAll = () => {
-  const all = Object.keys(leads[0] || {}); // or deals[0]
-  setVisibleColumns(all);
-  localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all)); // or -deals
-};
+    const all = Object.keys(deals[0] || {});
+    setVisibleColumns(all);
+    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all));
+  };
 
-const handleDeselectAll = () => {
-  setVisibleColumns([]);
-  localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([])); // or -deals
-};
-
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([]));
+  };
 
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
@@ -168,10 +170,7 @@ const handleDeselectAll = () => {
             label="Search"
             variant="outlined"
             value={searchTerm}
-            onChange={(e) => {
-              e.preventDefault();
-              setSearchTerm(e.target.value);
-            }}
+            onChange={(e) => setSearchTerm(e.target.value)}
             size="small"
             sx={{ minWidth: 200 }}
           />
@@ -206,8 +205,8 @@ const handleDeselectAll = () => {
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box p={2} sx={selectorStyle}>
               <Typography variant="subtitle2">Column Visibility</Typography>
-              <Button onClick={() => setVisibleColumns(Object.keys(deals[0]))}>Select All</Button>
-              <Button onClick={() => setVisibleColumns([])}>Deselect All</Button>
+              <Button onClick={handleSelectAll}>Select All</Button>
+              <Button onClick={handleDeselectAll}>Deselect All</Button>
               <FormGroup>
                 {Object.keys(deals[0] || {}).map(col => (
                   <FormControlLabel

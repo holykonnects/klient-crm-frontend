@@ -343,4 +343,3 @@ function AccountsTable() {
 }
 
 export default AccountsTable;
-                        

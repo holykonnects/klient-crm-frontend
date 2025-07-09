@@ -37,8 +37,11 @@ function AccountsTable() {
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
-  const { username, role } = useAuth();
- 
+  
+  const { user } = useAuth();
+  const username = user?.username;
+  const role = user?.role;
+
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';

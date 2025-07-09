@@ -9,7 +9,8 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './AuthContext'; // adjust path if needed
+import { useAuth } from './AuthContext';
+import { useCachedFetch } from '../hooks/useCachedFetch';
 import '@fontsource/montserrat';
 
 const theme = createTheme({
@@ -25,8 +26,6 @@ const selectorStyle = {
 };
 
 const LeadsTable = () => {
-  const [leads, setLeads] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [searchInput, setSearchInput] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
@@ -40,33 +39,29 @@ const LeadsTable = () => {
   const [validationOptions, setValidationOptions] = useState({});
   const { username, role } = useAuth();
 
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec'; // Leads data URL
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
+  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
+  const formSubmitUrl = dataUrl;
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
+  const { data: allLeads, loading } = useCachedFetch('leadsData', dataUrl);
+  const leads = role === 'End User'
+    ? allLeads.filter(lead => lead['Lead Owner'] === username)
+    : allLeads;
+
   useEffect(() => {
-    fetch(dataUrl)
-      .then(res => res.json())
-      .then(data => {
-        let filteredLeads = data;
-        if (role === 'End User') {
-          filteredLeads = data.filter(lead =>
-            lead['Lead Owner'] === username
-          );
-        }
-        setLeads(filteredLeads);
-        setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${username}-leads`)) ||
-          (filteredLeads.length ? Object.keys(filteredLeads[0]) : [])
-        );
-
-        setLoading(false);
-      });
-
     fetch(validationUrl)
       .then(res => res.json())
       .then(setValidationOptions);
-  }, [username, role]);
+  }, [validationUrl]);
+
+  useEffect(() => {
+    if (leads.length) {
+      const stored = localStorage.getItem(`visibleColumns-${username}-leads`);
+      setVisibleColumns(
+        stored ? JSON.parse(stored) : Object.keys(leads[0])
+      );
+    }
+  }, [leads, username]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -99,23 +94,22 @@ const LeadsTable = () => {
       const updated = prev.includes(col)
         ? prev.filter(c => c !== col)
         : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(updated)); // or -deals
+      localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(updated));
       return updated;
-      });
+    });
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(leads[0] || {}); // or deals[0]
+    const all = Object.keys(leads[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(all)); // or -deals
+    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([])); // or -deals
+    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([]));
   };
 
-  
   const handleUpdateChange = (e) => {
     const { name, value } = e.target;
     setEditRow(prev => ({ ...prev, [name]: value }));
@@ -197,8 +191,8 @@ const LeadsTable = () => {
           </IconButton>
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box padding={2} sx={selectorStyle}>
-              <Button size="small" onClick={() => setVisibleColumns(Object.keys(leads[0]))}>Select All</Button>
-              <Button size="small" onClick={() => setVisibleColumns([])}>Deselect All</Button>
+              <Button size="small" onClick={handleSelectAll}>Select All</Button>
+              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
               {Object.keys(leads[0] || {}).map(col => (
                 <Box key={col}>
                   <Checkbox

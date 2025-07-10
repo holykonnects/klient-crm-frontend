@@ -55,6 +55,7 @@ const LeadsTable = () => {
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   // Replace inside useEffect after data fetch:
+ useEffect(() => {
   fetch(dataUrl)
     .then(res => res.json())
     .then(data => {

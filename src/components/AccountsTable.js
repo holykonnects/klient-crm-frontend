@@ -302,7 +302,7 @@ function AccountsTable() {
               <Accordion key={section.title} defaultExpanded>
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif', fontWeight: 'bold' }}
+                  sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}
                 >
                   <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
                     {section.title}

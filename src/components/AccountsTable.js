@@ -9,7 +9,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './AuthContext'; // adjust path if needed
+import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import HistoryIcon from '@mui/icons-material/History';
 
@@ -40,48 +40,47 @@ function AccountsTable() {
   const [accountLogs, setAccountLogs] = useState([]);
   const [logsOpen, setLogsOpen] = useState(false);
   const [allAccounts, setAllAccounts] = useState([]);
-  
+
   const { user } = useAuth();
   const username = user?.username;
   const role = user?.role;
-
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
   const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
 
-   useEffect(() => {
-      fetch(dataUrl)
-        .then(res => res.json())
-        .then(data => {
-          const filteredData = role === 'End User'
-            ? data.filter(account => account['Account Owner'] === username)
-            : data;
+  useEffect(() => {
+    fetch(dataUrl)
+      .then(res => res.json())
+      .then(data => {
+        const filteredData = role === 'End User'
+          ? data.filter(account => account['Account Owner'] === username)
+          : data;
 
-      		setAllAccounts(filteredData);
+        setAllAccounts(filteredData);
 
-      		const seen = new Map();
-      		filteredData.forEach(row => {
-        		const key = row['Mobile Number']; // or 'Account ID' or 'Email ID'
-        		const existing = seen.get(key);
-        		if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
-          		seen.set(key, row);
-        		}
-					});
-      		const deduplicated = Array.from(seen.values());
+        const seen = new Map();
+        filteredData.forEach(row => {
+          const key = row['Mobile Number'];
+          const existing = seen.get(key);
+          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+            seen.set(key, row);
+          }
+        });
+        const deduplicated = Array.from(seen.values());
 
-      		setAccounts(deduplicated);
-      		setVisibleColumns(
-        		JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
-        		(deduplicated.length ? Object.keys(deduplicated[0]) : [])
-      		);
-      		setLoading(false);
-    		});
+        setAccounts(deduplicated);
+        setVisibleColumns(
+          JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
+          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
+        );
+        setLoading(false);
+      });
 
-  		fetch(validationUrl)
-    		.then(res => res.json())
-    		.then(setValidationData);
-			}, [username, role]);
+    fetch(validationUrl)
+      .then(res => res.json())
+      .then(setValidationData);
+  }, [username, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -144,7 +143,7 @@ function AccountsTable() {
     setLogsOpen(true);
   };
 
-    const openDealModal = (acc) => {
+  const openDealModal = (acc) => {
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
     const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
@@ -165,7 +164,6 @@ function AccountsTable() {
       'Lead Owner': dealFormData['Lead Owner'] || dealFormData['Account Owner'] || '',
       'Timestamp': dealFormData['Timestamp']
     };
-
 
     try {
       await fetch(submitUrl, {
@@ -351,39 +349,37 @@ function AccountsTable() {
                 </AccordionDetails>
               </Accordion>
             ))}
-	        </Dialog>
-            
-          <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>  
-            <DialogTitle>Account Change Logs</DialogTitle>
-              <DialogContent>
-              	<Table>
-              	  <TableHead>
-              	    <TableRow>
-              	      <TableCell>Timestamp</TableCell>
-              	      <TableCell>Account Owner</TableCell>
-              	      <TableCell>Lead Source</TableCell>
-              	      <TableCell>Description</TableCell>
-              	     </TableRow>
-              	    </TableHead>
-              	  <TableBody>
-              	    {accountLogs.map((log, idx) => (
-              	      <TableRow key={idx}>
-              		<TableCell>{log.Timestamp}</TableCell>
-              		<TableCell>{log['Account Owner']}</TableCell>
-              		<TableCell>{log['Lead Source']}</TableCell>
-              		<TableCell>{log['Description']}</TableCell>
-              	      </TableRow>
-              	    ))}
-              	  </TableBody>
-              	</Table>
-              </DialogContent>
-            </Dialog>
-
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>
                 Submit Deal
               </Button>
             </Box>
+          </DialogContent>
+        </Dialog>
+
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Account Change Logs</DialogTitle>
+          <DialogContent>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Timestamp</TableCell>
+                  <TableCell>Account Owner</TableCell>
+                  <TableCell>Lead Source</TableCell>
+                  <TableCell>Description</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {accountLogs.map((log, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{log.Timestamp}</TableCell>
+                    <TableCell>{log['Account Owner']}</TableCell>
+                    <TableCell>{log['Lead Source']}</TableCell>
+                    <TableCell>{log['Description']}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
           </DialogContent>
         </Dialog>
       </Box>

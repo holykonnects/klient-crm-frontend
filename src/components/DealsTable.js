@@ -12,6 +12,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
+import HistoryIcon from '@mui/icons-material/History';
 
 const theme = createTheme({
   typography: {
@@ -39,7 +40,10 @@ function DealsTable() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
   const [validationData, setValidationData] = useState({});
-
+  const [allDeals, setAllDeals] = useState([]);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [dealLogs, setDealLogs] = useState([]);
+  
   const { user } = useAuth();
   const username = user?.username;
   const role = user?.role;
@@ -52,22 +56,27 @@ function DealsTable() {
     fetch(dataUrl)
       .then(res => res.json())
       .then(data => {
-        let filteredDeals = data;
+        const filtered = role === 'End User'
+          ? data.filter(d => [d['Account Owner'], d['Lead Owner'], d['Owner']].includes(username))
+          : data;
 
-        if (role === 'End User') {
-          filteredDeals = data.filter(deal =>
-            deal['Account Owner'] === username ||
-            deal['Lead Owner'] === username ||
-            deal['Owner'] === username
-          );
-        }
+        setAllDeals(filtered);
 
-        setDeals(filteredDeals);
+        const seen = new Map();
+        filtered.forEach(row => {
+          const key = row['Order ID'] || row['Deal Name'];
+          const existing = seen.get(key);
+          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+            seen.set(key, row);
+          }
+        });
+        const deduplicated = Array.from(seen.values());
+
+        setDeals(deduplicated);
         setVisibleColumns(
           JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) ||
-          (filteredDeals.length ? Object.keys(filteredDeals[0]) : [])
+          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
         );
-
         setLoading(false);
       });
 
@@ -152,6 +161,13 @@ function DealsTable() {
       alert('❌ Error updating deal');
     }
     setSelectedRow(null);
+  };
+
+  const handleViewLogs = (dealRow) => {
+    const key = dealRow['Order ID'] || dealRow['Deal Name'];
+    const logs = allDeals.filter(d => (d['Order ID'] || d['Deal Name']) === key);
+    setDealLogs(logs);
+    setLogsOpen(true);
   };
 
   if (loading) return <Typography>Loading deals...</Typography>;
@@ -243,6 +259,7 @@ function DealsTable() {
                 ))}
                 <TableCell>
                   <IconButton onClick={() => handleEditClick(deal)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleViewLogs(deal)}><HistoryIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -317,16 +334,42 @@ function DealsTable() {
                 </AccordionDetails>
               </Accordion>
             ))}
+            
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>
                 Update Deal
               </Button>
             </Box>
           </DialogContent>
-        </Dialog>
-      </Box>
-    </ThemeProvider>
-  );
+              
+          </Dialog><Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+            <DialogTitle>Deal Change Logs</DialogTitle>
+            <DialogContent>
+              <Table>
+                <TableHead>
+                  <TableRow>
+                    <TableCell>Timestamp</TableCell>
+                    <TableCell>Deal Name</TableCell>
+                    <TableCell>Order ID</TableCell>
+                    <TableCell>Account Owner</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {dealLogs.map((log, idx) => (
+                    <TableRow key={idx}>
+                      <TableCell>{log.Timestamp}</TableCell>
+                      <TableCell>{log['Deal Name']}</TableCell>
+                      <TableCell>{log['Order ID']}</TableCell>
+                      <TableCell>{log['Account Owner']}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </DialogContent>
+          </Dialog>
+        </Box>
+      </ThemeProvider>
+      );
 }
 
 export default DealsTable;

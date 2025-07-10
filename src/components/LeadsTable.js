@@ -11,6 +11,8 @@ import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
+//---
+import HistoryIcon from '@mui/icons-material/History';
 
 const theme = createTheme({
   typography: {
@@ -38,6 +40,10 @@ const LeadsTable = () => {
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  //---
+  const [leadLogs, setLeadLogs] = useState([]);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [allLeads, setAllLeads] = useState([]);
   
   const { user } = useAuth();
   const username = user?.username;
@@ -48,24 +54,32 @@ const LeadsTable = () => {
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
-  useEffect(() => {
-    fetch(dataUrl)
-      .then(res => res.json())
-      .then(data => {
-        let filteredLeads = data;
-        if (role === 'End User') {
-          filteredLeads = data.filter(lead =>
-            lead['Lead Owner'] === username
-          );
-        }
-        setLeads(filteredLeads);
-        setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${username}-leads`)) ||
-          (filteredLeads.length ? Object.keys(filteredLeads[0]) : [])
-        );
+  // Replace inside useEffect after data fetch:
+  fetch(dataUrl)
+    .then(res => res.json())
+    .then(data => {
+      const filteredData = role === 'End User' ? data.filter(lead => lead['Lead Owner'] === username) : data;
+      setAllLeads(filteredData);
 
-        setLoading(false);
+      const deduplicated = [];
+      const seen = new Map();
+
+      filteredData.forEach(row => {
+        const key = row['Mobile Number']; // or 'Email ID'
+        const existing = seen.get(key);
+        if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+          seen.set(key, row);
+        }
       });
+      seen.forEach(v => deduplicated.push(v));
+
+      setLeads(deduplicated);
+      setVisibleColumns(
+        JSON.parse(localStorage.getItem(`visibleColumns-${username}-leads`)) ||
+        (deduplicated.length ? Object.keys(deduplicated[0]) : [])
+      );
+      setLoading(false);
+    });
 
     fetch(validationUrl)
       .then(res => res.json())
@@ -119,6 +133,12 @@ const LeadsTable = () => {
     localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([])); // or -deals
   };
 
+  const handleViewLogs = (leadRow) => {
+    const key = leadRow['Mobile Number'];
+    const logs = allLeads.filter(lead => lead['Mobile Number'] === key);
+    setLeadLogs(logs);
+    setLogsOpen(true);
+  };
   
   const handleUpdateChange = (e) => {
     const { name, value } = e.target;
@@ -240,6 +260,7 @@ const LeadsTable = () => {
                 <TableCell>
                   <IconButton onClick={() => setViewRow(lead)}><VisibilityIcon /></IconButton>
                   <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleViewLogs(lead)}><HistoryIcon /></IconButton> 
                 </TableCell>
               </TableRow>
             ))}
@@ -266,6 +287,34 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
+        {/* View Logs */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Lead Change Logs</DialogTitle>
+          <DialogContent>
+            <Table>
+             <TableHead>
+               <TableRow>
+                 <TableCell>Timestamp</TableCell>
+                 <TableCell>Lead Status</TableCell>
+                 <TableCell>Lead Owner</TableCell>
+                 <TableCell>Remarks</TableCell>
+                </TableRow>
+               </TableHead>
+              <TableBody>
+                {leadLogs.map((log, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{log.Timestamp}</TableCell>
+                    <TableCell>{log['Lead Status']}</TableCell>
+                    <TableCell>{log['Lead Owner']}</TableCell>
+                    <TableCell>{log['Remarks']}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DialogContent>
+      </Dialog>
+      
+        
         {/* Edit Modal */}
         <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
           <DialogTitle>Edit Lead</DialogTitle>

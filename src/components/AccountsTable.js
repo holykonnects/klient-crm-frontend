@@ -176,7 +176,6 @@ function AccountsTable() {
   };
 
   const handleViewLogs = (accountRow) => {
-    console.log('History icon clicked:',
     const key = accountRow['Mobile Number'];
     const logs = allAccounts.filter(account => account['Mobile Number'] === key);
     setAccountLogs(logs);

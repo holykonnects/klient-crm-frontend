@@ -255,7 +255,7 @@ function AccountsTable() {
                 <TableCell
                   key={header}
                   onClick={() => handleSort(header)}
-                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ color: 'white', cursor: 'pointer'}}
                 >
                   {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                 </TableCell>

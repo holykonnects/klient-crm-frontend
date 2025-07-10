@@ -51,37 +51,37 @@ function AccountsTable() {
   const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
 
    useEffect(() => {
-  fetch(dataUrl)
-    .then(res => res.json())
-    .then(data => {
-      const filteredData = role === 'End User'
-        ? data.filter(account => account['Account Owner'] === username)
-        : data;
+      fetch(dataUrl)
+        .then(res => res.json())
+        .then(data => {
+          const filteredData = role === 'End User'
+            ? data.filter(account => account['Account Owner'] === username)
+            : data;
 
-      setAllAccounts(filteredData);
+      		setAllAccounts(filteredData);
 
-      const seen = new Map();
-      filteredData.forEach(row => {
-        const key = row['Mobile Number']; // or 'Account ID' or 'Email ID'
-        const existing = seen.get(key);
-        if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
-          seen.set(key, row);
-        }
-      });
-      const deduplicated = Array.from(seen.values());
+      		const seen = new Map();
+      		filteredData.forEach(row => {
+        		const key = row['Mobile Number']; // or 'Account ID' or 'Email ID'
+        		const existing = seen.get(key);
+        		if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+          		seen.set(key, row);
+        		}
+					});
+      		const deduplicated = Array.from(seen.values());
 
-      setAccounts(deduplicated);
-      setVisibleColumns(
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
-        (deduplicated.length ? Object.keys(deduplicated[0]) : [])
-      );
-      setLoading(false);
-    });
+      		setAccounts(deduplicated);
+      		setVisibleColumns(
+        		JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
+        		(deduplicated.length ? Object.keys(deduplicated[0]) : [])
+      		);
+      		setLoading(false);
+    		});
 
-  fetch(validationUrl)
-    .then(res => res.json())
-    .then(setValidationOptions);
-}, [username, role]);
+  		fetch(validationUrl)
+    		.then(res => res.json())
+    		.then(setValidationOptions);
+			}, [username, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
@@ -352,31 +352,31 @@ function AccountsTable() {
               </Accordion>
             ))}
             
-    <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>  
-      <DialogTitle>Account Change Logs</DialogTitle>
-      <DialogContent>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Timestamp</TableCell>
-              <TableCell>Account Owner</TableCell>
-              <TableCell>Lead Source</TableCell>
-              <TableCell>Description</TableCell>
-             </TableRow>
-            </TableHead>
-          <TableBody>
-            {accountLogs.map((log, idx) => (
-              <TableRow key={idx}>
-                <TableCell>{log.Timestamp}</TableCell>
-                <TableCell>{log['Account Owner']}</TableCell>
-                <TableCell>{log['Lead Source']}</TableCell>
-                <TableCell>{log['Description']}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DialogContent>
-    </Dialog>
+			    <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>  
+			      <DialogTitle>Account Change Logs</DialogTitle>
+			      <DialogContent>
+			        <Table>
+			          <TableHead>
+			            <TableRow>
+			              <TableCell>Timestamp</TableCell>
+			              <TableCell>Account Owner</TableCell>
+			              <TableCell>Lead Source</TableCell>
+			              <TableCell>Description</TableCell>
+			             </TableRow>
+			            </TableHead>
+			          <TableBody>
+			            {accountLogs.map((log, idx) => (
+			              <TableRow key={idx}>
+			                <TableCell>{log.Timestamp}</TableCell>
+			                <TableCell>{log['Account Owner']}</TableCell>
+			                <TableCell>{log['Lead Source']}</TableCell>
+			                <TableCell>{log['Description']}</TableCell>
+			              </TableRow>
+			            ))}
+			          </TableBody>
+			        </Table>
+			      </DialogContent>
+			    </Dialog>
 
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>

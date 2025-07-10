@@ -80,7 +80,7 @@ function AccountsTable() {
 
   		fetch(validationUrl)
     		.then(res => res.json())
-    		.then(setValidationOptions);
+    		.then(setValidationData);
 			}, [username, role]);
 
   const handleSort = (key) => {
@@ -272,7 +272,7 @@ function AccountsTable() {
                 ))}
                 <TableCell>
                   <IconButton onClick={() => openDealModal(acc)}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleViewLogs(account)}><HistoryIcon /></IconButton>
+                  <IconButton onClick={() => handleViewLogs(acc)}><HistoryIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}

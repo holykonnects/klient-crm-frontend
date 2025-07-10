@@ -351,33 +351,33 @@ function AccountsTable() {
                 </AccordionDetails>
               </Accordion>
             ))}
-	</Dialog>
+	        </Dialog>
             
-    <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>  
-      <DialogTitle>Account Change Logs</DialogTitle>
-      <DialogContent>
-	<Table>
-	  <TableHead>
-	    <TableRow>
-	      <TableCell>Timestamp</TableCell>
-	      <TableCell>Account Owner</TableCell>
-	      <TableCell>Lead Source</TableCell>
-	      <TableCell>Description</TableCell>
-	     </TableRow>
-	    </TableHead>
-	  <TableBody>
-	    {accountLogs.map((log, idx) => (
-	      <TableRow key={idx}>
-		<TableCell>{log.Timestamp}</TableCell>
-		<TableCell>{log['Account Owner']}</TableCell>
-		<TableCell>{log['Lead Source']}</TableCell>
-		<TableCell>{log['Description']}</TableCell>
-	      </TableRow>
-	    ))}
-	  </TableBody>
-	</Table>
-      </DialogContent>
-    </Dialog>
+          <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>  
+            <DialogTitle>Account Change Logs</DialogTitle>
+              <DialogContent>
+              	<Table>
+              	  <TableHead>
+              	    <TableRow>
+              	      <TableCell>Timestamp</TableCell>
+              	      <TableCell>Account Owner</TableCell>
+              	      <TableCell>Lead Source</TableCell>
+              	      <TableCell>Description</TableCell>
+              	     </TableRow>
+              	    </TableHead>
+              	  <TableBody>
+              	    {accountLogs.map((log, idx) => (
+              	      <TableRow key={idx}>
+              		<TableCell>{log.Timestamp}</TableCell>
+              		<TableCell>{log['Account Owner']}</TableCell>
+              		<TableCell>{log['Lead Source']}</TableCell>
+              		<TableCell>{log['Description']}</TableCell>
+              	      </TableRow>
+              	    ))}
+              	  </TableBody>
+              	</Table>
+              </DialogContent>
+            </Dialog>
 
             <Box mt={2} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>

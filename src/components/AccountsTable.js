@@ -136,13 +136,6 @@ function AccountsTable() {
     setDealFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleViewLogs = (accountRow) => {
-    const key = accountRow['Mobile Number'];
-    const logs = allAccounts.filter(account => account['Mobile Number'] === key);
-    setAccountLogs(logs);
-    setLogsOpen(true);
-  };
-
   const openDealModal = (acc) => {
     const now = new Date();
     const pad = n => String(n).padStart(2, '0');
@@ -181,6 +174,14 @@ function AccountsTable() {
 
     setCreateDealRow(null);
   };
+
+  const handleViewLogs = (accountRow) => {
+    const key = accountRow['Mobile Number'];
+    const logs = allAccounts.filter(account => account['Mobile Number'] === key);
+    setAccountLogs(logs);
+    setLogsOpen(true);
+  };
+
 
   if (loading) return <Typography>Loading accounts...</Typography>;
 

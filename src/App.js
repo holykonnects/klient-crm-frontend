@@ -1,5 +1,5 @@
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import LoginPage from './components/LoginPage';
 import DashboardLayout from './components/DashboardLayout';
 import LeadsTable from './components/LeadsTable';
@@ -8,12 +8,13 @@ import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
-import { AuthProvider } from './components/AuthContext';
-import { useAuth } from './components/AuthContext'; // ✅ NEW: import useAuth hook
-import ProtectedRoute from './components/ProtectedRoute';
+import TenderTable from './components/TenderTable';           // ✅ NEW
+import ManageTender from './components/ManageTender';         // ✅ NEW
+import ProtectedPage from './components/ProtectedPage';       // ✅ Correct wrapper
+import { AuthProvider, useAuth } from './components/AuthContext';
 
 const AppRoutes = () => {
-  const { user } = useAuth(); // ✅ NEW: get user from useAuth
+  const { user } = useAuth();
 
   return user ? (
     <DashboardLayout>
@@ -24,6 +25,24 @@ const AppRoutes = () => {
         <Route path="view-deals" element={<DealsTable />} />
         <Route path="view-orders" element={<OrdersTable />} />
         <Route path="add-lead" element={<LeadForm />} />
+
+        {/* ✅ NEW Tender routes with access control */}
+        <Route
+          path="tender"
+          element={
+            <ProtectedPage pageKey="Tender">
+              <TenderTable />
+            </ProtectedPage>
+          }
+        />
+        <Route
+          path="manage-tender"
+          element={
+            <ProtectedPage pageKey="Manage Tender">
+              <ManageTender />
+            </ProtectedPage>
+          }
+        />
       </Routes>
     </DashboardLayout>
   ) : (

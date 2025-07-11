@@ -13,8 +13,12 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = ({ username, role }) => {
-    const userData = { username, role };
+  const login = ({ username, role, pageAccess }) => {
+    const userData = {
+      username,
+      role,
+      pageAccess: pageAccess?.split(',').map(p => p.trim()) || []  // Normalize access list
+    };
     setUser(userData);
     localStorage.setItem('crmUser', JSON.stringify(userData));
   };

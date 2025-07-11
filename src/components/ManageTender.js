@@ -31,7 +31,7 @@ const ManageTender = () => {
   }, []);
 
   const fetchValidationOptions = async () => {
-    const res = await fetch('https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec');
+    const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
     const data = await res.json();
     setValidationOptions(data['Tender Validation Tables'] || {});
   };

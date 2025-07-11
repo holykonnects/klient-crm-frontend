@@ -33,7 +33,7 @@ function LoginPage() {
       console.log('Login result:', result);
 
       if (result.success) {
-        login({ username: result.username, role: result.role });
+        login({ username: result.username, role: result.role, pageAccess: result.pageAccess });
         navigate('/dashboard');
       } else {
         setError('Invalid email or password');

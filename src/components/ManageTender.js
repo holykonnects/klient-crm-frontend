@@ -63,7 +63,8 @@ const ManageTender = () => {
         <Paper elevation={3} sx={{ p: 4, maxWidth: 900, margin: 'auto', backgroundColor: '#fefefe' }}>
           <Box textAlign="center" mb={3}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 80, marginBottom: 10 }} />
-            <Typography variant="h6" fontWeight="bold">Manage Tender</Typography>
+  //<Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
+            <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">Add Tender</Typography>
           </Box>
           <Grid container spacing={2}>
             {allFields.map((field, idx) => (

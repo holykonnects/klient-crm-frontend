@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Grid, TextField, Button,
-  Select, MenuItem, InputLabel, FormControl
+  Select, MenuItem, InputLabel, FormControl, Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
@@ -59,50 +59,56 @@ const ManageTender = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Manage Tender</Typography>
-        <Grid container spacing={2}>
-          {allFields.map((field, idx) => (
-            <Grid item xs={6} key={idx}>
-              {['EMD Exemption Available', 'Tender Status'].includes(field) ? (
-                <FormControl fullWidth size="small">
-                  <InputLabel>{field}</InputLabel>
-                  <Select
+      <Box sx={{ py: 4, backgroundColor: '#f7faff', minHeight: '100vh' }}>
+        <Paper elevation={3} sx={{ p: 4, maxWidth: 900, margin: 'auto', backgroundColor: '#fefefe' }}>
+          <Box textAlign="center" mb={3}>
+            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 80, marginBottom: 10 }} />
+            <Typography variant="h6" fontWeight="bold">Manage Tender</Typography>
+          </Box>
+          <Grid container spacing={2}>
+            {allFields.map((field, idx) => (
+              <Grid item xs={6} key={idx}>
+                {["EMD Exemption Available", "Tender Status"].includes(field) ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={{ fontFamily: 'Montserrat, sans-serif' }}>{field}</InputLabel>
+                    <Select
+                      value={formData[field] || ''}
+                      onChange={(e) => handleChange(field, e.target.value)}
+                      sx={{ fontFamily: 'Montserrat, sans-serif' }}
+                    >
+                      <MenuItem value="">Select</MenuItem>
+                      {(validationOptions[field] || []).map((opt, i) => (
+                        <MenuItem key={i} value={opt} sx={{ fontFamily: 'Montserrat, sans-serif' }}>{opt}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    label={field}
+                    fullWidth
+                    size="small"
                     value={formData[field] || ''}
                     onChange={(e) => handleChange(field, e.target.value)}
-                  >
-                    <MenuItem value="">Select</MenuItem>
-                    {(validationOptions[field] || []).map((opt, i) => (
-                      <MenuItem key={i} value={opt}>{opt}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              ) : (
-                <TextField
-                  label={field}
-                  fullWidth
-                  size="small"
-                  value={formData[field] || ''}
-                  onChange={(e) => handleChange(field, e.target.value)}
-                />
-              )}
-            </Grid>
-          ))}
-          <Grid item xs={12}>
-            <Button variant="contained" onClick={handleSubmit}>Submit</Button>
-          </Grid>
-          {success !== null && (
+                    sx={{ fontFamily: 'Montserrat, sans-serif' }}
+                  />
+                )}
+              </Grid>
+            ))}
             <Grid item xs={12}>
-              <Typography color={success ? 'green' : 'error'}>
-                {success ? 'Tender submitted successfully.' : 'Submission failed.'}
-              </Typography>
+              <Button variant="contained" onClick={handleSubmit} sx={{ backgroundColor: '#6495ED' }}>Submit</Button>
             </Grid>
-          )}
-        </Grid>
+            {success !== null && (
+              <Grid item xs={12}>
+                <Typography color={success ? 'green' : 'error'}>
+                  {success ? 'Tender submitted successfully.' : 'Submission failed.'}
+                </Typography>
+              </Grid>
+            )}
+          </Grid>
+        </Paper>
       </Box>
     </ThemeProvider>
   );
 };
 
 export default ManageTender;
-

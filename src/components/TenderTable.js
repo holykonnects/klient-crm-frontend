@@ -23,6 +23,7 @@ const selectorStyle = {
   fontSize: 8
 };
 
+
 const TenderTable = () => {
   const { user } = useAuth();
   const [tenders, setTenders] = useState([]);

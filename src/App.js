@@ -13,7 +13,6 @@ import ManageTender from './components/ManageTender';         // ✅ NEW
 import ProtectedPage from './components/ProtectedPage';       // ✅ Correct wrapper
 import { AuthProvider, useAuth } from './components/AuthContext';
 
-
 const AppRoutes = () => {
   const { user } = useAuth();
 

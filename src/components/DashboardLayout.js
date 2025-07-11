@@ -9,22 +9,16 @@ import {
   Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
+import { useAuth } from './AuthContext';
 
 const drawerWidth = 240;
 const cornflowerBlue = '#6495ED';
 const sidebarBackground = '#fdfdfd'; // Slight white
 
-const menuItems = [
-  { label: 'Leads', icon: <Dashboard />, route: '/view-leads' },
-  { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts' },
-  { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals' },
-  { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders' },
-  { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead' }
-];
-
 function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
   const location = useLocation();
+  const { user } = useAuth();
 
   // 🔁 Reset drawer to open state on route change
   useEffect(() => {
@@ -32,6 +26,16 @@ function DashboardLayout({ children }) {
   }, [location.pathname]);
 
   const toggleDrawer = () => setOpen(prev => !prev);
+
+  const menuItems = [
+    { label: 'Leads', icon: <Dashboard />, route: '/view-leads', access: 'Lead' },
+    { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
+    { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
+    { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
+    { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
+    { label: 'View Tenders', icon: <AssignmentTurnedIn />, route: '/tender', access: 'Tender' },
+    { label: 'Add Tender', icon: <AddCircle />, route: '/manage-tender', access: 'Manage Tender' }
+  ];
 
   return (
     <Box display="flex">
@@ -61,7 +65,7 @@ function DashboardLayout({ children }) {
 
         {/* Menu Items */}
         <List>
-          {menuItems.map(({ label, icon, route }) => (
+          {menuItems.filter(item => user?.pageAccess?.includes(item.access)).map(({ label, icon, route }) => (
             <Tooltip key={label} title={open ? '' : label} placement="right">
               <ListItem button component={Link} to={route}>
                 <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>

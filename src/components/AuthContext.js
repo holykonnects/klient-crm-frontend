@@ -17,11 +17,14 @@ export function AuthProvider({ children }) {
     const userData = {
       username,
       role,
-      pageAccess: pageAccess?.split(',').map(p => p.trim()) || []  // Normalize access list
+      pageAccess: Array.isArray(pageAccess)
+        ? pageAccess
+        : String(pageAccess || '').split(',').map(p => p.trim())
     };
     setUser(userData);
     localStorage.setItem('crmUser', JSON.stringify(userData));
   };
+
 
   const logout = () => {
     setUser(null);

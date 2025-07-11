@@ -120,10 +120,26 @@ const TenderTable = () => {
     localStorage.setItem('tenderVisibleColumns', JSON.stringify(updated));
   };
 
-  const handleSave = () => {
-    console.log('Updated Tender:', selectedTender);
+  const handleSave = async () => {
+  try {
+    const response = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(selectedTender)
+    });
+
+    const result = await response.json();
+    console.log('Update response:', result);
+
+    fetchTenderData(); // Refresh table
     handleCloseModal();
-  };
+  } catch (error) {
+    console.error('Failed to update tender:', error);
+  }
+};
+
 
   return (
     <ThemeProvider theme={theme}>

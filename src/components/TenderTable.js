@@ -3,12 +3,11 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
-  Button, Popover
+  Popover, FormControlLabel, Button
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 
@@ -31,7 +30,7 @@ const TenderTable = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState({
     status: '',
-    workType: '',
+    ministry: '',
     bidType: ''
   });
 
@@ -58,7 +57,7 @@ const TenderTable = () => {
   }, []);
 
   const fetchTenderData = async () => {
-    const response = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec'); // replace with actual Apps Script URL
+    const response = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
     const data = await response.json();
 
     const viewable = user.role === 'Admin'
@@ -70,9 +69,9 @@ const TenderTable = () => {
   };
 
   const fetchValidationOptions = async () => {
-    const res = await fetch('https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec'); // validation table
+    const res = await fetch('https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec');
     const data = await res.json();
-    setValidationOptions(data['Tender Validation Tables'] || {});
+    setValidationOptions(data['Tender Validation Table'] || {});
   };
 
   const handleSearch = (e) => {
@@ -91,7 +90,7 @@ const TenderTable = () => {
     const filtered = tenders.filter(row => {
       return (
         (!filters.status || row['Tender Status'] === filters.status) &&
-        (!filters.workType || row['Work Type'] === filters.workType) &&
+        (!filters.ministry || row['Ministry/State Name'] === filters.ministry) &&
         (!filters.bidType || row['Bid Type'] === filters.bidType) &&
         Object.values(row).some(val =>
           val?.toString().toLowerCase().includes(search)
@@ -102,7 +101,7 @@ const TenderTable = () => {
   };
 
   const handleOpenModal = (tender) => {
-    setSelectedTender(tender);
+    setSelectedTender({ ...tender });
     setModalOpen(true);
   };
 
@@ -111,10 +110,19 @@ const TenderTable = () => {
     setSelectedTender(null);
   };
 
+  const handleInputChange = (key, value) => {
+    setSelectedTender(prev => ({ ...prev, [key]: value }));
+  };
+
   const handleColumnToggle = (column) => {
     const updated = { ...visibleColumns, [column]: !visibleColumns[column] };
     setVisibleColumns(updated);
     localStorage.setItem('tenderVisibleColumns', JSON.stringify(updated));
+  };
+
+  const handleSave = () => {
+    console.log('Updated Tender:', selectedTender);
+    handleCloseModal();
   };
 
   return (
@@ -122,7 +130,6 @@ const TenderTable = () => {
       <Box sx={{ p: 2 }}>
         <Typography variant="h6" gutterBottom>Tender Management</Typography>
 
-        {/* Filters */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <TextField
             label="Search"
@@ -131,30 +138,33 @@ const TenderTable = () => {
             value={searchTerm}
             onChange={handleSearch}
           />
-          {['status', 'workType', 'bidType'].map(key => (
+
+          {['status', 'ministry', 'bidType'].map(key => (
             <FormControl key={key} size="small">
-              <InputLabel>{key.replace(/^\w/, c => c.toUpperCase())}</InputLabel>
+              <InputLabel>{key.charAt(0).toUpperCase() + key.slice(1)}</InputLabel>
               <Select
                 value={filters[key]}
                 onChange={(e) => handleFilterChange(key, e.target.value)}
               >
                 <MenuItem value="">All</MenuItem>
-                {(validationOptions[key === 'status'
-                  ? 'Tender Status'
-                  : key === 'workType'
-                  ? 'Work Type'
-                  : 'Bid Type'] || []).map((opt, idx) => (
-                  <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                ))}
+                {key === 'ministry'
+                  ? [...new Set(tenders.map(t => t['Ministry/State Name']))].filter(Boolean).map((opt, idx) => (
+                      <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                    ))
+                  : (validationOptions[
+                      key === 'status' ? 'Tender Status' : 'Bid Type'
+                    ] || []).map((opt, idx) => (
+                      <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                    ))}
               </Select>
             </FormControl>
           ))}
+
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon sx={selectorStyle} />
           </IconButton>
         </Box>
 
-        {/* Column Selector Popover */}
         <Popover
           open={Boolean(anchorEl)}
           anchorEl={anchorEl}
@@ -178,7 +188,6 @@ const TenderTable = () => {
           </Box>
         </Popover>
 
-        {/* Table */}
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -208,9 +217,8 @@ const TenderTable = () => {
           </TableBody>
         </Table>
 
-        {/* View/Edit Modal */}
         <Dialog open={modalOpen} onClose={handleCloseModal} maxWidth="md" fullWidth>
-          <DialogTitle>Tender Details</DialogTitle>
+          <DialogTitle>Edit Tender</DialogTitle>
           <DialogContent dividers>
             {selectedTender && (
               <Grid container spacing={2}>
@@ -220,10 +228,13 @@ const TenderTable = () => {
                       label={col}
                       value={selectedTender[col] || ''}
                       fullWidth
-                      InputProps={{ readOnly: true }}
+                      onChange={(e) => handleInputChange(col, e.target.value)}
                     />
                   </Grid>
                 ))}
+                <Grid item xs={12}>
+                  <Button variant="contained" onClick={handleSave}>Save</Button>
+                </Grid>
               </Grid>
             )}
           </DialogContent>

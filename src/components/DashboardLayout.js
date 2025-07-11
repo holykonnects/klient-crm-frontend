@@ -19,6 +19,7 @@ function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
   const location = useLocation();
   const { user } = useAuth();
+  console.log("user.pageAccess", user?.pageAccess);  
 
   // 🔁 Reset drawer to open state on route change
   useEffect(() => {

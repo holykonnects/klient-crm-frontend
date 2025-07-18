@@ -33,9 +33,9 @@ const ManageTender = () => {
   const fetchValidationOptions = async () => {
     const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
     const data = await res.json();
-    setValidationOptions(data['Tender Validation Tables'] || {});
+    console.log("Tender Validation Options:", data);
+    setValidationOptions(data || {});
   };
-  
 
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));

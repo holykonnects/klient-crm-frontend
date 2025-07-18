@@ -34,7 +34,7 @@ function DashboardLayout({ children }) {
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
-    { label: 'View Tenders', icon: <AssignmentTurnedIn />, route: '/tender', access: 'Tender' },
+    { label: 'Tenders', icon: <AssignmentTurnedIn />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <AddCircle />, route: '/manage-tender', access: 'Manage Tender' }
   ];
 

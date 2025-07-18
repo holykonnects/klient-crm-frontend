@@ -3,8 +3,6 @@ import {
   Box, Typography, TextField, Button, Grid, MenuItem,
   createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
 } from '@mui/material';
-import '@fontsource/montserrat';
-import logo from '../assets/klient-konnect-logo.png'; // Ensure correct path
 
 const theme = createTheme({
   typography: {
@@ -13,43 +11,56 @@ const theme = createTheme({
   }
 });
 
-function ManageTender() {
+function LeadForm() {
   const [fields, setFields] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [formValues, setFormValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const fieldUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=fields';
-  const dropdownUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns';
-  const submitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
+  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
+  const dropdownUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
   useEffect(() => {
     const fetchFields = async () => {
       try {
-        const res = await fetch(fieldUrl);
-        const data = await res.json();
+        const response = await fetch(formSubmitUrl);
+        const data = await response.json();
         const fieldNames = Object.keys(data[0] || {});
         setFields(fieldNames);
-        const initialForm = {};
-        fieldNames.forEach(field => (initialForm[field] = ''));
-        setFormValues(initialForm);
-      } catch (err) {
-        console.error('Error fetching fields:', err);
+        initializeForm(fieldNames);
+      } catch (error) {
+        console.error('Error fetching fields:', error);
       }
     };
 
     const fetchDropdowns = async () => {
       try {
-        const res = await fetch(dropdownUrl);
-        const data = await res.json();
-        setDropdownOptions(data);
-      } catch (err) {
-        console.error('Error fetching dropdowns:', err);
+        const response = await fetch(dropdownUrl);
+        const data = await response.json();
+        const dropdowns = {};
+        for (let field in data) {
+          if (data[field].length > 0) {
+            dropdowns[field] = data[field];
+          }
+        }
+        setDropdownOptions(dropdowns);
+      } catch (error) {
+        console.error('Error fetching dropdown options:', error);
       }
     };
 
-    Promise.all([fetchFields(), fetchDropdowns()]).finally(() => setLoading(false));
+    const initializeForm = (fieldNames) => {
+      const initialForm = {};
+      fieldNames.forEach(field => {
+        initialForm[field] = '';
+      });
+      setFormValues(initialForm);
+      setLoading(false);
+    };
+
+    fetchFields();
+    fetchDropdowns();
   }, []);
 
   const handleChange = (e) => {
@@ -81,7 +92,7 @@ function ManageTender() {
     };
 
     try {
-      await fetch(submitUrl, {
+      await fetch(formSubmitUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: {
@@ -90,16 +101,16 @@ function ManageTender() {
         body: JSON.stringify(payload)
       });
 
-      alert('✅ Tender submitted successfully!');
-      console.log('Submitted:', payload);
+      alert('✅ Lead submitted successfully!');
+      console.log('Lead submitted:', payload);
 
-      // Reset form
+      // Reset the form
       const reset = {};
-      fields.forEach(field => (reset[field] = ''));
+      Object.keys(formValues).forEach(key => (reset[key] = ''));
       setFormValues(reset);
 
     } catch (error) {
-      console.error('❌ Error submitting tender:', error);
+      console.error('❌ Error submitting lead:', error);
       alert('❌ Submission failed. Please try again.');
     }
 
@@ -107,20 +118,19 @@ function ManageTender() {
   };
 
   if (loading) {
-    return <Typography>Loading Tender Form...</Typography>;
+    return <Typography>Loading Lead Form...</Typography>;
   }
 
   return (
     <ThemeProvider theme={theme}>
       <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
-        {/* Logo aligned top-left */}
-        <Box display="flex" alignItems="center" mb={2}>
-          <img src={logo} alt="Klient Konnect" style={{ height: 60 }} />
+        {/* Klient Konnect Logo */}
+        <Box display="flex" justifyContent="center" mb={3}>
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         </Box>
 
-        {/* Form Title */}
-        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3}>
-          Add New Tender
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
+          Add New Lead
         </Typography>
 
         <Box component="form" onSubmit={handleSubmit}>
@@ -136,8 +146,8 @@ function ManageTender() {
                       value={formValues[field]}
                       onChange={handleChange}
                     >
-                      {dropdownOptions[field].map((opt, idx) => (
-                        <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                      {dropdownOptions[field].map((option, idx) => (
+                        <MenuItem key={idx} value={option}>{option}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -157,7 +167,7 @@ function ManageTender() {
 
           <Box mt={3} display="flex" justifyContent="flex-end">
             <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }} disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit Tender'}
+              {submitting ? 'Submitting...' : 'Submit Lead'}
             </Button>
           </Box>
         </Box>
@@ -166,4 +176,4 @@ function ManageTender() {
   );
 }
 
-export default ManageTender;
+export default LeadForm;

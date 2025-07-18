@@ -54,7 +54,7 @@ const TenderTable = () => {
         const deduped = [];
         const seen = new Map();
         filteredData.forEach(row => {
-          const key = row['GEM ID'];
+          const key = row['Bid Number'];
           const existing = seen.get(key);
           if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
             seen.set(key, row);
@@ -112,8 +112,8 @@ const TenderTable = () => {
   };
 
   const handleViewLogs = (row) => {
-    const key = row['GEM ID'];
-    const logs = allTenders.filter(item => item['GEM ID'] === key);
+    const key = row['Bid Number'];
+    const logs = allTenders.filter(item => item['Bid Number'] === key);
     setTenderLogs(logs);
     setLogsOpen(true);
   };

@@ -4,7 +4,7 @@ import {
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
-import logo from '../assets/klient-konnect-logo.png'; // adjust path if needed
+import logo from '../assets/kk-logo.png'; // adjust path if needed
 
 const theme = createTheme({
   typography: {

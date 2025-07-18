@@ -4,7 +4,6 @@ import {
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
-import logo from '../assets/kk-logo.png'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -65,7 +64,7 @@ const ManageTender = () => {
       <Box p={3}>
         {/* Header with Logo */}
         <Box display="flex" alignItems="center" mb={3}>
-          <img src={logo} alt="Klient Konnect" style={{ height: 40, marginRight: 10 }} />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 40, marginRight: 10 }} />
           <Typography variant="h6" sx={{ fontWeight: 700 }}>
             Manage Tender
           </Typography>

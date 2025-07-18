@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Typography, Grid, TextField, Button,
-  Select, MenuItem, InputLabel, FormControl, Paper
+  Box, Button, TextField, MenuItem, Typography, Grid, CircularProgress
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
+import logo from '../assets/klient-konnect-logo.png'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -14,102 +14,109 @@ const theme = createTheme({
 });
 
 const ManageTender = () => {
+  const [fields, setFields] = useState({});
   const [formData, setFormData] = useState({});
-  const [formFields, setFormFields] = useState([]);
-  const [validationOptions, setValidationOptions] = useState({});
-  const [success, setSuccess] = useState(null);
+  const [loadingFields, setLoadingFields] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+
+  const fieldEndpoint = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=fields';
+  const submitEndpoint = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
 
   useEffect(() => {
-    fetchFieldsAndDropdowns();
+    fetch(fieldEndpoint)
+      .then(res => res.json())
+      .then(data => {
+        if (data.status === 'success') {
+          setFields(data.fields);
+          const initialForm = {};
+          Object.keys(data.fields).forEach(label => {
+            initialForm[label] = '';
+          });
+          setFormData(initialForm);
+        }
+      })
+      .catch(err => console.error('Field load error:', err))
+      .finally(() => setLoadingFields(false));
   }, []);
 
-  const fetchFieldsAndDropdowns = async () => {
-    try {
-      const [fieldsRes, dropdownsRes] = await Promise.all([
-        fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=fields'),
-        fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns')
-      ]);
-
-      const fieldsData = await fieldsRes.json();
-      const dropdownsData = await dropdownsRes.json();
-
-      setFormFields(fieldsData.fields || []);
-      setValidationOptions(dropdownsData.dropdowns || {});
-    } catch (err) {
-      console.error("❌ Error fetching tender form config:", err);
-    }
-  };
-
-  const handleChange = (key, value) => {
-    setFormData(prev => ({ ...prev, [key]: value }));
+  const handleChange = (label, value) => {
+    setFormData(prev => ({ ...prev, [label]: value }));
   };
 
   const handleSubmit = async () => {
+    setSubmitting(true);
     try {
-      const response = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec', {
+      const response = await fetch(submitEndpoint, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
+        body: JSON.stringify(formData),
+        headers: { 'Content-Type': 'application/json' }
       });
-
-      const result = await response.text();
-      setSuccess(result.includes('Success'));
-      setFormData({});
+      const result = await response.json();
+      alert(result.message);
     } catch (err) {
       console.error('Submit error:', err);
-      setSuccess(false);
+      alert('Error submitting tender.');
     }
+    setSubmitting(false);
   };
 
   return (
     <ThemeProvider theme={theme}>
-      <Box sx={{ py: 4, backgroundColor: '#f7faff', minHeight: '100vh' }}>
-        <Paper elevation={3} sx={{ p: 4, maxWidth: 900, margin: 'auto', backgroundColor: '#fefefe' }}>
-          <Box textAlign="center" mb={3}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 80, marginBottom: 10 }} />
-            <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">Add Tender</Typography>
-          </Box>
+      <Box p={3}>
+        {/* Header with Logo */}
+        <Box display="flex" alignItems="center" mb={3}>
+          <img src={logo} alt="Klient Konnect" style={{ height: 40, marginRight: 10 }} />
+          <Typography variant="h6" sx={{ fontWeight: 700 }}>
+            Manage Tender
+          </Typography>
+        </Box>
+
+        {/* Loader or Form */}
+        {loadingFields ? (
+          <CircularProgress />
+        ) : (
           <Grid container spacing={2}>
-            {formFields.map((field, idx) => (
-              <Grid item xs={6} key={idx}>
-                {validationOptions[field] ? (
-                  <FormControl fullWidth size="small">
-                    <InputLabel sx={{ fontFamily: 'Montserrat, sans-serif' }}>{field}</InputLabel>
-                    <Select
-                      value={formData[field] || ''}
-                      onChange={(e) => handleChange(field, e.target.value)}
-                      sx={{ fontFamily: 'Montserrat, sans-serif' }}
-                    >
-                      <MenuItem value="">Select</MenuItem>
-                      {(validationOptions[field] || []).map((opt, i) => (
-                        <MenuItem key={i} value={opt} sx={{ fontFamily: 'Montserrat, sans-serif' }}>{opt}</MenuItem>
-                      ))}
-                    </Select>
-                  </FormControl>
-                ) : (
+            {Object.entries(fields).map(([label, options]) => (
+              <Grid item xs={12} sm={6} key={label}>
+                {options.length > 0 ? (
                   <TextField
-                    label={field}
+                    select
+                    label={label}
+                    value={formData[label] || ''}
+                    onChange={(e) => handleChange(label, e.target.value)}
                     fullWidth
                     size="small"
-                    value={formData[field] || ''}
-                    onChange={(e) => handleChange(field, e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif' }}
+                  >
+                    {options.map((opt, idx) => (
+                      <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                    ))}
+                  </TextField>
+                ) : (
+                  <TextField
+                    label={label}
+                    value={formData[label] || ''}
+                    onChange={(e) => handleChange(label, e.target.value)}
+                    fullWidth
+                    size="small"
                   />
                 )}
               </Grid>
             ))}
+
+            {/* Submit Button */}
             <Grid item xs={12}>
-              <Button variant="contained" onClick={handleSubmit} sx={{ backgroundColor: '#6495ED' }}>Submit</Button>
+              <Button
+                variant="contained"
+                color="primary"
+                onClick={handleSubmit}
+                disabled={submitting}
+                sx={{ fontWeight: 600 }}
+              >
+                {submitting ? 'Submitting...' : 'Submit Tender'}
+              </Button>
             </Grid>
-            {success !== null && (
-              <Grid item xs={12}>
-                <Typography color={success ? 'green' : 'error'}>
-                  {success ? 'Tender submitted successfully.' : 'Submission failed.'}
-                </Typography>
-              </Grid>
-            )}
           </Grid>
-        </Paper>
+        )}
       </Box>
     </ThemeProvider>
   );

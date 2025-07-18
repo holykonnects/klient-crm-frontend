@@ -35,6 +35,7 @@ const ManageTender = () => {
     const data = await res.json();
     setValidationOptions(data['Tender Validation Tables'] || {});
   };
+  
 
   const handleChange = (key, value) => {
     setFormData(prev => ({ ...prev, [key]: value }));

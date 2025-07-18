@@ -16,25 +16,34 @@ const theme = createTheme({
 const ManageTender = () => {
   const [formData, setFormData] = useState({});
   const [validationOptions, setValidationOptions] = useState({});
+  const [fieldList, setFieldList] = useState([]);
   const [success, setSuccess] = useState(null);
-
-  const allFields = [
-    'Bid Number', 'Bid Start Date', 'Bid End Date', 'Ministry/State Name',
-    'Organisation Name', 'Work Type', 'Bid Type', 'EMD Amount',
-    'EMD Exemption Available', 'Tender Budget', 'Pre Bid Meeting Date',
-    'Pre Bid Meeting Venue', 'Tender Conditions', 'Tender Status',
-    'Tender Remarks', 'Notification Status'
-  ];
 
   useEffect(() => {
     fetchValidationOptions();
+    fetchFieldList();
   }, []);
 
   const fetchValidationOptions = async () => {
-    const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
-    const data = await res.json();
-    console.log("Tender Validation Options:", data);
-    setValidationOptions(data || {});
+    try {
+      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
+      const data = await res.json();
+      console.log("Tender Validation Options:", data);
+      setValidationOptions(data || {});
+    } catch (err) {
+      console.error("Validation fetch error:", err);
+    }
+  };
+
+  const fetchFieldList = async () => {
+    try {
+      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
+      const data = await res.json();
+      const fields = Object.keys(data);
+      setFieldList(fields);
+    } catch (err) {
+      console.error("Field list fetch error:", err);
+    }
   };
 
   const handleChange = (key, value) => {
@@ -49,8 +58,8 @@ const ManageTender = () => {
         body: JSON.stringify(formData)
       });
 
-      const result = await response.json();
-      setSuccess(result.status === 'success');
+      const result = await response.text();
+      setSuccess(result === 'Success');
       setFormData({});
     } catch (err) {
       console.error('Submit error:', err);
@@ -67,9 +76,9 @@ const ManageTender = () => {
             <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">Add Tender</Typography>
           </Box>
           <Grid container spacing={2}>
-            {allFields.map((field, idx) => (
+            {fieldList.map((field, idx) => (
               <Grid item xs={6} key={idx}>
-                {["EMD Exemption Available", "Tender Status"].includes(field) ? (
+                {(validationOptions[field] || []).length > 0 ? (
                   <FormControl fullWidth size="small">
                     <InputLabel sx={{ fontFamily: 'Montserrat, sans-serif' }}>{field}</InputLabel>
                     <Select

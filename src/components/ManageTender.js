@@ -1,124 +1,157 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Button, TextField, MenuItem, Typography, Grid, CircularProgress
+  Box, Typography, TextField, Button, Grid, MenuItem,
+  createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
 } from '@mui/material';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 10.5
+    fontSize: 9
   }
 });
 
-const ManageTender = () => {
-  const [fields, setFields] = useState({});
-  const [formData, setFormData] = useState({});
-  const [loadingFields, setLoadingFields] = useState(true);
+function ManageTender() {
+  const [fields, setFields] = useState([]);
+  const [dropdownOptions, setDropdownOptions] = useState({});
+  const [formValues, setFormValues] = useState({});
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const fieldEndpoint = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=fields';
-  const submitEndpoint = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
+  // URLs – UPDATE with your deployed Web App endpoint base
+  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
+  const dropdownUrl = `${formSubmitUrl}?action=dropdowns`;
 
   useEffect(() => {
-    fetch(fieldEndpoint)
-      .then(res => res.json())
-      .then(data => {
-        if (data.status === 'success') {
-          setFields(data.fields);
-          const initialForm = {};
-          Object.keys(data.fields).forEach(label => {
-            initialForm[label] = '';
-          });
-          setFormData(initialForm);
-        }
-      })
-      .catch(err => console.error('Field load error:', err))
-      .finally(() => setLoadingFields(false));
+    const fetchFields = async () => {
+      try {
+        const response = await fetch(formSubmitUrl);
+        const data = await response.json();
+        const fieldNames = Object.keys(data[0] || {});
+        setFields(fieldNames);
+
+        const initial = {};
+        fieldNames.forEach(f => (initial[f] = ''));
+        setFormValues(initial);
+      } catch (error) {
+        console.error('Error fetching fields:', error);
+      }
+    };
+
+    const fetchDropdowns = async () => {
+      try {
+        const response = await fetch(dropdownUrl);
+        const data = await response.json();
+        setDropdownOptions(data);
+      } catch (error) {
+        console.error('Error fetching dropdowns:', error);
+      }
+    };
+
+    Promise.all([fetchFields(), fetchDropdowns()]).finally(() => setLoading(false));
   }, []);
 
-  const handleChange = (label, value) => {
-    setFormData(prev => ({ ...prev, [label]: value }));
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormValues(prev => ({
+      ...prev,
+      [name]: value
+    }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setSubmitting(true);
+
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+
+    const payload = {
+      ...formValues,
+      Timestamp: timestamp
+    };
+
     try {
-      const response = await fetch(submitEndpoint, {
+      await fetch(formSubmitUrl, {
         method: 'POST',
-        body: JSON.stringify(formData),
-        headers: { 'Content-Type': 'application/json' }
+        mode: 'no-cors',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
       });
-      const result = await response.json();
-      alert(result.message);
-    } catch (err) {
-      console.error('Submit error:', err);
-      alert('Error submitting tender.');
+
+      alert('✅ Tender submitted successfully!');
+
+      const reset = {};
+      fields.forEach(field => (reset[field] = ''));
+      setFormValues(reset);
+    } catch (error) {
+      console.error('❌ Submission failed:', error);
+      alert('❌ Submission failed. Try again.');
     }
+
     setSubmitting(false);
   };
 
+  if (loading) return <Typography>Loading Tender Form...</Typography>;
+
   return (
     <ThemeProvider theme={theme}>
-      <Box p={3}>
-        {/* Header with Logo */}
-        <Box display="flex" alignItems="center" mb={3}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 40, marginRight: 10 }} />
-          <Typography variant="h6" sx={{ fontWeight: 700 }}>
-            Manage Tender
-          </Typography>
+      <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
+        <Box display="flex" alignItems="center" mb={2}>
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 60 }} />
         </Box>
 
-        {/* Loader or Form */}
-        {loadingFields ? (
-          <CircularProgress />
-        ) : (
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3}>
+          Add New Tender
+        </Typography>
+
+        <Box component="form" onSubmit={handleSubmit}>
           <Grid container spacing={2}>
-            {Object.entries(fields).map(([label, options]) => (
-              <Grid item xs={12} sm={6} key={label}>
-                {options.length > 0 ? (
-                  <TextField
-                    select
-                    label={label}
-                    value={formData[label] || ''}
-                    onChange={(e) => handleChange(label, e.target.value)}
-                    fullWidth
-                    size="small"
-                  >
-                    {options.map((opt, idx) => (
-                      <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                    ))}
-                  </TextField>
+            {fields.map((field, idx) => (
+              <Grid item xs={12} sm={6} key={idx}>
+                {dropdownOptions[field] ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>{field}</InputLabel>
+                    <Select
+                      label={field}
+                      name={field}
+                      value={formValues[field]}
+                      onChange={handleChange}
+                    >
+                      {dropdownOptions[field].map((option, i) => (
+                        <MenuItem key={i} value={option}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                 ) : (
                   <TextField
-                    label={label}
-                    value={formData[label] || ''}
-                    onChange={(e) => handleChange(label, e.target.value)}
                     fullWidth
                     size="small"
+                    label={field}
+                    name={field}
+                    value={formValues[field]}
+                    onChange={handleChange}
                   />
                 )}
               </Grid>
             ))}
-
-            {/* Submit Button */}
-            <Grid item xs={12}>
-              <Button
-                variant="contained"
-                color="primary"
-                onClick={handleSubmit}
-                disabled={submitting}
-                sx={{ fontWeight: 600 }}
-              >
-                {submitting ? 'Submitting...' : 'Submit Tender'}
-              </Button>
-            </Grid>
           </Grid>
-        )}
-      </Box>
+
+          <Box mt={3} display="flex" justifyContent="flex-end">
+            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }} disabled={submitting}>
+              {submitting ? 'Submitting...' : 'Submit Tender'}
+            </Button>
+          </Box>
+        </Box>
+      </Paper>
     </ThemeProvider>
   );
-};
+}
 
 export default ManageTender;

@@ -103,7 +103,7 @@ function ManageTender() {
   return (
     <ThemeProvider theme={theme}>
       <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
-        <Box display="flex" alignItems="center" mb={2}>
+        <Box display="flex" justifyContent="center" mb={3}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 60 }} />
         </Box>
 

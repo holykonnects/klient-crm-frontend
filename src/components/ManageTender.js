@@ -104,10 +104,10 @@ function ManageTender() {
     <ThemeProvider theme={theme}>
       <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
         <Box display="flex" justifyContent="center" mb={3}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 60 }} />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
         </Box>
 
-        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3}>
+        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
           Add New Tender
         </Typography>
 

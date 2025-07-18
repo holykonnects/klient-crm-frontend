@@ -21,7 +21,7 @@ function ManageTender() {
 
   // URLs – UPDATE with your deployed Web App endpoint base
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
-  const dropdownUrl = `${formSubmitUrl}?action=dropdowns`;
+  const dropdownUrl = `https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns`;
 
   useEffect(() => {
     const fetchFields = async () => {

@@ -26,7 +26,7 @@ const ManageTender = () => {
 
   const fetchValidationOptions = async () => {
     try {
-      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
+      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns');
       const data = await res.json();
       console.log("Tender Validation Options:", data);
       setValidationOptions(data || {});
@@ -37,7 +37,7 @@ const ManageTender = () => {
 
   const fetchFieldList = async () => {
     try {
-      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec');
+      const res = await fetch('https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=fields');
       const data = await res.json();
       const fields = Object.keys(data);
       setFieldList(fields);

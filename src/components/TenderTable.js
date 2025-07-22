@@ -71,7 +71,7 @@ const TenderTable = () => {
         JSON.parse(localStorage.getItem(`visibleColumns-${user.username}-tenders`)) ||
         (deduped.length ? Object.keys(deduped[0]) : [])
       );
-      **setLoading(false);** // ✅ ADD THIS HERE
+      setLoading(false); // ✅ ADD THIS HERE
     })
     .catch(err => {
       console.error('❌ Tender data fetch error:', err);

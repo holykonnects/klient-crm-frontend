@@ -11,6 +11,7 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 
 const theme = createTheme({
@@ -170,6 +171,7 @@ function AccountsTable() {
 
   return (
     <ThemeProvider theme={theme}>
+    {loading && <LoadingOverlay />}
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />

@@ -60,7 +60,7 @@ const CalendarView = () => {
     <Box sx={{ padding: 3, fontFamily: 'Montserrat, sans-serif' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center">
-          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 40, marginRight: 12 }} />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100, marginRight: 12 }} />
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>
             Calendar Schedule
           </Typography>

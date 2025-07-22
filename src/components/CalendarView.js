@@ -3,19 +3,27 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, Grid } from '@mui/material';
+import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, Grid, MenuItem, Select, InputLabel, FormControl } from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
+
 
 const CalendarView = () => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
-  const [selectedDateTime, setSelectedDateTime] = useState(null);
-  const [formData, setFormData] = useState({ clientName: '', meetingDate: '', meetingTime: '', purpose: '' });
+  const [formData, setFormData] = useState({
+    leadType: '',
+    selectedLead: '',
+    newLeadName: '',
+    meetingDate: '',
+    meetingTime: '',
+    purpose: ''
+  });
+  const [userLeads, setUserLeads] = useState([]);
 
   useEffect(() => {
     if (!user || !user.username) return;
@@ -34,7 +42,20 @@ const CalendarView = () => {
       }
     };
 
+    const fetchLeads = async () => {
+      try {
+        const response = await fetch(
+          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getLeads&owner=${encodeURIComponent(user.username)}`
+        );
+        const data = await response.json();
+        setUserLeads(data);
+      } catch (error) {
+        console.error('Error fetching leads:', error);
+      }
+    };
+
     fetchEvents();
+    fetchLeads();
   }, [user]);
 
   const handleDateSelect = (arg) => {
@@ -44,14 +65,14 @@ const CalendarView = () => {
     setOpenDialog(true);
   };
 
-  const handleSubmit = () => {
-    console.log('Submitting meeting:', formData);
-    setOpenDialog(false);
-  };
-
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleSubmit = () => {
+    console.log('Submitting meeting:', formData);
+    setOpenDialog(false);
   };
 
   if (loading) return (<LoadingOverlay />);
@@ -126,13 +147,36 @@ const CalendarView = () => {
         <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12} sm={6}>
-              <TextField label="Client Name" name="clientName" fullWidth value={formData.clientName} onChange={handleInputChange} />
+            <Grid item xs={12}>
+              <FormControl fullWidth>
+                <InputLabel>Lead Type</InputLabel>
+                <Select name="leadType" value={formData.leadType} onChange={handleInputChange}>
+                  <MenuItem value="Existing">Existing Lead</MenuItem>
+                  <MenuItem value="New">New Lead</MenuItem>
+                </Select>
+              </FormControl>
             </Grid>
-            <Grid item xs={6} sm={3}>
+            {formData.leadType === 'Existing' && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Select Lead</InputLabel>
+                  <Select name="selectedLead" value={formData.selectedLead} onChange={handleInputChange}>
+                    {userLeads.map((lead, index) => (
+                      <MenuItem key={index} value={lead}>{lead}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+            {formData.leadType === 'New' && (
+              <Grid item xs={12}>
+                <TextField label="New Lead Name" name="newLeadName" fullWidth value={formData.newLeadName} onChange={handleInputChange} />
+              </Grid>
+            )}
+            <Grid item xs={6}>
               <TextField label="Date" name="meetingDate" type="date" fullWidth InputLabelProps={{ shrink: true }} value={formData.meetingDate} onChange={handleInputChange} />
             </Grid>
-            <Grid item xs={6} sm={3}>
+            <Grid item xs={6}>
               <TextField label="Time" name="meetingTime" type="time" fullWidth InputLabelProps={{ shrink: true }} value={formData.meetingTime} onChange={handleInputChange} />
             </Grid>
             <Grid item xs={12}>

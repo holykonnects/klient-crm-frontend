@@ -57,7 +57,7 @@ const LoadingOverlay = () => {
           }}
         />
         <img
-          src="/assets/Mandala -03.png"
+          src="/assets/Mandala -03-03.png"
           alt="Ring 3"
           style={{
             position: 'absolute',
@@ -78,21 +78,6 @@ const LoadingOverlay = () => {
             width: 250,
             height: 250,
             animation: `${spinCounterClockwise} 24s linear infinite`
-          }}
-        />
-
-        {/* Central Klient Konnect Logo */}
-        <img
-          src="/assets/kk-logo.png"
-          alt="Klient Konnect"
-          style={{
-            position: 'absolute',
-            top: '50%',
-            left: '50%',
-            width: 50,
-            height: 48,
-            transform: 'translate(-50%, -50%)',
-            zIndex: 5
           }}
         />
       </Box>

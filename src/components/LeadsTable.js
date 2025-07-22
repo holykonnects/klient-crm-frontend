@@ -361,6 +361,7 @@ const LeadsTable = () => {
         </Dialog>
       </Box>
     </ThemeProvider>
+  </>
   );
 };
 

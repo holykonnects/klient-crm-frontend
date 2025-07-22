@@ -4,6 +4,7 @@ import {
   createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
 } from '@mui/material';
 import '@fontsource/montserrat';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -98,7 +99,7 @@ function ManageTender() {
     setSubmitting(false);
   };
 
-  if (loading) return <Typography>Loading Tender Form...</Typography>;
+  if (loading) return <LoadingOverlay />;
 
   return (
     <ThemeProvider theme={theme}>

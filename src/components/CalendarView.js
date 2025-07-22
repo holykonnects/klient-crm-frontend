@@ -6,7 +6,7 @@ import interactionPlugin from '@fullcalendar/interaction';
 import { Box, Typography, CircularProgress } from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
-
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const CalendarView = () => {
   const { user } = useAuth();
@@ -34,11 +34,7 @@ const CalendarView = () => {
   }, [user]);
 
   if (loading) {
-    return (
-      <Box display="flex" justifyContent="center" alignItems="center" height="80vh">
-        <CircularProgress />
-      </Box>
-    );
+    return (<LoadingOverlay />);
   }
 
   return (

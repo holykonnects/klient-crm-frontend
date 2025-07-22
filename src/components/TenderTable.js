@@ -14,6 +14,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -30,6 +31,7 @@ const selectorStyle = {
 const TenderTable = () => {
   const { user } = useAuth();
   const [allTenders, setAllTenders] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [tenders, setTenders] = useState([]);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -122,6 +124,8 @@ const TenderTable = () => {
     const { name, value } = e.target;
     setEditRow(prev => ({ ...prev, [name]: value }));
   };
+
+  if (loading) return <LoadingOverlay />;
 
   return (
     <ThemeProvider theme={theme}>

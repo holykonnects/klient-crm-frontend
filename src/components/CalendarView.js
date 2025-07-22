@@ -3,17 +3,19 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Box, Typography } from '@mui/material';
+import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, Grid } from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
 
-
 const CalendarView = () => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [openDialog, setOpenDialog] = useState(false);
+  const [selectedDateTime, setSelectedDateTime] = useState(null);
+  const [formData, setFormData] = useState({ clientName: '', meetingDate: '', meetingTime: '', purpose: '' });
 
   useEffect(() => {
     if (!user || !user.username) return;
@@ -35,19 +37,43 @@ const CalendarView = () => {
     fetchEvents();
   }, [user]);
 
-  if (loading) {
-    return (<LoadingOverlay />);
-  }
+  const handleDateSelect = (arg) => {
+    const date = arg.startStr.split('T')[0];
+    const time = arg.startStr.split('T')[1]?.slice(0, 5) || '10:00';
+    setFormData(prev => ({ ...prev, meetingDate: date, meetingTime: time }));
+    setOpenDialog(true);
+  };
+
+  const handleSubmit = () => {
+    // Integrate with submitMeetingForm Apps Script endpoint here
+    console.log('Submitting meeting:', formData);
+    setOpenDialog(false);
+  };
+
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({ ...prev, [name]: value }));
+  };
+
+  if (loading) return (<LoadingOverlay />);
 
   return (
     <Box sx={{ padding: 3, fontFamily: 'Montserrat, sans-serif' }}>
-      <Typography variant="h6" gutterBottom sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, color: '#2f80ed' }}>
-        Calendar Schedule
-      </Typography>
+      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
+        <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>
+          Calendar Schedule
+        </Typography>
+        <Button variant="contained" sx={{ fontFamily: 'Montserrat', backgroundColor: '#2f80ed' }} onClick={() => setOpenDialog(true)}>
+          + Create Meeting
+        </Button>
+      </Box>
 
       <FullCalendar
         plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
         initialView="timeGridWeek"
+        selectable={true}
+        selectMirror={true}
+        select={handleDateSelect}
         allDaySlot={false}
         height="auto"
         headerToolbar={{
@@ -91,6 +117,29 @@ const CalendarView = () => {
           });
         }}
       />
+
+      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
+        <DialogContent>
+          <Grid container spacing={2} sx={{ mt: 1 }}>
+            <Grid item xs={12} sm={6}>
+              <TextField label="Client Name" name="clientName" fullWidth value={formData.clientName} onChange={handleInputChange} />
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <TextField label="Date" name="meetingDate" type="date" fullWidth InputLabelProps={{ shrink: true }} value={formData.meetingDate} onChange={handleInputChange} />
+            </Grid>
+            <Grid item xs={6} sm={3}>
+              <TextField label="Time" name="meetingTime" type="time" fullWidth InputLabelProps={{ shrink: true }} value={formData.meetingTime} onChange={handleInputChange} />
+            </Grid>
+            <Grid item xs={12}>
+              <TextField label="Purpose / Remarks" name="purpose" fullWidth multiline minRows={2} value={formData.purpose} onChange={handleInputChange} />
+            </Grid>
+            <Grid item xs={12} textAlign="right">
+              <Button onClick={handleSubmit} variant="contained" sx={{ backgroundColor: '#2f80ed', fontFamily: 'Montserrat' }}>Submit</Button>
+            </Grid>
+          </Grid>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

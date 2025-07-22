@@ -47,33 +47,43 @@ const TenderTable = () => {
   const dataUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
 
   useEffect(() => {
-    fetch(dataUrl)
-      .then(res => res.json())
-      .then(data => {
-        const filteredData = user.role === 'End User' ? data.filter(row => row['Owner'] === user.username) : data;
-        setAllTenders(filteredData);
+  fetch(dataUrl)
+    .then(res => res.json())
+    .then(data => {
+      const filteredData = user.role === 'End User'
+        ? data.filter(row => row['Owner'] === user.username)
+        : data;
 
-        const deduped = [];
-        const seen = new Map();
-        filteredData.forEach(row => {
-          const key = row['Bid Number'];
-          const existing = seen.get(key);
-          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
-            seen.set(key, row);
-          }
-        });
-        seen.forEach(v => deduped.push(v));
-        setTenders(deduped);
-        setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${user.username}-tenders`)) ||
-          (deduped.length ? Object.keys(deduped[0]) : [])
-        );
+      setAllTenders(filteredData);
+
+      const deduped = [];
+      const seen = new Map();
+      filteredData.forEach(row => {
+        const key = row['Bid Number'];
+        const existing = seen.get(key);
+        if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+          seen.set(key, row);
+        }
       });
+      seen.forEach(v => deduped.push(v));
+      setTenders(deduped);
+      setVisibleColumns(
+        JSON.parse(localStorage.getItem(`visibleColumns-${user.username}-tenders`)) ||
+        (deduped.length ? Object.keys(deduped[0]) : [])
+      );
+      **setLoading(false);** // ✅ ADD THIS HERE
+    })
+    .catch(err => {
+      console.error('❌ Tender data fetch error:', err);
+      setLoading(false); // ✅ Ensure loading is cleared on error too
+    });
 
-    fetch(dataUrl + '?action=dropdowns')
-      .then(res => res.json())
-      .then(setValidationOptions);
-  }, [user.username, user.role]);
+  fetch(dataUrl + '?action=dropdowns')
+    .then(res => res.json())
+    .then(setValidationOptions)
+    .catch(err => console.error('❌ Dropdown fetch error:', err));
+}, [user.username, user.role]);
+
 
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev => {

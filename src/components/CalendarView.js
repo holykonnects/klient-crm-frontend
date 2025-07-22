@@ -45,7 +45,6 @@ const CalendarView = () => {
   };
 
   const handleSubmit = () => {
-    // Integrate with submitMeetingForm Apps Script endpoint here
     console.log('Submitting meeting:', formData);
     setOpenDialog(false);
   };
@@ -68,55 +67,57 @@ const CalendarView = () => {
         </Button>
       </Box>
 
-      <FullCalendar
-        plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
-        initialView="timeGridWeek"
-        selectable={true}
-        selectMirror={true}
-        select={handleDateSelect}
-        allDaySlot={false}
-        height="auto"
-        headerToolbar={{
-          start: 'prev,next today',
-          center: 'title',
-          end: 'timeGridDay,timeGridWeek,dayGridMonth'
-        }}
-        dayCellClassNames={(arg) => {
-          const classes = ['montserrat-day-cell'];
-          if (arg.date.toDateString() === new Date().toDateString()) {
-            classes.push('today-highlight');
-          }
-          return classes;
-        }}
-        events={events}
-        eventContent={(eventInfo) => (
-          <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
-            <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-              {eventInfo.event.title}
-            </Typography>
-            <Typography sx={{ fontSize: '0.75rem', color: '#666' }}>
-              {eventInfo.event.extendedProps.purpose}
-            </Typography>
-            <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>
-              by {eventInfo.event.extendedProps.owner}
-            </Typography>
-          </Box>
-        )}
-        eventClick={(info) => {
-          alert(`Meeting with ${info.event.extendedProps.client}\nPurpose: ${info.event.extendedProps.purpose}`);
-        }}
-        eventDidMount={(info) => {
-          info.el.style.border = '1px solid #2f80ed';
-          info.el.style.borderRadius = '6px';
-          info.el.style.cursor = 'pointer';
-          info.el.addEventListener('mouseenter', () => {
-            info.el.style.backgroundColor = '#f0f4ff';
-          });
-          info.el.addEventListener('mouseleave', () => {
-            info.el.style.backgroundColor = '';
-          });
-        }}
-      />
+      <Box sx={{ boxShadow: 2, borderRadius: 2, padding: 2, backgroundColor: '#fff' }}>
+        <FullCalendar
+          plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
+          initialView="timeGridWeek"
+          selectable={true}
+          selectMirror={true}
+          select={handleDateSelect}
+          allDaySlot={false}
+          height="auto"
+          headerToolbar={{
+            start: 'prev,next today',
+            center: 'title',
+            end: 'timeGridDay,timeGridWeek,dayGridMonth'
+          }}
+          dayCellClassNames={(arg) => {
+            const classes = ['montserrat-day-cell'];
+            if (arg.date.toDateString() === new Date().toDateString()) {
+              classes.push('today-highlight');
+            }
+            return classes;
+          }}
+          events={events}
+          eventContent={(eventInfo) => (
+            <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
+                {eventInfo.event.title}
+              </Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#666' }}>
+                {eventInfo.event.extendedProps.purpose}
+              </Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>
+                by {eventInfo.event.extendedProps.owner}
+              </Typography>
+            </Box>
+          )}
+          eventClick={(info) => {
+            alert(`Meeting with ${info.event.extendedProps.client}\nPurpose: ${info.event.extendedProps.purpose}`);
+          }}
+          eventDidMount={(info) => {
+            info.el.style.border = '1px solid #2f80ed';
+            info.el.style.borderRadius = '6px';
+            info.el.style.cursor = 'pointer';
+            info.el.addEventListener('mouseenter', () => {
+              info.el.style.backgroundColor = '#f0f4ff';
+            });
+            info.el.addEventListener('mouseleave', () => {
+              info.el.style.backgroundColor = '';
+            });
+          }}
+        />
+      </Box>
 
       <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>

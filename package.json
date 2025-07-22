@@ -11,7 +11,7 @@
     "@mui/icons-material": "^5.15.0",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
-    "@fontsource/montserrat": "^5.0.0"
+    "@fontsource/montserrat": "^5.0.0",
     "@fullcalendar/react": "^6.1.8",
     "@fullcalendar/daygrid": "^6.1.8",
     "@fullcalendar/timegrid": "^6.1.8",

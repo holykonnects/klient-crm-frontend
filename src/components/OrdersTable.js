@@ -77,9 +77,10 @@ function OrdersTable() {
   const handleSelectAll = () => setVisibleColumns(Object.keys(orders[0] || {}));
   const handleDeselectAll = () => setVisibleColumns([]);
 
+if (loading) return <LoadingOverlay />;
+
   return (
     <ThemeProvider theme={theme}>
-    {loading && <LoadingOverlay />}
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />

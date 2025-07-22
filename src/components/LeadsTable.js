@@ -3,7 +3,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover
-} from '@mui/material';
+} from '@mui/material';  
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -13,6 +13,7 @@ import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
 //---
 import HistoryIcon from '@mui/icons-material/History';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -40,6 +41,7 @@ const LeadsTable = () => {
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  
   //---
   const [leadLogs, setLeadLogs] = useState([]);
   const [logsOpen, setLogsOpen] = useState(false);
@@ -169,6 +171,15 @@ const LeadsTable = () => {
   if (loading) return <Typography>Loading leads...</Typography>;
 
   return (
+   <>
+    {loading && <LoadingOverlay />}
+    {/* rest of your LeadsTable JSX below */}
+    <Box sx={{ p: 2 }}>
+      <Typography variant="h6">Leads</Typography>
+      {/* ... */}
+    </Box>
+  </>
+);
     <ThemeProvider theme={theme}>
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>

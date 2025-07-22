@@ -65,7 +65,6 @@ const LoadingOverlay = () => {
             left: 0,
             width: 250,
             height: 250,
-            animation: `${spinClockwise} 18s linear infinite`
           }}
         />
         <img

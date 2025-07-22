@@ -60,7 +60,7 @@ const LoadingOverlay = () => {
         />
         <Box
           component="img"
-          src="/assets/Mandala -03-03.png"
+          src="/assets/Mandala-03.png"
           alt="Ring 3"
           sx={{
             position: 'absolute',

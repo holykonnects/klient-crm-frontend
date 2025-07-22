@@ -9,6 +9,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
 
+
 const CalendarView = () => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);

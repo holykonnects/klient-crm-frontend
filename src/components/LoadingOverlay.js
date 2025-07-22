@@ -32,10 +32,11 @@ const LoadingOverlay = () => {
     >
       <Box sx={{ position: 'relative', width: 250, height: 250 }}>
         {/* Mandala Rings */}
-        <img
+        <Box
+          component="img"
           src="/assets/Mandala -01.png"
           alt="Ring 1"
-          style={{
+          sx={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -44,10 +45,11 @@ const LoadingOverlay = () => {
             animation: `${spinClockwise} 10s linear infinite`
           }}
         />
-        <img
+        <Box
+          component="img"
           src="/assets/Mandala -02.png"
           alt="Ring 2"
-          style={{
+          sx={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -56,10 +58,11 @@ const LoadingOverlay = () => {
             animation: `${spinCounterClockwise} 14s linear infinite`
           }}
         />
-        <img
+        <Box
+          component="img"
           src="/assets/Mandala -03-03.png"
           alt="Ring 3"
-          style={{
+          sx={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -67,10 +70,11 @@ const LoadingOverlay = () => {
             height: 250,
           }}
         />
-        <img
+        <Box
+          component="img"
           src="/assets/Mandala -04.png"
           alt="Ring 4"
-          style={{
+          sx={{
             position: 'absolute',
             top: 0,
             left: 0,
@@ -89,3 +93,4 @@ const LoadingOverlay = () => {
 };
 
 export default LoadingOverlay;
+

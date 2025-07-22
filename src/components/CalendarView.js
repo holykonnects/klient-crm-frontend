@@ -3,17 +3,21 @@ import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
-import { Box, Typography, Button, Dialog, DialogTitle, DialogContent, TextField, Grid, MenuItem, Select, InputLabel, FormControl } from '@mui/material';
+import {
+  Box, Typography, Button, Dialog, DialogTitle, DialogContent,
+  TextField, Grid, MenuItem, Select, InputLabel, FormControl, DialogActions
+} from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
-import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
-import './CalendarStyles.css'; // Custom styles for FullCalendar
+import LoadingOverlay from './LoadingOverlay';
+import './CalendarStyles.css';
 
 const CalendarView = () => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [formData, setFormData] = useState({
     leadType: '',
     selectedLead: '',
@@ -69,7 +73,15 @@ const CalendarView = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async () => {
+  const handleSubmit = () => {
+    if (formData.leadType === 'New') {
+      setShowConfirmModal(true);
+    } else {
+      sendMeetingData();
+    }
+  };
+
+  const sendMeetingData = async () => {
     const payload = {
       leadType: formData.leadType,
       leadName: formData.leadType === 'Existing' ? formData.selectedLead : formData.newLeadName,
@@ -88,6 +100,7 @@ const CalendarView = () => {
         }
       });
       setOpenDialog(false);
+      setShowConfirmModal(false);
     } catch (error) {
       console.error('Error submitting meeting:', error);
     }
@@ -205,6 +218,19 @@ const CalendarView = () => {
             </Grid>
           </Grid>
         </DialogContent>
+      </Dialog>
+
+      <Dialog open={showConfirmModal} onClose={() => setShowConfirmModal(false)} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Confirm New Lead</DialogTitle>
+        <DialogContent>
+          <Typography sx={{ mb: 2, fontFamily: 'Montserrat' }}>
+            This meeting is associated with a new lead. Do you want to proceed and auto-fill the lead form after submission?
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShowConfirmModal(false)} color="secondary" sx={{ fontFamily: 'Montserrat' }}>Cancel</Button>
+          <Button onClick={sendMeetingData} variant="contained" sx={{ backgroundColor: '#2f80ed', fontFamily: 'Montserrat' }}>Yes, Proceed</Button>
+        </DialogActions>
       </Dialog>
     </Box>
   );

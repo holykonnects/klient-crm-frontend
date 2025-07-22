@@ -167,8 +167,6 @@ function AccountsTable() {
     setCreateDealRow(null);
   };
 
-  if (loading) return <Typography>Loading accounts...</Typography>;
-
   return (
     <ThemeProvider theme={theme}>
     {loading && <LoadingOverlay />}

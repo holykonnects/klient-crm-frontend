@@ -8,7 +8,7 @@ import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
-import logo from '../assets/kk-logo.png'; // Adjust path as needed
+import logo from '.src/assets/kk-logo.png'; // Adjust path as needed
 
 const CalendarView = () => {
   const { user } = useAuth();

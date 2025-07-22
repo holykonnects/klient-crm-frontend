@@ -60,6 +60,7 @@ import {
   Box, Typography, TextField, Button, Grid, MenuItem,
   createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
 } from '@mui/material';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -176,7 +177,7 @@ function LeadForm() {
   };
 
   if (loading) {
-    return <Typography>Loading Lead Form...</Typography>;
+    return <LoadingOverlay />;
   }
 
   return (

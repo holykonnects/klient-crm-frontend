@@ -168,8 +168,6 @@ const LeadsTable = () => {
     }
   };
 
-  if (loading) return <Typography>Loading leads...</Typography>;
-
   return (
    <>
     {loading && <LoadingOverlay />}

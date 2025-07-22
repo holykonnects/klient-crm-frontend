@@ -14,6 +14,7 @@ import ProtectedPage from './components/ProtectedPage';       // ✅ Correct wra
 import { AuthProvider, useAuth } from './components/AuthContext';
 import CalendarView from './components/CalendarView';
 
+
 const AppRoutes = () => {
   const { user } = useAuth();
 

@@ -55,7 +55,7 @@ const LoadingOverlay = () => {
             left: 0,
             width: 250,
             height: 250,
-            animation: `${spinCounterClockwise} 14s linear infinite`
+            animation: `${spinCounterClockwise} 10s linear infinite`
           }}
         />
         <Box
@@ -80,7 +80,7 @@ const LoadingOverlay = () => {
             left: 0,
             width: 250,
             height: 250,
-            animation: `${spinCounterClockwise} 24s linear infinite`
+            animation: `${spinClockwise} 10s linear infinite`
           }}
         />
       </Box>

@@ -90,7 +90,7 @@ const LoadingOverlay = () => {
             top: '50%',
             left: '50%',
             width: 50,
-            height: 49,
+            height: 48,
             transform: 'translate(-50%, -50%)',
             zIndex: 5
           }}

@@ -33,7 +33,7 @@ const LoadingOverlay = () => {
       <Box sx={{ position: 'relative', width: 250, height: 250 }}>
         {/* Mandala Rings */}
         <img
-          src="/assets/Mandala-01.png"
+          src="/assets/Mandala -01.png"
           alt="Ring 1"
           style={{
             position: 'absolute',
@@ -45,7 +45,7 @@ const LoadingOverlay = () => {
           }}
         />
         <img
-          src="/assets/Mandala-02.png"
+          src="/assets/Mandala -02.png"
           alt="Ring 2"
           style={{
             position: 'absolute',
@@ -57,7 +57,7 @@ const LoadingOverlay = () => {
           }}
         />
         <img
-          src="/assets/Mandala-03.png"
+          src="/assets/Mandala -03.png"
           alt="Ring 3"
           style={{
             position: 'absolute',
@@ -69,7 +69,7 @@ const LoadingOverlay = () => {
           }}
         />
         <img
-          src="/assets/Mandala-04.png"
+          src="/assets/Mandala -04.png"
           alt="Ring 4"
           style={{
             position: 'absolute',

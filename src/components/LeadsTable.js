@@ -170,15 +170,8 @@ const LeadsTable = () => {
 
   return (
    <>
-    {loading && <LoadingOverlay />}
-    {/* rest of your LeadsTable JSX below */}
-    <Box sx={{ p: 2 }}>
-      <Typography variant="h6">Leads</Typography>
-      {/* ... */}
-    </Box>
-  </>
-);
     <ThemeProvider theme={theme}>
+    {loading && <LoadingOverlay />}
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />

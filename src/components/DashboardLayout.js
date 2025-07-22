@@ -36,7 +36,7 @@ function DashboardLayout({ children }) {
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
-    { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: '/calendar' },
+    { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
     
   ];
 

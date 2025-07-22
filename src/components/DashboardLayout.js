@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
-  Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle
+  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle, 
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -29,7 +29,7 @@ function DashboardLayout({ children }) {
   const toggleDrawer = () => setOpen(prev => !prev);
 
   const menuItems = [
-    { label: 'Leads', icon: <Dashboard />, route: '/view-leads', access: 'Lead' },
+    { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },

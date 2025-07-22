@@ -9,7 +9,6 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
 
-
 const CalendarView = () => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
@@ -48,7 +47,7 @@ const CalendarView = () => {
           `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getLeads&owner=${encodeURIComponent(user.username)}`
         );
         const data = await response.json();
-        setUserLeads(data);
+        setUserLeads(data.map(lead => lead['Company'] || lead['First Name']));
       } catch (error) {
         console.error('Error fetching leads:', error);
       }
@@ -70,9 +69,28 @@ const CalendarView = () => {
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = () => {
-    console.log('Submitting meeting:', formData);
-    setOpenDialog(false);
+  const handleSubmit = async () => {
+    const payload = {
+      leadType: formData.leadType,
+      leadName: formData.leadType === 'Existing' ? formData.selectedLead : formData.newLeadName,
+      meetingDate: formData.meetingDate,
+      meetingTime: formData.meetingTime,
+      purpose: formData.purpose,
+      leadOwner: user.username
+    };
+
+    try {
+      await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
+        method: "POST",
+        body: JSON.stringify(payload),
+        headers: {
+          "Content-Type": "application/json"
+        }
+      });
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Error submitting meeting:', error);
+    }
   };
 
   if (loading) return (<LoadingOverlay />);

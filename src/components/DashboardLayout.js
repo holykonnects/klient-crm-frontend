@@ -6,7 +6,7 @@ import {
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
-  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, AddCircle, 
+  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, AddCircle, 
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -34,8 +34,8 @@ function DashboardLayout({ children }) {
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
-    { label: 'Tenders', icon: <AssignmentTurnedIn />, route: '/tender', access: 'Tender' },
-    { label: 'Add Tender', icon: <AddCircle />, route: '/manage-tender', access: 'Manage Tender' }
+    { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
+    { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' }
   ];
 
   return (

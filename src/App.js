@@ -12,6 +12,7 @@ import TenderTable from './components/TenderTable';           // ✅ NEW
 import ManageTender from './components/ManageTender';         // ✅ NEW
 import ProtectedPage from './components/ProtectedPage';       // ✅ Correct wrapper
 import { AuthProvider, useAuth } from './components/AuthContext';
+import CalendarView from './components/CalendarView';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -25,6 +26,7 @@ const AppRoutes = () => {
         <Route path="view-deals" element={<DealsTable />} />
         <Route path="view-orders" element={<OrdersTable />} />
         <Route path="add-lead" element={<LeadForm />} />
+        <Route path="/calendar" element={<CalendarView />} />
 
         {/* ✅ NEW Tender routes with access control */}
         <Route

@@ -8,6 +8,7 @@ import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import './CalendarStyles.css'; // Custom styles for FullCalendar
+import logo from '../assets/kk-logo.png'; // Adjust path as needed
 
 const CalendarView = () => {
   const { user } = useAuth();
@@ -59,9 +60,12 @@ const CalendarView = () => {
   return (
     <Box sx={{ padding: 3, fontFamily: 'Montserrat, sans-serif' }}>
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>
-          Calendar Schedule
-        </Typography>
+        <Box display="flex" alignItems="center">
+          <img src={logo} alt="Klient Konnect Logo" style={{ height: 40, marginRight: 12 }} />
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>
+            Calendar Schedule
+          </Typography>
+        </Box>
         <Button variant="contained" sx={{ fontFamily: 'Montserrat', backgroundColor: '#2f80ed' }} onClick={() => setOpenDialog(true)}>
           + Create Meeting
         </Button>

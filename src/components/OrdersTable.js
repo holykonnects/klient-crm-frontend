@@ -8,7 +8,7 @@ import {
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
-import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed. {loading && <LoadingOverlay />}
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
 const theme = createTheme({
   typography: {

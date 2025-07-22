@@ -13,6 +13,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import HistoryIcon from '@mui/icons-material/History';
+import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed 
 
 const theme = createTheme({
   typography: {
@@ -170,10 +171,9 @@ function DealsTable() {
     setLogsOpen(true);
   };
 
-  if (loading) return <Typography>Loading deals...</Typography>;
-
   return (
     <ThemeProvider theme={theme}>
+    {loading && <LoadingOverlay />}
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />

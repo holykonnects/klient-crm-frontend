@@ -52,8 +52,8 @@ const CalendarView = () => {
         );
         const data = await response.json();
         const formattedLeads = data.map(lead => ({
-          label: `${lead['Company'] || ''} - ${lead['First Name'] || ''} - ${lead['Last Name'] || ''} - ${lead['Mobile Number'] || ''}`.trim(),
-          value: lead['Company'] || lead['First Name'] || 'Unknown'
+          label: lead,   // Already in format: Company | FirstName LastName | Mobile
+          value: lead    // You can adjust if needed for backend submission
         }));
         setUserLeads(formattedLeads);
       } catch (error) {

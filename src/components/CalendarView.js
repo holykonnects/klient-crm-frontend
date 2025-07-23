@@ -48,10 +48,12 @@ const CalendarView = () => {
     const fetchLeads = async () => {
       try {
         const response = await fetch(
-          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getLeads&owner=${encodeURIComponent(user.username)}`
+          `https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec?action=read&type=lead`
         );
         const data = await response.json();
-        setUserLeads(data.map(lead => lead['Company'] || lead['First Name']));
+        const filtered = data.filter(entry => entry['Lead Owner'] === user.username);
+        const leadNames = filtered.map(lead => lead['Company'] || lead['First Name'] || 'Unnamed Lead');
+        setUserLeads(leadNames);
       } catch (error) {
         console.error('Error fetching leads:', error);
       }

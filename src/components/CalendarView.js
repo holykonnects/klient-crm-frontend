@@ -48,12 +48,14 @@ const CalendarView = () => {
     const fetchLeads = async () => {
       try {
         const response = await fetch(
-          `https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec?action=read&type=lead`
+          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getLeads&owner=${encodeURIComponent(user.username)}`
         );
         const data = await response.json();
-        const filtered = data.filter(entry => entry['Lead Owner'] === user.username);
-        const leadNames = filtered.map(lead => lead['Company'] || lead['First Name'] || 'Unnamed Lead');
-        setUserLeads(leadNames);
+        const formattedLeads = data.map(lead => ({
+          label: `${lead['Company'] || ''} - ${lead['First Name'] || ''} - ${lead['Last Name'] || ''} - ${lead['Mobile Number'] || ''}`.trim(),
+          value: lead['Company'] || lead['First Name'] || 'Unknown'
+        }));
+        setUserLeads(formattedLeads);
       } catch (error) {
         console.error('Error fetching leads:', error);
       }
@@ -195,7 +197,7 @@ const CalendarView = () => {
                   <InputLabel>Select Lead</InputLabel>
                   <Select name="selectedLead" value={formData.selectedLead} onChange={handleInputChange}>
                     {userLeads.map((lead, index) => (
-                      <MenuItem key={index} value={lead}>{lead}</MenuItem>
+                      <MenuItem key={index} value={lead.value}>{lead.label}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -239,3 +241,4 @@ const CalendarView = () => {
 };
 
 export default CalendarView;
+

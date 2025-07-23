@@ -1,3 +1,4 @@
+// Updated CalendarView.js with Lead/Deal/Account logic and full calendar view
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -18,15 +19,16 @@ const CalendarView = () => {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [entryType, setEntryType] = useState('');
   const [formData, setFormData] = useState({
     leadType: '',
-    selectedLead: '',
+    selectedEntry: '',
     newLeadName: '',
     meetingDate: '',
     meetingTime: '',
     purpose: ''
   });
-  const [userLeads, setUserLeads] = useState([]);
+  const [entries, setEntries] = useState([]);
 
   useEffect(() => {
     if (!user || !user.username) return;
@@ -45,25 +47,28 @@ const CalendarView = () => {
       }
     };
 
-    const fetchLeads = async () => {
+    fetchEvents();
+  }, [user]);
+
+  useEffect(() => {
+    if (!entryType) return;
+    const action = entryType === 'Lead' ? 'getLeads' : entryType === 'Deal' ? 'getDeals' : 'getAccounts';
+
+    const fetchEntries = async () => {
       try {
         const response = await fetch(
-          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getLeads&owner=${encodeURIComponent(user.username)}`
+          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(user.username)}`
         );
         const data = await response.json();
-        const formattedLeads = data.map(lead => ({
-          label: lead,   // Already in format: Company | FirstName LastName | Mobile
-          value: lead    // You can adjust if needed for backend submission
-        }));
-        setUserLeads(formattedLeads);
+        const formatted = [...new Set(data.entries)].map(e => ({ label: e, value: e }));
+        setEntries(formatted);
       } catch (error) {
-        console.error('Error fetching leads:', error);
+        console.error('Error fetching entries:', error);
       }
     };
 
-    fetchEvents();
-    fetchLeads();
-  }, [user]);
+    fetchEntries();
+  }, [entryType]);
 
   const handleDateSelect = (arg) => {
     const date = arg.startStr.split('T')[0];
@@ -78,7 +83,7 @@ const CalendarView = () => {
   };
 
   const handleSubmit = () => {
-    if (formData.leadType === 'New') {
+    if (entryType === 'Lead' && formData.leadType === 'New') {
       setShowConfirmModal(true);
     } else {
       sendMeetingData();
@@ -87,8 +92,11 @@ const CalendarView = () => {
 
   const sendMeetingData = async () => {
     const payload = {
+      entryType,
       leadType: formData.leadType,
-      leadName: formData.leadType === 'Existing' ? formData.selectedLead : formData.newLeadName,
+      entryValue: entryType === 'Lead'
+        ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
+        : formData.selectedEntry,
       meetingDate: formData.meetingDate,
       meetingTime: formData.meetingTime,
       purpose: formData.purpose,
@@ -99,12 +107,12 @@ const CalendarView = () => {
       await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
         method: "POST",
         body: JSON.stringify(payload),
-        headers: {
-          "Content-Type": "application/json"
-        }
+        headers: { "Content-Type": "application/json" }
       });
       setOpenDialog(false);
       setShowConfirmModal(false);
+      setFormData({ leadType: '', selectedEntry: '', newLeadName: '', meetingDate: '', meetingTime: '', purpose: '' });
+      setEntryType('');
     } catch (error) {
       console.error('Error submitting meeting:', error);
     }
@@ -131,50 +139,19 @@ const CalendarView = () => {
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
           initialView="timeGridWeek"
           selectable={true}
-          selectMirror={true}
           select={handleDateSelect}
           allDaySlot={false}
           height="auto"
-          headerToolbar={{
-            start: 'prev,next today',
-            center: 'title',
-            end: 'timeGridDay,timeGridWeek,dayGridMonth'
-          }}
-          dayCellClassNames={(arg) => {
-            const classes = ['montserrat-day-cell'];
-            if (arg.date.toDateString() === new Date().toDateString()) {
-              classes.push('today-highlight');
-            }
-            return classes;
-          }}
+          headerToolbar={{ start: 'prev,next today', center: 'title', end: 'timeGridDay,timeGridWeek,dayGridMonth' }}
+          dayCellClassNames={(arg) => ["montserrat-day-cell", arg.date.toDateString() === new Date().toDateString() ? "today-highlight" : ""]}
           events={events}
           eventContent={(eventInfo) => (
             <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
-              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>
-                {eventInfo.event.title}
-              </Typography>
-              <Typography sx={{ fontSize: '0.75rem', color: '#666' }}>
-                {eventInfo.event.extendedProps.purpose}
-              </Typography>
-              <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>
-                by {eventInfo.event.extendedProps.owner}
-              </Typography>
+              <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{eventInfo.event.title}</Typography>
+              <Typography sx={{ fontSize: '0.75rem', color: '#666' }}>{eventInfo.event.extendedProps.purpose}</Typography>
+              <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>by {eventInfo.event.extendedProps.owner}</Typography>
             </Box>
           )}
-          eventClick={(info) => {
-            alert(`Meeting with ${info.event.extendedProps.client}\nPurpose: ${info.event.extendedProps.purpose}`);
-          }}
-          eventDidMount={(info) => {
-            info.el.style.border = '1px solid #2f80ed';
-            info.el.style.borderRadius = '6px';
-            info.el.style.cursor = 'pointer';
-            info.el.addEventListener('mouseenter', () => {
-              info.el.style.backgroundColor = '#f0f4ff';
-            });
-            info.el.addEventListener('mouseleave', () => {
-              info.el.style.backgroundColor = '';
-            });
-          }}
         />
       </Box>
 
@@ -184,30 +161,46 @@ const CalendarView = () => {
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel>Lead Type</InputLabel>
-                <Select name="leadType" value={formData.leadType} onChange={handleInputChange}>
-                  <MenuItem value="Existing">Existing Lead</MenuItem>
-                  <MenuItem value="New">New Lead</MenuItem>
+                <InputLabel>Entry Type</InputLabel>
+                <Select value={entryType} onChange={(e) => { setEntryType(e.target.value); setFormData(prev => ({ ...prev, leadType: '', selectedEntry: '', newLeadName: '' })); }}>
+                  <MenuItem value="Lead">Lead</MenuItem>
+                  <MenuItem value="Deal">Deal</MenuItem>
+                  <MenuItem value="Account">Account</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
-            {formData.leadType === 'Existing' && (
+
+            {entryType === 'Lead' && (
               <Grid item xs={12}>
                 <FormControl fullWidth>
-                  <InputLabel>Select Lead</InputLabel>
-                  <Select name="selectedLead" value={formData.selectedLead} onChange={handleInputChange}>
-                    {userLeads.map((lead, index) => (
-                      <MenuItem key={index} value={lead.value}>{lead.label}</MenuItem>
+                  <InputLabel>Lead Type</InputLabel>
+                  <Select name="leadType" value={formData.leadType} onChange={handleInputChange}>
+                    <MenuItem value="Existing">Existing Lead</MenuItem>
+                    <MenuItem value="New">New Lead</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            )}
+
+            {(entryType === 'Deal' || entryType === 'Account' || (entryType === 'Lead' && formData.leadType === 'Existing')) && (
+              <Grid item xs={12}>
+                <FormControl fullWidth>
+                  <InputLabel>Select {entryType}</InputLabel>
+                  <Select name="selectedEntry" value={formData.selectedEntry} onChange={handleInputChange}>
+                    {entries.map((entry, i) => (
+                      <MenuItem key={i} value={entry.value}>{entry.label}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
             )}
-            {formData.leadType === 'New' && (
+
+            {entryType === 'Lead' && formData.leadType === 'New' && (
               <Grid item xs={12}>
                 <TextField label="New Lead Name" name="newLeadName" fullWidth value={formData.newLeadName} onChange={handleInputChange} />
               </Grid>
             )}
+
             <Grid item xs={6}>
               <TextField label="Date" name="meetingDate" type="date" fullWidth InputLabelProps={{ shrink: true }} value={formData.meetingDate} onChange={handleInputChange} />
             </Grid>
@@ -241,4 +234,3 @@ const CalendarView = () => {
 };
 
 export default CalendarView;
-

@@ -1,4 +1,4 @@
-// Updated CalendarView.js with Lead/Deal/Account logic and full calendar view
+// Updated CalendarView.js with correct field alignment for response sheet
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -6,7 +6,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent,
-  TextField, Grid, MenuItem, Select, InputLabel, FormControl, DialogActions
+  TextField, Grid, MenuItem, Select, InputLabel, FormControl, DialogActions, Link
 } from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
@@ -19,6 +19,7 @@ const CalendarView = () => {
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [prefillUrl, setPrefillUrl] = useState('');
   const [entryType, setEntryType] = useState('');
   const [formData, setFormData] = useState({
     leadType: '',
@@ -26,12 +27,14 @@ const CalendarView = () => {
     newLeadName: '',
     meetingDate: '',
     meetingTime: '',
-    purpose: ''
+    purpose: '',
+    entryValue: '',
+    leadOwner: ''
   });
   const [entries, setEntries] = useState([]);
 
   useEffect(() => {
-    if (!user || !user.username) return;
+    if (!user?.username) return;
 
     const fetchEvents = async () => {
       try {
@@ -73,7 +76,7 @@ const CalendarView = () => {
   const handleDateSelect = (arg) => {
     const date = arg.startStr.split('T')[0];
     const time = arg.startStr.split('T')[1]?.slice(0, 5) || '10:00';
-    setFormData(prev => ({ ...prev, meetingDate: date, meetingTime: time }));
+    setFormData(prev => ({ ...prev, meetingDate: date, meetingTime: time, leadOwner: user.username }));
     setOpenDialog(true);
   };
 
@@ -91,12 +94,14 @@ const CalendarView = () => {
   };
 
   const sendMeetingData = async () => {
+    const entryValue = entryType === 'Lead'
+      ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
+      : formData.selectedEntry;
+
     const payload = {
       entryType,
       leadType: formData.leadType,
-      entryValue: entryType === 'Lead'
-        ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
-        : formData.selectedEntry,
+      entryValue,
       meetingDate: formData.meetingDate,
       meetingTime: formData.meetingTime,
       purpose: formData.purpose,
@@ -104,15 +109,21 @@ const CalendarView = () => {
     };
 
     try {
-      await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
+      const res = await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
         method: "POST",
         body: JSON.stringify(payload),
         headers: { "Content-Type": "application/json" }
       });
+      const result = await res.json();
+
       setOpenDialog(false);
       setShowConfirmModal(false);
-      setFormData({ leadType: '', selectedEntry: '', newLeadName: '', meetingDate: '', meetingTime: '', purpose: '' });
+      setFormData({ leadType: '', selectedEntry: '', newLeadName: '', meetingDate: '', meetingTime: '', purpose: '', entryValue: '', leadOwner: '' });
       setEntryType('');
+
+      if (result?.prefillUrl) {
+        setPrefillUrl(result.prefillUrl);
+      }
     } catch (error) {
       console.error('Error submitting meeting:', error);
     }

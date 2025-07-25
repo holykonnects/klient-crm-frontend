@@ -89,9 +89,10 @@ const CalendarView = () => {
   };
 
   const sendMeetingData = async () => {
-  const entryValue = entryType === 'Lead'
-    ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
-    : formData.selectedEntry;
+  const entryValue =
+    entryType === 'Lead'
+      ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
+      : formData.selectedEntry;
 
   const payload = {
     entryType,
@@ -104,33 +105,23 @@ const CalendarView = () => {
   };
 
   try {
-    const res = await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
-      method: "POST",
-      body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-      throw new Error(`HTTP error! Status: ${res.status}`);
-    }
-
-    const result = await res.json();
-
-    if (result.success) {
-      alert("✅ Meeting submitted successfully!");
-
-      // If it's a new lead and prefill link exists, open it
-      if (formData.leadType === 'New' && result.prefillUrl) {
-        window.open(result.prefillUrl, '_blank');
+    const res = await fetch(
+      "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
+      {
+        method: "POST",
+        body: JSON.stringify(payload)
       }
-    } else {
-      alert("⚠️ Submission failed. " + (result.message || "Please try again."));
+    );
+
+    const text = await res.text();
+    console.log("✅ Raw response from server:", text);
+
+    // Optional logic to detect a prefill link in plain text response
+    if (formData.leadType === 'New' && text.includes('http')) {
+      window.open(text.trim(), '_blank');
     }
 
-  } catch (error) {
-    console.error('❌ Error submitting meeting:', error);
-    alert("❌ Submission failed. Please check console or try again.");
-  } finally {
-    // Always reset form regardless of outcome
+    // Reset form and close modal
     setOpenDialog(false);
     setFormData({
       leadType: '',
@@ -143,9 +134,11 @@ const CalendarView = () => {
       leadOwner: ''
     });
     setEntryType('');
+  } catch (error) {
+    console.error("❌ Error submitting meeting:", error);
+    alert("Submission failed. Please check the console and try again.");
   }
 };
-
 
 
   if (loading) return (<LoadingOverlay />);

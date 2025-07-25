@@ -104,7 +104,7 @@ const CalendarView = () => {
   };
 
   try {
-    const res = await fetch("https://script.googleusercontent.com/a/macros/klientkonnect.com/echo?user_content_key=AehSKLiaKZZeM1PltVFRasvmCDwmnClED3uNcX-HKfTec-R28_8KDcOCn4Qog1hFpr_tWMExJGE6BNZ10vMjyFR8rK28GTj3X2FTYX5YqkppPG2C36CAFrGEBuIm-foEJ0kNVnE1W4DO5gtryUkfQgktwElkUt0IQbReO78iCFfTSa9zMz37Zu6EUz63NZMxqaLQLKpC7fq3_1CGuspmb56Q6HQwNG_ZBqhcWVKTmTzM7inapaHvFuyUY2yflsyUcFCZWQ7MqhsR9VVddFG1LU8cstT8eDlNCvZ08zopiz-U5YPMrmPHVrgpK65T4c6HkQ&lib=MnUBEOKXLPwOLpYj08WwyQ7d01reMPwU_", {
+    const res = await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"

@@ -1,4 +1,4 @@
-// Updated CalendarView.js with correct field alignment for response sheet
+// Updated CalendarView.js with clean flow for new lead and post-submission prompt
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -18,7 +18,6 @@ const CalendarView = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
-  const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [prefillUrl, setPrefillUrl] = useState('');
   const [entryType, setEntryType] = useState('');
   const [formData, setFormData] = useState({
@@ -86,11 +85,7 @@ const CalendarView = () => {
   };
 
   const handleSubmit = () => {
-    if (entryType === 'Lead' && formData.leadType === 'New') {
-      setShowConfirmModal(true);
-    } else {
-      sendMeetingData();
-    }
+    sendMeetingData();
   };
 
   const sendMeetingData = async () => {
@@ -105,25 +100,24 @@ const CalendarView = () => {
       meetingDate: formData.meetingDate,
       meetingTime: formData.meetingTime,
       purpose: formData.purpose,
-      leadOwner: user.username
+      leadOwner: formData.leadOwner
     };
 
     try {
       const res = await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
         method: "POST",
         mode: 'cors',
-        body: JSON.stringify(payload),
-        headers: { "Content-Type": "application/json" }
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
       });
       const result = await res.json();
 
       setOpenDialog(false);
-      setShowConfirmModal(false);
       setFormData({ leadType: '', selectedEntry: '', newLeadName: '', meetingDate: '', meetingTime: '', purpose: '', entryValue: '', leadOwner: '' });
       setEntryType('');
 
-      if (result?.prefillUrl) {
-        setPrefillUrl(result.prefillUrl);
+      if (formData.leadType === 'New' && result?.prefillUrl) {
+        window.open(result.prefillUrl, '_blank');
       }
     } catch (error) {
       console.error('Error submitting meeting:', error);

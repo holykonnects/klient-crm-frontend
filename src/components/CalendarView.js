@@ -114,12 +114,9 @@ const CalendarView = () => {
     );
 
     const text = await res.text();
-    console.log("✅ Raw response from server:", text);
+    console.log("✅ Raw response from server:", text.trim());
 
-    // Optional logic to detect a prefill link in plain text response
-    if (formData.leadType === 'New' && text.includes('http')) {
-      window.open(text.trim(), '_blank');
-    }
+    alert("Meeting successfully scheduled.");
 
     // Reset form and close modal
     setOpenDialog(false);
@@ -139,6 +136,7 @@ const CalendarView = () => {
     alert("Submission failed. Please check the console and try again.");
   }
 };
+
 
 
   if (loading) return (<LoadingOverlay />);

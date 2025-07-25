@@ -106,11 +106,34 @@ const CalendarView = () => {
   try {
     const res = await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
       method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
       body: JSON.stringify(payload)
     });
 
+    if (!res.ok) {
+      throw new Error(`HTTP error! Status: ${res.status}`);
+    }
+
     const result = await res.json();
 
+    if (result.success) {
+      alert("✅ Meeting submitted successfully!");
+
+      // If it's a new lead and prefill link exists, open it
+      if (formData.leadType === 'New' && result.prefillUrl) {
+        window.open(result.prefillUrl, '_blank');
+      }
+    } else {
+      alert("⚠️ Submission failed. " + (result.message || "Please try again."));
+    }
+
+  } catch (error) {
+    console.error('❌ Error submitting meeting:', error);
+    alert("❌ Submission failed. Please check console or try again.");
+  } finally {
+    // Always reset form regardless of outcome
     setOpenDialog(false);
     setFormData({
       leadType: '',
@@ -123,14 +146,9 @@ const CalendarView = () => {
       leadOwner: ''
     });
     setEntryType('');
-
-    if (formData.leadType === 'New' && result?.prefillUrl) {
-      window.open(result.prefillUrl, '_blank');
-    }
-  } catch (error) {
-    console.error('Error submitting meeting:', error);
   }
 };
+
 
 
   if (loading) return (<LoadingOverlay />);

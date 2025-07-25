@@ -223,18 +223,6 @@ const CalendarView = () => {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showConfirmModal} onClose={() => setShowConfirmModal(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Confirm New Lead</DialogTitle>
-        <DialogContent>
-          <Typography sx={{ mb: 2, fontFamily: 'Montserrat' }}>
-            This meeting is associated with a new lead. Do you want to proceed and auto-fill the lead form after submission?
-          </Typography>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setShowConfirmModal(false)} color="secondary" sx={{ fontFamily: 'Montserrat' }}>Cancel</Button>
-          <Button onClick={sendMeetingData} variant="contained" sx={{ backgroundColor: '#2f80ed', fontFamily: 'Montserrat' }}>Yes, Proceed</Button>
-        </DialogActions>
-      </Dialog>
     </Box>
   );
 };

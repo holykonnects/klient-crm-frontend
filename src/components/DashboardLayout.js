@@ -1,23 +1,25 @@
+// DashboardLayout.js
 import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
-  IconButton, Tooltip, Typography, Button
+  IconButton, Tooltip, Typography, Divider
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
-  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, EditCalendar, AddCircle,Logout as LogoutIcon
+  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
+  AssignmentTurnedIn, Assignment, Groups, EditCalendar,
+  AddCircle, Logout as LogoutIcon
 } from '@mui/icons-material';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 const drawerWidth = 240;
 const cornflowerBlue = '#6495ED';
-const sidebarBackground = '#fdfdfd'; // Slight white
+const sidebarBackground = '#fdfdfd';
 
 function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
   const location = useLocation();
-  const navigate = useNavigate();
   const { user, logout } = useAuth();
 
   useEffect(() => {
@@ -25,11 +27,6 @@ function DashboardLayout({ children }) {
   }, [location.pathname]);
 
   const toggleDrawer = () => setOpen(prev => !prev);
-
-  const handleLogout = () => {
-    logout();
-    navigate('/');
-  };
 
   const menuItems = [
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
@@ -57,9 +54,7 @@ function DashboardLayout({ children }) {
             overflowX: 'hidden',
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
-            zIndex: 1200,
-            display: 'flex',
-            flexDirection: 'column'
+            zIndex: 1200
           }
         }}
       >
@@ -71,7 +66,7 @@ function DashboardLayout({ children }) {
         </Box>
 
         {/* Menu Items */}
-        <List sx={{ flexGrow: 1 }}>
+        <List>
           {menuItems.filter(item => user?.pageAccess?.includes(item.access)).map(({ label, icon, route }) => (
             <Tooltip key={label} title={open ? '' : label} placement="right">
               <ListItem button component={Link} to={route}>
@@ -86,23 +81,28 @@ function DashboardLayout({ children }) {
           ))}
         </List>
 
-        {/* Logout Button at Bottom */}
-        <Box sx={{ position: 'absolute', bottom: 0, width: '100%' }}>
-          <List>
-            <Tooltip title="Logout" placement="right">
-              <ListItem button onClick={logout}>
-                <ListItemIcon sx={{ color: 'red' }}>
-                  <LogoutIcon />
-                </ListItemIcon>
-                {open && (
-                  <ListItemText
-                    primary={<Typography sx={{ color: 'red', fontWeight: 600 }}>Logout</Typography>}
-                  />
-                )}
-              </ListItem>
-            </Tooltip>
-          </List>
+        {/* Spacer using Dividers */}
+        <Box>
+          {[...Array(5)].map((_, i) => (
+            <Divider key={`divider-${i}`} sx={{ my: 0.5 }} />
+          ))}
         </Box>
+
+        {/* Logout Button */}
+        <List>
+          <Tooltip title="Logout" placement="right">
+            <ListItem button onClick={logout}>
+              <ListItemIcon sx={{ color: 'red' }}>
+                <LogoutIcon />
+              </ListItemIcon>
+              {open && (
+                <ListItemText
+                  primary={<Typography sx={{ color: 'red', fontWeight: 600 }}>Logout</Typography>}
+                />
+              )}
+            </ListItem>
+          </Tooltip>
+        </List>
       </Drawer>
 
       {/* Main Content */}

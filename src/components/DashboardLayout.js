@@ -5,7 +5,7 @@ import {
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
-  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, EditCalendar, AddCircle,
+  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, EditCalendar, AddCircle,Logout as LogoutIcon
 } from '@mui/icons-material';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -87,16 +87,21 @@ function DashboardLayout({ children }) {
         </List>
 
         {/* Logout Button at Bottom */}
-        <Box p={2} mt="auto">
-          <Button
-            variant="outlined"
-            color="error"
-            fullWidth
-            onClick={handleLogout}
-            sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
-          >
-            Logout
-          </Button>
+        <Box sx={{ position: 'absolute', bottom: 0, width: '100%' }}>
+          <List>
+            <Tooltip title="Logout" placement="right">
+              <ListItem button onClick={logout}>
+                <ListItemIcon sx={{ color: 'red' }}>
+                  <LogoutIcon />
+                </ListItemIcon>
+                {open && (
+                  <ListItemText
+                    primary={<Typography sx={{ color: 'red', fontWeight: 600 }}>Logout</Typography>}
+                  />
+                )}
+              </ListItem>
+            </Tooltip>
+          </List>
         </Box>
       </Drawer>
 

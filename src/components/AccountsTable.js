@@ -14,6 +14,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import UserMenu from './UserMenu'; // Adjust path if needed
 
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',

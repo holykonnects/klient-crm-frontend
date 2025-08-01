@@ -1,14 +1,13 @@
-// DashboardLayout.js
 import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
-  IconButton, Tooltip, Typography
+  IconButton, Tooltip, Typography, Button
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
-  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, EditCalendar, AddCircle, 
+  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn, AssignmentTurnedIn, Assignment, Groups, EditCalendar, AddCircle,
 } from '@mui/icons-material';
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
 const drawerWidth = 240;
@@ -18,15 +17,19 @@ const sidebarBackground = '#fdfdfd'; // Slight white
 function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
   const location = useLocation();
-  const { user } = useAuth();
-  console.log("user.pageAccess", user?.pageAccess);  
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
 
-  // 🔁 Reset drawer to open state on route change
   useEffect(() => {
     setOpen(true);
   }, [location.pathname]);
 
   const toggleDrawer = () => setOpen(prev => !prev);
+
+  const handleLogout = () => {
+    logout();
+    navigate('/');
+  };
 
   const menuItems = [
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
@@ -37,7 +40,6 @@ function DashboardLayout({ children }) {
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
-    
   ];
 
   return (
@@ -55,7 +57,9 @@ function DashboardLayout({ children }) {
             overflowX: 'hidden',
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
-            zIndex: 1200 
+            zIndex: 1200,
+            display: 'flex',
+            flexDirection: 'column'
           }
         }}
       >
@@ -67,7 +71,7 @@ function DashboardLayout({ children }) {
         </Box>
 
         {/* Menu Items */}
-        <List>
+        <List sx={{ flexGrow: 1 }}>
           {menuItems.filter(item => user?.pageAccess?.includes(item.access)).map(({ label, icon, route }) => (
             <Tooltip key={label} title={open ? '' : label} placement="right">
               <ListItem button component={Link} to={route}>
@@ -81,6 +85,19 @@ function DashboardLayout({ children }) {
             </Tooltip>
           ))}
         </List>
+
+        {/* Logout Button at Bottom */}
+        <Box p={2} mt="auto">
+          <Button
+            variant="outlined"
+            color="error"
+            fullWidth
+            onClick={handleLogout}
+            sx={{ fontWeight: 'bold', fontSize: '0.875rem' }}
+          >
+            Logout
+          </Button>
+        </Box>
       </Drawer>
 
       {/* Main Content */}

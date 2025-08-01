@@ -1,4 +1,4 @@
-// Updated CalendarView.js with clean flow for new lead and post-submission prompt
+// CalendarView.js
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -6,7 +6,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import {
   Box, Typography, Button, Dialog, DialogTitle, DialogContent,
-  TextField, Grid, MenuItem, Select, InputLabel, FormControl, DialogActions, Link
+  TextField, Grid, MenuItem, Select, InputLabel, FormControl, DialogActions
 } from '@mui/material';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
@@ -18,7 +18,6 @@ const CalendarView = () => {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
-  const [prefillUrl, setPrefillUrl] = useState('');
   const [entryType, setEntryType] = useState('');
   const [formData, setFormData] = useState({
     leadType: '',
@@ -32,16 +31,35 @@ const CalendarView = () => {
   });
   const [entries, setEntries] = useState([]);
 
+  // Fetch events based on user role
   useEffect(() => {
-    if (!user?.username) return;
+    if (!user?.username || !user?.role) return;
 
     const fetchEvents = async () => {
       try {
+        const queryParam = user.role === 'Admin' ? 'all' : encodeURIComponent(user.username);
+
         const response = await fetch(
-          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getEvents&user=${encodeURIComponent(user.username)}`
+          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getEvents&user=${queryParam}`
         );
-        const data = await response.json();
-        setEvents(data);
+
+        const rawData = await response.json();
+
+        const formatted = rawData.map((e) => ({
+          title: e['Select Client'],
+          start: `${e['Meeting Date']}T${e['Meeting Time']}`,
+          extendedProps: {
+            purpose: e['Purpose & Remarks'],
+            owner: e['Lead Owner'],
+            entryType: e['Entry Type']
+          },
+          backgroundColor:
+            e['Entry Type'] === 'Lead' ? '#2f80ed' :
+            e['Entry Type'] === 'Deal' ? '#27ae60' :
+            '#f39c12'
+        }));
+
+        setEvents(formatted);
       } catch (error) {
         console.error('Error fetching calendar events:', error);
       } finally {
@@ -52,6 +70,7 @@ const CalendarView = () => {
     fetchEvents();
   }, [user]);
 
+  // Fetch dropdown entries for Lead/Deal/Account
   useEffect(() => {
     if (!entryType) return;
     const action = entryType === 'Lead' ? 'getLeads' : entryType === 'Deal' ? 'getDeals' : 'getAccounts';
@@ -89,69 +108,62 @@ const CalendarView = () => {
   };
 
   const sendMeetingData = async () => {
-  const now = new Date();
-  const timestamp = now.toLocaleString('en-GB', {
-    day: '2-digit',
-    month: '2-digit',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false
-  });
-
-  const entryValue =
-    entryType === 'Lead'
-      ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
-      : formData.selectedEntry;
-
-  const payload = {
-    "Timestamp": timestamp,
-    "Meeting Date": formData.meetingDate,
-    "Meeting Time": formData.meetingTime,
-    "Select Client": entryValue,
-    "Purpose & Remarks": formData.purpose,
-    "Lead Type": formData.leadType,
-    "Lead Owner": user?.username || 'Unknown',
-    "Entry Type": entryType,
-    "Entry Value": entryValue
-  };
-
-  try {
-    await fetch(
-      "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
-      {
-        method: "POST",
-        mode: "no-cors",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      }
-    );
-
-    alert("✅ Meeting successfully scheduled.");
-    console.log("📦 Submitted payload:", payload);
-
-    // Reset form and close modal
-    setOpenDialog(false);
-    setFormData({
-      leadType: '',
-      selectedEntry: '',
-      newLeadName: '',
-      meetingDate: '',
-      meetingTime: '',
-      purpose: '',
-      entryValue: '',
-      leadOwner: ''
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit',
+      hour12: false
     });
-    setEntryType('');
-  } catch (error) {
-    console.error("❌ Error submitting meeting:", error);
-    alert("❌ Submission failed. Please try again.");
-  }
-};
 
+    const entryValue =
+      entryType === 'Lead'
+        ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
+        : formData.selectedEntry;
+
+    const payload = {
+      "Timestamp": timestamp,
+      "Meeting Date": formData.meetingDate,
+      "Meeting Time": formData.meetingTime,
+      "Select Client": entryValue,
+      "Purpose & Remarks": formData.purpose,
+      "Lead Type": formData.leadType,
+      "Lead Owner": user?.username || 'Unknown',
+      "Entry Type": entryType,
+      "Entry Value": entryValue
+    };
+
+    try {
+      await fetch(
+        "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
+        {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      alert("✅ Meeting successfully scheduled.");
+      console.log("📦 Submitted payload:", payload);
+
+      // Reset form
+      setOpenDialog(false);
+      setFormData({
+        leadType: '',
+        selectedEntry: '',
+        newLeadName: '',
+        meetingDate: '',
+        meetingTime: '',
+        purpose: '',
+        entryValue: '',
+        leadOwner: ''
+      });
+      setEntryType('');
+    } catch (error) {
+      console.error("❌ Error submitting meeting:", error);
+      alert("❌ Submission failed. Please try again.");
+    }
+  };
 
   if (loading) return (<LoadingOverlay />);
 
@@ -251,7 +263,6 @@ const CalendarView = () => {
           </Grid>
         </DialogContent>
       </Dialog>
-
     </Box>
   );
 };

@@ -12,7 +12,6 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
-import UserMenu from './UserMenu'; // Adjust path if needed
 
 
 const theme = createTheme({
@@ -176,8 +175,7 @@ function AccountsTable() {
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
-        <UserMenu />
-      
+              
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"

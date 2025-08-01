@@ -5,6 +5,7 @@ import LogoutIcon from '@mui/icons-material/Logout';
 import LoginIcon from '@mui/icons-material/Login';
 import { IconButton, Tooltip } from '@mui/material';
 
+
 export default function UserMenu() {
   const { user, logout } = useAuth();
 
@@ -24,3 +25,4 @@ export default function UserMenu() {
     </Tooltip>
   );
 }
+

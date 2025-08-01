@@ -106,14 +106,15 @@ const CalendarView = () => {
       : formData.selectedEntry;
 
   const payload = {
-    entryType,
-    leadType: formData.leadType,
-    entryValue,
-    meetingDate: formData.meetingDate,
-    meetingTime: formData.meetingTime,
-    purpose: formData.purpose,
-    "Lead Owner": user?.username || 'Unknown',   // ✅ Always included
-    Timestamp: timestamp                          // ✅ Added timestamp
+    "Timestamp": timestamp,
+    "Meeting Date": formData.meetingDate,
+    "Meeting Time": formData.meetingTime,
+    "Select Client": entryValue,
+    "Purpose & Remarks": formData.purpose,
+    "Lead Type": formData.leadType,
+    "Lead Owner": user?.username || 'Unknown',
+    "Entry Type": entryType,
+    "Entry Value": entryValue
   };
 
   try {
@@ -121,7 +122,7 @@ const CalendarView = () => {
       "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
       {
         method: "POST",
-        mode: "no-cors", // ✅ Silences CORS error
+        mode: "no-cors",
         headers: {
           "Content-Type": "application/json"
         },
@@ -150,6 +151,7 @@ const CalendarView = () => {
     alert("❌ Submission failed. Please try again.");
   }
 };
+
 
   if (loading) return (<LoadingOverlay />);
 

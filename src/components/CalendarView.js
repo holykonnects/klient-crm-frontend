@@ -88,7 +88,69 @@ const CalendarView = () => {
     sendMeetingData();
   };
 
-  v
+  const sendMeetingData = async () => {
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-GB', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  });
+
+  const entryValue =
+    entryType === 'Lead'
+      ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
+      : formData.selectedEntry;
+
+  const payload = {
+    entryType,
+    leadType: formData.leadType,
+    entryValue,
+    meetingDate: formData.meetingDate,
+    meetingTime: formData.meetingTime,
+    purpose: formData.purpose,
+    "Lead Owner": user?.username || 'Unknown',   // ✅ Always included
+    Timestamp: timestamp                          // ✅ Added timestamp
+  };
+
+  try {
+    await fetch(
+      "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
+      {
+        method: "POST",
+        mode: "no-cors", // ✅ Silences CORS error
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      }
+    );
+
+    alert("✅ Meeting successfully scheduled.");
+    console.log("📦 Submitted payload:", payload);
+
+    // Reset form and close modal
+    setOpenDialog(false);
+    setFormData({
+      leadType: '',
+      selectedEntry: '',
+      newLeadName: '',
+      meetingDate: '',
+      meetingTime: '',
+      purpose: '',
+      entryValue: '',
+      leadOwner: ''
+    });
+    setEntryType('');
+  } catch (error) {
+    console.error("❌ Error submitting meeting:", error);
+    alert("❌ Submission failed. Please try again.");
+  }
+};
+
   if (loading) return (<LoadingOverlay />);
 
   return (

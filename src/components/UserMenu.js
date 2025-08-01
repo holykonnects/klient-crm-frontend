@@ -1,6 +1,6 @@
 // components/UserMenu.js
 import React from 'react';
-import { useAuth } from '../AuthContext';
+import { useAuth } from './AuthContext';
 import LogoutIcon from '@mui/icons-material/Logout';
 import LoginIcon from '@mui/icons-material/Login';
 import { IconButton, Tooltip } from '@mui/material';

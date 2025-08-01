@@ -88,57 +88,7 @@ const CalendarView = () => {
     sendMeetingData();
   };
 
-  const sendMeetingData = async () => {
-  const entryValue =
-    entryType === 'Lead'
-      ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
-      : formData.selectedEntry;
-
-  const payload = {
-    entryType,
-    leadType: formData.leadType,
-    entryValue,
-    meetingDate: formData.meetingDate,
-    meetingTime: formData.meetingTime,
-    purpose: formData.purpose,
-    leadOwner: formData.leadOwner
-  };
-
-  try {
-    const res = await fetch(
-      "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
-      {
-        method: "POST",
-        body: JSON.stringify(payload)
-      }
-    );
-
-    const text = await res.text();
-    console.log("✅ Raw response from server:", text.trim());
-
-    alert("Meeting successfully scheduled.");
-
-    // Reset form and close modal
-    setOpenDialog(false);
-    setFormData({
-      leadType: '',
-      selectedEntry: '',
-      newLeadName: '',
-      meetingDate: '',
-      meetingTime: '',
-      purpose: '',
-      entryValue: '',
-      leadOwner: ''
-    });
-    setEntryType('');
-  } catch (error) {
-    console.error("❌ Error submitting meeting:", error);
-    alert("Submission failed. Please check the console and try again.");
-  }
-};
-
-
-
+  v
   if (loading) return (<LoadingOverlay />);
 
   return (

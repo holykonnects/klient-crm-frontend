@@ -84,7 +84,7 @@ function DashboardLayout({ children }) {
         {/* Spacer using Dividers */}
         <Box>
           {[...Array(1)].map((_, i) => (
-            <Divider key={`divider-${i}`} sx={{ my: 1 , bordercolor: '#6495ED', borderBottomWidth: 3 }} />
+            <Divider key={`divider-${i}`} sx={{ my: 1 , borderColor: '#6495ED', borderBottomWidth: 3 }} />
           ))}
         </Box>
 

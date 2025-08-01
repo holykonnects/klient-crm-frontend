@@ -177,8 +177,7 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
         </Box>
         <UserMenu />
-      </Box>
-
+      
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"

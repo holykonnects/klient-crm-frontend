@@ -95,7 +95,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
     ]
   };
 
-  if (loading) return <LoadingOverlay />;
+  //if (loading) return <LoadingOverlay />;
 
   return (
     <ThemeProvider theme={theme}>

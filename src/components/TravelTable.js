@@ -1,3 +1,4 @@
+// TravelTable.js with dynamic columns and modal trigger
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
@@ -122,7 +123,7 @@ const TravelTable = () => {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
-          {['Travel Status', 'Approval Status', 'Department', 'Travel Type'].map((filterKey) => (
+          {["Travel Status", "Approval Status", "Department", "Travel Type"].map((filterKey) => (
             <FormControl key={filterKey} size="small">
               <InputLabel>{filterKey}</InputLabel>
               <Select

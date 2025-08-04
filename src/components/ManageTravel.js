@@ -21,7 +21,7 @@ const sectionStyle = {
   fontWeight: 600
 };
 
-const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
+const ManageTravel = ({ onClose, onSuccess }) => {
   const [fields, setFields] = useState([]);
   const [formValues, setFormValues] = useState({});
   const [requiredFields, setRequiredFields] = useState([]);
@@ -32,18 +32,36 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
 
   useEffect(() => {
-    fetch(`${dataUrl}?action=getTravelFields`)
-      .then(res => res.json())
-      .then((data) => {
-        setFields(data.headers);
-        setRequiredFields(data.required || []);
-        setReadOnlyFields(data.readOnly || []);
+    const fetchFieldsAndValidation = async () => {
+      try {
+        const fieldRes = await fetch(`${dataUrl}?action=getTravelFields`);
+        const fieldData = await fieldRes.json();
+
+        if (!fieldData.headers || !Array.isArray(fieldData.headers)) {
+          throw new Error('Invalid headers format');
+        }
+
+        setFields(fieldData.headers);
+        setRequiredFields(fieldData.required || []);
+        setReadOnlyFields(fieldData.readOnly || []);
 
         const initial = {};
-        data.headers.forEach(field => (initial[field] = ''));
+        fieldData.headers.forEach(field => (initial[field] = ''));
         setFormValues(initial);
+
+        const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
+        const valData = await valRes.json();
+        setValidationOptions(valData);
+      } catch (err) {
+        console.error('❌ Error loading travel form config:', err);
+        alert('Failed to load travel form data.');
+      } finally {
         setLoading(false);
-      });
+      }
+    };
+
+    fetchFieldsAndValidation();
+  }, []);
   }, []);
 
   const handleChange = (e) => {
@@ -52,6 +70,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
   };
 
   const handleSubmit = async () => {
+    }
     setSubmitting(true);
     const timestamp = new Date().toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
@@ -95,7 +114,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
     ]
   };
 
-  //if (loading) return <LoadingOverlay />;
+  if (loading) return <LoadingOverlay />;
 
   return (
     <ThemeProvider theme={theme}>
@@ -134,7 +153,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
                           value={formValues[field] || ''}
                           onChange={handleChange}
                           size="small"
-                          required={requiredFields.includes(field)}
+                          
                           InputProps={{ readOnly: readOnlyFields.includes(field) }}
                         />
                       )}

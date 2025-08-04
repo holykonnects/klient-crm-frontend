@@ -63,7 +63,8 @@ const TravelTable = () => {
   };
 
   const fetchValidationOptions = async () => {
-    const url = `https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec?action=getValidationOptions`;
+    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec
+?action=getValidationOptions`;
     const res = await fetch(url);
     const json = await res.json();
     setValidationOptions(json);

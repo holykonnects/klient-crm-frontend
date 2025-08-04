@@ -62,7 +62,6 @@ const ManageTravel = ({ onClose, onSuccess }) => {
 
     fetchFieldsAndValidation();
   }, []);
-  }, []);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -70,7 +69,6 @@ const ManageTravel = ({ onClose, onSuccess }) => {
   };
 
   const handleSubmit = async () => {
-    }
     setSubmitting(true);
     const timestamp = new Date().toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',

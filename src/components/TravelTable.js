@@ -12,9 +12,17 @@ import SearchIcon from '@mui/icons-material/Search';
 import HistoryIcon from '@mui/icons-material/History';
 import EditIcon from '@mui/icons-material/Edit';
 import '@fontsource/montserrat';
+import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
 import ManageTravel from './ManageTravel';
+
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 10.5
+  }
+});
 
 const TravelTable = () => {
   const { user } = useAuth();
@@ -100,127 +108,129 @@ const TravelTable = () => {
   });
 
   return (
-    <Box sx={{ fontFamily: 'Montserrat, sans-serif', p: 3 }}>
-      {loading && <LoadingOverlay />}
+    <ThemeProvider theme={theme}>
+      <Box sx={{ fontFamily: 'Montserrat, sans-serif', p: 3 }}>
+        {loading && <LoadingOverlay />}
 
-      <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
-        <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-        <Typography variant="h5" fontWeight="bold">Travel Requests</Typography>
-        <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>
-          Add Travel
-        </Button>
-      </Box>
+        <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+          <Typography variant="h5" fontWeight="bold">Travel Requests</Typography>
+          <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>
+            Add Travel
+          </Button>
+        </Box>
 
-      <Grid container spacing={2} mb={2}>
-        <Grid item>
-          <TextField
-            size="small"
-            label="Search"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            sx={{ minWidth: 240 }}
-          />
-          <IconButton onClick={handleSearch}><SearchIcon /></IconButton>
-        </Grid>
-        {["Travel Status", "Approval Status", "Department", "Travel Type"].map(key => (
-          <Grid item key={key}>
-            <FormControl size="small" sx={{ minWidth: 160 }}>
-              <InputLabel>{key}</InputLabel>
-              <Select
-                value={filters[key] || ''}
-                onChange={(e) => handleFilterChange(key, e.target.value)}
-                label={key}
-              >
-                <MenuItem value="">All</MenuItem>
-                {validationOptions[key?.toLowerCase().replace(/ /g, '')]?.map(option => (
-                  <MenuItem key={option} value={option}>{option}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+        <Grid container spacing={2} mb={2}>
+          <Grid item>
+            <TextField
+              size="small"
+              label="Search"
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              sx={{ minWidth: 240 }}
+            />
+            <IconButton onClick={handleSearch}><SearchIcon /></IconButton>
           </Grid>
-        ))}
-        <Grid item>
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}><ViewColumnIcon /></IconButton>
+          {["Travel Status", "Approval Status", "Department", "Travel Type"].map(key => (
+            <Grid item key={key}>
+              <FormControl size="small" sx={{ minWidth: 160 }}>
+                <InputLabel>{key}</InputLabel>
+                <Select
+                  value={filters[key] || ''}
+                  onChange={(e) => handleFilterChange(key, e.target.value)}
+                  label={key}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  {validationOptions[key?.toLowerCase().replace(/ /g, '')]?.map(option => (
+                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+          ))}
+          <Grid item>
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}><ViewColumnIcon /></IconButton>
+          </Grid>
         </Grid>
-      </Grid>
 
-      <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-        <Box p={2} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8 }}>
-          <Button size="small" onClick={handleSelectAll}>Select All</Button>
-          <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-          {headers.map(col => (
-            <Box key={col}>
-              <Checkbox
-                size="small"
-                checked={visibleColumns.includes(col)}
-                onChange={() => handleColumnToggle(col)}
-              /> {col}
-            </Box>
-          ))}
-        </Box>
-      </Popover>
-
-      <Table size="small">
-        <TableHead>
-          <TableRow sx={{ backgroundColor: '#6495ED' }}>
-            {visibleColumns.map(header => (
-              <TableCell key={header} sx={{ color: 'white', fontWeight: 600 }}>{header}</TableCell>
+        <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+          <Box p={2} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8 }}>
+            <Button size="small" onClick={handleSelectAll}>Select All</Button>
+            <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+            {headers.map(col => (
+              <Box key={col}>
+                <Checkbox
+                  size="small"
+                  checked={visibleColumns.includes(col)}
+                  onChange={() => handleColumnToggle(col)}
+                /> {col}
+              </Box>
             ))}
-            <TableCell sx={{ color: 'white', fontWeight: 600 }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {filteredData.map((row, idx) => (
-            <TableRow key={idx}>
-              {visibleColumns.map(col => (
-                <TableCell key={col}>{row[col]}</TableCell>
+          </Box>
+        </Popover>
+
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ backgroundColor: '#6495ED' }}>
+              {visibleColumns.map(header => (
+                <TableCell key={header} sx={{ color: 'white', fontWeight: 600 }}>{header}</TableCell>
               ))}
-              <TableCell>
-                <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon fontSize="small" /></IconButton>
-                <IconButton onClick={() => alert('✏️ Edit modal pending')}> <EditIcon fontSize="small" /></IconButton>
-              </TableCell>
+              <TableCell sx={{ color: 'white', fontWeight: 600 }}>Actions</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-
-      {openForm && (
-        <Box mt={3}>
-          <ManageTravel
-            validationOptions={validationOptions}
-            onClose={() => setOpenForm(false)}
-            onSuccess={fetchData}
-          />
-        </Box>
-      )}
-
-      <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>Travel Logs</DialogTitle>
-        <DialogContent>
-          <Table size="small">
-            <TableHead>
-              <TableRow>
-                <TableCell>Timestamp</TableCell>
-                <TableCell>Travel Status</TableCell>
-                <TableCell>Approval Status</TableCell>
-                <TableCell>Remarks / Justification</TableCell>
+          </TableHead>
+          <TableBody>
+            {filteredData.map((row, idx) => (
+              <TableRow key={idx}>
+                {visibleColumns.map(col => (
+                  <TableCell key={col}>{row[col]}</TableCell>
+                ))}
+                <TableCell>
+                  <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon fontSize="small" /></IconButton>
+                  <IconButton onClick={() => alert('✏️ Edit modal pending')}> <EditIcon fontSize="small" /></IconButton>
+                </TableCell>
               </TableRow>
-            </TableHead>
-            <TableBody>
-              {selectedLogs.map((log, idx) => (
-                <TableRow key={idx}>
-                  <TableCell>{log.Timestamp}</TableCell>
-                  <TableCell>{log['Travel Status']}</TableCell>
-                  <TableCell>{log['Approval Status']}</TableCell>
-                  <TableCell>{log['Remarks / Justification']}</TableCell>
+            ))}
+          </TableBody>
+        </Table>
+
+        {openForm && (
+          <Box mt={3}>
+            <ManageTravel
+              validationOptions={validationOptions}
+              onClose={() => setOpenForm(false)}
+              onSuccess={fetchData}
+            />
+          </Box>
+        )}
+
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle>Travel Logs</DialogTitle>
+          <DialogContent>
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>Timestamp</TableCell>
+                  <TableCell>Travel Status</TableCell>
+                  <TableCell>Approval Status</TableCell>
+                  <TableCell>Remarks / Justification</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </DialogContent>
-      </Dialog>
-    </Box>
+              </TableHead>
+              <TableBody>
+                {selectedLogs.map((log, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{log.Timestamp}</TableCell>
+                    <TableCell>{log['Travel Status']}</TableCell>
+                    <TableCell>{log['Approval Status']}</TableCell>
+                    <TableCell>{log['Remarks / Justification']}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DialogContent>
+        </Dialog>
+      </Box>
+    </ThemeProvider>
   );
 };
 

@@ -102,7 +102,7 @@ const TravelTable = () => {
         {loading && <LoadingOverlay />}
 
         <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', fontFamily: 'Montserrat' }}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 30, marginRight: 10 }} />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100, marginRight: 10 }} />
           Travel Management
         </Typography>
 
@@ -117,14 +117,14 @@ const TravelTable = () => {
 
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <TextField
-            size="small"
+            size="medium"
             placeholder="Search Travel ID / Name / Destination"
             InputProps={{ startAdornment: <SearchIcon /> }}
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
           {["Travel Status", "Approval Status", "Department", "Travel Type"].map((filterKey) => (
-            <FormControl key={filterKey} size="small">
+            <FormControl key={filterKey} size="medium">
               <InputLabel>{filterKey}</InputLabel>
               <Select
                 name={filterKey}

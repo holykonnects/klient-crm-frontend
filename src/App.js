@@ -8,12 +8,12 @@ import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
-import TenderTable from './components/TenderTable';           // ✅ NEW
-import ManageTender from './components/ManageTender';         // ✅ NEW
-import ProtectedPage from './components/ProtectedPage';       // ✅ Correct wrapper
+import TenderTable from './components/TenderTable';
+import ManageTender from './components/ManageTender';
+import ProtectedPage from './components/ProtectedPage';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import CalendarView from './components/CalendarView';
-
+import TravelTable from './components/TravelTable';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -28,8 +28,18 @@ const AppRoutes = () => {
         <Route path="view-orders" element={<OrdersTable />} />
         <Route path="add-lead" element={<LeadForm />} />
         <Route path="/calendar" element={<CalendarView />} />
+        
+        {/* ✅ Travel route with access control */}
+        <Route
+          path="/view-travel"
+          element={
+            <ProtectedPage pageKey="Travel">
+              <TravelTable />
+            </ProtectedPage>
+          }
+        />
 
-        {/* ✅ NEW Tender routes with access control */}
+        {/* ✅ Tender routes with access control */}
         <Route
           path="tender"
           element={

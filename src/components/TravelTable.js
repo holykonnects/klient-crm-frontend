@@ -1,18 +1,19 @@
-// src/components/TravelTable.js
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell, TableBody,
-  TextField, Select, MenuItem, InputLabel, FormControl, IconButton,
-  Dialog, DialogTitle, DialogContent, Grid, Button, Popover, Checkbox,
-  FormControlLabel
+  Box, Typography, Table, TableHead, TableRow, TableCell,
+  TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Button,
+  Popover, Checkbox, FormControlLabel
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
+import FlightTakeoffIcon from '@mui/icons-material/FlightTakeoff';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import ManageTravel from './ManageTravel';
 import { useAuth } from './AuthContext';
+import LoadingOverlay from './LoadingOverlay'; // ensure this exists
 
 const theme = createTheme({
   typography: {
@@ -40,6 +41,7 @@ const TravelTable = () => {
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [selectedRow, setSelectedRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  const [loading, setLoading] = useState(false);
 
   const allColumns = [
     'Travel ID', 'Requested By', 'Department', 'Designation', 'Travel Type', 'Travel Purpose',
@@ -55,16 +57,19 @@ const TravelTable = () => {
   }, []);
 
   const fetchData = async () => {
-    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec
-?action=getTravelData&owner=${user?.username || ''}`;
-    const res = await fetch(url);
-    const json = await res.json();
-    setTravelData(json.data || []);
+    setLoading(true);
+    try {
+      const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelData&owner=${user?.username || ''}`);
+      const json = await res.json();
+      setTravelData(json.data || []);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
   };
 
   const fetchValidationOptions = async () => {
-    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec
-?action=getValidationOptions`;
+    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions`;
     const res = await fetch(url);
     const json = await res.json();
     setValidationOptions(json);
@@ -102,11 +107,24 @@ const TravelTable = () => {
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ p: 2 }}>
+        {loading && <LoadingOverlay />}
+
         <Typography variant="h6" sx={{ mb: 2, display: 'flex', alignItems: 'center', fontFamily: 'Montserrat' }}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 30, marginRight: 10 }} />
           Travel Management
         </Typography>
 
+        {/* Add Travel Button */}
+        <Button
+          variant="contained"
+          onClick={() => setSelectedRow({})}
+          sx={{ fontFamily: 'Montserrat', mb: 2 }}
+          startIcon={<FlightTakeoffIcon />}
+        >
+          + Add Travel
+        </Button>
+
+        {/* Filters */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <TextField
             size="small"
@@ -157,6 +175,7 @@ const TravelTable = () => {
           </Popover>
         </Box>
 
+        {/* Table */}
         <Table size="small">
           <TableHead>
             <TableRow>
@@ -180,9 +199,10 @@ const TravelTable = () => {
           </TableBody>
         </Table>
 
-        {selectedRow && (
+        {/* ManageTravel Modal */}
+        {selectedRow !== null && (
           <Dialog open onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
-            <DialogTitle>Edit Travel Entry</DialogTitle>
+            <DialogTitle>{selectedRow?.['Travel ID'] ? 'Edit Travel Entry' : 'New Travel Request'}</DialogTitle>
             <DialogContent>
               <ManageTravel
                 travelData={selectedRow}

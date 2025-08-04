@@ -1,166 +1,158 @@
-// src/components/ManageTravel.js
-import React, { useState } from 'react';
+// ManageTravel.js — Accordion-styled modal form for Travel Requests
+import React, { useEffect, useState } from 'react';
 import {
-  Box, Button, Grid, TextField, Select, MenuItem,
-  Accordion, AccordionSummary, AccordionDetails, Typography,
-  FormControl, InputLabel
+  Dialog, DialogTitle, DialogContent, Box, Typography, Grid,
+  TextField, Button, Accordion, AccordionSummary, AccordionDetails,
+  Select, MenuItem, FormControl, InputLabel, createTheme, ThemeProvider
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import LoadingOverlay from './LoadingOverlay';
 import '@fontsource/montserrat';
 
-const inputStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: '10pt'
-};
+const theme = createTheme({
+  typography: {
+    fontFamily: 'Montserrat, sans-serif',
+    fontSize: 10.5
+  }
+});
 
-const labelStyle = {
+const sectionStyle = {
   fontFamily: 'Montserrat, sans-serif',
   fontWeight: 600
 };
 
-const ManageTravel = ({ travelData = {}, validationOptions = {}, onClose, onSuccess }) => {
-  const [formData, setFormData] = useState({ ...travelData });
+const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
+  const [fields, setFields] = useState([]);
+  const [formValues, setFormValues] = useState({});
+  const [requiredFields, setRequiredFields] = useState([]);
+  const [readOnlyFields, setReadOnlyFields] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
 
-  const handleChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+  const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
+
+  useEffect(() => {
+    fetch(`${dataUrl}?action=getTravelFields`)
+      .then(res => res.json())
+      .then((data) => {
+        setFields(data.headers);
+        setRequiredFields(data.required || []);
+        setReadOnlyFields(data.readOnly || []);
+
+        const initial = {};
+        data.headers.forEach(field => (initial[field] = ''));
+        setFormValues(initial);
+        setLoading(false);
+      });
+  }, []);
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormValues(prev => ({ ...prev, [name]: value }));
   };
 
   const handleSubmit = async () => {
+    setSubmitting(true);
+    const timestamp = new Date().toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+
     const payload = {
-      ...formData,
-      Timestamp: new Date().toLocaleString()
+      ...formValues,
+      Timestamp: timestamp
     };
 
     try {
-      const response = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec', {
+      await fetch(dataUrl, {
         method: 'POST',
-        mode: 'cors',
+        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-
-      const result = await response.json();
-      if (result.success) {
-        alert('Travel entry submitted successfully!');
-        onSuccess && onSuccess();
-        onClose();
-      } else {
-        alert('Submission failed. Please try again.');
-      }
+      alert('✅ Travel request submitted successfully');
+      onSuccess();
+      onClose();
     } catch (err) {
-      console.error('❌ Submission error:', err);
-      alert('Error submitting form. Please check console for details.');
+      alert('❌ Error submitting travel request');
+      console.error(err);
     }
+    setSubmitting(false);
   };
 
-  const renderSelect = (label, field, options = []) => (
-    <FormControl fullWidth size="small" sx={{ mb: 2 }}>
-      <InputLabel sx={labelStyle}>{label}</InputLabel>
-      <Select
-        value={formData[field] || ''}
-        onChange={e => handleChange(field, e.target.value)}
-        sx={inputStyle}
-      >
-        <MenuItem value="">Select</MenuItem>
-        {options.map(opt => (
-          <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-        ))}
-      </Select>
-    </FormControl>
-  );
+  const groupedSections = {
+    'Traveler Info': [
+      'Requested By', 'Department', 'Designation'
+    ],
+    'Travel Details': [
+      'Travel Type', 'Travel Purpose', 'Destination', 'Start Date', 'End Date', 'Mode of Travel'
+    ],
+    'Booking & Budget': [
+      'Preferred Airline / Train / Service', 'Accommodation Required', 'Hotel Preference', 'Expected Budget (₹)'
+    ],
+    'Approval & Status': [
+      'Approval Status', 'Approved By', 'Travel Status', 'Remarks / Justification', 'Booking Confirmation Details', 'Expense Settlement Status', 'Final Amount Spent (₹)', 'Supporting Documents (Link)'
+    ]
+  };
 
-  const renderTextField = (label, field, multiline = false) => (
-    <TextField
-      fullWidth
-      size="small"
-      label={label}
-      value={formData[field] || ''}
-      onChange={e => handleChange(field, e.target.value)}
-      sx={{ mb: 2, ...inputStyle }}
-      multiline={multiline}
-    />
-  );
+  if (loading) return <LoadingOverlay />;
 
   return (
-    <Box sx={{ fontFamily: 'Montserrat, sans-serif' }}>
-      <Box sx={{ mb: 2, textAlign: 'center' }}>
-        <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 40 }} />
-        <Typography variant="h6" sx={{ mt: 1, fontWeight: 600 }}>
-          Travel Request Form
-        </Typography>
-      </Box>
+    <ThemeProvider theme={theme}>
+      <Dialog open fullWidth maxWidth="md" onClose={onClose}>
+        <DialogTitle sx={{ fontWeight: 'bold', fontFamily: 'Montserrat, sans-serif' }}>Add Travel Request</DialogTitle>
+        <DialogContent dividers>
+          {Object.entries(groupedSections).map(([section, keys]) => (
+            <Accordion key={section} defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
+                <Typography sx={sectionStyle}>{section}</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {keys.map((field) => (
+                    <Grid item xs={12} sm={6} key={field}>
+                      {validationOptions[field] ? (
+                        <FormControl fullWidth size="small">
+                          <InputLabel>{field}</InputLabel>
+                          <Select
+                            name={field}
+                            label={field}
+                            value={formValues[field] || ''}
+                            onChange={handleChange}
+                            disabled={readOnlyFields.includes(field)}
+                          >
+                            {validationOptions[field].map((opt, idx) => (
+                              <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      ) : (
+                        <TextField
+                          fullWidth
+                          label={field}
+                          name={field}
+                          value={formValues[field] || ''}
+                          onChange={handleChange}
+                          size="small"
+                          required={requiredFields.includes(field)}
+                          InputProps={{ readOnly: readOnlyFields.includes(field) }}
+                        />
+                      )}
+                    </Grid>
+                  ))}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          ))}
 
-      {/* Section: Traveler Info */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-          <Typography sx={labelStyle}>Traveler Info</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>{renderTextField('Requested By', 'Requested By')}</Grid>
-            <Grid item xs={6}>{renderSelect('Department', 'Department', validationOptions.department || [])}</Grid>
-            <Grid item xs={6}>{renderSelect('Designation', 'Designation', validationOptions.designation || [])}</Grid>
-          </Grid>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Travel Details */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-          <Typography sx={labelStyle}>Travel Details</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>{renderSelect('Travel Type', 'Travel Type', validationOptions.travelType || [])}</Grid>
-            <Grid item xs={6}>{renderTextField('Travel Purpose', 'Travel Purpose')}</Grid>
-            <Grid item xs={6}>{renderTextField('Destination', 'Destination')}</Grid>
-            <Grid item xs={3}>{renderTextField('Start Date', 'Start Date')}</Grid>
-            <Grid item xs={3}>{renderTextField('End Date', 'End Date')}</Grid>
-            <Grid item xs={6}>{renderSelect('Mode of Travel', 'Mode of Travel', validationOptions.modeOfTravel || [])}</Grid>
-          </Grid>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Booking & Budget */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-          <Typography sx={labelStyle}>Booking & Budget</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>{renderTextField('Preferred Airline / Train / Service', 'Preferred Airline / Train / Service')}</Grid>
-            <Grid item xs={6}>{renderSelect('Accommodation Required', 'Accommodation Required', ['Yes', 'No'])}</Grid>
-            <Grid item xs={6}>{renderTextField('Hotel Preference', 'Hotel Preference')}</Grid>
-            <Grid item xs={6}>{renderTextField('Expected Budget (₹)', 'Expected Budget (₹)')}</Grid>
-            <Grid item xs={12}>{renderTextField('Remarks / Justification', 'Remarks / Justification', true)}</Grid>
-          </Grid>
-        </AccordionDetails>
-      </Accordion>
-
-      {/* Approval & Status */}
-      <Accordion defaultExpanded>
-        <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-          <Typography sx={labelStyle}>Approval & Status</Typography>
-        </AccordionSummary>
-        <AccordionDetails>
-          <Grid container spacing={2}>
-            <Grid item xs={6}>{renderSelect('Approval Status', 'Approval Status', validationOptions.approvalStatus || [])}</Grid>
-            <Grid item xs={6}>{renderTextField('Approved By', 'Approved By')}</Grid>
-            <Grid item xs={6}>{renderSelect('Travel Status', 'Travel Status', validationOptions.travelStatus || [])}</Grid>
-            <Grid item xs={6}>{renderSelect('Expense Settlement Status', 'Expense Settlement Status', validationOptions.expenseSettlementStatus || [])}</Grid>
-            <Grid item xs={6}>{renderTextField('Final Amount Spent (₹)', 'Final Amount Spent (₹)')}</Grid>
-            <Grid item xs={6}>{renderTextField('Booking Confirmation Details', 'Booking Confirmation Details')}</Grid>
-            <Grid item xs={12}>{renderTextField('Supporting Documents (Link)', 'Supporting Documents (Link)')}</Grid>
-          </Grid>
-        </AccordionDetails>
-      </Accordion>
-
-      <Box sx={{ mt: 2, textAlign: 'right' }}>
-        <Button variant="contained" onClick={handleSubmit} sx={{ fontFamily: 'Montserrat' }}>
-          Submit
-        </Button>
-      </Box>
-    </Box>
+          <Box mt={3} display="flex" justifyContent="flex-end">
+            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit} disabled={submitting}>
+              {submitting ? 'Submitting...' : 'Submit Travel Request'}
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </ThemeProvider>
   );
 };
 

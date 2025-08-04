@@ -37,7 +37,7 @@ function DashboardLayout({ children }) {
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
-    { label: 'Travel Management', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' }, 
+    { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' }, 
   ];
 
   return (

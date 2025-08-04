@@ -55,7 +55,8 @@ const TravelTable = () => {
   }, []);
 
   const fetchData = async () => {
-    const url = `https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec?action=getTravelData&owner=${user?.username || ''}`;
+    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec
+?action=getTravelData&owner=${user?.username || ''}`;
     const res = await fetch(url);
     const json = await res.json();
     setTravelData(json.data || []);

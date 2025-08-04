@@ -13,7 +13,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import ManageTravel from './ManageTravel';
 import { useAuth } from './AuthContext';
-import LoadingOverlay from './LoadingOverlay'; // ensure this exists
+import LoadingOverlay from './LoadingOverlay';
 
 const theme = createTheme({
   typography: {
@@ -30,30 +30,18 @@ const selectorStyle = {
 const TravelTable = () => {
   const { user } = useAuth();
   const [travelData, setTravelData] = useState([]);
-  const [filters, setFilters] = useState({
-    travelStatus: '',
-    approvalStatus: '',
-    department: '',
-    travelType: ''
-  });
+  const [allColumns, setAllColumns] = useState([]);
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [filters, setFilters] = useState({});
   const [searchTerm, setSearchTerm] = useState('');
   const [columnAnchor, setColumnAnchor] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState([]);
   const [selectedRow, setSelectedRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
   const [loading, setLoading] = useState(false);
 
-  const allColumns = [
-    'Travel ID', 'Requested By', 'Department', 'Designation', 'Travel Type', 'Travel Purpose',
-    'Destination', 'Start Date', 'End Date', 'Mode of Travel', 'Accommodation Required',
-    'Approval Status', 'Approved By', 'Travel Status'
-  ];
-
   useEffect(() => {
     fetchData();
     fetchValidationOptions();
-    const storedCols = JSON.parse(localStorage.getItem('travelVisibleColumns'));
-    setVisibleColumns(storedCols || allColumns);
   }, []);
 
   const fetchData = async () => {
@@ -61,18 +49,24 @@ const TravelTable = () => {
     try {
       const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelData&owner=${user?.username || ''}`);
       const json = await res.json();
-      setTravelData(json.data || []);
+      setAllColumns(json.headers || []);
+      setVisibleColumns(json.headers || []);
+      setTravelData(json.rows || []);
     } catch (err) {
-      console.error(err);
+      console.error('❌ Error fetching travel data:', err);
     }
     setLoading(false);
   };
 
   const fetchValidationOptions = async () => {
-    const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions`;
-    const res = await fetch(url);
-    const json = await res.json();
-    setValidationOptions(json);
+    try {
+      const url = `https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions`;
+      const res = await fetch(url);
+      const json = await res.json();
+      setValidationOptions(json);
+    } catch (err) {
+      console.error('❌ Error fetching validation options:', err);
+    }
   };
 
   const handleFilterChange = (e) => {
@@ -81,7 +75,7 @@ const TravelTable = () => {
 
   const handleSearch = (row) => {
     return (
-      row['Travel ID']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      row['Travel ID']?.toString().toLowerCase().includes(searchTerm.toLowerCase()) ||
       row['Requested By']?.toLowerCase().includes(searchTerm.toLowerCase()) ||
       row['Destination']?.toLowerCase().includes(searchTerm.toLowerCase())
     );
@@ -97,10 +91,7 @@ const TravelTable = () => {
 
   const filteredData = travelData
     .filter(row => {
-      return (!filters.travelStatus || row['Travel Status'] === filters.travelStatus) &&
-             (!filters.approvalStatus || row['Approval Status'] === filters.approvalStatus) &&
-             (!filters.department || row['Department'] === filters.department) &&
-             (!filters.travelType || row['Travel Type'] === filters.travelType);
+      return Object.entries(filters).every(([key, value]) => !value || row[key] === value);
     })
     .filter(handleSearch);
 
@@ -114,7 +105,6 @@ const TravelTable = () => {
           Travel Management
         </Typography>
 
-        {/* Add Travel Button */}
         <Button
           variant="contained"
           onClick={() => setSelectedRow({})}
@@ -124,7 +114,6 @@ const TravelTable = () => {
           + Add Travel
         </Button>
 
-        {/* Filters */}
         <Box sx={{ display: 'flex', gap: 2, mb: 2 }}>
           <TextField
             size="small"
@@ -133,17 +122,17 @@ const TravelTable = () => {
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
           />
-          {['travelStatus', 'approvalStatus', 'department', 'travelType'].map((filterKey) => (
+          {['Travel Status', 'Approval Status', 'Department', 'Travel Type'].map((filterKey) => (
             <FormControl key={filterKey} size="small">
-              <InputLabel>{filterKey.replace(/([A-Z])/g, ' $1')}</InputLabel>
+              <InputLabel>{filterKey}</InputLabel>
               <Select
                 name={filterKey}
-                value={filters[filterKey]}
+                value={filters[filterKey] || ''}
                 onChange={handleFilterChange}
                 sx={{ fontFamily: 'Montserrat' }}
               >
                 <MenuItem value="">All</MenuItem>
-                {(validationOptions[filterKey] || []).map(option => (
+                {(validationOptions[toCamelCase(filterKey)] || []).map(option => (
                   <MenuItem key={option} value={option}>{option}</MenuItem>
                 ))}
               </Select>
@@ -175,22 +164,17 @@ const TravelTable = () => {
           </Popover>
         </Box>
 
-        {/* Table */}
         <Table size="small">
           <TableHead>
             <TableRow>
-              {allColumns.filter(col => visibleColumns.includes(col)).map((col) => (
-                <TableCell key={col}>{col}</TableCell>
-              ))}
+              {visibleColumns.map(col => <TableCell key={col}>{col}</TableCell>)}
               <TableCell>Actions</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {filteredData.map((row, idx) => (
               <TableRow key={idx}>
-                {allColumns.filter(col => visibleColumns.includes(col)).map((col) => (
-                  <TableCell key={col}>{row[col]}</TableCell>
-                ))}
+                {visibleColumns.map(col => <TableCell key={col}>{row[col]}</TableCell>)}
                 <TableCell>
                   <IconButton onClick={() => setSelectedRow(row)}><EditIcon /></IconButton>
                 </TableCell>
@@ -199,7 +183,6 @@ const TravelTable = () => {
           </TableBody>
         </Table>
 
-        {/* ManageTravel Modal */}
         {selectedRow !== null && (
           <Dialog open onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
             <DialogTitle>{selectedRow?.['Travel ID'] ? 'Edit Travel Entry' : 'New Travel Request'}</DialogTitle>
@@ -217,5 +200,11 @@ const TravelTable = () => {
     </ThemeProvider>
   );
 };
+
+const toCamelCase = (text) =>
+  text.replace(/[^a-zA-Z0-9]/g, ' ')
+    .replace(/(?:^\w|[A-Z]|\b\w)/g, (w, i) =>
+      i === 0 ? w.toLowerCase() : w.toUpperCase()
+    ).replace(/\s+/g, '');
 
 export default TravelTable;

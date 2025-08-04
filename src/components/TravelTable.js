@@ -1,12 +1,16 @@
+// Updated TravelTable.js aligned to LeadsTable.js UI/UX
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, FormControl,
-  IconButton, Popover, Checkbox, Button, Grid
+  IconButton, Popover, Checkbox, Button, Grid, Dialog,
+  DialogTitle, DialogContent, InputLabel
 } from '@mui/material';
 import AddCircleIcon from '@mui/icons-material/AddCircle';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
+import HistoryIcon from '@mui/icons-material/History';
+import EditIcon from '@mui/icons-material/Edit';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
@@ -17,12 +21,17 @@ const TravelTable = () => {
   const [travelData, setTravelData] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [visibleColumns, setVisibleColumns] = useState([]);
-  const [searchText, setSearchText] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
   const [filters, setFilters] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [openForm, setOpenForm] = useState(false);
   const [validationOptions, setValidationOptions] = useState({});
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [selectedLogs, setSelectedLogs] = useState([]);
+
+  const storageKey = `visibleColumns-${user.username}-travel`;
 
   useEffect(() => {
     fetchData();
@@ -30,13 +39,15 @@ const TravelTable = () => {
   }, []);
 
   const fetchData = async () => {
+    setLoading(true);
     try {
-      const response = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelData&owner=${encodeURIComponent(user.username)}`);
-      const result = await response.json();
-      const filteredRows = result.rows.filter(row => user.role === 'Admin' || row['Requested By']?.toLowerCase() === user.username.toLowerCase());
+      const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelData&owner=${encodeURIComponent(user.username)}`);
+      const result = await res.json();
+      const filtered = user.role === 'Admin' ? result.rows : result.rows.filter(row => row['Requested By']?.toLowerCase() === user.username.toLowerCase());
       setHeaders(result.headers);
-      setTravelData(filteredRows);
-      setVisibleColumns(result.headers);
+      setTravelData(filtered);
+      const storedCols = JSON.parse(localStorage.getItem(storageKey));
+      setVisibleColumns(storedCols || result.headers);
     } catch (err) {
       console.error('Error fetching travel data:', err);
     } finally {
@@ -46,130 +57,105 @@ const TravelTable = () => {
 
   const fetchValidationOptions = async () => {
     try {
-      const response = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions');
-      const result = await response.json();
+      const res = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions');
+      const result = await res.json();
       setValidationOptions(result);
     } catch (err) {
       console.error('Error fetching validation options:', err);
     }
   };
 
-  const handleSearchChange = (e) => setSearchText(e.target.value);
+  const handleSearch = () => setActiveSearch(searchInput);
 
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
+  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
+
+  const handleColumnToggle = (col) => {
+    const updated = visibleColumns.includes(col)
+      ? visibleColumns.filter(c => c !== col)
+      : [...visibleColumns, col];
+    setVisibleColumns(updated);
+    localStorage.setItem(storageKey, JSON.stringify(updated));
   };
 
-  const handleColumnToggle = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column)
-        ? prev.filter(c => c !== column)
-        : [...prev, column]
-    );
+  const handleSelectAll = () => {
+    setVisibleColumns(headers);
+    localStorage.setItem(storageKey, JSON.stringify(headers));
+  };
+
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem(storageKey, JSON.stringify([]));
+  };
+
+  const handleViewLogs = (row) => {
+    const logs = travelData.filter(t => t['Travel ID'] === row['Travel ID']);
+    setSelectedLogs(logs);
+    setLogsOpen(true);
   };
 
   const filteredData = travelData.filter(row => {
-    const matchesSearch = Object.values(row).some(val =>
-      val?.toString().toLowerCase().includes(searchText.toLowerCase())
-    );
-    const matchesFilters = Object.entries(filters).every(([key, val]) =>
-      !val || row[key] === val
-    );
-    return matchesSearch && matchesFilters;
+    const matchSearch = Object.values(row).some(val => (val || '').toString().toLowerCase().includes(activeSearch.toLowerCase()));
+    const matchFilters = Object.entries(filters).every(([k, v]) => !v || row[k] === v);
+    return matchSearch && matchFilters;
   });
 
   return (
-    <Box sx={{ fontFamily: 'Montserrat, sans-serif', p: 2 }}>
+    <Box sx={{ fontFamily: 'Montserrat, sans-serif', p: 3 }}>
       {loading && <LoadingOverlay />}
 
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-        <Box>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-        </Box>
-        <Box>
-          <Button
-            variant="contained"
-            startIcon={<AddCircleIcon />}
-            sx={{ fontFamily: 'Montserrat', textTransform: 'none' }}
-            onClick={() => setOpenForm(true)}
-          >
-            Add Travel
-          </Button>
-        </Box>
+      <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
+        <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+        <Typography variant="h5" fontWeight="bold">Travel Requests</Typography>
+        <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>
+          Add Travel
+        </Button>
       </Box>
 
-      <Grid container spacing={2} sx={{ mb: 2 }}>
+      <Grid container spacing={2} mb={2}>
         <Grid item>
           <TextField
             size="small"
-            placeholder="Search"
-            value={searchText}
-            onChange={handleSearchChange}
-            InputProps={{ startAdornment: <SearchIcon fontSize="small" /> }}
-            sx={{ minWidth: 160 }}
+            label="Search"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+            sx={{ minWidth: 240 }}
           />
+          <IconButton onClick={handleSearch}><SearchIcon /></IconButton>
         </Grid>
+        {["Travel Status", "Approval Status", "Department", "Travel Type"].map(key => (
+          <Grid item key={key}>
+            <FormControl size="small" sx={{ minWidth: 160 }}>
+              <InputLabel>{key}</InputLabel>
+              <Select
+                value={filters[key] || ''}
+                onChange={(e) => handleFilterChange(key, e.target.value)}
+                label={key}
+              >
+                <MenuItem value="">All</MenuItem>
+                {validationOptions[key?.toLowerCase().replace(/ /g, '')]?.map(option => (
+                  <MenuItem key={option} value={option}>{option}</MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+        ))}
         <Grid item>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <Select
-              value={filters['Travel Status'] || ''}
-              onChange={(e) => handleFilterChange('Travel Status', e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">All Statuses</MenuItem>
-              {validationOptions.travelStatus?.map(status => (
-                <MenuItem key={status} value={status}>{status}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <Select
-              value={filters['Approval Status'] || ''}
-              onChange={(e) => handleFilterChange('Approval Status', e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">All Approvals</MenuItem>
-              {validationOptions.approvalStatus?.map(status => (
-                <MenuItem key={status} value={status}>{status}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-        <Grid item>
-          <FormControl size="small" sx={{ minWidth: 160 }}>
-            <Select
-              value={filters['Department'] || ''}
-              onChange={(e) => handleFilterChange('Department', e.target.value)}
-              displayEmpty
-            >
-              <MenuItem value="">All Departments</MenuItem>
-              {validationOptions.department?.map(dep => (
-                <MenuItem key={dep} value={dep}>{dep}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}><ViewColumnIcon /></IconButton>
         </Grid>
       </Grid>
 
-      <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-        <ViewColumnIcon fontSize="small" />
-      </IconButton>
-      <Popover
-        open={Boolean(anchorEl)}
-        anchorEl={anchorEl}
-        onClose={() => setAnchorEl(null)}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-      >
-        <Box sx={{ p: 2 }}>
-          {headers.map(header => (
-            <Box key={header}>
+      <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+        <Box p={2} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8 }}>
+          <Button size="small" onClick={handleSelectAll}>Select All</Button>
+          <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+          {headers.map(col => (
+            <Box key={col}>
               <Checkbox
-                checked={visibleColumns.includes(header)}
-                onChange={() => handleColumnToggle(header)}
-              />
-              {header}
+                size="small"
+                checked={visibleColumns.includes(col)}
+                onChange={() => handleColumnToggle(col)}
+              /> {col}
             </Box>
           ))}
         </Box>
@@ -177,18 +163,23 @@ const TravelTable = () => {
 
       <Table size="small">
         <TableHead>
-          <TableRow>
-            {headers.filter(h => visibleColumns.includes(h)).map(header => (
-              <TableCell key={header} sx={{ fontWeight: 600 }}>{header}</TableCell>
+          <TableRow sx={{ backgroundColor: '#6495ED' }}>
+            {visibleColumns.map(header => (
+              <TableCell key={header} sx={{ color: 'white', fontWeight: 600 }}>{header}</TableCell>
             ))}
+            <TableCell sx={{ color: 'white', fontWeight: 600 }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {filteredData.map((row, idx) => (
             <TableRow key={idx}>
-              {headers.filter(h => visibleColumns.includes(h)).map(header => (
-                <TableCell key={header}>{row[header]}</TableCell>
+              {visibleColumns.map(col => (
+                <TableCell key={col}>{row[col]}</TableCell>
               ))}
+              <TableCell>
+                <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon fontSize="small" /></IconButton>
+                <IconButton onClick={() => alert('✏️ Edit modal pending')}> <EditIcon fontSize="small" /></IconButton>
+              </TableCell>
             </TableRow>
           ))}
         </TableBody>
@@ -203,6 +194,32 @@ const TravelTable = () => {
           />
         </Box>
       )}
+
+      <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle>Travel Logs</DialogTitle>
+        <DialogContent>
+          <Table size="small">
+            <TableHead>
+              <TableRow>
+                <TableCell>Timestamp</TableCell>
+                <TableCell>Travel Status</TableCell>
+                <TableCell>Approval Status</TableCell>
+                <TableCell>Remarks / Justification</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {selectedLogs.map((log, idx) => (
+                <TableRow key={idx}>
+                  <TableCell>{log.Timestamp}</TableCell>
+                  <TableCell>{log['Travel Status']}</TableCell>
+                  <TableCell>{log['Approval Status']}</TableCell>
+                  <TableCell>{log['Remarks / Justification']}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </DialogContent>
+      </Dialog>
     </Box>
   );
 };

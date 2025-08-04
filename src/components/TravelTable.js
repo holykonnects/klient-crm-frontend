@@ -195,13 +195,11 @@ const TravelTable = () => {
         </Table>
 
         {openForm && (
-          <Box mt={3}>
             <ManageTravel
               validationOptions={validationOptions}
               onClose={() => setOpenForm(false)}
               onSuccess={fetchData}
             />
-          </Box>
         )}
 
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>

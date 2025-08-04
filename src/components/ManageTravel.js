@@ -32,8 +32,7 @@ const ManageTravel = ({ travelData = {}, validationOptions = {}, onClose, onSucc
     };
 
     try {
-      const response = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec
-', {
+      const response = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec', {
         method: 'POST',
         mode: 'cors',
         headers: { 'Content-Type': 'application/json' },

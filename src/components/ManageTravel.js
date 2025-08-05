@@ -7,6 +7,8 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import '@fontsource/montserrat';
+import { useAuth } from './AuthContext'; // Adjust path if needed
+
 
 const inputStyle = {
   fontFamily: 'Montserrat, sans-serif',
@@ -15,13 +17,19 @@ const inputStyle = {
 };
 
 const ManageTravel = ({ validationOptions, onClose, onSuccess, selectedRow = {}, isEdit = false }) => {
-  const [formData, setFormData] = useState({});
+  const { user } = useAuth(); // Step 3: This is where you add the hook
+  const [formData, setFormData] = useState({}); 
 
   useEffect(() => {
-    if (selectedRow) {
+    if (isEdit && selectedRow) {
       setFormData({ ...selectedRow });
+    } else {
+      setFormData(prev => ({
+        ...prev,
+        'Requested By': user.username || ''
+      }));
     }
-  }, [selectedRow]);
+  }, [selectedRow,isEdit,user.username]);
 
   const handleChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));

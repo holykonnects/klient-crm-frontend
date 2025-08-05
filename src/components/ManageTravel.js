@@ -50,6 +50,7 @@ const ManageTravel = ({ onClose, onSuccess }) => {
 
         const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
         const valData = await valRes.json();
+        console.log('🔍 Validation options received:', valData);
         setValidationOptions(valData);
       } catch (err) {
         console.error('❌ Error loading travel form config:', err);
@@ -121,36 +122,39 @@ const ManageTravel = ({ onClose, onSuccess }) => {
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
-                  {keys.map((field) => (
-                    <Grid item xs={12} sm={6} key={field}>
-                      {validationOptions[field] ? (
-                        <FormControl fullWidth size="small">
-                          <InputLabel>{field}</InputLabel>
-                          <Select
-                            name={field}
+                  {keys.map((field) => {
+                    console.log('🎯 Field:', field, '| Matches validationOptions:', field in validationOptions);
+                    return (
+                      <Grid item xs={12} sm={6} key={field}>
+                        {validationOptions[field] ? (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>{field}</InputLabel>
+                            <Select
+                              name={field}
+                              label={field}
+                              value={formValues[field] || ''}
+                              onChange={handleChange}
+                              disabled={readOnlyFields.includes(field)}
+                            >
+                              {validationOptions[field].map((opt, idx) => (
+                                <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            fullWidth
                             label={field}
+                            name={field}
                             value={formValues[field] || ''}
                             onChange={handleChange}
-                            disabled={readOnlyFields.includes(field)}
-                          >
-                            {validationOptions[field].map((opt, idx) => (
-                              <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      ) : (
-                        <TextField
-                          fullWidth
-                          label={field}
-                          name={field}
-                          value={formValues[field] || ''}
-                          onChange={handleChange}
-                          size="small"
-                          InputProps={{ readOnly: readOnlyFields.includes(field) }}
-                        />
-                      )}
-                    </Grid>
-                  ))}
+                            size="small"
+                            InputProps={{ readOnly: readOnlyFields.includes(field) }}
+                          />
+                        )}
+                      </Grid>
+                    );
+                  })}
                 </Grid>
               </AccordionDetails>
             </Accordion>

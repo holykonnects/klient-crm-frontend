@@ -25,7 +25,6 @@ const ManageTravel = ({ onClose, onSuccess }) => {
   const [formValues, setFormValues] = useState({});
   const [requiredFields, setRequiredFields] = useState([]);
   const [readOnlyFields, setReadOnlyFields] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [validationOptions, setValidationOptions] = useState({});
 
@@ -49,15 +48,12 @@ const ManageTravel = ({ onClose, onSuccess }) => {
         fieldData.headers.forEach(field => (initial[field] = ''));
         setFormValues(initial);
 
-        const valRes = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelValidationOptions');
+        const valRes = await fetch(`${dataUrl}?action=getTravelValidationOptions`);
         const valData = await valRes.json();
         setValidationOptions(valData);
-
-        setLoading(false);
       } catch (err) {
         console.error('❌ Error loading travel form config:', err);
         alert('Failed to load travel form data.');
-        setLoading(false);
       }
     };
 

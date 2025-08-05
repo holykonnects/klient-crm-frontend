@@ -49,8 +49,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess, selectedRow = {},
 
   const renderField = (label) => {
     const key = label.trim();
-    const lowerKey = key.replace(/ /g, '').replace(/[^a-zA-Z]/g, '').toLowerCase();
-    const isDropdown = Object.keys(validationOptions).includes(lowerKey);
+    const isDropdown = Object.keys(validationOptions).includes(key);
 
     return (
       <Grid item xs={12} sm={6} key={key}>
@@ -62,7 +61,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess, selectedRow = {},
               label={key}
               onChange={(e) => handleChange(key, e.target.value)}
             >
-              {validationOptions[lowerKey].map(option => (
+              {validationOptions[key].map(option => (
                 <MenuItem key={option} value={option}>{option}</MenuItem>
               ))}
             </Select>

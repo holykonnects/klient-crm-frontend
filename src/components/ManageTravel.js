@@ -99,7 +99,7 @@ const ManageTravel = ({ validationOptions, onClose, onSuccess, selectedRow = {},
       <Typography variant="h6" gutterBottom>{isEdit ? 'Edit Travel' : 'Add Travel'}</Typography>
       {Object.entries(groupedSections).map(([section, fields]) => (
         <Accordion key={section} defaultExpanded>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontWeight: 'bold' }}>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontWeight: 'Medium' }}>
             <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>{section}</Typography>
           </AccordionSummary>
           <AccordionDetails>

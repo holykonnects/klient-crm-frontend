@@ -7,6 +7,7 @@ import {
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import '@fontsource/montserrat';
+import { useAuth } from './AuthContext'; // Ensure correct path
 
 const theme = createTheme({
   typography: {
@@ -21,6 +22,7 @@ const sectionStyle = {
 };
 
 const ManageTravel = ({ onClose, onSuccess }) => {
+  const { user } = useAuth();
   const [fields, setFields] = useState([]);
   const [formValues, setFormValues] = useState({});
   const [requiredFields, setRequiredFields] = useState([]);
@@ -45,12 +47,17 @@ const ManageTravel = ({ onClose, onSuccess }) => {
         setReadOnlyFields(fieldData.readOnly || []);
 
         const initial = {};
-        fieldData.headers.forEach(field => (initial[field] = ''));
+        fieldData.headers.forEach(field => {
+          if (field === 'Requested By') {
+            initial[field] = user.username;
+          } else {
+            initial[field] = '';
+          }
+        });
         setFormValues(initial);
 
         const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
         const valData = await valRes.json();
-        console.log('🔍 Validation options received:', valData);
         setValidationOptions(valData);
       } catch (err) {
         console.error('❌ Error loading travel form config:', err);
@@ -59,7 +66,7 @@ const ManageTravel = ({ onClose, onSuccess }) => {
     };
 
     fetchFieldsAndValidation();
-  }, []);
+  }, [user.username]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -122,39 +129,36 @@ const ManageTravel = ({ onClose, onSuccess }) => {
               </AccordionSummary>
               <AccordionDetails>
                 <Grid container spacing={2}>
-                  {keys.map((field) => {
-                    console.log('🎯 Field:', field, '| Matches validationOptions:', field in validationOptions);
-                    return (
-                      <Grid item xs={12} sm={6} key={field}>
-                        {validationOptions[field] ? (
-                          <FormControl fullWidth size="small">
-                            <InputLabel>{field}</InputLabel>
-                            <Select
-                              name={field}
-                              label={field}
-                              value={formValues[field] || ''}
-                              onChange={handleChange}
-                              disabled={readOnlyFields.includes(field)}
-                            >
-                              {validationOptions[field].map((opt, idx) => (
-                                <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        ) : (
-                          <TextField
-                            fullWidth
-                            label={field}
+                  {keys.map((field) => (
+                    <Grid item xs={12} sm={6} key={field}>
+                      {validationOptions[field] ? (
+                        <FormControl fullWidth size="small">
+                          <InputLabel>{field}</InputLabel>
+                          <Select
                             name={field}
+                            label={field}
                             value={formValues[field] || ''}
                             onChange={handleChange}
-                            size="small"
-                            InputProps={{ readOnly: readOnlyFields.includes(field) }}
-                          />
-                        )}
-                      </Grid>
-                    );
-                  })}
+                            disabled={readOnlyFields.includes(field) || field === 'Requested By' || (['Approval Status', 'Approved By'].includes(field) && user.role !== 'Admin')}
+                          >
+                            {validationOptions[field].map((opt, idx) => (
+                              <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      ) : (
+                        <TextField
+                          fullWidth
+                          label={field}
+                          name={field}
+                          value={formValues[field] || ''}
+                          onChange={handleChange}
+                          size="small"
+                          InputProps={{ readOnly: readOnlyFields.includes(field) || field === 'Requested By' || (['Approval Status', 'Approved By'].includes(field) && user.role !== 'Admin') }}
+                        />
+                      )}
+                    </Grid>
+                  ))}
                 </Grid>
               </AccordionDetails>
             </Accordion>

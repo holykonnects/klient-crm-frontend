@@ -48,7 +48,7 @@ const ManageTravel = ({ onClose, onSuccess }) => {
         fieldData.headers.forEach(field => (initial[field] = ''));
         setFormValues(initial);
 
-        const valRes = await fetch(`${dataUrl}?action=getTravelValidationOptions`);
+        const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
         const valData = await valRes.json();
         setValidationOptions(valData);
       } catch (err) {

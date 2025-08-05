@@ -1,4 +1,4 @@
-// Updated TravelTable.js aligned to LeadsTable.js UI/UX with Edit Modal integration
+// Updated TravelTable.js aligned to LeadsTable.js UI/UX with Edit Modal integration + Prefill + Filter Fixes
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
@@ -104,7 +104,9 @@ const TravelTable = () => {
 
   const filteredData = travelData.filter(row => {
     const matchSearch = Object.values(row).some(val => (val || '').toString().toLowerCase().includes(activeSearch.toLowerCase()));
-    const matchFilters = Object.entries(filters).every(([k, v]) => !v || row[k] === v);
+    const matchFilters = Object.entries(filters).every(([k, v]) => {
+      return !v || (row[k] || '').toString().toLowerCase() === v.toLowerCase();
+    });
     return matchSearch && matchFilters;
   });
 
@@ -116,9 +118,7 @@ const TravelTable = () => {
         <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Travel Requests</Typography>
-          <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>
-            Add Travel
-          </Button>
+          <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>Add Travel</Button>
         </Box>
 
         <Grid container spacing={2} mb={2}>
@@ -143,7 +143,9 @@ const TravelTable = () => {
                   label={key}
                 >
                   <MenuItem value="">All</MenuItem>
-                  {validationOptions[key?.toLowerCase().replace(/ /g, '')]?.map(option => (
+                  {validationOptions[
+                    key.replace(/ /g, '').replace(/^\w/, c => c.toLowerCase())
+                  ]?.map(option => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
                   ))}
                 </Select>
@@ -243,3 +245,4 @@ const TravelTable = () => {
 };
 
 export default TravelTable;
+

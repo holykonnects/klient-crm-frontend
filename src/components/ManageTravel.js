@@ -21,7 +21,7 @@ const sectionStyle = {
   fontWeight: 600
 };
 
-const ManageTravel = ({ onClose, onSuccess }) => {
+const ManageTravel = ({ validationOptions, onClose, onSuccess }) => {
   const [fields, setFields] = useState([]);
   const [formValues, setFormValues] = useState({});
   const [requiredFields, setRequiredFields] = useState([]);
@@ -32,35 +32,18 @@ const ManageTravel = ({ onClose, onSuccess }) => {
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
 
   useEffect(() => {
-    const fetchFieldsAndValidation = async () => {
-      try {
-        const fieldRes = await fetch(`${dataUrl}?action=getTravelFields`);
-        const fieldData = await fieldRes.json();
-
-        if (!fieldData.headers || !Array.isArray(fieldData.headers)) {
-          throw new Error('Invalid headers format');
-        }
-
-        setFields(fieldData.headers);
-        setRequiredFields(fieldData.required || []);
-        setReadOnlyFields(fieldData.readOnly || []);
+    fetch(`${dataUrl}?action=getTravelFields`)
+      .then(res => res.json())
+      .then((data) => {
+        setFields(data.headers);
+        setRequiredFields(data.required || []);
+        setReadOnlyFields(data.readOnly || []);
 
         const initial = {};
-        fieldData.headers.forEach(field => (initial[field] = ''));
+        data.headers.forEach(field => (initial[field] = ''));
         setFormValues(initial);
-
-        const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
-        const valData = await valRes.json();
-        setValidationOptions(valData);
-      } catch (err) {
-        console.error('❌ Error loading travel form config:', err);
-        alert('Failed to load travel form data.');
-      } finally {
         setLoading(false);
-      }
-    };
-
-    fetchFieldsAndValidation();
+      });
   }, []);
 
   const handleChange = (e) => {
@@ -151,7 +134,7 @@ const ManageTravel = ({ onClose, onSuccess }) => {
                           value={formValues[field] || ''}
                           onChange={handleChange}
                           size="small"
-                          
+                          required={requiredFields.includes(field)}
                           InputProps={{ readOnly: readOnlyFields.includes(field) }}
                         />
                       )}

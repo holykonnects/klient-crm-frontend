@@ -1,177 +1,111 @@
-// ManageTravel.js — Accordion-styled modal form for Travel Requests
+// Updated ManageTravel.js with Add/Edit mode support and prefilled data
 import React, { useEffect, useState } from 'react';
 import {
-  Dialog, DialogTitle, DialogContent, Box, Typography, Grid,
-  TextField, Button, Accordion, AccordionSummary, AccordionDetails,
-  Select, MenuItem, FormControl, InputLabel, createTheme, ThemeProvider
+  Box, Button, Grid, TextField, Select, MenuItem,
+  Accordion, AccordionSummary, AccordionDetails, Typography,
+  FormControl, InputLabel
 } from '@mui/material';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import '@fontsource/montserrat';
-import { useAuth } from './AuthContext'; // Ensure correct path
 
-const theme = createTheme({
-  typography: {
-    fontFamily: 'Montserrat, sans-serif',
-    fontSize: 10.5
-  }
-});
-
-const sectionStyle = {
+const inputStyle = {
   fontFamily: 'Montserrat, sans-serif',
-  fontWeight: 600
+  fontSize: '0.9rem',
+  width: '100%'
 };
 
-const ManageTravel = ({ onClose, onSuccess }) => {
-  const { user } = useAuth();
-  const [fields, setFields] = useState([]);
-  const [formValues, setFormValues] = useState({});
-  const [requiredFields, setRequiredFields] = useState([]);
-  const [readOnlyFields, setReadOnlyFields] = useState([]);
-  const [submitting, setSubmitting] = useState(false);
-  const [validationOptions, setValidationOptions] = useState({});
-
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
+const ManageTravel = ({ validationOptions, onClose, onSuccess, selectedRow = {}, isEdit = false }) => {
+  const [formData, setFormData] = useState({});
 
   useEffect(() => {
-    const fetchFieldsAndValidation = async () => {
-      try {
-        const fieldRes = await fetch(`${dataUrl}?action=getTravelFields`);
-        const fieldData = await fieldRes.json();
+    if (selectedRow) {
+      setFormData({ ...selectedRow });
+    }
+  }, [selectedRow]);
 
-        if (!fieldData.headers || !Array.isArray(fieldData.headers)) {
-          throw new Error('Invalid headers format');
-        }
-
-        setFields(fieldData.headers);
-        setRequiredFields(fieldData.required || []);
-        setReadOnlyFields(fieldData.readOnly || []);
-
-        const initial = {};
-        fieldData.headers.forEach(field => {
-          if (field === 'Requested By') {
-            initial[field] = user.username;
-          } else {
-            initial[field] = '';
-          }
-        });
-        setFormValues(initial);
-
-        const valRes = await fetch(`${dataUrl}?action=getValidationOptions`);
-        const valData = await valRes.json();
-        setValidationOptions(valData);
-      } catch (err) {
-        console.error('❌ Error loading travel form config:', err);
-        alert('Failed to load travel form data.');
-      }
-    };
-
-    fetchFieldsAndValidation();
-  }, [user.username]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormValues(prev => ({ ...prev, [name]: value }));
+  const handleChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
   };
 
   const handleSubmit = async () => {
-    setSubmitting(true);
-    const timestamp = new Date().toLocaleString('en-GB', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    });
-
-    const payload = {
-      ...formValues,
-      Timestamp: timestamp
-    };
-
     try {
-      await fetch(dataUrl, {
+      const res = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec', {
         method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(formData),
+        headers: { 'Content-Type': 'application/json' }
       });
-      alert('✅ Travel request submitted successfully');
-      onSuccess();
-      onClose();
+      const result = await res.json();
+      if (result.success) {
+        onSuccess();
+        onClose();
+      } else {
+        alert('Error submitting data');
+      }
     } catch (err) {
-      alert('❌ Error submitting travel request');
-      console.error(err);
+      console.error('Submission error:', err);
+      alert('Submission failed');
     }
-    setSubmitting(false);
+  };
+
+  const renderField = (label) => {
+    const key = label.trim();
+    const lowerKey = key.replace(/ /g, '').replace(/[^a-zA-Z]/g, '').toLowerCase();
+    const isDropdown = Object.keys(validationOptions).includes(lowerKey);
+
+    return (
+      <Grid item xs={12} sm={6} key={key}>
+        {isDropdown ? (
+          <FormControl fullWidth>
+            <InputLabel>{key}</InputLabel>
+            <Select
+              value={formData[key] || ''}
+              label={key}
+              onChange={(e) => handleChange(key, e.target.value)}
+            >
+              {validationOptions[lowerKey].map(option => (
+                <MenuItem key={option} value={option}>{option}</MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        ) : (
+          <TextField
+            label={key}
+            value={formData[key] || ''}
+            onChange={(e) => handleChange(key, e.target.value)}
+            fullWidth
+            sx={inputStyle}
+          />
+        )}
+      </Grid>
+    );
   };
 
   const groupedSections = {
-    'Traveler Info': [
-      'Requested By', 'Department', 'Designation'
-    ],
-    'Travel Details': [
-      'Travel Type', 'Travel Purpose', 'Destination', 'Start Date', 'End Date', 'Mode of Travel'
-    ],
-    'Booking & Budget': [
-      'Preferred Airline / Train / Service', 'Accommodation Required', 'Hotel Preference', 'Expected Budget (₹)'
-    ],
-    'Approval & Status': [
-      'Approval Status', 'Approved By', 'Travel Status', 'Remarks / Justification', 'Booking Confirmation Details', 'Expense Settlement Status', 'Final Amount Spent (₹)', 'Supporting Documents (Link)'
-    ]
+    'Traveler Info': ["Requested By", "Department", "Designation"],
+    'Travel Details': ["Travel Type", "Travel Purpose", "Destination", "Start Date", "End Date", "Mode of Travel"],
+    'Booking & Budget': ["Preferred Airline / Train / Service", "Accommodation Required", "Hotel Preference", "Expected Budget (₹)", "Final Amount Spent (₹)", "Supporting Documents (Link)"],
+    'Approval & Status': ["Approval Status", "Approved By", "Travel Status", "Remarks / Justification", "Booking Confirmation Details", "Expense Settlement Status"]
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <Dialog open fullWidth maxWidth="md" onClose={onClose}>
-        <DialogTitle sx={{ fontWeight: 'bold', fontFamily: 'Montserrat, sans-serif' }}>Add Travel Request</DialogTitle>
-        <DialogContent dividers>
-          {Object.entries(groupedSections).map(([section, keys]) => (
-            <Accordion key={section} defaultExpanded>
-              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-                <Typography sx={sectionStyle}>{section}</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  {keys.map((field) => (
-                    <Grid item xs={12} sm={6} key={field}>
-                      {validationOptions[field] ? (
-                        <FormControl fullWidth size="small">
-                          <InputLabel>{field}</InputLabel>
-                          <Select
-                            name={field}
-                            label={field}
-                            value={formValues[field] || ''}
-                            onChange={handleChange}
-                            disabled={readOnlyFields.includes(field) || field === 'Requested By' || (['Approval Status', 'Approved By'].includes(field) && user.role !== 'Admin')}
-                          >
-                            {validationOptions[field].map((opt, idx) => (
-                              <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      ) : (
-                        <TextField
-                          fullWidth
-                          label={field}
-                          name={field}
-                          value={formValues[field] || ''}
-                          onChange={handleChange}
-                          size="small"
-                          InputProps={{ readOnly: readOnlyFields.includes(field) || field === 'Requested By' || (['Approval Status', 'Approved By'].includes(field) && user.role !== 'Admin') }}
-                        />
-                      )}
-                    </Grid>
-                  ))}
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
-          ))}
-
-          <Box mt={3} display="flex" justifyContent="flex-end">
-            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit} disabled={submitting}>
-              {submitting ? 'Submitting...' : 'Submit Travel Request'}
-            </Button>
-          </Box>
-        </DialogContent>
-      </Dialog>
-    </ThemeProvider>
+    <Box sx={{ p: 2, fontFamily: 'Montserrat, sans-serif' }}>
+      <Typography variant="h6" gutterBottom>{isEdit ? 'Edit Travel' : 'Add Travel'}</Typography>
+      {Object.entries(groupedSections).map(([section, fields]) => (
+        <Accordion key={section} defaultExpanded>
+          <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontWeight: 'bold' }}>
+            <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>{section}</Typography>
+          </AccordionSummary>
+          <AccordionDetails>
+            <Grid container spacing={2}>
+              {fields.map(field => renderField(field))}
+            </Grid>
+          </AccordionDetails>
+        </Accordion>
+      ))}
+      <Box mt={2} textAlign="right">
+        <Button variant="contained" onClick={handleSubmit}>{isEdit ? 'Update' : 'Submit'}</Button>
+      </Box>
+    </Box>
   );
 };
 

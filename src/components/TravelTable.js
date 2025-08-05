@@ -1,4 +1,4 @@
-// Updated TravelTable.js aligned to LeadsTable.js UI/UX with Edit Modal integration + Prefill + Filter Fixes
+// Full updated TravelTable.js with working Edit modal and form prefill
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
@@ -35,10 +35,11 @@ const TravelTable = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [loading, setLoading] = useState(true);
   const [openForm, setOpenForm] = useState(false);
+  const [isEdit, setIsEdit] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
   const [logsOpen, setLogsOpen] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState([]);
-  const [selectedRow, setSelectedRow] = useState(null);
 
   const storageKey = `visibleColumns-${user.username}-travel`;
 
@@ -86,16 +87,6 @@ const TravelTable = () => {
     localStorage.setItem(storageKey, JSON.stringify(updated));
   };
 
-  const handleSelectAll = () => {
-    setVisibleColumns(headers);
-    localStorage.setItem(storageKey, JSON.stringify(headers));
-  };
-
-  const handleDeselectAll = () => {
-    setVisibleColumns([]);
-    localStorage.setItem(storageKey, JSON.stringify([]));
-  };
-
   const handleViewLogs = (row) => {
     const logs = travelData.filter(t => t['Travel ID'] === row['Travel ID']);
     setSelectedLogs(logs);
@@ -104,9 +95,7 @@ const TravelTable = () => {
 
   const filteredData = travelData.filter(row => {
     const matchSearch = Object.values(row).some(val => (val || '').toString().toLowerCase().includes(activeSearch.toLowerCase()));
-    const matchFilters = Object.entries(filters).every(([k, v]) => {
-      return !v || (row[k] || '').toString().toLowerCase() === v.toLowerCase();
-    });
+    const matchFilters = Object.entries(filters).every(([k, v]) => !v || row[k] === v);
     return matchSearch && matchFilters;
   });
 
@@ -118,7 +107,11 @@ const TravelTable = () => {
         <Box display="flex" justifyContent="space-between" mb={2} alignItems="center">
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Travel Requests</Typography>
-          <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => setOpenForm(true)}>Add Travel</Button>
+          <Button variant="contained" startIcon={<AddCircleIcon />} onClick={() => {
+            setSelectedRow(null);
+            setIsEdit(false);
+            setOpenForm(true);
+          }}>Add Travel</Button>
         </Box>
 
         <Grid container spacing={2} mb={2}>
@@ -143,9 +136,7 @@ const TravelTable = () => {
                   label={key}
                 >
                   <MenuItem value="">All</MenuItem>
-                  {validationOptions[
-                    key.replace(/ /g, '').replace(/^\w/, c => c.toLowerCase())
-                  ]?.map(option => (
+                  {validationOptions[key?.toLowerCase().replace(/ /g, '')]?.map(option => (
                     <MenuItem key={option} value={option}>{option}</MenuItem>
                   ))}
                 </Select>
@@ -159,8 +150,14 @@ const TravelTable = () => {
 
         <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
           <Box p={2} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: 8 }}>
-            <Button size="small" onClick={handleSelectAll}>Select All</Button>
-            <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+            <Button size="small" onClick={() => {
+              setVisibleColumns(headers);
+              localStorage.setItem(storageKey, JSON.stringify(headers));
+            }}>Select All</Button>
+            <Button size="small" onClick={() => {
+              setVisibleColumns([]);
+              localStorage.setItem(storageKey, JSON.stringify([]));
+            }}>Deselect All</Button>
             {headers.map(col => (
               <Box key={col}>
                 <Checkbox
@@ -192,6 +189,7 @@ const TravelTable = () => {
                   <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon fontSize="small" /></IconButton>
                   <IconButton onClick={() => {
                     setSelectedRow(row);
+                    setIsEdit(true);
                     setOpenForm(true);
                   }}>
                     <EditIcon fontSize="small" />
@@ -203,15 +201,17 @@ const TravelTable = () => {
         </Table>
 
         {openForm && (
-          <ManageTravel
-            validationOptions={validationOptions}
-            onClose={() => {
-              setOpenForm(false);
-              setSelectedRow(null);
-            }}
-            onSuccess={fetchData}
-            selectedRow={selectedRow}
-          />
+          <Dialog open onClose={() => setOpenForm(false)} maxWidth="md" fullWidth>
+            <DialogContent>
+              <ManageTravel
+                validationOptions={validationOptions}
+                selectedRow={selectedRow}
+                isEdit={isEdit}
+                onClose={() => setOpenForm(false)}
+                onSuccess={fetchData}
+              />
+            </DialogContent>
+          </Dialog>
         )}
 
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
@@ -245,4 +245,3 @@ const TravelTable = () => {
 };
 
 export default TravelTable;
-

@@ -1,4 +1,4 @@
-// Updated TravelTable.js aligned to LeadsTable.js UI/UX
+// Updated TravelTable.js aligned to LeadsTable.js UI/UX with Edit Modal integration
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
@@ -38,6 +38,7 @@ const TravelTable = () => {
   const [validationOptions, setValidationOptions] = useState({});
   const [logsOpen, setLogsOpen] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState([]);
+  const [selectedRow, setSelectedRow] = useState(null);
 
   const storageKey = `visibleColumns-${user.username}-travel`;
 
@@ -187,7 +188,12 @@ const TravelTable = () => {
                 ))}
                 <TableCell>
                   <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon fontSize="small" /></IconButton>
-                  <IconButton onClick={() => alert('✏️ Edit modal pending')}> <EditIcon fontSize="small" /></IconButton>
+                  <IconButton onClick={() => {
+                    setSelectedRow(row);
+                    setOpenForm(true);
+                  }}>
+                    <EditIcon fontSize="small" />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -195,11 +201,15 @@ const TravelTable = () => {
         </Table>
 
         {openForm && (
-            <ManageTravel
-              validationOptions={validationOptions}
-              onClose={() => setOpenForm(false)}
-              onSuccess={fetchData}
-            />
+          <ManageTravel
+            validationOptions={validationOptions}
+            onClose={() => {
+              setOpenForm(false);
+              setSelectedRow(null);
+            }}
+            onSuccess={fetchData}
+            selectedRow={selectedRow}
+          />
         )}
 
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>

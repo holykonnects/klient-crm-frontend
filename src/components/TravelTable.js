@@ -50,6 +50,7 @@ const TravelTable = () => {
   const [editRow, setEditRow] = useState(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [travelLogs, setTravelLogs] = useState([]);
+  const [validationOptions, setValidationOptions] = useState({});
 
   const { user } = useAuth();
   const loginUsername = user?.loginUsername || user?.username;
@@ -95,10 +96,21 @@ const TravelTable = () => {
       }
     };
 
+    const fetchValidationOptions = async () => {
+    try {
+      const res = await fetch(`${dataUrl}?action=getTravelValidationOptions`);
+      const data = await res.json();
+      setValidationOptions(data); // { "Department": [...], "Travel Type": [...], ... }
+    } catch (err) {
+      console.error('❌ Error fetching travel validation options:', err.message);
+    }
+  };
+
     fetchData();
     fetchFieldList();
+    fetchValidationOptions();
   }, [loginUsername, role]);
-
+  
   const handleOpenAddModal = () => {
     const defaultData = {};
     fieldList.forEach(f => defaultData[f] = '');
@@ -219,14 +231,30 @@ const TravelTable = () => {
             <Grid container spacing={2}>
               {fieldList.map((field, idx) => (
                 <Grid item xs={6} key={idx}>
-                  <TextField
-                    fullWidth
-                    label={field}
-                    name={field}
-                    value={newTravel[field] || ''}
-                    onChange={handleAddChange}
-                    size="small"
-                  />
+                  {validationOptions[field] ? (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>{field}</InputLabel>
+                      <Select
+                        name={field}
+                        value={newTravel[field] || ''}
+                        onChange={handleAddChange}
+                        label={field}
+                      >
+                        {validationOptions[field].map((option, i) => (
+                          <MenuItem key={i} value={option}>{option}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      label={field}
+                      name={field}
+                      value={newTravel[field] || ''}
+                      onChange={handleAddChange}
+                      size="small"
+                    />
+                  )}
                 </Grid>
               ))}
             </Grid>
@@ -364,16 +392,33 @@ const TravelTable = () => {
             <Grid container spacing={2}>
               {editRow && Object.keys(editRow).map((key, i) => (
                 <Grid item xs={6} key={i}>
-                  <TextField
-                    fullWidth
-                    label={key}
-                    name={key}
-                    value={editRow[key]}
-                    onChange={handleUpdateChange}
-                    size="small"
-                  />
+                  {validationOptions[key] ? (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>{key}</InputLabel>
+                      <Select
+                        name={key}
+                        value={editRow[key] || ''}
+                        onChange={handleUpdateChange}
+                        label={key}
+                      >
+                        {validationOptions[key].map((option, j) => (
+                          <MenuItem key={j} value={option}>{option}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      label={key}
+                      name={key}
+                      value={editRow[key]}
+                      onChange={handleUpdateChange}
+                      size="small"
+                    />
+                  )}
                 </Grid>
               ))}
+
             </Grid>
             <Box mt={3} display="flex" justifyContent="flex-end">
               <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleEditSubmit}>

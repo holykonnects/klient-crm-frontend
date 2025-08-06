@@ -163,31 +163,14 @@ const TravelTable = () => {
     setViewRow(latestRow || row);
   };
 
-     const handleViewLogs = (row) => {
-      const logs = allTravels
+ const handleViewLogs = (row) => {
+    const matchingLogs = allTravels
       .filter(r => r['Travel ID'] === row['Travel ID'])
-      .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp));
-
-      const changesOnly = [];
-        for (let i = 0; i < logs.length; i++) {
-        const current = logs[i];
-        const previous = logs[i + 1];
-        if (!previous) {
-          changesOnly.push({ entry: current, changedFields: Object.keys(current) });
-          } else {
-            const changedFields = Object.keys(current).filter(
-            key => current[key] !== previous[key]
-            );
-          if (changedFields.length > 0) {
-          changesOnly.push({ entry: current, changedFields });
-        }
-      }
-    }
-
+      .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
     setTravelLogs(matchingLogs);
     setLogsOpen(true);
   };
-
+  
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}

@@ -55,7 +55,7 @@ const TravelTable = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(dataUrl);
+        const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(username)}`);
         if (!res.ok) throw new Error(`HTTP status ${res.status}`);
         const data = await res.json();
 

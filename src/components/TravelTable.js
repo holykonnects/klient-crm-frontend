@@ -47,6 +47,7 @@ const TravelTable = () => {
 
   const { user } = useAuth();
   const username = user?.username;
+  const loginUsername = user?.loginUsername || user?.username; // fallback if loginUsername missing
   const role = user?.role;
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
@@ -55,14 +56,14 @@ const TravelTable = () => {
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(username)}`);
+        const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(loginUsername)}`);
         if (!res.ok) throw new Error(`HTTP status ${res.status}`);
         const data = await res.json();
 
         if (!Array.isArray(data)) throw new Error('Invalid data format');
 
         const filteredData = role === 'End User'
-          ? data.filter(entry => entry['Requested By'] === username)
+          ? data.filter(entry => entry['Requested By'] === loginUsername)
           : data;
 
         const deduplicated = [];
@@ -79,7 +80,7 @@ const TravelTable = () => {
         setAllTravels(filteredData);
         setTravels(deduplicated);
         setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${username}-travels`)) ||
+          JSON.parse(localStorage.getItem(`visibleColumns-${loginUsername}-travels`)) ||
           (deduplicated.length ? Object.keys(deduplicated[0]) : [])
         );
       } catch (err) {
@@ -91,7 +92,7 @@ const TravelTable = () => {
     };
 
     fetchData();
-  }, [username, role]);
+  }, [loginUsername, role]);
 
   const handleSort = (key) => {
     const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';

@@ -170,6 +170,31 @@ const TravelTable = () => {
     setLogsOpen(true);
   };
 
+  const handleEditSubmit = async () => {
+    const updatedEntry = {
+      ...editRow,
+      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false }),
+      'Update Travel': 'Yes'
+    };
+    try {
+      await fetch(dataUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updatedEntry)
+      });
+      alert('✅ Travel entry updated');
+      setEditRow(null);
+      window.location.reload();
+    } catch {
+      alert('❌ Failed to update travel');
+    }
+  };
+
+  const handleUpdateChange = (e) => {
+    const { name, value } = e.target;
+    setEditRow(prev => ({ ...prev, [name]: value }));
+  };
 
   return (
     <ThemeProvider theme={theme}>

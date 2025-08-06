@@ -163,6 +163,14 @@ const TravelTable = () => {
     setViewRow(latestRow || row);
   };
 
+   const handleViewLogs = (row) => {
+    const matchingLogs = allTravels
+      .filter(r => r['Travel ID'] === row['Travel ID'])
+      .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+    setTravelLogs(matchingLogs);
+    setLogsOpen(true);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}

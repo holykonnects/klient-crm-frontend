@@ -98,7 +98,7 @@ const TravelTable = () => {
 
     const fetchValidationOptions = async () => {
     try {
-      const res = await fetch(`${dataUrl}?action=getTravelValidationOptions`);
+      const res = await fetch(`${dataUrl}?action=getValidationOptions`);
       const data = await res.json();
       setValidationOptions(data); // { "Department": [...], "Travel Type": [...], ... }
     } catch (err) {

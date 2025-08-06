@@ -163,6 +163,14 @@ const TravelTable = () => {
     (!activeSearch || Object.values(row).join(' ').toLowerCase().includes(activeSearch.toLowerCase()))
   );
 
+  const handleViewLogs = (row) => {
+    const logs = allTravels.filter(r => r['Travel ID'] === row['Travel ID']);
+    const sorted = logs.sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+    setTravelLogs(sorted);
+    setLogsOpen(true);
+  };
+
+
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}

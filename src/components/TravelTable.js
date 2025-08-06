@@ -10,6 +10,7 @@ import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import SearchIcon from '@mui/icons-material/Search';
 import HistoryIcon from '@mui/icons-material/History';
+import FlightTakeoff from '@mui/icons-material/FlightTakeoff';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
@@ -44,10 +45,12 @@ const TravelTable = () => {
   const [editRow, setEditRow] = useState(null);
   const [logsOpen, setLogsOpen] = useState(false);
   const [travelLogs, setTravelLogs] = useState([]);
+  const [addModalOpen, setAddModalOpen] = useState(false);
+  const [newTravel, setNewTravel] = useState({});
 
   const { user } = useAuth();
   const username = user?.username;
-  const loginUsername = user?.loginUsername || user?.username; // fallback if loginUsername missing
+  const loginUsername = user?.loginUsername || user?.username;
   const role = user?.role;
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
@@ -59,7 +62,6 @@ const TravelTable = () => {
         const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(loginUsername)}`);
         if (!res.ok) throw new Error(`HTTP status ${res.status}`);
         const { rows } = await res.json();
-
         if (!Array.isArray(rows)) throw new Error('Invalid data format');
 
         const filteredData = role === 'End User'
@@ -163,22 +165,92 @@ const TravelTable = () => {
     setViewRow(latestRow || row);
   };
 
- const handleViewLogs = (row) => {
+  const handleViewLogs = (row) => {
     const matchingLogs = allTravels
       .filter(r => r['Travel ID'] === row['Travel ID'])
       .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
     setTravelLogs(matchingLogs);
     setLogsOpen(true);
   };
-  
+
+  const handleOpenAddModal = () => {
+    setAddModalOpen(true);
+    setNewTravel({ 'Requested By': loginUsername });
+  };
+
+  const handleCloseAddModal = () => {
+    setAddModalOpen(false);
+  };
+
+  const handleAddChange = (e) => {
+    const { name, value } = e.target;
+    setNewTravel(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleAddSubmit = async () => {
+    const newEntry = {
+      ...newTravel,
+      'Travel ID': `TRAVEL-${Date.now()}`,
+      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false }),
+      'Update Travel': 'Yes'
+    };
+
+    try {
+      await fetch(formSubmitUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(newEntry)
+      });
+      alert('✅ Travel request submitted');
+      setAddModalOpen(false);
+      window.location.reload();
+    } catch {
+      alert('❌ Failed to submit travel');
+    }
+  };
+
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-          <Typography variant="h5" fontWeight="bold">Travel Records</Typography>
+          <Button
+            variant="contained"
+            startIcon={<FlightTakeoff />}
+            onClick={handleOpenAddModal}
+            sx={{ fontFamily: 'Montserrat, sans-serif', backgroundColor: '#6495ED' }}
+          >
+            Add Travel
+          </Button>
         </Box>
+
+        {/* Add Travel Modal */}
+        <Dialog open={addModalOpen} onClose={handleCloseAddModal} maxWidth="md" fullWidth>
+          <DialogTitle>Add Travel Request</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              {Object.keys(newTravel).map((key, idx) => (
+                <Grid item xs={6} key={idx}>
+                  <TextField
+                    fullWidth
+                    label={key}
+                    name={key}
+                    value={newTravel[key] || ''}
+                    onChange={handleAddChange}
+                    size="small"
+                  />
+                </Grid>
+              ))}
+            </Grid>
+            <Box mt={2} display="flex" justifyContent="flex-end">
+              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleAddSubmit}>
+                Submit
+              </Button>
+            </Box>
+          </DialogContent>
+        </Dialog>
 
         <Box display="flex" gap={2} flexWrap="wrap" mb={2} alignItems="center">
           <Box display="flex" alignItems="center">

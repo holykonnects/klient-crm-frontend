@@ -16,6 +16,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import { useAuth } from './AuthContext';
 
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -45,6 +46,10 @@ const TravelTable = () => {
   const [filterApproval, setFilterApproval] = useState('');
   const [filterDepartment, setFilterDepartment] = useState('');
   const [filterType, setFilterType] = useState('');
+  const [viewRow, setViewRow] = useState(null);
+  const [editRow, setEditRow] = useState(null);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [travelLogs, setTravelLogs] = useState([]);
 
   const { user } = useAuth();
   const loginUsername = user?.loginUsername || user?.username;
@@ -266,10 +271,10 @@ const TravelTable = () => {
                 {visibleColumns.map((key, i) => (
                   <TableCell key={i}>{row[key]}</TableCell>
                 ))}
-                <TableCell>
-                  <IconButton><EditIcon /></IconButton>
-                  <IconButton><VisibilityIcon /></IconButton>
-                  <IconButton><HistoryIcon /></IconButton>
+                <TableCell>  
+                  <IconButton onClick={() => setEditRow(row)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => setViewRow(row)}><VisibilityIcon /></IconButton>
+                  <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}

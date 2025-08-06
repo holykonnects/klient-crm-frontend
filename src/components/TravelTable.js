@@ -156,11 +156,11 @@ const TravelTable = () => {
     }
   };
 
-  const handleViewLogs = (travelRow) => {
-    const key = travelRow['Travel ID'];
-    const logs = allTravels.filter(t => t['Travel ID'] === key);
-    setTravelLogs(logs);
-    setLogsOpen(true);
+  const handleView = (row) => {
+    const latestRow = allTravels
+      .filter(r => r['Travel ID'] === row['Travel ID'])
+      .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp))[0];
+    setViewRow(latestRow || row);
   };
 
   return (

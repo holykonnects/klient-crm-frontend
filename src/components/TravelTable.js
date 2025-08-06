@@ -1,31 +1,16 @@
-// Unified TravelTable.js with integrated Add/Edit modal (ManageTravel removed)
+// Unified TravelTable.js with integrated ManageTravel modal
 import React, { useEffect, useState } from 'react';
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell,
-  TableBody, TextField, Select, MenuItem, FormControl,
-  IconButton, Popover, Checkbox, Button, Grid, Dialog,
-  DialogTitle, DialogContent, Accordion, AccordionSummary,
-  AccordionDetails, InputLabel
+  Box, Typography, Table, TableHead, TableRow, TableCell, TableBody, TextField, Select,
+  MenuItem, FormControl, InputLabel, IconButton, Popover, Checkbox, Button, Grid,
+  Dialog, DialogTitle, DialogContent, Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SearchIcon from '@mui/icons-material/Search';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
-
-const theme = createTheme({
-  typography: {
-    fontFamily: 'Montserrat, sans-serif',
-    fontSize: 10.5
-  }
-});
-
-const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8
-};
 
 const inputStyle = {
   fontFamily: 'Montserrat, sans-serif',
@@ -36,233 +21,195 @@ const inputStyle = {
 const TravelTable = () => {
   const { user } = useAuth();
   const [travelData, setTravelData] = useState([]);
-  const [filteredData, setFilteredData] = useState([]);
   const [headers, setHeaders] = useState([]);
-  const [search, setSearch] = useState('');
-  const [columnAnchor, setColumnAnchor] = useState(null);
-  const [visibleColumns, setVisibleColumns] = useState([]);
   const [filters, setFilters] = useState({});
+  const [search, setSearch] = useState('');
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [visibleCols, setVisibleCols] = useState([]);
   const [validationOptions, setValidationOptions] = useState({});
-  const [openDialog, setOpenDialog] = useState(false);
-  const [formData, setFormData] = useState({});
-  const [isEdit, setIsEdit] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [selectedRow, setSelectedRow] = useState(null);
 
-  const fetchData = async () => {
-    const base = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
-    const res = await fetch(`${base}?action=getTravelData&owner=${encodeURIComponent(user.username)}`);
-    const json = await res.json();
-    setHeaders(json.headers);
-    setTravelData(json.rows);
-    setFilteredData(json.rows);
-    setVisibleColumns(json.headers);
+  const fetchTravelData = async () => {
+    try {
+      const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getTravelData&owner=${encodeURIComponent(user.username)}`);
+      const json = await res.json();
+      setTravelData(json.rows);
+      setHeaders(json.headers);
+      setVisibleCols(json.headers);
+    } catch (err) {
+      console.error('Error fetching travel data:', err);
+    }
   };
 
   const fetchValidationOptions = async () => {
-    const res = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions');
-    const json = await res.json();
-    setValidationOptions(json);
+    try {
+      const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec?action=getValidationOptions`);
+      const json = await res.json();
+      setValidationOptions(json);
+    } catch (err) {
+      console.error('Error fetching validation options:', err);
+    }
   };
 
   useEffect(() => {
-    fetchData();
+    fetchTravelData();
     fetchValidationOptions();
   }, []);
 
-  const handleSearch = (e) => {
-    const term = e.target.value.toLowerCase();
-    setSearch(term);
-    setFilteredData(travelData.filter(row =>
-      Object.values(row).some(val => String(val).toLowerCase().includes(term))
-    ));
+  const handleFilterChange = (field, value) => {
+    setFilters(prev => ({ ...prev, [field]: value }));
   };
 
-  const handleFilter = (field, value) => {
-    const newFilters = { ...filters, [field]: value };
-    setFilters(newFilters);
-    let filtered = [...travelData];
-    Object.entries(newFilters).forEach(([key, val]) => {
-      if (val) filtered = filtered.filter(row => row[key] === val);
-    });
-    if (search) filtered = filtered.filter(row =>
-      Object.values(row).some(val => String(val).toLowerCase().includes(search))
-    );
-    setFilteredData(filtered);
+  const filteredRows = travelData.filter(row => {
+    return Object.entries(filters).every(([field, value]) =>
+      !value || row[field] === value
+    ) &&
+    headers.some(h => row[h]?.toLowerCase().includes(search.toLowerCase()));
+  });
+
+  const handleModalOpen = (row = null) => {
+    setSelectedRow(row);
+    setModalOpen(true);
   };
 
-  const openEdit = (row) => {
-    setIsEdit(true);
-    setFormData(row);
-    setOpenDialog(true);
+  const handleModalClose = () => {
+    setModalOpen(false);
+    setSelectedRow(null);
   };
 
-  const openAdd = () => {
-    setIsEdit(false);
-    setFormData({ 'Requested By': user.username });
-    setOpenDialog(true);
-  };
-
-  const handleSubmit = async () => {
+  const handleSubmit = async (formData) => {
     try {
-      const res = await fetch('https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec', {
+      const res = await fetch(`https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec`, {
         method: 'POST',
-        body: JSON.stringify(formData),
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
       });
       const result = await res.json();
       if (result.success) {
-        fetchData();
-        setOpenDialog(false);
+        fetchTravelData();
+        handleModalClose();
       } else {
-        alert('Error submitting data');
+        alert('Error submitting travel entry');
       }
     } catch (err) {
       console.error('Submission error:', err);
-      alert('Submission failed');
     }
   };
 
   const groupedSections = {
-    'Traveler Info': ["Requested By", "Department", "Designation"],
-    'Travel Details': ["Travel Type", "Travel Purpose", "Destination", "Start Date", "End Date", "Mode of Travel"],
-    'Booking & Budget': ["Preferred Airline / Train / Service", "Accommodation Required", "Hotel Preference", "Expected Budget (₹)", "Final Amount Spent (₹)", "Supporting Documents (Link)"],
-    'Approval & Status': ["Approval Status", "Approved By", "Travel Status", "Remarks / Justification", "Booking Confirmation Details", "Expense Settlement Status"]
-  };
-
-  const renderField = (label) => {
-    const isDropdown = Object.keys(validationOptions).includes(label);
-    return (
-      <Grid item xs={12} sm={6} key={label}>
-        {isDropdown ? (
-          <FormControl fullWidth>
-            <InputLabel>{label}</InputLabel>
-            <Select
-              value={formData[label] || ''}
-              label={label}
-              onChange={(e) => setFormData({ ...formData, [label]: e.target.value })}
-            >
-              {validationOptions[label].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-            </Select>
-          </FormControl>
-        ) : (
-          <TextField
-            label={label}
-            value={formData[label] || ''}
-            onChange={(e) => setFormData({ ...formData, [label]: e.target.value })}
-            fullWidth
-            sx={inputStyle}
-          />
-        )}
-      </Grid>
-    );
+    'Traveler Info': ['Requested By', 'Department', 'Designation'],
+    'Travel Details': ['Travel Type', 'Travel Purpose', 'Destination', 'Start Date', 'End Date', 'Mode of Travel'],
+    'Booking & Budget': ['Preferred Airline / Train / Service', 'Accommodation Required', 'Hotel Preference', 'Expected Budget (₹)', 'Final Amount Spent (₹)', 'Supporting Documents (Link)'],
+    'Approval & Status': ['Approval Status', 'Approved By', 'Travel Status', 'Remarks / Justification', 'Booking Confirmation Details', 'Expense Settlement Status']
   };
 
   return (
-    <ThemeProvider theme={theme}>
-      <Box p={2}>
-        <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-          <Typography variant="h6">Travel Management</Typography>
-          <Button variant="contained" onClick={openAdd}>Add Travel</Button>
-        </Box>
-
-        <Box display="flex" gap={2} mb={2}>
-          <TextField
-            placeholder="Search..."
-            value={search}
-            onChange={handleSearch}
-            size="small"
-            InputProps={{ startAdornment: <SearchIcon /> }}
-            sx={{ minWidth: 160 }}
-          />
-          {['Travel Status', 'Approval Status', 'Department', 'Travel Type'].map(field => (
-            <FormControl key={field} sx={{ minWidth: 160 }} size="small">
-              <InputLabel>{field}</InputLabel>
-              <Select
-                value={filters[field] || ''}
-                onChange={(e) => handleFilter(field, e.target.value)}
-              >
-                <MenuItem value="">All</MenuItem>
-                {validationOptions[field]?.map(opt => (
-                  <MenuItem key={opt} value={opt}>{opt}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ))}
-          <IconButton onClick={(e) => setColumnAnchor(e.currentTarget)}>
-            <ViewColumnIcon sx={selectorStyle} />
-          </IconButton>
-          <Popover
-            open={Boolean(columnAnchor)}
-            anchorEl={columnAnchor}
-            onClose={() => setColumnAnchor(null)}
-            anchorOrigin={{ vertical: 'bottom', horizontal: 'left' }}
-          >
-            <Box p={2}>
-              {headers.map(header => (
-                <FormControlLabel
-                  key={header}
-                  control={
-                    <Checkbox
-                      checked={visibleColumns.includes(header)}
-                      onChange={() => {
-                        const updated = visibleColumns.includes(header)
-                          ? visibleColumns.filter(h => h !== header)
-                          : [...visibleColumns, header];
-                        setVisibleColumns(updated);
-                      }}
-                    />
-                  }
-                  label={<Typography sx={selectorStyle}>{header}</Typography>}
-                />
+    <Box sx={{ p: 2, fontFamily: 'Montserrat, sans-serif' }}>
+      <Typography variant="h6">Travel Management</Typography>
+      <Box display="flex" gap={2} alignItems="center" my={2}>
+        <TextField
+          variant="outlined"
+          size="small"
+          placeholder="Search..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          InputProps={{ startAdornment: <SearchIcon /> }}
+          sx={{ minWidth: 160 }}
+        />
+        {['Travel Status', 'Approval Status', 'Department', 'Travel Type'].map(field => (
+          <FormControl key={field} size="small" sx={{ minWidth: 160 }}>
+            <InputLabel>{field}</InputLabel>
+            <Select
+              value={filters[field] || ''}
+              onChange={e => handleFilterChange(field, e.target.value)}
+              label={field}
+            >
+              <MenuItem value="">All</MenuItem>
+              {[...(new Set(travelData.map(row => row[field]).filter(Boolean)))].map(opt => (
+                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
               ))}
-            </Box>
-          </Popover>
-        </Box>
-
-        <Table>
-          <TableHead>
-            <TableRow>
-              {headers.filter(h => visibleColumns.includes(h)).map(header => (
-                <TableCell key={header}>{header}</TableCell>
-              ))}
-              <TableCell>Action</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {filteredData.map((row, i) => (
-              <TableRow key={i}>
-                {headers.filter(h => visibleColumns.includes(h)).map(header => (
-                  <TableCell key={header}>{row[header]}</TableCell>
-                ))}
-                <TableCell>
-                  <IconButton onClick={() => openEdit(row)}><EditIcon /></IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-
-        <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="md" fullWidth>
-          <DialogTitle>{isEdit ? 'Edit Travel' : 'Add Travel'}</DialogTitle>
-          <DialogContent>
-            {Object.entries(groupedSections).map(([section, fields]) => (
-              <Accordion key={section} defaultExpanded>
-                <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
-                  <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>{section}</Typography>
-                </AccordionSummary>
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    {fields.map(field => renderField(field))}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-            <Box mt={2} textAlign="right">
-              <Button variant="contained" onClick={handleSubmit}>{isEdit ? 'Update' : 'Submit'}</Button>
-            </Box>
-          </DialogContent>
-        </Dialog>
+            </Select>
+          </FormControl>
+        ))}
+        <Button variant="contained" sx={{ marginLeft: 'auto' }} onClick={() => handleModalOpen()}>Add Travel</Button>
       </Box>
-    </ThemeProvider>
+
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            {headers.filter(h => visibleCols.includes(h)).map(h => (
+              <TableCell key={h}>{h}</TableCell>
+            ))}
+            <TableCell>Actions</TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {filteredRows.map((row, idx) => (
+            <TableRow key={idx}>
+              {headers.filter(h => visibleCols.includes(h)).map(h => (
+                <TableCell key={h}>{row[h]}</TableCell>
+              ))}
+              <TableCell>
+                <IconButton onClick={() => handleModalOpen(row)}><EditIcon /></IconButton>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+
+      <Dialog open={modalOpen} onClose={handleModalClose} maxWidth="md" fullWidth>
+        <DialogTitle>{selectedRow ? 'Edit Travel' : 'Add Travel'}</DialogTitle>
+        <DialogContent>
+          {Object.entries(groupedSections).map(([section, fields]) => (
+            <Accordion key={section} defaultExpanded>
+              <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff' }}>
+                <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>{section}</Typography>
+              </AccordionSummary>
+              <AccordionDetails>
+                <Grid container spacing={2}>
+                  {fields.map(field => {
+                    const isDropdown = Object.keys(validationOptions).includes(field);
+                    const value = selectedRow?.[field] || (field === 'Requested By' ? user.username : '');
+                    return (
+                      <Grid item xs={12} sm={6} key={field}>
+                        {isDropdown ? (
+                          <FormControl fullWidth>
+                            <InputLabel>{field}</InputLabel>
+                            <Select
+                              value={value}
+                              label={field}
+                              onChange={e => setSelectedRow(prev => ({ ...prev, [field]: e.target.value }))}
+                            >
+                              {validationOptions[field].map(opt => (
+                                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            label={field}
+                            fullWidth
+                            value={value}
+                            onChange={e => setSelectedRow(prev => ({ ...prev, [field]: e.target.value }))}
+                            sx={inputStyle}
+                          />
+                        )}
+                      </Grid>
+                    );
+                  })}
+                </Grid>
+              </AccordionDetails>
+            </Accordion>
+          ))}
+          <Box textAlign="right" mt={2}>
+            <Button variant="contained" onClick={() => handleSubmit(selectedRow || { 'Requested By': user.username })}>
+              {selectedRow ? 'Update' : 'Submit'}
+            </Button>
+          </Box>
+        </DialogContent>
+      </Dialog>
+    </Box>
   );
 };
 

@@ -28,53 +28,68 @@ const selectorStyle = {
 };
 
 const TravelTable = () => {
+  const [travels, setTravels] = useState([]);
+  const [allTravels, setAllTravels] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterApproval, setFilterApproval] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterType, setFilterType] = useState('');
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [viewRow, setViewRow] = useState(null);
+  const [editRow, setEditRow] = useState(null);
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [travelLogs, setTravelLogs] = useState([]);
+
   const { user } = useAuth();
   const username = user?.username;
   const role = user?.role;
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
-
-  const [travels, setTravels] = useState([]);
-  const [allTravels, setAllTravels] = useState([]);
-  const [travelLogs, setTravelLogs] = useState([]);
-  const [visibleColumns, setVisibleColumns] = useState([]);
-  const [search, setSearch] = useState('');
-  const [activeSearch, setActiveSearch] = useState('');
-  const [filters, setFilters] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [viewRow, setViewRow] = useState(null);
-  const [editRow, setEditRow] = useState(null);
-  const [validationOptions, setValidationOptions] = useState({});
-  const [logsOpen, setLogsOpen] = useState(false);
-
-  const fetchData = async () => {
-    const res = await fetch(dataUrl);
-    const data = await res.json();
-    const filtered = role === 'End User' ? data.filter(row => row['Requested By'] === username) : data;
-    setAllTravels(filtered);
-
-    const seen = new Map();
-    const deduped = [];
-    filtered.forEach(row => {
-      const key = row['Travel ID'];
-      const existing = seen.get(key);
-      if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
-        seen.set(key, row);
-      }
-    });
-    seen.forEach(row => deduped.push(row));
-
-    setTravels(deduped);
-    setVisibleColumns(
-      JSON.parse(localStorage.getItem(`visibleColumns-${username}-travel`)) ||
-      (deduped.length ? Object.keys(deduped[0]) : [])
-    );
-    setLoading(false);
-  };
+  const formSubmitUrl = dataUrl;
 
   useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const res = await fetch(dataUrl);
+        if (!res.ok) throw new Error(`HTTP status ${res.status}`);
+        const data = await res.json();
+
+        if (!Array.isArray(data)) throw new Error('Invalid data format');
+
+        const filteredData = role === 'End User'
+          ? data.filter(entry => entry['Requested By'] === username)
+          : data;
+
+        const deduplicated = [];
+        const seen = new Map();
+        filteredData.forEach(row => {
+          const key = row['Travel ID'];
+          const existing = seen.get(key);
+          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+            seen.set(key, row);
+          }
+        });
+        seen.forEach(v => deduplicated.push(v));
+
+        setAllTravels(filteredData);
+        setTravels(deduplicated);
+        setVisibleColumns(
+          JSON.parse(localStorage.getItem(`visibleColumns-${username}-travels`)) ||
+          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
+        );
+      } catch (err) {
+        console.error('❌ Error fetching travel data:', err.message);
+        alert('Failed to fetch travel data. Please check your credentials or endpoint.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
     fetchData();
   }, [username, role]);
 
@@ -93,13 +108,13 @@ const TravelTable = () => {
   });
 
   const filteredTravels = sortedTravels.filter(row =>
-    ['Requested By', 'Department', 'Travel Purpose', 'Travel ID'].some(key =>
+    ['Requested By', 'Department', 'Travel Type', 'Destination'].some(key =>
       (row[key] || '').toLowerCase().includes(activeSearch.toLowerCase())
     ) &&
-    (!filters['Travel Status'] || row['Travel Status'] === filters['Travel Status']) &&
-    (!filters['Approval Status'] || row['Approval Status'] === filters['Approval Status']) &&
-    (!filters['Department'] || row['Department'] === filters['Department']) &&
-    (!filters['Travel Type'] || row['Travel Type'] === filters['Travel Type'])
+    (!filterStatus || row['Travel Status'] === filterStatus) &&
+    (!filterApproval || row['Approval Status'] === filterApproval) &&
+    (!filterDepartment || row['Department'] === filterDepartment) &&
+    (!filterType || row['Travel Type'] === filterType)
   );
 
   const unique = (key) => [...new Set(travels.map(d => d[key]).filter(Boolean))];
@@ -109,19 +124,12 @@ const TravelTable = () => {
       const updated = prev.includes(col)
         ? prev.filter(c => c !== col)
         : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-travel`, JSON.stringify(updated));
+      localStorage.setItem(`visibleColumns-${username}-travels`, JSON.stringify(updated));
       return updated;
     });
   };
 
-  const handleViewLogs = (row) => {
-    const key = row['Travel ID'];
-    const logs = allTravels.filter(travel => travel['Travel ID'] === key);
-    setTravelLogs(logs);
-    setLogsOpen(true);
-  };
-
-  const handleEditChange = (e) => {
+  const handleUpdateChange = (e) => {
     const { name, value } = e.target;
     setEditRow(prev => ({ ...prev, [name]: value }));
   };
@@ -132,66 +140,66 @@ const TravelTable = () => {
       'Update Travel': 'Yes',
       'Timestamp': new Date().toLocaleString('en-GB', { hour12: false })
     };
+
     try {
-      await fetch(dataUrl, {
+      await fetch(formSubmitUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
       });
-      alert('✅ Travel updated');
+      alert('✅ Travel updated successfully');
       setEditRow(null);
     } catch {
       alert('❌ Error updating travel');
     }
   };
 
+  const handleViewLogs = (travelRow) => {
+    const key = travelRow['Travel ID'];
+    const logs = allTravels.filter(t => t['Travel ID'] === key);
+    setTravelLogs(logs);
+    setLogsOpen(true);
+  };
+
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" marginBottom={2}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Travel Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} marginBottom={2} flexWrap="wrap" alignItems="center">
+        <Box display="flex" gap={2} flexWrap="wrap" mb={2} alignItems="center">
           <Box display="flex" alignItems="center">
             <TextField
               size="small"
               label="Search"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && setActiveSearch(search)}
+              value={searchInput}
+              onChange={e => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && setActiveSearch(searchInput)}
               sx={{ minWidth: 240 }}
             />
-            <IconButton onClick={() => setActiveSearch(search)} sx={{ ml: 1 }}>
-              <SearchIcon />
-            </IconButton>
+            <IconButton onClick={() => setActiveSearch(searchInput)}><SearchIcon /></IconButton>
           </Box>
 
-          {['Travel Status', 'Approval Status', 'Department', 'Travel Type'].map(field => (
-            <FormControl size="small" sx={{ minWidth: 160 }} key={field}>
-              <InputLabel>{field}</InputLabel>
-              <Select
-                value={filters[field] || ''}
-                onChange={e => setFilters(prev => ({ ...prev, [field]: e.target.value }))}
-                label={field}
-              >
+          {[['Travel Status', filterStatus, setFilterStatus], ['Approval Status', filterApproval, setFilterApproval], ['Department', filterDepartment, setFilterDepartment], ['Travel Type', filterType, setFilterType]].map(([label, val, setter]) => (
+            <FormControl size="small" sx={{ minWidth: 160 }} key={label}>
+              <InputLabel>{label}</InputLabel>
+              <Select value={val} label={label} onChange={e => setter(e.target.value)}>
                 <MenuItem value="">All</MenuItem>
-                {unique(field).map(item => (
+                {unique(label).map(item => (
                   <MenuItem key={item} value={item}>{item}</MenuItem>
                 ))}
               </Select>
             </FormControl>
           ))}
 
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
+          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}><ViewColumnIcon /></IconButton>
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box padding={2} sx={selectorStyle}>
-              <Button size="small" onClick={() => setVisibleColumns(Object.keys(travels[0] || {}))}>Select All</Button>
+              <Button size="small" onClick={() => setVisibleColumns(Object.keys(travels[0]))}>Select All</Button>
               <Button size="small" onClick={() => setVisibleColumns([])}>Deselect All</Button>
               {Object.keys(travels[0] || {}).map(col => (
                 <Box key={col}>
@@ -209,13 +217,13 @@ const TravelTable = () => {
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {visibleColumns.map(col => (
+              {visibleColumns.map(header => (
                 <TableCell
-                  key={col}
-                  onClick={() => handleSort(col)}
+                  key={header}
+                  onClick={() => handleSort(header)}
                   style={{ color: 'white', cursor: 'pointer' }}
                 >
-                  {col} {sortConfig.key === col ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                 </TableCell>
               ))}
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
@@ -224,8 +232,8 @@ const TravelTable = () => {
           <TableBody>
             {filteredTravels.map((row, index) => (
               <TableRow key={index}>
-                {visibleColumns.map(col => (
-                  <TableCell key={col}>{row[col]}</TableCell>
+                {visibleColumns.map((key, i) => (
+                  <TableCell key={i}>{row[key]}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => setViewRow(row)}><VisibilityIcon /></IconButton>
@@ -244,13 +252,7 @@ const TravelTable = () => {
             <Grid container spacing={2}>
               {viewRow && Object.entries(viewRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={key}
-                    value={value}
-                    InputProps={{ readOnly: true }}
-                  />
+                  <TextField fullWidth size="small" label={key} value={value} InputProps={{ readOnly: true }} />
                 </Grid>
               ))}
             </Grid>
@@ -259,12 +261,13 @@ const TravelTable = () => {
 
         {/* Logs Modal */}
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Travel Change Logs</DialogTitle>
+          <DialogTitle>Travel Logs</DialogTitle>
           <DialogContent>
             <Table>
               <TableHead>
                 <TableRow>
                   <TableCell>Timestamp</TableCell>
+                  <TableCell>Requested By</TableCell>
                   <TableCell>Travel Status</TableCell>
                   <TableCell>Approval Status</TableCell>
                   <TableCell>Remarks / Justification</TableCell>
@@ -274,6 +277,7 @@ const TravelTable = () => {
                 {travelLogs.map((log, idx) => (
                   <TableRow key={idx}>
                     <TableCell>{log.Timestamp}</TableCell>
+                    <TableCell>{log['Requested By']}</TableCell>
                     <TableCell>{log['Travel Status']}</TableCell>
                     <TableCell>{log['Approval Status']}</TableCell>
                     <TableCell>{log['Remarks / Justification']}</TableCell>
@@ -296,7 +300,7 @@ const TravelTable = () => {
                     label={key}
                     name={key}
                     value={editRow[key]}
-                    onChange={handleEditChange}
+                    onChange={handleUpdateChange}
                     size="small"
                   />
                 </Grid>

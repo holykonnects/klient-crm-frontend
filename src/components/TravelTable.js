@@ -58,13 +58,13 @@ const TravelTable = () => {
       try {
         const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(loginUsername)}`);
         if (!res.ok) throw new Error(`HTTP status ${res.status}`);
-        const data = await res.json();
+        const { rows } = await res.json();
 
-        if (!Array.isArray(data)) throw new Error('Invalid data format');
+        if (!Array.isArray(rows)) throw new Error('Invalid data format');
 
         const filteredData = role === 'End User'
-          ? data.filter(entry => entry['Requested By'] === loginUsername)
-          : data;
+          ? rows.filter(entry => entry['Requested By'] === loginUsername)
+          : rows;
 
         const deduplicated = [];
         const seen = new Map();

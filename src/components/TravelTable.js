@@ -32,43 +32,24 @@ const TravelTable = () => {
   const [travels, setTravels] = useState([]);
   const [allTravels, setAllTravels] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchInput, setSearchInput] = useState('');
-  const [activeSearch, setActiveSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState('');
-  const [filterApproval, setFilterApproval] = useState('');
-  const [filterDepartment, setFilterDepartment] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [visibleColumns, setVisibleColumns] = useState([]);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [viewRow, setViewRow] = useState(null);
-  const [editRow, setEditRow] = useState(null);
-  const [logsOpen, setLogsOpen] = useState(false);
-  const [travelLogs, setTravelLogs] = useState([]);
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newTravel, setNewTravel] = useState({});
+  const [fieldList, setFieldList] = useState([]);
 
   const { user } = useAuth();
-  const username = user?.username;
   const loginUsername = user?.loginUsername || user?.username;
   const role = user?.role;
 
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
-  const formSubmitUrl = dataUrl;
 
   useEffect(() => {
     const fetchData = async () => {
       try {
         const res = await fetch(`${dataUrl}?action=getTravelData&owner=${encodeURIComponent(loginUsername)}`);
-        if (!res.ok) throw new Error(`HTTP status ${res.status}`);
         const { rows } = await res.json();
-        if (!Array.isArray(rows)) throw new Error('Invalid data format');
-
         const filteredData = role === 'End User'
           ? rows.filter(entry => entry['Requested By'] === loginUsername)
           : rows;
-
-        const deduplicated = [];
         const seen = new Map();
         filteredData.forEach(row => {
           const key = row['Travel ID'];
@@ -77,110 +58,39 @@ const TravelTable = () => {
             seen.set(key, row);
           }
         });
-        seen.forEach(v => deduplicated.push(v));
-
+        setTravels(Array.from(seen.values()));
         setAllTravels(filteredData);
-        setTravels(deduplicated);
-        setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${loginUsername}-travels`)) ||
-          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
-        );
       } catch (err) {
         console.error('❌ Error fetching travel data:', err.message);
-        alert('Failed to fetch travel data. Please check your credentials or endpoint.');
+        alert('Failed to fetch travel data.');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
-  }, [loginUsername, role]);
-
-  const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
-    setSortConfig({ key, direction });
-  };
-
-  const sortedTravels = [...travels].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
-
-  const filteredTravels = sortedTravels.filter(row =>
-    ['Requested By', 'Department', 'Travel Type', 'Destination'].some(key =>
-      (row[key] || '').toLowerCase().includes(activeSearch.toLowerCase())
-    ) &&
-    (!filterStatus || row['Travel Status'] === filterStatus) &&
-    (!filterApproval || row['Approval Status'] === filterApproval) &&
-    (!filterDepartment || row['Department'] === filterDepartment) &&
-    (!filterType || row['Travel Type'] === filterType)
-  );
-
-  const unique = (key) => [...new Set(travels.map(d => d[key]).filter(Boolean))];
-
-  const handleColumnToggle = (col) => {
-    setVisibleColumns(prev => {
-      const updated = prev.includes(col)
-        ? prev.filter(c => c !== col)
-        : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-travels`, JSON.stringify(updated));
-      return updated;
-    });
-  };
-
-  const handleUpdateChange = (e) => {
-    const { name, value } = e.target;
-    setEditRow(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleEditSubmit = async () => {
-    const updated = {
-      ...editRow,
-      'Update Travel': 'Yes',
-      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false })
+    const fetchFieldList = async () => {
+      try {
+        const res = await fetch(`${dataUrl}?action=getTravelFields`);
+        const data = await res.json();
+        setFieldList(data.headers || []);
+      } catch (err) {
+        console.error('❌ Error fetching travel fields:', err.message);
+      }
     };
 
-    try {
-      await fetch(formSubmitUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-      alert('✅ Travel updated successfully');
-      setEditRow(null);
-    } catch {
-      alert('❌ Error updating travel');
-    }
-  };
-
-  const handleView = (row) => {
-    const latestRow = allTravels
-      .filter(r => r['Travel ID'] === row['Travel ID'])
-      .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp))[0];
-    setViewRow(latestRow || row);
-  };
-
-  const handleViewLogs = (row) => {
-    const matchingLogs = allTravels
-      .filter(r => r['Travel ID'] === row['Travel ID'])
-      .sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
-    setTravelLogs(matchingLogs);
-    setLogsOpen(true);
-  };
+    fetchData();
+    fetchFieldList();
+  }, [loginUsername, role]);
 
   const handleOpenAddModal = () => {
+    const defaultData = {};
+    fieldList.forEach(f => defaultData[f] = '');
+    defaultData['Requested By'] = loginUsername;
+    setNewTravel(defaultData);
     setAddModalOpen(true);
-    setNewTravel({ 'Requested By': loginUsername });
   };
 
-  const handleCloseAddModal = () => {
-    setAddModalOpen(false);
-  };
+  const handleCloseAddModal = () => setAddModalOpen(false);
 
   const handleAddChange = (e) => {
     const { name, value } = e.target;
@@ -194,9 +104,8 @@ const TravelTable = () => {
       'Timestamp': new Date().toLocaleString('en-GB', { hour12: false }),
       'Update Travel': 'Yes'
     };
-
     try {
-      await fetch(formSubmitUrl, {
+      await fetch(dataUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
@@ -231,13 +140,13 @@ const TravelTable = () => {
           <DialogTitle>Add Travel Request</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {Object.keys(newTravel).map((key, idx) => (
+              {fieldList.map((field, idx) => (
                 <Grid item xs={6} key={idx}>
                   <TextField
                     fullWidth
-                    label={key}
-                    name={key}
-                    value={newTravel[key] || ''}
+                    label={field}
+                    name={field}
+                    value={newTravel[field] || ''}
                     onChange={handleAddChange}
                     size="small"
                   />

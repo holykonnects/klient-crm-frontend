@@ -35,6 +35,16 @@ const TravelTable = () => {
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [newTravel, setNewTravel] = useState({});
   const [fieldList, setFieldList] = useState([]);
+  const [visibleColumns, setVisibleColumns] = useState([]);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+
+  const [searchInput, setSearchInput] = useState('');
+  const [activeSearch, setActiveSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState('');
+  const [filterApproval, setFilterApproval] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filterType, setFilterType] = useState('');
 
   const { user } = useAuth();
   const loginUsername = user?.loginUsername || user?.username;
@@ -58,8 +68,10 @@ const TravelTable = () => {
             seen.set(key, row);
           }
         });
-        setTravels(Array.from(seen.values()));
+        const deduped = Array.from(seen.values());
+        setTravels(deduped);
         setAllTravels(filteredData);
+        setVisibleColumns(Object.keys(deduped[0] || {}));
       } catch (err) {
         console.error('❌ Error fetching travel data:', err.message);
         alert('Failed to fetch travel data.');
@@ -119,6 +131,33 @@ const TravelTable = () => {
     }
   };
 
+  const handleColumnToggle = (col) => {
+    setVisibleColumns(prev =>
+      prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]
+    );
+  };
+
+  const handleSort = (key) => {
+    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
+    setSortConfig({ key, direction });
+    const sorted = [...travels].sort((a, b) => {
+      if (a[key] < b[key]) return direction === 'asc' ? -1 : 1;
+      if (a[key] > b[key]) return direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    setTravels(sorted);
+  };
+
+  const unique = (key) => [...new Set(allTravels.map(item => item[key]).filter(Boolean))];
+
+  const filteredTravels = travels.filter(row =>
+    (!filterStatus || row['Travel Status'] === filterStatus) &&
+    (!filterApproval || row['Approval Status'] === filterApproval) &&
+    (!filterDepartment || row['Department'] === filterDepartment) &&
+    (!filterType || row['Travel Type'] === filterType) &&
+    (!activeSearch || Object.values(row).join(' ').toLowerCase().includes(activeSearch.toLowerCase()))
+  );
+
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
@@ -161,6 +200,7 @@ const TravelTable = () => {
           </DialogContent>
         </Dialog>
 
+        {/* Filters and Column Selector */}
         <Box display="flex" gap={2} flexWrap="wrap" mb={2} alignItems="center">
           <Box display="flex" alignItems="center">
             <TextField
@@ -189,7 +229,7 @@ const TravelTable = () => {
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}><ViewColumnIcon /></IconButton>
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box padding={2} sx={selectorStyle}>
-              <Button size="small" onClick={() => setVisibleColumns(Object.keys(travels[0]))}>Select All</Button>
+              <Button size="small" onClick={() => setVisibleColumns(Object.keys(travels[0] || {}))}>Select All</Button>
               <Button size="small" onClick={() => setVisibleColumns([])}>Deselect All</Button>
               {Object.keys(travels[0] || {}).map(col => (
                 <Box key={col}>
@@ -204,6 +244,7 @@ const TravelTable = () => {
           </Popover>
         </Box>
 
+        {/* Travel Table */}
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -226,9 +267,9 @@ const TravelTable = () => {
                   <TableCell key={i}>{row[key]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setViewRow(row)}><VisibilityIcon /></IconButton>
-                  <IconButton onClick={() => setEditRow(row)}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon /></IconButton>
+                  <IconButton><EditIcon /></IconButton>
+                  <IconButton><VisibilityIcon /></IconButton>
+                  <IconButton><HistoryIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}

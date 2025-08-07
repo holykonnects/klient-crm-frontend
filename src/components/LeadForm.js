@@ -150,6 +150,17 @@ function LeadForm() {
       Timestamp: timestamp
     };
 
+      // ✅ Check for blank submission
+    const isCompletelyBlank = Object.values(formValues).every(
+        (val) => val === '' || val === null || val === undefined
+      );
+    
+      if (isCompletelyBlank) {
+        alert('⚠️ Cannot submit a blank form. Please fill in the required fields.');
+        setSubmitting(false);
+        return;
+      }
+    
     try {
       await fetch(formSubmitUrl, {
         method: 'POST',

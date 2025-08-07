@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
-  IconButton, Tooltip, Typography, Divider
+  IconButton, Tooltip, Typography, Divider, Dashboard
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,
@@ -29,6 +29,7 @@ function DashboardLayout({ children }) {
   const toggleDrawer = () => setOpen(prev => !prev);
 
   const menuItems = [
+    { label: 'Dashboard', icon: <Dashboard />, route: '/dashboard', access: 'Dashboard' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },

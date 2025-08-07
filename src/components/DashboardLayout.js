@@ -29,11 +29,11 @@ function DashboardLayout({ children }) {
   const toggleDrawer = () => setOpen(prev => !prev);
 
   const menuItems = [
+    { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
-    { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },

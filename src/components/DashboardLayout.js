@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
-  IconButton, Tooltip, Typography, Divider, Dashboard
+  IconButton, Tooltip, Typography, Divider
 } from '@mui/material';
 import {
   ChevronLeft, ChevronRight,

@@ -14,6 +14,8 @@ import '@fontsource/montserrat';
 //---
 import HistoryIcon from '@mui/icons-material/History';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import EventIcon from '@mui/icons-material/Event'; 
+import CalendarView from './CalendarView'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -41,6 +43,9 @@ const LeadsTable = () => {
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  const [selectedEntryRow, setSelectedEntryRow] = useState(null);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [entryType, setEntryType] = useState('');
   
   //---
   const [leadLogs, setLeadLogs] = useState([]);
@@ -168,6 +173,12 @@ const LeadsTable = () => {
     }
   };
 
+  const handleOpenMeetingFromRow = (row, type) => {
+    setSelectedEntryRow(row);
+    setEntryType(type); // 'Lead', 'Account', 'Deal'
+    setShowCalendarModal(true);
+  };
+
   return (
    <>
     <ThemeProvider theme={theme}>
@@ -263,7 +274,8 @@ const LeadsTable = () => {
                 <TableCell>
                   <IconButton onClick={() => setViewRow(lead)}><VisibilityIcon /></IconButton>
                   <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleViewLogs(lead)}><HistoryIcon /></IconButton> 
+                  <IconButton onClick={() => handleViewLogs(lead)}><HistoryIcon /></IconButton>
+                  <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')}><EventIcon /></IconButton> 
                 </TableCell>
               </TableRow>
             ))}
@@ -359,6 +371,15 @@ const LeadsTable = () => {
             </Box>
           </DialogContent>
         </Dialog>
+        {showCalendarModal && (
+          <CalendarView
+            open={showCalendarModal}
+            onClose={() => setShowCalendarModal(false)}
+            entryType={entryType}
+            selectedEntryRow={selectedEntryRow}
+            mode="existing"
+          />
+        )}
       </Box>
     </ThemeProvider>
   </>

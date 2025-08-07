@@ -127,26 +127,38 @@ const TravelTable = () => {
   };
 
   const handleAddSubmit = async () => {
-    const newEntry = {
-      ...newTravel,
-      'Travel ID': `TRAVEL-${Date.now()}`,
-      'Timestamp': new Date().toLocaleString('en-GB', { hour12: false }),
-      'Update Travel': 'Yes'
-    };
-    try {
-      await fetch(dataUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(newEntry)
-      });
-      alert('✅ Travel request submitted');
-      setAddModalOpen(false);
-      window.location.reload();
-    } catch {
-      alert('❌ Failed to submit travel');
-    }
+  const newEntry = {
+    ...newTravel,
+    'Travel ID': `TRAVEL-${Date.now()}`,
+    'Timestamp': new Date().toLocaleString('en-GB', { hour12: false }),
+    'Update Travel': 'Yes'
   };
+
+  // ✅ Check if all values are blank (null/empty/undefined)
+  const isCompletelyBlank = Object.values(newEntry).every(
+    (val) => val === '' || val === null || val === undefined
+  );
+
+  if (isCompletelyBlank) {
+    alert('⚠️ Cannot submit a blank form. Please fill in the required fields.');
+    return;
+  }
+
+  try {
+    await fetch(dataUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newEntry)
+    });
+    alert('✅ Travel request submitted');
+    setAddModalOpen(false);
+    window.location.reload();
+  } catch {
+    alert('❌ Failed to submit travel');
+  }
+};
+
 
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev =>

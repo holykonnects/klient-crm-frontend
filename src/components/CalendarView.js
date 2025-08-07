@@ -13,7 +13,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import './CalendarStyles.css';
 
-const CalendarView = () => {
+const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEntryRow, mode }) => {
   const { user } = useAuth();
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -30,6 +30,31 @@ const CalendarView = () => {
     leadOwner: ''
   });
   const [entries, setEntries] = useState([]);
+  const activeEntryType = externalEntryType || entryType;
+
+  useEffect(() => {
+    if (mode === 'existing' && selectedEntryRow) {
+      const row = selectedEntryRow;
+  
+      const name = row['First Name'] && row['Last Name']
+        ? `${row['First Name']} ${row['Last Name']}`
+        : row['Name'] || '';
+  
+      const company = row['Company'] || '';
+      const mobile = row['Mobile Number'] || row['Phone'] || '';
+  
+      setFormData(prev => ({
+        ...prev,
+        selectedEntry: `${company} | ${name} | ${mobile}`,
+        leadType: 'Existing',
+        leadOwner: row['Lead Owner'] || row['Account Owner'] || '',
+        meetingDate: '',
+        meetingTime: '',
+        purpose: ''
+      }));
+    }
+  }, [mode, selectedEntryRow, activeEntryType]);
+
 
   // Fetch events based on user role
   useEffect(() => {
@@ -73,7 +98,7 @@ const CalendarView = () => {
   // Fetch dropdown entries for Lead/Deal/Account
   useEffect(() => {
     if (!entryType) return;
-    const action = entryType === 'Lead' ? 'getLeads' : entryType === 'Deal' ? 'getDeals' : 'getAccounts';
+    const action = activeEntryType === 'Lead' ? 'getLeads' : activeEntryType === 'Deal' ? 'getDeals' : 'getAccounts';
 
     const fetchEntries = async () => {
       try {
@@ -128,7 +153,7 @@ const CalendarView = () => {
       "Purpose & Remarks": formData.purpose,
       "Lead Type": formData.leadType,
       "Lead Owner": user?.username || 'Unknown',
-      "Entry Type": entryType,
+      "Entry Type": activeEntryType,
       "Entry Value": entryValue
     };
 
@@ -202,14 +227,20 @@ const CalendarView = () => {
         />
       </Box>
 
-      <Dialog open={openDialog} onClose={() => setOpenDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
+      <Dialog
+        open={typeof open === 'boolean' ? open : openDialog}
+        onClose={onClose || (() => setOpenDialog(false))}
+        maxWidth="sm"
+        fullWidth
+      >
+       <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
             <Grid item xs={12}>
               <FormControl fullWidth>
-                <InputLabel>Entry Type</InputLabel>
-                <Select value={entryType} onChange={(e) => { setEntryType(e.target.value); setFormData(prev => ({ ...prev, leadType: '', selectedEntry: '', newLeadName: '' })); }}>
+                <InputLabel>Select {activeEntryType}</InputLabel>
+                //<InputLabel>Entry Type</InputLabel>
+                  <Select value={entryType} onChange={(e) => { setEntryType(e.target.value); setFormData(prev => ({ ...prev, leadType: '', selectedEntry: '', newLeadName: '' })); }}>
                   <MenuItem value="Lead">Lead</MenuItem>
                   <MenuItem value="Deal">Deal</MenuItem>
                   <MenuItem value="Account">Account</MenuItem>
@@ -217,28 +248,25 @@ const CalendarView = () => {
               </FormControl>
             </Grid>
 
-            {entryType === 'Lead' && (
+            {(activeEntryType === 'Deal' || activeEntryType === 'Account' || (activeEntryType === 'Lead' && formData.leadType === 'Existing')) && (
               <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Lead Type</InputLabel>
-                  <Select name="leadType" value={formData.leadType} onChange={handleInputChange}>
-                    <MenuItem value="Existing">Existing Lead</MenuItem>
-                    <MenuItem value="New">New Lead</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            )}
-
-            {(entryType === 'Deal' || entryType === 'Account' || (entryType === 'Lead' && formData.leadType === 'Existing')) && (
-              <Grid item xs={12}>
-                <FormControl fullWidth>
-                  <InputLabel>Select {entryType}</InputLabel>
-                  <Select name="selectedEntry" value={formData.selectedEntry} onChange={handleInputChange}>
-                    {entries.map((entry, i) => (
-                      <MenuItem key={i} value={entry.value}>{entry.label}</MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                {mode === 'existing' ? (
+                  <TextField
+                    label={`${activeEntryType} (Prefilled)`}
+                    value={formData.selectedEntry}
+                    fullWidth
+                    InputProps={{ readOnly: true }}
+                  />
+                ) : (
+                  <FormControl fullWidth>
+                    <InputLabel>Select {activeEntryType}</InputLabel>
+                    <Select name="selectedEntry" value={formData.selectedEntry} onChange={handleInputChange}>
+                      {entries.map((entry, i) => (
+                        <MenuItem key={i} value={entry.value}>{entry.label}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
               </Grid>
             )}
 

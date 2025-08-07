@@ -12,6 +12,8 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext'; // adjust path if needed
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import EventIcon from '@mui/icons-material/Event'; 
+import CalendarView from './CalendarView'; // adjust path if needed
 
 const theme = createTheme({
   typography: {
@@ -37,6 +39,9 @@ function AccountsTable() {
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [createDealRow, setCreateDealRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
+  const [selectedEntryRow, setSelectedEntryRow] = useState(null);
+  const [showCalendarModal, setShowCalendarModal] = useState(false);
+  const [entryType, setEntryType] = useState('');
   
   const { user } = useAuth();
   const username = user?.username;
@@ -166,6 +171,12 @@ function AccountsTable() {
     setCreateDealRow(null);
   };
 
+    const handleOpenMeetingFromRow = (row, type) => {
+      setSelectedEntryRow(row);
+      setEntryType(type); // 'Lead', 'Account', 'Deal'
+      setShowCalendarModal(true);
+    };
+
   return (
     <ThemeProvider theme={theme}>
     {loading && <LoadingOverlay />}
@@ -253,6 +264,7 @@ function AccountsTable() {
                 ))}
                 <TableCell>
                   <IconButton onClick={() => openDealModal(acc)}><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleOpenMeetingFromRow(acc, 'Account')}><EventIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -339,6 +351,15 @@ function AccountsTable() {
             </Box>
           </DialogContent>
         </Dialog>
+         {showCalendarModal && (
+          <CalendarView
+            open={showCalendarModal}
+            onClose={() => setShowCalendarModal(false)}
+            entryType={entryType}
+            selectedEntryRow={selectedEntryRow}
+            mode="existing"
+          />
+        )}
       </Box>
     </ThemeProvider>
   );

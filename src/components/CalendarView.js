@@ -172,7 +172,11 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       console.log("📦 Submitted payload:", payload);
 
       // Reset form
-      setOpenDialog(false);
+      if (typeof open === 'boolean' && onClose) {
+          onClose(); // external modal
+        } else {
+          setOpenDialog(false); // internal modal
+        }
       setFormData({
         leadType: '',
         selectedEntry: '',

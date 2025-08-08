@@ -9,12 +9,11 @@ import {
 import CurrencyRupee from '@mui/icons-material/CurrencyRupee';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import EditIcon from '@mui/icons-material/Edit';
-import AddIcon from '@mui/icons-material/Add';
 import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
-import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
+import '@fontsource/montserrat';
 
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyRvS3mX3n0VoNgSPhaHUe44AtSTacJGYUcnoI593_XqEZ7g-Oi1vu_3TKyOjVuD_We/exec';
 const FORM_SHEET_NAME = 'Sheet1';
@@ -36,11 +35,13 @@ const SalesTrackerTable = () => {
   const [selectedRow, setSelectedRow] = useState(null);
   const [formData, setFormData] = useState({});
   const [submitting, setSubmitting] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`)
-      .then(res => res.json())
-      .then(data => {
+    async function fetchData() {
+      try {
+        const res = await fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`);
+        const data = await res.json();
         setSales(data);
         setFilteredSales(data);
         if (data.length > 0) {
@@ -48,7 +49,13 @@ const SalesTrackerTable = () => {
           setColumns(cols);
           setVisibleColumns(cols);
         }
-      });
+      } catch (err) {
+        console.error('Error loading sales data', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    fetchData();
   }, []);
 
   useEffect(() => {
@@ -64,13 +71,11 @@ const SalesTrackerTable = () => {
         Object.values(row).some(val => val?.toLowerCase?.().includes(searchQuery.toLowerCase()))
       );
     }
-
     Object.entries(filters).forEach(([key, value]) => {
       if (value) {
         filtered = filtered.filter(row => row[key] === value);
       }
     });
-
     setFilteredSales(filtered);
   }, [searchQuery, filters, sales]);
 
@@ -84,13 +89,8 @@ const SalesTrackerTable = () => {
     );
   };
 
-  const openColumnSelector = (e) => {
-    setAnchorEl(e.currentTarget);
-  };
-
-  const closeColumnSelector = () => {
-    setAnchorEl(null);
-  };
+  const openColumnSelector = (e) => setAnchorEl(e.currentTarget);
+  const closeColumnSelector = () => setAnchorEl(null);
 
   const openAddModal = () => {
     setSelectedRow(null);
@@ -115,11 +115,7 @@ const SalesTrackerTable = () => {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
-
-    const payload = {
-      ...formData,
-      Timestamp: timestamp
-    };
+    const payload = { ...formData, Timestamp: timestamp };
 
     try {
       await fetch(SHEET_URL, {
@@ -137,10 +133,10 @@ const SalesTrackerTable = () => {
     }
   };
 
-  
   return (
     <Box sx={{ p: 3 }}>
       {loading && <LoadingOverlay />}
+
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />

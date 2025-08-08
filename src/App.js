@@ -14,6 +14,7 @@ import ProtectedPage from './components/ProtectedPage';
 import { AuthProvider, useAuth } from './components/AuthContext';
 import CalendarView from './components/CalendarView';
 import TravelTable from './components/TravelTable';
+import SalesTrackerTable from './components/SalesTrackerTable';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -28,6 +29,7 @@ const AppRoutes = () => {
         <Route path="view-orders" element={<OrdersTable />} />
         <Route path="add-lead" element={<LeadForm />} />
         <Route path="/calendar" element={<CalendarView />} />
+        <Route path="sales-tracker" element={<SalesTrackerTable />} />
         
         {/* ✅ Travel route with access control */}
         <Route

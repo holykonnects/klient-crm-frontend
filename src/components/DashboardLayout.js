@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight,
   PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
   AssignmentTurnedIn, Assignment, Groups, EditCalendar,
-  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupeeIcon 
+  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -39,7 +39,7 @@ function DashboardLayout({ children }) {
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
     { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' },
-    { label: 'Sales Tracker', icon: <CurrencyRupeeIcon />, route: '/sales-tracker', access: 'Sales Tracker' } 
+    { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' } 
   ];
 
   return (

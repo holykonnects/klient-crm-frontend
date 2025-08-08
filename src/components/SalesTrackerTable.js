@@ -21,6 +21,7 @@ const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' };
+const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 
 const SalesTrackerTable = () => {
   const { user } = useAuth();
@@ -121,7 +122,11 @@ const SalesTrackerTable = () => {
       return isNaN(sno) ? max : Math.max(max, sno);
     }, 0);
     setSelectedRow(null);
-    setFormData({ 'S No': (maxSno + 1).toString() });
+    const initialForm = { 'S No': (maxSno + 1).toString() };
+    columns.forEach(field => {
+      if (!(field in initialForm)) initialForm[field] = '';
+    });
+    setFormData(initialForm);
     setModalOpen(true);
   };
 
@@ -183,6 +188,58 @@ const SalesTrackerTable = () => {
         </Box>
       </Box>
 
+      {/* Modal */}
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1rem' }}>
+          {selectedRow ? 'Edit Sale' : 'Add Sale'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}>
+              <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '0.85rem' }}>Sale Details</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Grid container spacing={2}>
+                {columns.map(field => (
+                  <Grid item xs={12} sm={6} key={field}>
+                    {validationOptions[field] ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel sx={modalInputStyle}>{field}</InputLabel>
+                        <Select
+                          value={formData[field] || ''}
+                          onChange={(e) => handleFormChange(field, e.target.value)}
+                          sx={modalInputStyle}
+                        >
+                          {validationOptions[field].map(option => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        label={field}
+                        value={formData[field] || ''}
+                        onChange={(e) => handleFormChange(field, e.target.value)}
+                        size="small"
+                        fullWidth
+                        InputProps={{ sx: modalInputStyle }}
+                        InputLabelProps={{ sx: modalInputStyle }}
+                      />
+                    )}
+                  </Grid>
+                ))}
+              </Grid>
+            </AccordionDetails>
+          </Accordion>
+        </DialogContent>
+        <Box textAlign="right" p={2}>
+          <Button onClick={handleSubmit} variant="contained" disabled={submitting} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' }}>
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </Box>
+      </Dialog>
+
+      {/* Filters + Search */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" gap={2}>
           <TextField
@@ -234,6 +291,7 @@ const SalesTrackerTable = () => {
         </Box>
       </Popover>
 
+      {/* Table */}
       <Table size="small">
         <TableHead>
           <TableRow sx={{ backgroundColor: '#6495ED' }}>
@@ -270,53 +328,6 @@ const SalesTrackerTable = () => {
           ))}
         </TableBody>
       </Table>
-
-      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
-          {selectedRow ? 'Edit Sale' : 'Add Sale'}
-        </DialogTitle>
-        <DialogContent dividers>
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}>
-              <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Sale Details</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={2}>
-                {columns.map(field => (
-                  <Grid item xs={12} sm={6} key={field}>
-                    {validationOptions[field] ? (
-                      <FormControl fullWidth size="small">
-                        <InputLabel>{field}</InputLabel>
-                        <Select
-                          value={formData[field] || ''}
-                          onChange={(e) => handleFormChange(field, e.target.value)}
-                        >
-                          {validationOptions[field].map(option => (
-                            <MenuItem key={option} value={option}>{option}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    ) : (
-                      <TextField
-                        label={field}
-                        value={formData[field] || ''}
-                        onChange={(e) => handleFormChange(field, e.target.value)}
-                        size="small"
-                        fullWidth
-                      />
-                    )}
-                  </Grid>
-                ))}
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </DialogContent>
-        <Box textAlign="right" p={2}>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting}>
-            {submitting ? 'Submitting...' : 'Submit'}
-          </Button>
-        </Box>
-      </Dialog>
     </Box>
   );
 };

@@ -229,7 +229,7 @@ const SalesTrackerTable = () => {
 
       <Table size="small">
         <TableHead>
-          <TableRow sx={{ backgroundColor: '#f0f4ff' }}>
+          <TableRow sx={{ backgroundColor: '#6495ED' }}>
             {visibleColumns.map(col => (
               <TableCell key={col} sx={fontStyle}>
                 <TableSortLabel

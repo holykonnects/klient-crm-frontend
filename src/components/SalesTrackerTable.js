@@ -93,8 +93,12 @@ const SalesTrackerTable = () => {
   const closeColumnSelector = () => setAnchorEl(null);
 
   const openAddModal = () => {
+    const maxSno = sales.reduce((max, row) => {
+      const sno = parseInt(row['S No'], 10);
+      return isNaN(sno) ? max : Math.max(max, sno);
+    }, 0);
     setSelectedRow(null);
-    setFormData({});
+    setFormData({ 'S No': (maxSno + 1).toString() });
     setModalOpen(true);
   };
 

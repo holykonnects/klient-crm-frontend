@@ -14,7 +14,6 @@ import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
-import SalesModal from './SalesModal';
 
 const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
 const FORM_SHEET_NAME = 'Sales Tracker';
@@ -34,6 +33,8 @@ const SalesTrackerTable = () => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
+  const [formData, setFormData] = useState({});
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`)
@@ -92,49 +93,64 @@ const SalesTrackerTable = () => {
 
   const openAddModal = () => {
     setSelectedRow(null);
+    setFormData({});
     setModalOpen(true);
   };
 
   const openEditModal = (row) => {
     setSelectedRow(row);
+    setFormData(row);
     setModalOpen(true);
+  };
+
+  const handleFormChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleSubmit = async () => {
+    setSubmitting(true);
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
+
+    const payload = {
+      ...formData,
+      Timestamp: timestamp
+    };
+
+    try {
+      await fetch(SHEET_URL, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      alert('✅ Sale submitted successfully');
+      setModalOpen(false);
+    } catch (err) {
+      console.error('❌ Submission error:', err);
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <Box sx={{ p: 3 }}>
-      {/* Header with logo and Add Sale */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
-          <img
-            src="/assets/kk-logo.png"
-            alt="Klient Konnect Logo"
-            style={{ height: 100 }}
-          />
-          <Typography
-            variant="h6"
-            sx={{
-              fontFamily: 'Montserrat, sans-serif',
-              fontWeight: 600,
-              fontSize: '1.4rem',
-              color: '#333',
-            }}
-          >
+          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />
+          <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.4rem', color: '#333' }}>
             Sales Tracker
           </Typography>
         </Box>
 
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<CurrencyRupeeIcon />}
-          onClick={openAddModal}
-          sx={fontStyle}
-        >
+        <Button variant="contained" color="primary" startIcon={<CurrencyRupeeIcon />} onClick={openAddModal} sx={fontStyle}>
           Add Sale
         </Button>
       </Box>
 
-      {/* Search and Filter Bar */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" gap={2}>
           <TextField
@@ -169,7 +185,6 @@ const SalesTrackerTable = () => {
         </IconButton>
       </Box>
 
-      {/* Column Selector */}
       <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={closeColumnSelector}>
         <Box p={2}>
           {columns.map(col => (
@@ -187,7 +202,6 @@ const SalesTrackerTable = () => {
         </Box>
       </Popover>
 
-      {/* Table */}
       <Table size="small">
         <TableHead>
           <TableRow>
@@ -213,18 +227,52 @@ const SalesTrackerTable = () => {
         </TableBody>
       </Table>
 
-      {modalOpen && (
-        <SalesModal
-          open={modalOpen}
-          onClose={() => setModalOpen(false)}
-          validationOptions={validationOptions}
-          selectedRow={selectedRow}
-          onSuccess={() => {
-            setModalOpen(false);
-            // Optional refresh here
-          }}
-        />
-      )}
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+          {selectedRow ? 'Edit Sale' : 'Add Sale'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}>
+              <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Sale Details</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Grid container spacing={2}>
+                {columns.map(field => (
+                  <Grid item xs={12} sm={6} key={field}>
+                    {validationOptions[field] ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel>{field}</InputLabel>
+                        <Select
+                          value={formData[field] || ''}
+                          onChange={(e) => handleFormChange(field, e.target.value)}
+                        >
+                          {validationOptions[field].map(option => (
+                            <MenuItem key={option} value={option}>{option}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        label={field}
+                        value={formData[field] || ''}
+                        onChange={(e) => handleFormChange(field, e.target.value)}
+                        size="small"
+                        fullWidth
+                      />
+                    )}
+                  </Grid>
+                ))}
+              </Grid>
+            </AccordionDetails>
+          </Accordion>
+        </DialogContent>
+        <Box textAlign="right" p={2}>
+          <Button onClick={handleSubmit} variant="contained" disabled={submitting}>
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </Box>
+      </Dialog>
     </Box>
   );
 };

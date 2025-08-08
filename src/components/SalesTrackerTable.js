@@ -159,6 +159,8 @@ const SalesTrackerTable = () => {
     }
   };
 
+  const sumBasicValue = filteredSales.reduce((sum, row) => sum + (parseFloat(row['Basic Value']) || 0), 0);
+
   return (
     <Box sx={{ p: 3 }}>
       {loading && <LoadingOverlay />}
@@ -186,7 +188,7 @@ const SalesTrackerTable = () => {
             InputProps={{ startAdornment: <SearchIcon />, sx: fontStyle }}
           />
 
-          {["Status", "Type", "Sales Person", "Fin Year"].map(filterKey => (
+          {Object.keys(validationOptions).map(filterKey => (
             validationOptions[filterKey] && (
               <FormControl key={filterKey} size="small" sx={{ minWidth: 160 }}>
                 <InputLabel sx={fontStyle}>{filterKey}</InputLabel>
@@ -257,6 +259,11 @@ const SalesTrackerTable = () => {
               </TableCell>
             </TableRow>
           ))}
+          <TableRow>
+            <TableCell colSpan={visibleColumns.length + 1} sx={{ fontWeight: 'bold', fontFamily: 'Montserrat, sans-serif' }}>
+              Total Basic Value: ₹{sumBasicValue.toLocaleString('en-IN')}
+            </TableCell>
+          </TableRow>
         </TableBody>
       </Table>
 

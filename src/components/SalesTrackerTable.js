@@ -19,7 +19,8 @@ const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyRvS3mX3n0VoNgSPhaHU
 const FORM_SHEET_NAME = 'Sheet1';
 const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 
-const fontStyle = { fontFamily: 'Montserrat, sans-serif' };
+const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
+const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' };
 
 const SalesTrackerTable = () => {
   const { user } = useAuth();
@@ -168,14 +169,18 @@ const SalesTrackerTable = () => {
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />
-          <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.4rem', color: '#333' }}>
+          <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.2rem', color: '#333' }}>
             Sales Tracker
           </Typography>
         </Box>
-
-        <Button variant="contained" color="primary" startIcon={<CurrencyRupee />} onClick={openAddModal} sx={fontStyle}>
-          Add Sale
-        </Button>
+        <Box textAlign="right">
+          <Typography sx={{ fontWeight: 600, fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem', mb: 1 }}>
+            Total Basic Value: ₹{sumBasicValue.toLocaleString('en-IN')}
+          </Typography>
+          <Button variant="contained" color="primary" startIcon={<CurrencyRupee />} onClick={openAddModal} sx={fontStyle}>
+            Add Sale
+          </Button>
+        </Box>
       </Box>
 
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
@@ -185,17 +190,17 @@ const SalesTrackerTable = () => {
             placeholder="Search"
             size="small"
             onChange={(e) => setSearchQuery(e.target.value)}
-            InputProps={{ startAdornment: <SearchIcon />, sx: fontStyle }}
+            InputProps={{ startAdornment: <SearchIcon />, sx: filterFontStyle }}
           />
 
           {Object.keys(validationOptions).map(filterKey => (
             validationOptions[filterKey] && (
               <FormControl key={filterKey} size="small" sx={{ minWidth: 160 }}>
-                <InputLabel sx={fontStyle}>{filterKey}</InputLabel>
+                <InputLabel sx={filterFontStyle}>{filterKey}</InputLabel>
                 <Select
                   value={filters[filterKey] || ''}
                   onChange={(e) => handleFilterChange(filterKey, e.target.value)}
-                  sx={fontStyle}
+                  sx={filterFontStyle}
                 >
                   <MenuItem value="">All</MenuItem>
                   {validationOptions[filterKey].map(option => (
@@ -216,7 +221,7 @@ const SalesTrackerTable = () => {
         <Box p={2}>
           {columns.map(col => (
             <FormControl key={col} fullWidth>
-              <label style={{ fontFamily: 'Montserrat, sans-serif', fontSize: 12 }}>
+              <label style={{ fontFamily: 'Montserrat, sans-serif', fontSize: 10 }}>
                 <input
                   type="checkbox"
                   checked={visibleColumns.includes(col)}
@@ -233,17 +238,21 @@ const SalesTrackerTable = () => {
         <TableHead>
           <TableRow sx={{ backgroundColor: '#6495ED' }}>
             {visibleColumns.map(col => (
-              <TableCell key={col} sx={fontStyle}>
+              <TableCell
+                key={col}
+                sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}
+              >
                 <TableSortLabel
                   active={orderBy === col}
                   direction={orderBy === col ? order : 'asc'}
                   onClick={() => handleSort(col)}
+                  sx={{ color: '#fff' }}
                 >
                   {col}
                 </TableSortLabel>
               </TableCell>
             ))}
-            <TableCell sx={fontStyle}>Actions</TableCell>
+            <TableCell sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>Actions</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
@@ -259,11 +268,6 @@ const SalesTrackerTable = () => {
               </TableCell>
             </TableRow>
           ))}
-          <TableRow>
-            <TableCell colSpan={visibleColumns.length + 1} sx={{ fontWeight: 'bold', fontFamily: 'Montserrat, sans-serif' }}>
-              Total Basic Value: ₹{sumBasicValue.toLocaleString('en-IN')}
-            </TableCell>
-          </TableRow>
         </TableBody>
       </Table>
 

@@ -92,9 +92,9 @@ const SalesTrackerTable = () => {
           ? new Date(a.Timestamp) - new Date(b.Timestamp)
           : new Date(b.Timestamp) - new Date(a.Timestamp);
       }
-      return order === 'asc'
-        ? (a[orderBy] || '').localeCompare(b[orderBy] || '')
-        : (b[orderBy] || '').localeCompare(a[orderBy] || '');
+      const aVal = (a[orderBy] || '').toString();
+      const bVal = (b[orderBy] || '').toString();
+      return order === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     });
     setFilteredSales(sorted);
   }, [searchQuery, filters, sales, order, orderBy]);

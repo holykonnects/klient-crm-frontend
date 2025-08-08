@@ -6,7 +6,7 @@ import {
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Button, Popover,
   Accordion, AccordionSummary, AccordionDetails
 } from '@mui/material';
-import CurrencyRupeeIcon from '@mui/icons-material/CurrencyRupee';
+import CurrencyRupee from '@mui/icons-material/CurrencyRupee';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import EditIcon from '@mui/icons-material/Edit';
 import AddIcon from '@mui/icons-material/Add';

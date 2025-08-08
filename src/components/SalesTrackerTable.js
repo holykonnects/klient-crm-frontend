@@ -147,13 +147,19 @@ const SalesTrackerTable = () => {
 
   const handleSubmit = async () => {
     setSubmitting(true);
+  
     const now = new Date();
     const timestamp = now.toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
-    const payload = { ...formData, Timestamp: timestamp };
-
+  
+    const payload = {
+      ...formData,
+      Timestamp: selectedRow ? selectedRow.Timestamp : timestamp,
+      mode: selectedRow ? 'edit' : 'add'
+    };
+  
     try {
       await fetch(SHEET_URL, {
         method: 'POST',
@@ -161,7 +167,7 @@ const SalesTrackerTable = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
-      alert('✅ Sale submitted successfully');
+      alert(`✅ Sale ${selectedRow ? 'updated' : 'added'} successfully`);
       setModalOpen(false);
     } catch (err) {
       console.error('❌ Submission error:', err);
@@ -169,6 +175,7 @@ const SalesTrackerTable = () => {
       setSubmitting(false);
     }
   };
+
 
   const sumBasicValue = filteredSales.reduce((sum, row) => sum + (parseFloat(row['Basic Value']) || 0), 0);
 

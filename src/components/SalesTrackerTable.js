@@ -149,7 +149,7 @@ const SalesTrackerTable = () => {
           </Typography>
         </Box>
 
-        <Button variant="contained" color="primary" startIcon={<CurrencyRupeeIcon />} onClick={openAddModal} sx={fontStyle}>
+        <Button variant="contained" color="primary" startIcon={<CurrencyRupee />} onClick={openAddModal} sx={fontStyle}>
           Add Sale
         </Button>
       </Box>

@@ -82,18 +82,18 @@ const SalesTrackerTable = () => {
       }
     });
     const sorted = [...filtered].sort((a, b) => {
-      if (orderBy === 'S No') {
-        return order === 'asc'
-          ? (parseInt(a['S No'], 10) || 0) - (parseInt(b['S No'], 10) || 0)
-          : (parseInt(b['S No'], 10) || 0) - (parseInt(a['S No'], 10) || 0);
+      let aVal = a[orderBy] || '';
+      let bVal = b[orderBy] || '';
+      const aNum = parseFloat(aVal);
+      const bNum = parseFloat(bVal);
+      const isNumeric = !isNaN(aNum) && !isNaN(bNum);
+
+      if (isNumeric) {
+        return order === 'asc' ? aNum - bNum : bNum - aNum;
       }
-      if (orderBy === 'Timestamp') {
-        return order === 'asc'
-          ? new Date(a.Timestamp) - new Date(b.Timestamp)
-          : new Date(b.Timestamp) - new Date(a.Timestamp);
-      }
-      const aVal = (a[orderBy] || '').toString();
-      const bVal = (b[orderBy] || '').toString();
+
+      aVal = aVal.toString();
+      bVal = bVal.toString();
       return order === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
     });
     setFilteredSales(sorted);

@@ -15,8 +15,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbwj9or-XtCwtbLkR3UiTadmXFtN8m0XEz6MdHJKylmyQbNDBYZMKGEiveFOJh2awn9R/exec';
-const FORM_SHEET_NAME = 'Sales Tracker';
+const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyRvS3mX3n0VoNgSPhaHUe44AtSTacJGYUcnoI593_XqEZ7g-Oi1vu_3TKyOjVuD_We/exec';
+const FORM_SHEET_NAME = 'Sheet1';
 const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif' };

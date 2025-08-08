@@ -42,10 +42,11 @@ const SalesTrackerTable = () => {
       try {
         const res = await fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`);
         const data = await res.json();
-        setSales(data);
-        setFilteredSales(data);
-        if (data.length > 0) {
-          const cols = Object.keys(data[0]);
+        const sorted = [...data].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+        setSales(sorted);
+        setFilteredSales(sorted);
+        if (sorted.length > 0) {
+          const cols = Object.keys(sorted[0]);
           setColumns(cols);
           setVisibleColumns(cols);
         }

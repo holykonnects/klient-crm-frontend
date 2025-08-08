@@ -82,6 +82,11 @@ const SalesTrackerTable = () => {
       }
     });
     const sorted = [...filtered].sort((a, b) => {
+      if (orderBy === 'S No') {
+        return order === 'asc'
+          ? (parseInt(a['S No'], 10) || 0) - (parseInt(b['S No'], 10) || 0)
+          : (parseInt(b['S No'], 10) || 0) - (parseInt(a['S No'], 10) || 0);
+      }
       if (orderBy === 'Timestamp') {
         return order === 'asc'
           ? new Date(a.Timestamp) - new Date(b.Timestamp)
@@ -170,7 +175,6 @@ const SalesTrackerTable = () => {
   return (
     <Box sx={{ p: 3 }}>
       {loading && <LoadingOverlay />}
-
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />

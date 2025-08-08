@@ -4,7 +4,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Button, Popover,
-  Accordion, AccordionSummary, AccordionDetails
+  Accordion, AccordionSummary, AccordionDetails, TableSortLabel
 } from '@mui/material';
 import CurrencyRupee from '@mui/icons-material/CurrencyRupee';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -36,6 +36,8 @@ const SalesTrackerTable = () => {
   const [formData, setFormData] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [orderBy, setOrderBy] = useState('Timestamp');
+  const [order, setOrder] = useState('desc');
 
   useEffect(() => {
     async function fetchData() {
@@ -77,8 +79,27 @@ const SalesTrackerTable = () => {
         filtered = filtered.filter(row => row[key] === value);
       }
     });
-    setFilteredSales(filtered);
-  }, [searchQuery, filters, sales]);
+    const sorted = [...filtered].sort((a, b) => {
+      if (orderBy === 'Timestamp') {
+        return order === 'asc'
+          ? new Date(a.Timestamp) - new Date(b.Timestamp)
+          : new Date(b.Timestamp) - new Date(a.Timestamp);
+      }
+      return order === 'asc'
+        ? (a[orderBy] || '').localeCompare(b[orderBy] || '')
+        : (b[orderBy] || '').localeCompare(a[orderBy] || '');
+    });
+    setFilteredSales(sorted);
+  }, [searchQuery, filters, sales, order, orderBy]);
+
+  const handleSort = (field) => {
+    if (orderBy === field) {
+      setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setOrderBy(field);
+      setOrder('asc');
+    }
+  };
 
   const handleFilterChange = (field, value) => {
     setFilters(prev => ({ ...prev, [field]: value }));
@@ -165,7 +186,7 @@ const SalesTrackerTable = () => {
             InputProps={{ startAdornment: <SearchIcon />, sx: fontStyle }}
           />
 
-          {["Status", "Type", "Sales Person"].map(filterKey => (
+          {["Status", "Type", "Sales Person", "Fin Year"].map(filterKey => (
             validationOptions[filterKey] && (
               <FormControl key={filterKey} size="small" sx={{ minWidth: 160 }}>
                 <InputLabel sx={fontStyle}>{filterKey}</InputLabel>
@@ -208,9 +229,17 @@ const SalesTrackerTable = () => {
 
       <Table size="small">
         <TableHead>
-          <TableRow>
+          <TableRow sx={{ backgroundColor: '#f0f4ff' }}>
             {visibleColumns.map(col => (
-              <TableCell key={col} sx={fontStyle}>{col}</TableCell>
+              <TableCell key={col} sx={fontStyle}>
+                <TableSortLabel
+                  active={orderBy === col}
+                  direction={orderBy === col ? order : 'asc'}
+                  onClick={() => handleSort(col)}
+                >
+                  {col}
+                </TableSortLabel>
+              </TableCell>
             ))}
             <TableCell sx={fontStyle}>Actions</TableCell>
           </TableRow>

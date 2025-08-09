@@ -36,17 +36,20 @@ const SalesTrackerTable = () => {
   const [modalOpen, setModalOpen] = useState(false);
   const [selectedRow, setSelectedRow] = useState(null);
   const [formData, setFormData] = useState({});
+  const [originalSNo, setOriginalSNo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [orderBy, setOrderBy] = useState('Timestamp');
+  const [orderBy, setOrderBy] = useState('S No');
   const [order, setOrder] = useState('desc');
 
+  // Fetch table data
   useEffect(() => {
     async function fetchData() {
       try {
         const res = await fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`);
         const data = await res.json();
-        const sorted = [...data].sort((a, b) => new Date(b.Timestamp) - new Date(a.Timestamp));
+        // Default sort by S No desc
+        const sorted = [...data].sort((a, b) => (parseFloat(b['S No'])||0) - (parseFloat(a['S No'])||0));
         setSales(sorted);
         setFilteredSales(sorted);
         if (sorted.length > 0) {
@@ -63,103 +66,113 @@ const SalesTrackerTable = () => {
     fetchData();
   }, []);
 
+  // Fetch validation options (dropdowns)
   useEffect(() => {
     fetch(`${SHEET_URL}?action=getValidationOptions&sheetName=${VALIDATION_SHEET_NAME}`)
       .then(res => res.json())
-      .then(data => setValidationOptions(data));
+      .then(data => setValidationOptions(data))
+      .catch(() => {});
   }, []);
 
+  // Search, filter, sort pipeline
   useEffect(() => {
     let filtered = [...sales];
+
     if (searchQuery) {
+      const q = searchQuery.toLowerCase();
       filtered = filtered.filter(row =>
-        Object.values(row).some(val => val?.toLowerCase?.().includes(searchQuery.toLowerCase()))
+        Object.values(row).some(val => val?.toString?.().toLowerCase().includes(q))
       );
     }
+
     Object.entries(filters).forEach(([key, value]) => {
-      if (value) {
-        filtered = filtered.filter(row => row[key] === value);
-      }
+      if (value) filtered = filtered.filter(row => row[key] === value);
     });
+
     const sorted = [...filtered].sort((a, b) => {
-      let aVal = a[orderBy] || '';
-      let bVal = b[orderBy] || '';
+      // Numeric-first sort when both sides look numeric
+      const aVal = a[orderBy];
+      const bVal = b[orderBy];
+
+      if (orderBy === 'Timestamp') {
+        const aT = new Date(aVal || 0).getTime();
+        const bT = new Date(bVal || 0).getTime();
+        return order === 'asc' ? aT - bT : bT - aT;
+      }
+
       const aNum = parseFloat(aVal);
       const bNum = parseFloat(bVal);
-      const isNumeric = !isNaN(aNum) && !isNaN(bNum);
+      const bothNumeric = !isNaN(aNum) && !isNaN(bNum);
 
-      if (isNumeric) {
-        return order === 'asc' ? aNum - bNum : bNum - aNum;
-      }
+      if (bothNumeric) return order === 'asc' ? aNum - bNum : bNum - aNum;
 
-      aVal = aVal.toString();
-      bVal = bVal.toString();
-      return order === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+      // Fallback to string compare
+      const aStr = (aVal ?? '').toString();
+      const bStr = (bVal ?? '').toString();
+      return order === 'asc' ? aStr.localeCompare(bStr) : bStr.localeCompare(aStr);
     });
+
     setFilteredSales(sorted);
   }, [searchQuery, filters, sales, order, orderBy]);
 
   const handleSort = (field) => {
-    if (orderBy === field) {
-      setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
-    } else {
-      setOrderBy(field);
-      setOrder('asc');
-    }
+    if (orderBy === field) setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
+    else { setOrderBy(field); setOrder('asc'); }
   };
 
-  const handleFilterChange = (field, value) => {
-    setFilters(prev => ({ ...prev, [field]: value }));
-  };
+  const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
 
-  const handleColumnToggle = (column) => {
-    setVisibleColumns(prev =>
-      prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
-    );
-  };
+  const handleColumnToggle = (column) => setVisibleColumns(prev => (
+    prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
+  ));
 
   const openColumnSelector = (e) => setAnchorEl(e.currentTarget);
   const closeColumnSelector = () => setAnchorEl(null);
 
+  // Add modal: prefill next S No
   const openAddModal = () => {
     const maxSno = sales.reduce((max, row) => {
-      const sno = parseInt(row['S No'], 10);
+      const sno = parseFloat(row['S No']);
       return isNaN(sno) ? max : Math.max(max, sno);
     }, 0);
+
     setSelectedRow(null);
-    const initialForm = { 'S No': (maxSno + 1).toString() };
-    columns.forEach(field => {
-      if (!(field in initialForm)) initialForm[field] = '';
-    });
+    setOriginalSNo(null);
+
+    const initialForm = { 'S No': String(maxSno + 1) };
+    columns.forEach(field => { if (!(field in initialForm)) initialForm[field] = ''; });
+
     setFormData(initialForm);
     setModalOpen(true);
   };
 
+  // Edit modal: edit current row, keep original S No for backend match
   const openEditModal = (row) => {
     setSelectedRow(row);
+    setOriginalSNo(row['S No'] ?? null);
     setFormData(row);
     setModalOpen(true);
   };
 
-  const handleFormChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
-  };
+  const handleFormChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
 
   const handleSubmit = async () => {
     setSubmitting(true);
-  
+
+    // Preserve original identifier for edit, autopopulate timestamp for add
     const now = new Date();
     const timestamp = now.toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
-  
+
     const payload = {
       ...formData,
-      Timestamp: selectedRow ? selectedRow.Timestamp : timestamp,
-      mode: selectedRow ? 'edit' : 'add'
+      mode: selectedRow ? 'edit' : 'add',
+      originalSNo: selectedRow ? originalSNo : undefined,
+      Timestamp: selectedRow ? (formData.Timestamp || selectedRow.Timestamp) : (formData.Timestamp || timestamp)
     };
-  
+
     try {
       await fetch(SHEET_URL, {
         method: 'POST',
@@ -169,6 +182,8 @@ const SalesTrackerTable = () => {
       });
       alert(`✅ Sale ${selectedRow ? 'updated' : 'added'} successfully`);
       setModalOpen(false);
+      // Optionally refresh data
+      window.location.reload();
     } catch (err) {
       console.error('❌ Submission error:', err);
     } finally {
@@ -176,12 +191,13 @@ const SalesTrackerTable = () => {
     }
   };
 
-
   const sumBasicValue = filteredSales.reduce((sum, row) => sum + (parseFloat(row['Basic Value']) || 0), 0);
 
   return (
     <Box sx={{ p: 3 }}>
       {loading && <LoadingOverlay />}
+
+      {/* Header with total */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />
@@ -199,58 +215,7 @@ const SalesTrackerTable = () => {
         </Box>
       </Box>
 
-      {/* Modal */}
-      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1rem' }}>
-          {selectedRow ? 'Edit Sale' : 'Add Sale'}
-        </DialogTitle>
-        <DialogContent dividers>
-          <Accordion defaultExpanded>
-            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}>
-              <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '0.85rem' }}>Sale Details</Typography>
-            </AccordionSummary>
-            <AccordionDetails>
-              <Grid container spacing={2}>
-                {columns.map(field => (
-                  <Grid item xs={12} sm={6} key={field}>
-                    {validationOptions[field] ? (
-                      <FormControl fullWidth size="small">
-                        <InputLabel sx={modalInputStyle}>{field}</InputLabel>
-                        <Select
-                          value={formData[field] || ''}
-                          onChange={(e) => handleFormChange(field, e.target.value)}
-                          sx={modalInputStyle}
-                        >
-                          {validationOptions[field].map(option => (
-                            <MenuItem key={option} value={option}>{option}</MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    ) : (
-                      <TextField
-                        label={field}
-                        value={formData[field] || ''}
-                        onChange={(e) => handleFormChange(field, e.target.value)}
-                        size="small"
-                        fullWidth
-                        InputProps={{ sx: modalInputStyle }}
-                        InputLabelProps={{ sx: modalInputStyle }}
-                      />
-                    )}
-                  </Grid>
-                ))}
-              </Grid>
-            </AccordionDetails>
-          </Accordion>
-        </DialogContent>
-        <Box textAlign="right" p={2}>
-          <Button onClick={handleSubmit} variant="contained" disabled={submitting} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' }}>
-            {submitting ? 'Submitting...' : 'Submit'}
-          </Button>
-        </Box>
-      </Dialog>
-
-      {/* Filters + Search */}
+      {/* Filters */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" gap={2}>
           <TextField
@@ -269,10 +234,11 @@ const SalesTrackerTable = () => {
                   value={filters[filterKey] || ''}
                   onChange={(e) => handleFilterChange(filterKey, e.target.value)}
                   sx={filterFontStyle}
+                  MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' } } }}
                 >
-                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="" sx={filterFontStyle}>All</MenuItem>
                   {validationOptions[filterKey].map(option => (
-                    <MenuItem key={option} value={option}>{option}</MenuItem>
+                    <MenuItem key={option} value={option} sx={filterFontStyle}>{option}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -285,6 +251,7 @@ const SalesTrackerTable = () => {
         </IconButton>
       </Box>
 
+      {/* Column selector */}
       <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={closeColumnSelector}>
         <Box p={2}>
           {columns.map(col => (
@@ -307,10 +274,7 @@ const SalesTrackerTable = () => {
         <TableHead>
           <TableRow sx={{ backgroundColor: '#6495ED' }}>
             {visibleColumns.map(col => (
-              <TableCell
-                key={col}
-                sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}
-              >
+              <TableCell key={col} sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>
                 <TableSortLabel
                   active={orderBy === col}
                   direction={orderBy === col ? order : 'asc'}
@@ -339,6 +303,58 @@ const SalesTrackerTable = () => {
           ))}
         </TableBody>
       </Table>
+
+      {/* Modal */}
+      <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1rem' }}>
+          {selectedRow ? 'Edit Sale' : 'Add Sale'}
+        </DialogTitle>
+        <DialogContent dividers>
+          <Accordion defaultExpanded>
+            <AccordionSummary expandIcon={<ExpandMoreIcon />} sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif' }}>
+              <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '0.85rem' }}>Sale Details</Typography>
+            </AccordionSummary>
+            <AccordionDetails>
+              <Grid container spacing={2}>
+                {columns.map(field => (
+                  <Grid item xs={12} sm={6} key={field}>
+                    {validationOptions[field] ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel sx={modalInputStyle}>{field}</InputLabel>
+                        <Select
+                          value={formData[field] || ''}
+                          onChange={(e) => handleFormChange(field, e.target.value)}
+                          sx={modalInputStyle}
+                          MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
+                        >
+                          {validationOptions[field].map(option => (
+                            <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        label={field}
+                        value={formData[field] || ''}
+                        onChange={(e) => handleFormChange(field, e.target.value)}
+                        size="small"
+                        fullWidth
+                        InputProps={{ sx: modalInputStyle }}
+                        InputLabelProps={{ sx: modalInputStyle }}
+                      />
+                    )}
+                  </Grid>
+                ))}
+              </Grid>
+            </AccordionDetails>
+          </Accordion>
+        </DialogContent>
+        <Box textAlign="right" p={2}>
+          <Button onClick={handleSubmit} variant="contained" disabled={submitting} sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' }}>
+            {submitting ? 'Submitting...' : 'Submit'}
+          </Button>
+        </Box>
+      </Dialog>
     </Box>
   );
 };

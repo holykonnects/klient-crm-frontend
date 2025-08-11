@@ -23,6 +23,8 @@ const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' };
 const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 
+const num = (v) => parseFloat(String(v ?? '').replace(/[₹,\s]/g, '')) || 0;
+
 const SalesTrackerTable = () => {
   const { user } = useAuth();
   const [sales, setSales] = useState([]);
@@ -39,7 +41,7 @@ const SalesTrackerTable = () => {
   const [originalSNo, setOriginalSNo] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [orderBy, setOrderBy] = useState('S No');
+  const [orderBy, setOrderBy] = useState('S.No');
   const [order, setOrder] = useState('desc');
 
   // Fetch table data
@@ -48,8 +50,8 @@ const SalesTrackerTable = () => {
       try {
         const res = await fetch(`${SHEET_URL}?action=getData&sheetName=${FORM_SHEET_NAME}`);
         const data = await res.json();
-        // Default sort by S No desc
-        const sorted = [...data].sort((a, b) => (parseFloat(b['S No'])||0) - (parseFloat(a['S No'])||0));
+        // Default sort by S No desc on landing
+        const sorted = [...data].sort((a, b) => num(b['S.No']) - num(a['S.No']));
         setSales(sorted);
         setFilteredSales(sorted);
         if (sorted.length > 0) {
@@ -90,7 +92,6 @@ const SalesTrackerTable = () => {
     });
 
     const sorted = [...filtered].sort((a, b) => {
-      // Numeric-first sort when both sides look numeric
       const aVal = a[orderBy];
       const bVal = b[orderBy];
 
@@ -100,10 +101,10 @@ const SalesTrackerTable = () => {
         return order === 'asc' ? aT - bT : bT - aT;
       }
 
-      const aNum = parseFloat(aVal);
-      const bNum = parseFloat(bVal);
+      // Numeric-first compare
+      const aNum = num(aVal);
+      const bNum = num(bVal);
       const bothNumeric = !isNaN(aNum) && !isNaN(bNum);
-
       if (bothNumeric) return order === 'asc' ? aNum - bNum : bNum - aNum;
 
       // Fallback to string compare
@@ -129,17 +130,13 @@ const SalesTrackerTable = () => {
   const openColumnSelector = (e) => setAnchorEl(e.currentTarget);
   const closeColumnSelector = () => setAnchorEl(null);
 
-  // Add modal: prefill next S No
+  // Add modal: prefill next S No and keep it read-only
   const openAddModal = () => {
-    const maxSno = sales.reduce((max, row) => {
-      const sno = parseFloat(row['S No']);
-      return isNaN(sno) ? max : Math.max(max, sno);
-    }, 0);
-
+    const maxSno = sales.reduce((max, row) => Math.max(max, num(row['S.No'])), 0);
     setSelectedRow(null);
     setOriginalSNo(null);
 
-    const initialForm = { 'S No': String(maxSno + 1) };
+    const initialForm = { 'S.No': String(maxSno + 1) };
     columns.forEach(field => { if (!(field in initialForm)) initialForm[field] = ''; });
 
     setFormData(initialForm);
@@ -149,7 +146,7 @@ const SalesTrackerTable = () => {
   // Edit modal: edit current row, keep original S No for backend match
   const openEditModal = (row) => {
     setSelectedRow(row);
-    setOriginalSNo(row['S No'] ?? null);
+    setOriginalSNo(row['S.No'] ?? null);
     setFormData(row);
     setModalOpen(true);
   };
@@ -159,7 +156,7 @@ const SalesTrackerTable = () => {
   const handleSubmit = async () => {
     setSubmitting(true);
 
-    // Preserve original identifier for edit, autopopulate timestamp for add
+    // Preserve identifier for edit, autopopulate timestamp for add
     const now = new Date();
     const timestamp = now.toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
@@ -182,7 +179,6 @@ const SalesTrackerTable = () => {
       });
       alert(`✅ Sale ${selectedRow ? 'updated' : 'added'} successfully`);
       setModalOpen(false);
-      // Optionally refresh data
       window.location.reload();
     } catch (err) {
       console.error('❌ Submission error:', err);
@@ -191,7 +187,7 @@ const SalesTrackerTable = () => {
     }
   };
 
-  const sumBasicValue = filteredSales.reduce((sum, row) => sum + (parseFloat(row['Basic Value']) || 0), 0);
+  const sumBasicValue = filteredSales.reduce((sum, row) => sum + num(row['Basic Value']), 0);
 
   return (
     <Box sx={{ p: 3 }}>
@@ -318,7 +314,16 @@ const SalesTrackerTable = () => {
               <Grid container spacing={2}>
                 {columns.map(field => (
                   <Grid item xs={12} sm={6} key={field}>
-                    {validationOptions[field] ? (
+                    {field === 'S No' ? (
+                      <TextField
+                        label={field}
+                        value={formData[field] || ''}
+                        size="small"
+                        fullWidth
+                        InputProps={{ sx: modalInputStyle, readOnly: true }}
+                        InputLabelProps={{ sx: modalInputStyle }}
+                      />
+                    ) : validationOptions[field] ? (
                       <FormControl fullWidth size="small">
                         <InputLabel sx={modalInputStyle}>{field}</InputLabel>
                         <Select

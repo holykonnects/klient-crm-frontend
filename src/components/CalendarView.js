@@ -91,7 +91,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
           `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(user.username)}`
         );
         const data = await response.json();
-        const formatted = [...new Set(data)].map(e => ({ label: e, value: e }));
+        const formatted = [...new Set(data.entries)].map(e => ({ label: e, value: e }));
         setEntries(formatted);
       } catch (error) {
         console.error('Error fetching entries:', error);

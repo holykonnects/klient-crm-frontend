@@ -69,7 +69,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       try {
         const params = new URLSearchParams({
           action: 'getEvents',
-          user: user.role === 'Admin' ? 'all' : user.username,
+          user: user.username,
           // from/to optional: backend defaults last 30d → next 90d
           // from: '2025-08-01',
           // to: '2025-09-30',

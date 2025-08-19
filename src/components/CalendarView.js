@@ -1,4 +1,4 @@
-// Updated CalendarView.js with conditional entry handling and dropdown fix
+// CalendarView.js
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -19,6 +19,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   const [loading, setLoading] = useState(true);
   const [openDialog, setOpenDialog] = useState(false);
   const [entryType, setEntryType] = useState('');
+  const [entries, setEntries] = useState([]);
   const [formData, setFormData] = useState({
     leadType: '',
     selectedEntry: '',
@@ -29,7 +30,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     entryValue: '',
     leadOwner: ''
   });
-  const [entries, setEntries] = useState([]);
+
   const activeEntryType = externalEntryType || entryType;
 
   useEffect(() => {
@@ -85,20 +86,26 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   useEffect(() => {
     if (!entryType || selectedEntryRow) return;
     const action = activeEntryType === 'Lead' ? 'getLeads' : activeEntryType === 'Deal' ? 'getDeals' : 'getAccounts';
-    const fetchEntries = async () => {
-      try {
-        const response = await fetch(
-          `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(user.username)}`
-        );
-        const data = await response.json();
-        const formatted = [...new Set(data.entries)].map(e => ({ label: e, value: e }));
-        setEntries(formatted);
-      } catch (error) {
-        console.error('Error fetching entries:', error);
-      }
-    };
-    fetchEntries();
+    fetchEntries(action, user.username);
   }, [entryType, selectedEntryRow]);
+
+  const fetchEntries = async (action, owner) => {
+    try {
+      const url = `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(owner)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) throw new Error(`Server error: ${response.status}`);
+      const data = await response.json();
+
+      console.log(`✅ Received ${action} data:`, data);
+      if (!Array.isArray(data.entries)) throw new Error("Invalid format: 'entries' is not an array");
+
+      const formatted = [...new Set(data.entries)].map(e => ({ label: e, value: e }));
+      setEntries(formatted);
+    } catch (err) {
+      console.error(`❌ Error fetching ${action}:`, err);
+    }
+  };
 
   const handleDateSelect = (arg) => {
     const date = arg.startStr.split('T')[0];
@@ -163,6 +170,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 
   return (
     <Box sx={{ padding: 3, fontFamily: 'Montserrat, sans-serif' }}>
+      {/* header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center">
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100, marginRight: 12 }} />
@@ -173,6 +181,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
         </Button>
       </Box>
 
+      {/* calendar */}
       <Box sx={{ boxShadow: 2, borderRadius: 2, padding: 2, backgroundColor: '#fff' }}>
         <FullCalendar
           plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -194,6 +203,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
         />
       </Box>
 
+      {/* modal */}
       <Dialog open={typeof open === 'boolean' ? open : openDialog} onClose={onClose || (() => setOpenDialog(false))} maxWidth="sm" fullWidth>
         <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
         <DialogContent>

@@ -115,7 +115,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       : activeEntryType === 'Deal' ? 'getDeals'
       : 'getAccounts';
     fetchEntries(action);
-  }, [entryType, selectedEntryRow]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [entryType, selectedEntryRow]);
 
   const fetchEntries = async (action) => {
     try {

@@ -91,7 +91,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 
   const fetchEntries = async (action, owner) => {
     try {
-      const url = `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(user.username)}`;
+      const url = `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&user=${encodeURIComponent(user.username)}`;
       const response = await fetch(url);
 
       if (!response.ok) throw new Error(`Server error: ${response.status}`);

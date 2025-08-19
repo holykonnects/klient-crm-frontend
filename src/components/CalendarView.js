@@ -1,4 +1,4 @@
-// CalendarView.js
+// Updated CalendarView.js with conditional entry handling and dropdown fix
 import React, { useEffect, useState } from 'react';
 import FullCalendar from '@fullcalendar/react';
 import timeGridPlugin from '@fullcalendar/timegrid';
@@ -35,14 +35,10 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   useEffect(() => {
     if (mode === 'existing' && selectedEntryRow) {
       const row = selectedEntryRow;
-  
-      const name = row['First Name'] && row['Last Name']
-        ? `${row['First Name']} ${row['Last Name']}`
-        : row['Name'] || '';
-  
+      const name = row['First Name'] && row['Last Name'] ? `${row['First Name']} ${row['Last Name']}` : row['Name'] || '';
       const company = row['Company'] || '';
       const mobile = row['Mobile Number'] || row['Phone'] || '';
-  
+
       setFormData(prev => ({
         ...prev,
         selectedEntry: `${company} | ${name} | ${mobile}`,
@@ -55,21 +51,15 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     }
   }, [mode, selectedEntryRow, activeEntryType]);
 
-
-  // Fetch events based on user role
   useEffect(() => {
     if (!user?.username || !user?.role) return;
-
     const fetchEvents = async () => {
       try {
         const queryParam = user.role === 'Admin' ? 'all' : encodeURIComponent(user.username);
-
         const response = await fetch(
           `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=getEvents&user=${queryParam}`
         );
-
         const rawData = await response.json();
-
         const formatted = rawData.map((e) => ({
           title: e['Select Client'],
           start: `${e['Meeting Date']}T${e['Meeting Time']}`,
@@ -80,10 +70,8 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
           },
           backgroundColor:
             e['Entry Type'] === 'Lead' ? '#2f80ed' :
-            e['Entry Type'] === 'Deal' ? '#27ae60' :
-            '#f39c12'
+            e['Entry Type'] === 'Deal' ? '#27ae60' : '#f39c12'
         }));
-
         setEvents(formatted);
       } catch (error) {
         console.error('Error fetching calendar events:', error);
@@ -91,30 +79,26 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
         setLoading(false);
       }
     };
-
     fetchEvents();
   }, [user]);
 
-  // Fetch dropdown entries for Lead/Deal/Account
   useEffect(() => {
-    if (!entryType) return;
+    if (!entryType || selectedEntryRow) return;
     const action = activeEntryType === 'Lead' ? 'getLeads' : activeEntryType === 'Deal' ? 'getDeals' : 'getAccounts';
-
     const fetchEntries = async () => {
       try {
         const response = await fetch(
           `https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec?action=${action}&owner=${encodeURIComponent(user.username)}`
         );
         const data = await response.json();
-        const formatted = [...new Set(data.entries)].map(e => ({ label: e, value: e }));
+        const formatted = [...new Set(data)].map(e => ({ label: e, value: e }));
         setEntries(formatted);
       } catch (error) {
         console.error('Error fetching entries:', error);
       }
     };
-
     fetchEntries();
-  }, [entryType]);
+  }, [entryType, selectedEntryRow]);
 
   const handleDateSelect = (arg) => {
     const date = arg.startStr.split('T')[0];
@@ -136,12 +120,11 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     const now = new Date();
     const timestamp = now.toLocaleString('en-GB', {
       day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-      hour12: false
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
 
     const entryValue =
-      entryType === 'Lead'
+      activeEntryType === 'Lead'
         ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
         : formData.selectedEntry;
 
@@ -158,35 +141,17 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     };
 
     try {
-      await fetch(
-        "https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec",
-        {
-          method: "POST",
-          mode: "no-cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload)
-        }
-      );
-
+      await fetch("https://script.google.com/macros/s/AKfycbzCsp1ngGzlrbhNm17tqPeOgpVgPBrb5Pgoahxhy4rAZVLg5mFymYeioepLxBnqKOtPjw/exec", {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
       alert("✅ Meeting successfully scheduled.");
       console.log("📦 Submitted payload:", payload);
-
-      // Reset form
-      if (typeof open === 'boolean' && onClose) {
-          onClose(); // external modal
-        } else {
-          setOpenDialog(false); // internal modal
-        }
-      setFormData({
-        leadType: '',
-        selectedEntry: '',
-        newLeadName: '',
-        meetingDate: '',
-        meetingTime: '',
-        purpose: '',
-        entryValue: '',
-        leadOwner: ''
-      });
+      if (typeof open === 'boolean' && onClose) onClose();
+      else setOpenDialog(false);
+      setFormData({ leadType: '', selectedEntry: '', newLeadName: '', meetingDate: '', meetingTime: '', purpose: '', entryValue: '', leadOwner: '' });
       setEntryType('');
     } catch (error) {
       console.error("❌ Error submitting meeting:", error);
@@ -201,9 +166,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center">
           <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100, marginRight: 12 }} />
-          <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>
-            Calendar Schedule
-          </Typography>
+          <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>Calendar Schedule</Typography>
         </Box>
         <Button variant="contained" sx={{ fontFamily: 'Montserrat', backgroundColor: '#2f80ed' }} onClick={() => setOpenDialog(true)}>
           + Create Meeting
@@ -231,36 +194,41 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
         />
       </Box>
 
-      <Dialog
-        open={typeof open === 'boolean' ? open : openDialog}
-        onClose={onClose || (() => setOpenDialog(false))}
-        maxWidth="sm"
-        fullWidth
-      >
-       <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
+      <Dialog open={typeof open === 'boolean' ? open : openDialog} onClose={onClose || (() => setOpenDialog(false))} maxWidth="sm" fullWidth>
+        <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>Schedule Meeting</DialogTitle>
         <DialogContent>
           <Grid container spacing={2} sx={{ mt: 1 }}>
-            <Grid item xs={12}>
-              <FormControl fullWidth>
-                <InputLabel>Select {activeEntryType}</InputLabel>
-                //<InputLabel>Entry Type</InputLabel>
-                  <Select value={entryType} onChange={(e) => { setEntryType(e.target.value); setFormData(prev => ({ ...prev, leadType: '', selectedEntry: '', newLeadName: '' })); }}>
-                  <MenuItem value="Lead">Lead</MenuItem>
-                  <MenuItem value="Deal">Deal</MenuItem>
-                  <MenuItem value="Account">Account</MenuItem>
-                </Select>
-              </FormControl>
-            </Grid>
+            {!selectedEntryRow && (
+              <>
+                <Grid item xs={12}>
+                  <FormControl fullWidth>
+                    <InputLabel>Entry Type</InputLabel>
+                    <Select value={entryType} onChange={(e) => { setEntryType(e.target.value); setFormData(prev => ({ ...prev, leadType: '', selectedEntry: '', newLeadName: '' })); }}>
+                      <MenuItem value="Lead">Lead</MenuItem>
+                      <MenuItem value="Deal">Deal</MenuItem>
+                      <MenuItem value="Account">Account</MenuItem>
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {entryType === 'Lead' && (
+                  <Grid item xs={12}>
+                    <FormControl fullWidth>
+                      <InputLabel>Lead Type</InputLabel>
+                      <Select value={formData.leadType} onChange={(e) => setFormData(prev => ({ ...prev, leadType: e.target.value }))}>
+                        <MenuItem value="Existing">Existing Lead</MenuItem>
+                        <MenuItem value="New">New Lead</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                )}
+              </>
+            )}
 
             {(activeEntryType === 'Deal' || activeEntryType === 'Account' || (activeEntryType === 'Lead' && formData.leadType === 'Existing')) && (
               <Grid item xs={12}>
                 {mode === 'existing' ? (
-                  <TextField
-                    label={`${activeEntryType} (Prefilled)`}
-                    value={formData.selectedEntry}
-                    fullWidth
-                    InputProps={{ readOnly: true }}
-                  />
+                  <TextField label={`${activeEntryType} (Prefilled)`} value={formData.selectedEntry} fullWidth InputProps={{ readOnly: true }} />
                 ) : (
                   <FormControl fullWidth>
                     <InputLabel>Select {activeEntryType}</InputLabel>

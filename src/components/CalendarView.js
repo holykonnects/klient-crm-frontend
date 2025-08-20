@@ -366,20 +366,44 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
             dayCellClassNames={(arg) => ["montserrat-day-cell", arg.date.toDateString() === new Date().toDateString() ? "today-highlight" : ""]}
             events={events}                   // pass backend strings as-is
             eventContent={(eventInfo) => (
-              <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
-                <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{eventInfo.event.title}</Typography>
+              <Box sx={{
+                fontFamily: 'Montserrat, sans-serif',
+                fontSize: '0.75rem',
+                padding: '4px',
+                lineHeight: 1.1,
+                overflow: 'hidden'
+              }}>
+                {/* Title: client name only */}
+                <Typography sx={{ fontWeight: 600, fontSize: '0.85rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {eventInfo.event.title}
+                </Typography>
+            
+                {/* Notes / purpose: clamp to a few lines so it fits in 1 hour */}
                 {eventInfo.event.extendedProps?.purpose && (
-                  <Typography sx={{ fontSize: '0.75rem', color: '#666' }}>
+                  <Typography
+                    sx={{
+                      fontSize: '0.72rem',
+                      color: '#555',
+                      display: '-webkit-box',
+                      WebkitLineClamp: 3,        // adjust to 2–4 lines if you want
+                      WebkitBoxOrient: 'vertical',
+                      overflow: 'hidden',
+                      marginTop: '2px'
+                    }}
+                  >
                     {eventInfo.event.extendedProps.purpose}
                   </Typography>
                 )}
+            
+                {/* Owner as a tiny footer */}
                 {eventInfo.event.extendedProps?.owner && (
-                  <Typography sx={{ fontSize: '0.7rem', color: '#aaa' }}>
-                    by {eventInfo.event.extendedProps.owner}
+                  <Typography sx={{ fontSize: '0.68rem', color: '#999', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', marginTop: '2px' }}>
+                    {eventInfo.event.extendedProps.owner}
                   </Typography>
                 )}
               </Box>
             )}
+
           />
         </div>
       </Box>

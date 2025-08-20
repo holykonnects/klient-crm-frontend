@@ -39,6 +39,10 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   const activeEntryType = externalEntryType || entryType;
   const calendarRef = useRef(null);
 
+  // 👉 Refs to read the actual DOM values as a fallback
+  const dateRef = useRef(null);
+  const timeRef = useRef(null);
+
   // ---------- Normalizers (frontend) ----------
   const toISODate = (val) => {
     if (!val) return '';
@@ -47,27 +51,50 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       return m ? `${m[3]}-${m[2]}-${m[1]}` : val;        // else assume YYYY-MM-DD
     }
     const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
-    if (!d) return String(val);
+    if (!d) return String(val ?? '');
     const y = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
     return `${y}-${mm}-${dd}`;
   };
 
   const toHHmm = (val) => {
-    if (!val) return '';
+    if (!val && val !== 0) return '';
+
+    // Strings (supports "HH:MM", "HH:MM:SS", "2:30 PM", "1430", "14.30")
     if (typeof val === 'string') {
-      let s = val.replace(/\./g, ':').trim();
-      if (/^\d{3,4}$/.test(s)) s = s.padStart(4, '0').slice(0,2) + ':' + s.slice(-2);
-      const ampm = (s.match(/am|pm/i) || [''])[0].toLowerCase();
-      const m = s.match(/(\d{1,2}):(\d{2})/);
+      let s = val.trim().replace(/\./g, ':');
+
+      // "1430" -> "14:30"
+      if (/^\d{3,4}$/.test(s)) s = s.padStart(4,'0').slice(0,2) + ':' + s.slice(-2);
+
+      // Extract hh:mm (optionally with seconds) and AM/PM
+      const ampm = (s.match(/\b(am|pm)\b/i) || [''])[0].toLowerCase();
+      const m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
       if (!m) return '';
+
       let h = +m[1], min = +m[2];
       if (ampm === 'pm' && h < 12) h += 12;
       if (ampm === 'am' && h === 12) h = 0;
+
+      if (Number.isNaN(h) || Number.isNaN(min)) return '';
       return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
     }
+
+    // Dayjs/Date objects
     const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
-    if (!d) return '';
-    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+    if (d) {
+      const h = d.getHours(), m = d.getMinutes();
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    // Numeric minutes since midnight
+    if (typeof val === 'number' && !Number.isNaN(val)) {
+      const total = Math.round(val);
+      const h = Math.floor(total / 60) % 24;
+      const m = total % 60;
+      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+    }
+
+    return '';
   };
 
   // ---------- Prefill when opening from a selected row ----------
@@ -176,23 +203,27 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   const handleSubmit = () => sendMeetingData();
 
   const sendMeetingData = async () => {
-    const now = new Date();
-    const timestamp = now.toLocaleString('en-GB', {
-      day: '2-digit', month: '2-digit', year: 'numeric',
-      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
-    });
+    // 1) Read live values from inputs (fallback if state lags)
+    const rawDate = dateRef.current?.value ?? formData.meetingDate;
+    const rawTime = timeRef.current?.value ?? formData.meetingTime;
 
-    // normalize date/time to safe formats
-    const normalizedDate = toISODate(formData.meetingDate);
-    const normalizedTime = toHHmm(formData.meetingTime);
+    // 2) Normalize
+    const normalizedDate = toISODate(rawDate);   // "YYYY-MM-DD"
+    const normalizedTime = toHHmm(rawTime);      // "HH:mm"
 
-    console.debug('🕒 Raw:', { meetingDate: formData.meetingDate, meetingTime: formData.meetingTime });
-    console.debug('✅ Normalized:', { normalizedDate, normalizedTime });
+    console.debug('🕒 raw date/time:', { rawDate, rawTime, stateDate: formData.meetingDate, stateTime: formData.meetingTime });
+    console.debug('✅ normalized:', { normalizedDate, normalizedTime });
 
     if (!normalizedDate || !normalizedTime) {
       alert('Please select both date and time.');
       return;
     }
+
+    const now = new Date();
+    const timestamp = now.toLocaleString('en-GB', {
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+    });
 
     const entryValue =
       activeEntryType === 'Lead'
@@ -201,8 +232,8 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 
     const payload = {
       "Timestamp": timestamp,
-      "Meeting Date": normalizedDate,  // YYYY-MM-DD
-      "Meeting Time": normalizedTime,  // HH:mm (24h)
+      "Meeting Date": normalizedDate,
+      "Meeting Time": normalizedTime,
       "Select Client": entryValue || '',
       "Purpose & Remarks": formData.purpose || '',
       "Lead Type": formData.leadType || '',
@@ -215,7 +246,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors", // as requested
+        mode: "no-cors", // keep as-is per your constraints
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
@@ -302,10 +333,10 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
             height="100%"
             contentHeight="auto"
             expandRows
-            timeZone="Asia/Kolkata"           // ✅ important
+            timeZone="Asia/Kolkata"           // ✅ keep calendar in IST
             headerToolbar={{ start: 'prev,next today', center: 'title', end: 'timeGridDay,timeGridWeek,dayGridMonth' }}
             dayCellClassNames={(arg) => ["montserrat-day-cell", arg.date.toDateString() === new Date().toDateString() ? "today-highlight" : ""]}
-            events={events}                   // pass strings as-is
+            events={events}                   // pass backend strings as-is
             eventContent={(eventInfo) => (
               <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
                 <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{eventInfo.event.title}</Typography>
@@ -417,6 +448,8 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
                 InputLabelProps={{ shrink: true }}
                 value={formData.meetingDate}
                 onChange={handleInputChange}
+                inputRef={dateRef}
+                required
               />
             </Grid>
             <Grid item xs={6}>
@@ -428,6 +461,9 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
                 InputLabelProps={{ shrink: true }}
                 value={formData.meetingTime}
                 onChange={handleInputChange}
+                inputRef={timeRef}
+                inputProps={{ step: 300 }} // 5-minute steps; ensures "HH:MM"
+                required
               />
             </Grid>
             <Grid item xs={12}>
@@ -458,4 +494,3 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 };
 
 export default CalendarView;
-

@@ -37,8 +37,38 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   });
 
   const activeEntryType = externalEntryType || entryType;
-
   const calendarRef = useRef(null);
+
+  // ---------- Normalizers (frontend) ----------
+  const toISODate = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') {
+      const m = val.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); // DD/MM/YYYY
+      return m ? `${m[3]}-${m[2]}-${m[1]}` : val;        // else assume YYYY-MM-DD
+    }
+    const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
+    if (!d) return String(val);
+    const y = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    return `${y}-${mm}-${dd}`;
+  };
+
+  const toHHmm = (val) => {
+    if (!val) return '';
+    if (typeof val === 'string') {
+      let s = val.replace(/\./g, ':').trim();
+      if (/^\d{3,4}$/.test(s)) s = s.padStart(4, '0').slice(0,2) + ':' + s.slice(-2);
+      const ampm = (s.match(/am|pm/i) || [''])[0].toLowerCase();
+      const m = s.match(/(\d{1,2}):(\d{2})/);
+      if (!m) return '';
+      let h = +m[1], min = +m[2];
+      if (ampm === 'pm' && h < 12) h += 12;
+      if (ampm === 'am' && h === 12) h = 0;
+      return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+    }
+    const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
+    if (!d) return '';
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  };
 
   // ---------- Prefill when opening from a selected row ----------
   useEffect(() => {
@@ -59,53 +89,47 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     }
   }, [mode, selectedEntryRow, activeEntryType]);
 
-  // ---------- Fetch events (array or {events:[…]}) ----------
-  useEffect(() => {
+  // ---------- Reusable events loader ----------
+  const loadEvents = async () => {
     if (!user?.username || !user?.role) return;
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        action: 'getEvents',
+        user: user.username,
+        // from / to optional
+        // debug: '1',
+      });
+      const res = await fetch(`${SCRIPT_URL}?${params.toString()}`, { method: 'GET' });
+      const text = await res.text();
 
-    let isMounted = true;
-    (async () => {
-      setLoading(true);
+      let json;
       try {
-        const params = new URLSearchParams({
-          action: 'getEvents',
-          user: user.username,
-          // from/to optional: backend defaults last 30d → next 90d
-          // from: '2025-08-01',
-          // to: '2025-09-30',
-          // debug: '1',
-        });
-        const res = await fetch(`${SCRIPT_URL}?${params.toString()}`, { method: 'GET' });
-        const text = await res.text();
-
-        let json;
-        try {
-          json = JSON.parse(text);
-        } catch (e) {
-          console.error('❌ Could not parse events JSON:', text);
-          throw e;
-        }
-
-        const arr = Array.isArray(json) ? json : (Array.isArray(json.events) ? json.events : []);
-        const cleaned = (arr || []).filter(e => e && e.start && e.title);
-
-        if (isMounted) {
-          setEvents(cleaned);
-          // force size after data arrives
-          setTimeout(() => {
-            try { calendarRef.current?.getApi().updateSize(); } catch {}
-          }, 0);
-        }
-      } catch (err) {
-        console.error('❌ Error fetching calendar events:', err);
-        if (isMounted) setEvents([]);
-      } finally {
-        if (isMounted) setLoading(false);
+        json = JSON.parse(text);
+      } catch (e) {
+        console.error('❌ Could not parse events JSON:', text);
+        throw e;
       }
-    })();
 
-    return () => { isMounted = false; };
-  }, [user?.username, user?.role]);
+      const arr = Array.isArray(json) ? json : (Array.isArray(json.events) ? json.events : []);
+      const cleaned = (arr || []).filter(e => e && e.start && e.title);
+
+      setEvents(cleaned);
+
+      // force size after data arrives
+      setTimeout(() => {
+        try { calendarRef.current?.getApi().updateSize(); } catch {}
+      }, 0);
+    } catch (err) {
+      console.error('❌ Error fetching calendar events:', err);
+      setEvents([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ---------- Fetch events on mount / user change ----------
+  useEffect(() => { loadEvents(); }, [user?.username, user?.role]);
 
   // ---------- Fetch selectable entries for the modal ----------
   useEffect(() => {
@@ -158,6 +182,18 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
     });
 
+    // normalize date/time to safe formats
+    const normalizedDate = toISODate(formData.meetingDate);
+    const normalizedTime = toHHmm(formData.meetingTime);
+
+    console.debug('🕒 Raw:', { meetingDate: formData.meetingDate, meetingTime: formData.meetingTime });
+    console.debug('✅ Normalized:', { normalizedDate, normalizedTime });
+
+    if (!normalizedDate || !normalizedTime) {
+      alert('Please select both date and time.');
+      return;
+    }
+
     const entryValue =
       activeEntryType === 'Lead'
         ? (formData.leadType === 'Existing' ? formData.selectedEntry : formData.newLeadName)
@@ -165,44 +201,50 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 
     const payload = {
       "Timestamp": timestamp,
-      "Meeting Date": formData.meetingDate,
-      "Meeting Time": formData.meetingTime,
-      "Select Client": entryValue,
-      "Purpose & Remarks": formData.purpose,
-      "Lead Type": formData.leadType,
+      "Meeting Date": normalizedDate,  // YYYY-MM-DD
+      "Meeting Time": normalizedTime,  // HH:mm (24h)
+      "Select Client": entryValue || '',
+      "Purpose & Remarks": formData.purpose || '',
+      "Lead Type": formData.leadType || '',
       "Lead Owner": user?.username || 'Unknown',
       "Entry Type": activeEntryType,
-      "Entry Value": entryValue
+      "Entry Value": entryValue || ''
     };
 
+    setLoading(true);
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors",
+        mode: "no-cors", // as requested
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
-      alert("✅ Meeting successfully scheduled.");
+
       console.log("📦 Submitted payload:", payload);
 
       // close and reset
       if (typeof open === 'boolean' && onClose) onClose();
       else setOpenDialog(false);
+
       setFormData({
         leadType: '', selectedEntry: '', newLeadName: '',
         meetingDate: '', meetingTime: '', purpose: '',
         entryValue: '', leadOwner: ''
       });
       setEntryType('');
+
+      // refresh events without page reload
+      await loadEvents();
+      alert("✅ Meeting successfully scheduled.");
     } catch (error) {
       console.error("❌ Error submitting meeting:", error);
       alert("❌ Submission failed. Please try again.");
+    } finally {
+      setLoading(false);
     }
   };
 
   // ---------- Sizing fixes ----------
-  // a) ensure dialog & wrapper have height
-  // b) force FullCalendar to measure after open & on resize
   useEffect(() => {
     if (!open) return;
     const api = calendarRef.current?.getApi();
@@ -257,12 +299,13 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
             selectable
             select={handleDateSelect}
             allDaySlot={false}
-            height="100%"         // fill wrapper
-            contentHeight="auto"  // grow with wrapper
+            height="100%"
+            contentHeight="auto"
             expandRows
+            timeZone="Asia/Kolkata"           // ✅ important
             headerToolbar={{ start: 'prev,next today', center: 'title', end: 'timeGridDay,timeGridWeek,dayGridMonth' }}
             dayCellClassNames={(arg) => ["montserrat-day-cell", arg.date.toDateString() === new Date().toDateString() ? "today-highlight" : ""]}
-            events={events}
+            events={events}                   // pass strings as-is
             eventContent={(eventInfo) => (
               <Box sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.75rem', padding: '4px' }}>
                 <Typography sx={{ fontWeight: 600, fontSize: '0.85rem' }}>{eventInfo.event.title}</Typography>
@@ -415,3 +458,4 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
 };
 
 export default CalendarView;
+

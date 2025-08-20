@@ -39,9 +39,26 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
   const activeEntryType = externalEntryType || entryType;
   const calendarRef = useRef(null);
 
-  // 👉 Refs to read the actual DOM values as a fallback
+  // 👉 Refs to read the actual DOM values (fallback if state lags)
   const dateRef = useRef(null);
   const timeRef = useRef(null);
+
+  // ---------- Helpers: defaults for date/time ----------
+  const todayISO = () => {
+    const d = new Date();
+    const y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  };
+  // Round current time to next N minutes (e.g., 15 => 10:07 -> 10:15)
+  const roundToNext = (minutes = 15) => {
+    const d = new Date();
+    d.setSeconds(0, 0);
+    const ms = minutes * 60 * 1000;
+    const rounded = new Date(Math.ceil(d.getTime() / ms) * ms);
+    const hh = String(rounded.getHours()).padStart(2, '0');
+    const mm = String(rounded.getMinutes()).padStart(2, '0');
+    return `${hh}:${mm}`;
+  };
 
   // ---------- Normalizers (frontend) ----------
   const toISODate = (val) => {
@@ -52,48 +69,39 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     }
     const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
     if (!d) return String(val ?? '');
-    const y = d.getFullYear(), mm = String(d.getMonth()+1).padStart(2,'0'), dd = String(d.getDate()).padStart(2,'0');
+    const y = d.getFullYear(), mm = String(d.getMonth() + 1).padStart(2, '0'), dd = String(d.getDate()).padStart(2, '0');
     return `${y}-${mm}-${dd}`;
   };
 
   const toHHmm = (val) => {
     if (!val && val !== 0) return '';
-
-    // Strings (supports "HH:MM", "HH:MM:SS", "2:30 PM", "1430", "14.30")
     if (typeof val === 'string') {
       let s = val.trim().replace(/\./g, ':');
-
       // "1430" -> "14:30"
-      if (/^\d{3,4}$/.test(s)) s = s.padStart(4,'0').slice(0,2) + ':' + s.slice(-2);
-
+      if (/^\d{3,4}$/.test(s)) s = s.padStart(4, '0').slice(0, 2) + ':' + s.slice(-2);
       // Extract hh:mm (optionally with seconds) and AM/PM
       const ampm = (s.match(/\b(am|pm)\b/i) || [''])[0].toLowerCase();
       const m = s.match(/(\d{1,2}):(\d{2})(?::\d{2})?/);
       if (!m) return '';
-
       let h = +m[1], min = +m[2];
       if (ampm === 'pm' && h < 12) h += 12;
       if (ampm === 'am' && h === 12) h = 0;
-
       if (Number.isNaN(h) || Number.isNaN(min)) return '';
-      return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
+      return `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
     }
-
     // Dayjs/Date objects
     const d = (val?.$d instanceof Date) ? val.$d : (val instanceof Date ? val : null);
     if (d) {
       const h = d.getHours(), m = d.getMinutes();
-      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     }
-
     // Numeric minutes since midnight
     if (typeof val === 'number' && !Number.isNaN(val)) {
       const total = Math.round(val);
       const h = Math.floor(total / 60) % 24;
       const m = total % 60;
-      return `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`;
+      return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
     }
-
     return '';
   };
 
@@ -116,6 +124,19 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     }
   }, [mode, selectedEntryRow, activeEntryType]);
 
+  // ---------- Ensure defaults when dialog opens ----------
+  useEffect(() => {
+    const isOpen = (typeof open === 'boolean' ? open : openDialog);
+    if (isOpen) {
+      setFormData(prev => ({
+        ...prev,
+        meetingDate: prev.meetingDate || todayISO(),
+        meetingTime: prev.meetingTime || roundToNext(15),
+        leadOwner: prev.leadOwner || (user?.username || '')
+      }));
+    }
+  }, [open, openDialog, user?.username]);
+
   // ---------- Reusable events loader ----------
   const loadEvents = async () => {
     if (!user?.username || !user?.role) return;
@@ -123,9 +144,8 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     try {
       const params = new URLSearchParams({
         action: 'getEvents',
-        user: user.username,
-        // from / to optional
-        // debug: '1',
+        user: user.username
+        // from / to optional; debug optional
       });
       const res = await fetch(`${SCRIPT_URL}?${params.toString()}`, { method: 'GET' });
       const text = await res.text();
@@ -246,7 +266,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
     try {
       await fetch(SCRIPT_URL, {
         method: "POST",
-        mode: "no-cors", // keep as-is per your constraints
+        mode: "no-cors", // keep as-is
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload)
       });
@@ -313,7 +333,15 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
         <Button
           variant="contained"
           sx={{ fontFamily: 'Montserrat', backgroundColor: '#2f80ed' }}
-          onClick={() => setOpenDialog(true)}
+          onClick={() => {
+            setOpenDialog(true);
+            setFormData(prev => ({
+              ...prev,
+              meetingDate: prev.meetingDate || todayISO(),
+              meetingTime: prev.meetingTime || roundToNext(15),
+              leadOwner: user?.username || prev.leadOwner
+            }));
+          }}
         >
           + Create Meeting
         </Button>
@@ -448,6 +476,12 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
                 InputLabelProps={{ shrink: true }}
                 value={formData.meetingDate}
                 onChange={handleInputChange}
+                onBlur={() => {
+                  const v = dateRef.current?.value || '';
+                  if (v && v !== formData.meetingDate) {
+                    setFormData(prev => ({ ...prev, meetingDate: v }));
+                  }
+                }}
                 inputRef={dateRef}
                 required
               />
@@ -460,9 +494,15 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
                 fullWidth
                 InputLabelProps={{ shrink: true }}
                 value={formData.meetingTime}
-                onChange={handleInputChange}
+                onChange={(e) => setFormData(prev => ({ ...prev, meetingTime: e.target.value }))}
+                onBlur={() => {
+                  const v = timeRef.current?.value || '';
+                  if (v && v !== formData.meetingTime) {
+                    setFormData(prev => ({ ...prev, meetingTime: v }));
+                  }
+                }}
                 inputRef={timeRef}
-                inputProps={{ step: 300 }} // 5-minute steps; ensures "HH:MM"
+                inputProps={{ step: 300 }} // 5‑min increments
                 required
               />
             </Grid>

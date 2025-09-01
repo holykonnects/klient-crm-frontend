@@ -253,7 +253,7 @@ const LeadsTable = () => {
                   </InputAdornment>
                 ) : null
               }}
-              helperText="Type to search (no Enter needed)"
+              //helperText="Type to search (no Enter needed)"
             />
           </Box>
 

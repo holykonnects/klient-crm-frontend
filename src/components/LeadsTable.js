@@ -1,9 +1,11 @@
+// LeadsTable.js
 import React, { useEffect, useMemo, useState, useDeferredValue } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover, InputAdornment
 } from '@mui/material';
+import { Link as MUILink } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -27,6 +29,17 @@ function useDebouncedValue(value, delay = 250) {
   return debounced;
 }
 
+/* ---------- URL helpers ---------- */
+const looksLikeUrl = (val = '') =>
+  /^https?:\/\/|^www\.|^[\w-]+\.[\w.-]+(\/|$)/i.test(String(val).trim());
+
+const normalizeUrl = (val = '') => {
+  const v = String(val).trim();
+  if (!v) return '';
+  return /^https?:\/\//i.test(v) ? v : `https://${v}`;
+};
+const displayUrl = (val = '') => String(val).trim().replace(/^https?:\/\//i, '');
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -43,10 +56,10 @@ const LeadsTable = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // live search state (no more Enter)
+  // live search state
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, 250);
-  const deferredSearch = useDeferredValue(debouncedSearch); // keeps typing smooth
+  const deferredSearch = useDeferredValue(debouncedSearch);
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -69,6 +82,7 @@ const LeadsTable = () => {
   const username = user?.username;
   const role = user?.role;
 
+  // URLs
   const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
@@ -145,7 +159,7 @@ const LeadsTable = () => {
     return copy;
   }, [leads, sortConfig]);
 
-  // live filter using deferred + debounced search
+  // live filter
   const filteredLeads = useMemo(() => {
     const q = (deferredSearch || '').toLowerCase().trim();
     return sortedLeads.filter(lead => {
@@ -227,6 +241,7 @@ const LeadsTable = () => {
         </Box>
 
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          {/* Search (live, debounced, no helper text) */}
           <Box display="flex" alignItems="center">
             <TextField
               size="small"
@@ -253,7 +268,6 @@ const LeadsTable = () => {
                   </InputAdornment>
                 ) : null
               }}
-              //helperText="Type to search (no Enter needed)"
             />
           </Box>
 
@@ -319,9 +333,27 @@ const LeadsTable = () => {
           <TableBody>
             {filteredLeads.map((lead, index) => (
               <TableRow key={index}>
-                {visibleColumns.map((key, i) => (
-                  <TableCell key={i}>{lead[key]}</TableCell>
-                ))}
+                {visibleColumns.map((key, i) => {
+                  const value = lead[key];
+                  // Auto-link ONLY Quotation Link column
+                  if (key === 'Quotation Link' && looksLikeUrl(value)) {
+                    const href = normalizeUrl(value);
+                    return (
+                      <TableCell key={i}>
+                        <MUILink
+                          href={href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          underline="hover"
+                          sx={{ wordBreak: 'break-all' }}
+                        >
+                          {displayUrl(value)}
+                        </MUILink>
+                      </TableCell>
+                    );
+                  }
+                  return <TableCell key={i}>{value}</TableCell>;
+                })}
                 <TableCell>
                   <IconButton onClick={() => setViewRow(lead)}><VisibilityIcon /></IconButton>
                   <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
@@ -340,13 +372,25 @@ const LeadsTable = () => {
             <Grid container spacing={2}>
               {viewRow && Object.entries(viewRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={key}
-                    value={value}
-                    InputProps={{ readOnly: true }}
-                  />
+                  {key === 'Quotation Link' && looksLikeUrl(value) ? (
+                    <MUILink
+                      href={normalizeUrl(value)}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      underline="hover"
+                      sx={{ display: 'inline-block', mt: 2, wordBreak: 'break-all' }}
+                    >
+                      {displayUrl(value)}
+                    </MUILink>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={key}
+                      value={value ?? ''}
+                      InputProps={{ readOnly: true }}
+                    />
+                  )}
                 </Grid>
               ))}
             </Grid>

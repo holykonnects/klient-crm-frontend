@@ -109,7 +109,7 @@ function DealsTable() {
   const filteredDeals = sortedDeals.filter(deal => {
     try {
       return (
-        ['Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
+        ['First Name','Last Name','Deal Name', 'Company', 'Mobile Number', 'Stage', 'Account ID'].some(key =>
           (deal[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || deal['Stage'] === filterStage) &&

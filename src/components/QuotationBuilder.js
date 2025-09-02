@@ -10,9 +10,7 @@ import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 
-// ✅ Use the same-origin proxy (no CORS)
 const WEB_APP_URL = '/api/gas';
-
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 
 const emptyRow = {
@@ -21,27 +19,10 @@ const emptyRow = {
   unit: '', rate: '', desc: '', imageUrl: ''
 };
 
-// --- helpers: URL safety + JSON fetch ---
-function isHttpUrl(s) {
-  if (!s) return false;
-  const t = String(s).trim();
-  return /^https?:\/\/\S+$/i.test(t);
-}
-function safeOpen(url) {
-  const t = String(url || '').trim();
-  if (!isHttpUrl(t)) return false;
-  window.open(t, '_blank', 'noopener,noreferrer');
-  return true;
-}
-async function fetchJSON(url, init) {
-  const r = await fetch(url, init);
-  const text = await r.text();      // read as text first for clearer diagnostics
-  try { return JSON.parse(text); }
-  catch (e) {
-    console.error('Non-JSON from server:', text);
-    throw new Error('Invalid JSON from server');
-  }
-}
+// helpers
+function isHttpUrl(s) { if (!s) return false; const t = String(s).trim(); return /^https?:\/\/\S+$/i.test(t); }
+function safeOpen(url) { const t = String(url || '').trim(); if (!isHttpUrl(t)) return false; window.open(t, '_blank', 'noopener,noreferrer'); return true; }
+async function fetchJSON(url, init) { const r = await fetch(url, init); const text = await r.text(); try { return JSON.parse(text); } catch { console.error('Non-JSON from server:', text); throw new Error('Invalid JSON from server'); } }
 
 export default function QuotationBuilder() {
   const { user } = useAuth();
@@ -56,11 +37,9 @@ export default function QuotationBuilder() {
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
 
-  // Lead attach
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
 
-  // Access guard (mirrors backend)
   const canUseQuotation =
     user?.role === 'Admin' ||
     (Array.isArray(user?.pageAccess) && user.pageAccess.includes('Quotation'));
@@ -74,7 +53,7 @@ export default function QuotationBuilder() {
     })().catch(console.error);
   }, []);
 
-  // Load leads for the user
+  // Load leads
   useEffect(() => {
     if (!user?.username) return;
     (async () => {
@@ -94,6 +73,9 @@ export default function QuotationBuilder() {
     const tax = 0;
     return { subTotal: sub, tax, grand: sub + tax };
   }, [rows]);
+
+  const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
+  const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
 
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
@@ -117,7 +99,11 @@ export default function QuotationBuilder() {
         if (found) {
           row.unit = found.unit || '';
           row.rate = Number(found.rate || 0);
-          row.desc = found.desc || found.name || '';
+          // ✅ Description from Equipment BD "Description" column
+          // fallback to "Category : Sub-Category : Item Code" if not present
+          row.desc = (found.desc && String(found.desc).trim())
+            ? found.desc
+            : `${row.category} : ${row.subCategory} : ${value}`;
           row.imageUrl = found.imageUrl || '';
         } else {
           row.unit = ''; row.rate = ''; row.desc = ''; row.imageUrl = '';
@@ -132,14 +118,8 @@ export default function QuotationBuilder() {
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
   const removeRow = (i) => setRows(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
-  const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
-  const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
-
   const exportPdf = async () => {
-    if (!canUseQuotation) {
-      alert('You do not have access to Quotation Builder.');
-      return;
-    }
+    if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
     setExporting(true);
     try {
       const payload = {
@@ -151,26 +131,19 @@ export default function QuotationBuilder() {
             subCategory: r.subCategory,
             itemCode: r.itemCode,
             qty: Number(r.qty || 0),
-            rateOverride: r.rateOverride !== '' ? Number(r.rateOverride) : undefined
+            rateOverride: r.rateOverride !== '' ? Number(r.rateOverride) : undefined,
+            // ✅ send description override so backend writes this exact text
+            descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined
           })),
         attach: attachLead ? { leadDisplay: attachLead } : null
       };
 
       const j = await fetchJSON(
         `${WEB_APP_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
-        {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        }
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
       );
 
-      console.log('Export response:', j);
-
-      if (!j.ok) {
-        alert(j.error || 'Export failed');
-        return;
-      }
+      if (!j.ok) { alert(j.error || 'Export failed'); return; }
       const url = String(j.pdfUrl || '').trim();
       if (!isHttpUrl(url)) {
         console.warn('Invalid pdfUrl from backend:', j.pdfUrl);
@@ -190,9 +163,7 @@ export default function QuotationBuilder() {
   if (!canUseQuotation) {
     return (
       <Box sx={{ p: 3, fontFamily: 'Montserrat, sans-serif' }}>
-        <Typography variant="h6" fontWeight={600}>
-          You don’t have access to Quotation Builder.
-        </Typography>
+        <Typography variant="h6" fontWeight={600}>You don’t have access to Quotation Builder.</Typography>
         <Typography variant="body2">Please contact your admin.</Typography>
       </Box>
     );
@@ -209,39 +180,30 @@ export default function QuotationBuilder() {
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Client Name" value={meta.clientName}
-              onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Project Name" value={meta.projectName}
-              onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Quotation No." value={meta.quotationNo}
-              onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <TextField fullWidth type="date" label="Date" InputLabelProps={{ shrink: true }}
-              value={meta.dateISO}
-              onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              value={meta.dateISO} onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <TextField fullWidth label="Prepared By" value={meta.preparedBy}
-              onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <FormControl fullWidth>
               <InputLabel>Layout</InputLabel>
-              <Select
-                value={meta.layout}
-                label="Layout"
+              <Select value={meta.layout} label="Layout"
                 onChange={e => setMeta(m => ({ ...m, layout: e.target.value }))}
-                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
-              >
+                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
                 <MenuItem value="portrait">Portrait</MenuItem>
                 <MenuItem value="landscape">Landscape</MenuItem>
               </Select>
@@ -263,15 +225,14 @@ export default function QuotationBuilder() {
           </Grid>
           <Grid item xs={12}>
             <TextField fullWidth multiline minRows={2} label="Notes"
-              value={meta.notes}
-              onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))}
-              inputProps={{ style: cellStyle }} />
+              value={meta.notes} onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
         </Grid>
       </Paper>
 
       {/* Lines */}
       <Paper sx={{ p: 2 }}>
+        {/* Header row (removed small Description column) */}
         <Grid container spacing={1} sx={{ mb: 1 }}>
           <Grid item xs={12} md={2}><Typography fontWeight={600}>Category</Typography></Grid>
           <Grid item xs={12} md={2}><Typography fontWeight={600}>Sub-Category</Typography></Grid>
@@ -279,123 +240,89 @@ export default function QuotationBuilder() {
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Unit</Typography></Grid>
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Qty</Typography></Grid>
           <Grid item xs={12} md={1.5}><Typography fontWeight={600}>Rate</Typography></Grid>
-          <Grid item xs={12} md={2}><Typography fontWeight={600}>Description</Typography></Grid>
-          <Grid item xs={12} md={0.5}></Grid>
+          <Grid item xs={12} md={1}><Typography fontWeight={600}>Image</Typography></Grid>
+          <Grid item xs={12} md={1}><Typography fontWeight={600}>Actions</Typography></Grid>
         </Grid>
 
         {rows.map((r, i) => {
           const subcats = subCatsFor(r.category);
           const items = itemsFor(r.category, r.subCategory);
           return (
-            <Grid container spacing={1} key={i} alignItems="center" sx={{ mb: 0.5 }}>
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <Select
-                    value={r.category}
-                    displayEmpty
-                    onChange={e => handleRowChange(i, 'category', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
-                  >
-                    <MenuItem value=""><em>Select</em></MenuItem>
-                    {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <Select
-                    value={r.subCategory}
-                    displayEmpty
-                    disabled={!r.category}
-                    onChange={e => handleRowChange(i, 'subCategory', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
-                  >
-                    <MenuItem value=""><em>Select</em></MenuItem>
-                    {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <FormControl fullWidth>
-                  <Select
-                    value={r.itemCode}
-                    displayEmpty
-                    disabled={!r.category || !r.subCategory}
-                    onChange={e => handleRowChange(i, 'itemCode', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
-                  >
-                    <MenuItem value=""><em>Select</em></MenuItem>
-                    {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid item xs={12} md={1}>
-                <TextField
-                  fullWidth
-                  value={r.unit || ''}
-                  label="Unit"
-                  InputLabelProps={{ shrink: true }}
-                  inputProps={{ readOnly: true, style: cellStyle }}
-                />
-              </Grid>
-              <Grid item xs={12} md={1}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Qty"
-                  value={r.qty}
-                  onChange={e => handleRowChange(i, 'qty', e.target.value)}
-                  inputProps={{ style: cellStyle }}
-                />
-              </Grid>
-              <Grid item xs={12} md={1.5}>
-                <TextField
-                  fullWidth
-                  type="number"
-                  label="Rate"
-                  value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
-                  onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
-                  helperText="Leave blank to use item rate"
-                  FormHelperTextProps={{ sx: { m: 0 } }}
-                  inputProps={{ style: cellStyle }}
-                />
-              </Grid>
-              <Grid item xs={12} md={2}>
-                <TextField
-                  fullWidth
-                  label="Description"
-                  value={r.desc || ''}
-                  onChange={e => handleRowChange(i, 'desc', e.target.value)}
-                  inputProps={{ style: cellStyle }}
-                />
-              </Grid>
-              <Grid item xs={12} md={0.5} sx={{ display: 'flex', gap: 1 }}>
-                {r.imageUrl ? (
-                  <IconButton onClick={() => safeOpen(r.imageUrl)} title="Open image">
-                    <PictureInPictureAlt />
-                  </IconButton>
-                ) : null}
-                <IconButton onClick={() => removeRow(i)} title="Remove">
-                  <DeleteOutline />
-                </IconButton>
-              </Grid>
-
-              {/* Optional live description preview */}
-              {r.desc ? (
-                <Grid item xs={12}>
-                  <Paper style={{ padding: 8, fontFamily: 'Montserrat, sans-serif' }}>
-                    <Typography variant="body2" style={{ whiteSpace: 'pre-wrap' }}>{r.desc}</Typography>
-                  </Paper>
+            <Box key={i} sx={{ mb: 2 }}>
+              <Grid container spacing={1} alignItems="center">
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <Select value={r.category} displayEmpty
+                      onChange={e => handleRowChange(i, 'category', e.target.value)}
+                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                      <MenuItem value=""><em>Select</em></MenuItem>
+                      {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 </Grid>
-              ) : null}
-            </Grid>
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <Select value={r.subCategory} displayEmpty disabled={!r.category}
+                      onChange={e => handleRowChange(i, 'subCategory', e.target.value)}
+                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                      <MenuItem value=""><em>Select</em></MenuItem>
+                      {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={2}>
+                  <FormControl fullWidth>
+                    <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
+                      onChange={e => handleRowChange(i, 'itemCode', e.target.value)}
+                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                      <MenuItem value=""><em>Select</em></MenuItem>
+                      {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                <Grid item xs={12} md={1}>
+                  <TextField fullWidth value={r.unit || ''} label="Unit"
+                    InputLabelProps={{ shrink: true }} inputProps={{ readOnly: true, style: cellStyle }} />
+                </Grid>
+                <Grid item xs={12} md={1}>
+                  <TextField fullWidth type="number" label="Qty" value={r.qty}
+                    onChange={e => handleRowChange(i, 'qty', e.target.value)} inputProps={{ style: cellStyle }} />
+                </Grid>
+                <Grid item xs={12} md={1.5}>
+                  <TextField fullWidth type="number" label="Rate"
+                    value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
+                    onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
+                    helperText="Leave blank to use item rate" FormHelperTextProps={{ sx: { m: 0 } }}
+                    inputProps={{ style: cellStyle }} />
+                </Grid>
+                <Grid item xs={12} md={1}>
+                  {r.imageUrl ? (
+                    <IconButton onClick={() => safeOpen(r.imageUrl)} title="Open image"><PictureInPictureAlt /></IconButton>
+                  ) : <Typography variant="body2" color="text.secondary">—</Typography>}
+                </Grid>
+                <Grid item xs={12} md={1}>
+                  <IconButton onClick={() => removeRow(i)} title="Remove">
+                    <DeleteOutline />
+                  </IconButton>
+                </Grid>
+
+                {/* ✅ Big description box under the row */}
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth multiline minRows={4}
+                    label="Description"
+                    value={r.desc || ''}
+                    onChange={e => handleRowChange(i, 'desc', e.target.value)}
+                    inputProps={{ style: { ...cellStyle, lineHeight: 1.4 } }}
+                  />
+                </Grid>
+              </Grid>
+            </Box>
           );
         })}
 
         <Box sx={{ mt: 1 }}>
-          <Button startIcon={<AddCircleOutline />} onClick={addRow}>
-            Add Line
-          </Button>
+          <Button startIcon={<AddCircleOutline />} onClick={addRow}>Add Line</Button>
         </Box>
       </Paper>
 
@@ -411,9 +338,7 @@ export default function QuotationBuilder() {
             {exporting ? 'Exporting…' : 'Export to PDF + Link Lead'}
           </Button>
           {lastExport && isHttpUrl(lastExport.url) && (
-            <Button variant="outlined" onClick={() => safeOpen(lastExport.url)}>
-              Open Last PDF
-            </Button>
+            <Button variant="outlined" onClick={() => safeOpen(lastExport.url)}>Open Last PDF</Button>
           )}
         </Box>
       </Box>

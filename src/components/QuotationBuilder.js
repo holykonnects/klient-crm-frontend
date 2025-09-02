@@ -10,7 +10,9 @@ import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 
-const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwcV0I1JGLqmDTT_vPgrVOdDbpy4XUbUEi7CD5cujdLydfS9uybkMJ_DCCJRMNDWKbo3g/exec';
+//const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwcV0I1JGLqmDTT_vPgrVOdDbpy4XUbUEi7CD5cujdLydfS9uybkMJ_DCCJRMNDWKbo3g/exec';
+
+const WEB_APP_URL = '/api/gas';
 
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 

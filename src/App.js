@@ -15,6 +15,7 @@ import { AuthProvider, useAuth } from './components/AuthContext';
 import CalendarView from './components/CalendarView';
 import TravelTable from './components/TravelTable';
 import SalesTrackerTable from './components/SalesTrackerTable';
+import QuotationBuilder from './components/QuotationBuilder';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -30,6 +31,7 @@ const AppRoutes = () => {
         <Route path="add-lead" element={<LeadForm />} />
         <Route path="/calendar" element={<CalendarView />} />
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
+        <Route path="quotation-builder" element={<QuotationBuilder />} />
         
         {/* ✅ Travel route with access control */}
         <Route

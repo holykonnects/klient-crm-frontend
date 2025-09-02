@@ -10,26 +10,48 @@ import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 
-//const WEB_APP_URL = 'https://script.google.com/macros/s/AKfycbwcV0I1JGLqmDTT_vPgrVOdDbpy4XUbUEi7CD5cujdLydfS9uybkMJ_DCCJRMNDWKbo3g/exec';
-
+// ✅ Use the same-origin proxy (no CORS)
 const WEB_APP_URL = '/api/gas';
 
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
-  qty: 1, rateOverride: '', // client overridable
+  qty: 1, rateOverride: '',
   unit: '', rate: '', desc: '', imageUrl: ''
 };
 
+// --- helpers: URL safety + JSON fetch ---
+function isHttpUrl(s) {
+  if (!s) return false;
+  const t = String(s).trim();
+  return /^https?:\/\/\S+$/i.test(t);
+}
+function safeOpen(url) {
+  const t = String(url || '').trim();
+  if (!isHttpUrl(t)) return false;
+  window.open(t, '_blank', 'noopener,noreferrer');
+  return true;
+}
+async function fetchJSON(url, init) {
+  const r = await fetch(url, init);
+  const text = await r.text();      // read as text first for clearer diagnostics
+  try { return JSON.parse(text); }
+  catch (e) {
+    console.error('Non-JSON from server:', text);
+    throw new Error('Invalid JSON from server');
+  }
+}
+
 export default function QuotationBuilder() {
   const { user } = useAuth();
+
   const [catalog, setCatalog] = useState(null);
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
-    dateISO: new Date().toISOString().slice(0,10), preparedBy: '', notes: '',
-    layout: 'portrait'
+    dateISO: new Date().toISOString().slice(0, 10),
+    preparedBy: '', notes: '', layout: 'portrait'
   });
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
@@ -38,28 +60,28 @@ export default function QuotationBuilder() {
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
 
-  // Frontend access guard (mirrors backend)
-  const canUseQuotation = (user?.role === 'Admin')
-    || (Array.isArray(user?.pageAccess) && user.pageAccess.includes('Quotation'));
+  // Access guard (mirrors backend)
+  const canUseQuotation =
+    user?.role === 'Admin' ||
+    (Array.isArray(user?.pageAccess) && user.pageAccess.includes('Quotation'));
 
+  // Load catalog
   useEffect(() => {
-    // Load catalog
     (async () => {
-      const r = await fetch(`${WEB_APP_URL}?action=getCatalog`);
-      const j = await r.json();
+      const j = await fetchJSON(`${WEB_APP_URL}?action=getCatalog`);
       if (j.ok) setCatalog(j.data);
-    })();
+      else console.error('getCatalog error:', j.error);
+    })().catch(console.error);
   }, []);
 
+  // Load leads for the user
   useEffect(() => {
     if (!user?.username) return;
-    // Load leads for dropdown
     (async () => {
-      const url = `${WEB_APP_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`;
-      const r = await fetch(url);
-      const j = await r.json();
+      const j = await fetchJSON(`${WEB_APP_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
       if (j.ok && Array.isArray(j.entries)) setLeadOptions(j.entries);
-    })();
+      else console.error('getLeadsForUser error:', j.error);
+    })().catch(console.error);
   }, [user?.username]);
 
   const totals = useMemo(() => {
@@ -80,11 +102,13 @@ export default function QuotationBuilder() {
 
       if (field === 'category') {
         row.subCategory = ''; row.itemCode = '';
-        row.unit=''; row.rate=''; row.rateOverride=''; row.desc=''; row.imageUrl='';
+        row.unit = ''; row.rate = ''; row.rateOverride = '';
+        row.desc = ''; row.imageUrl = '';
       }
       if (field === 'subCategory') {
         row.itemCode = '';
-        row.unit=''; row.rate=''; row.rateOverride=''; row.desc=''; row.imageUrl='';
+        row.unit = ''; row.rate = ''; row.rateOverride = '';
+        row.desc = ''; row.imageUrl = '';
       }
       if (field === 'itemCode' && catalog) {
         const key = `${row.category}|||${row.subCategory}`;
@@ -96,7 +120,7 @@ export default function QuotationBuilder() {
           row.desc = found.desc || found.name || '';
           row.imageUrl = found.imageUrl || '';
         } else {
-          row.unit=''; row.rate=''; row.desc=''; row.imageUrl='';
+          row.unit = ''; row.rate = ''; row.desc = ''; row.imageUrl = '';
         }
       }
 
@@ -106,7 +130,10 @@ export default function QuotationBuilder() {
   };
 
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
-  const removeRow = (i) => setRows(prev => prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev);
+  const removeRow = (i) => setRows(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+
+  const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
+  const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
 
   const exportPdf = async () => {
     if (!canUseQuotation) {
@@ -124,40 +151,48 @@ export default function QuotationBuilder() {
             subCategory: r.subCategory,
             itemCode: r.itemCode,
             qty: Number(r.qty || 0),
-            // optional override; if blank, backend uses master rate
             rateOverride: r.rateOverride !== '' ? Number(r.rateOverride) : undefined
           })),
         attach: attachLead ? { leadDisplay: attachLead } : null
       };
 
-      const url = `${WEB_APP_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`;
-      const res = await fetch(url, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(payload)
-      });
-      const json = await res.json();
-      if (json.ok) {
-        setLastExport({ url: json.pdfUrl, name: json.pdfFileName });
-        window.open(json.pdfUrl, '_blank');
-      } else {
-        alert(`Export failed: ${json.error || 'Unknown error'}`);
+      const j = await fetchJSON(
+        `${WEB_APP_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        }
+      );
+
+      console.log('Export response:', j);
+
+      if (!j.ok) {
+        alert(j.error || 'Export failed');
+        return;
       }
-    } catch (err) {
-      console.error(err);
-      alert('Export failed. Check console/logs.');
+      const url = String(j.pdfUrl || '').trim();
+      if (!isHttpUrl(url)) {
+        console.warn('Invalid pdfUrl from backend:', j.pdfUrl);
+        alert('Exported, but the PDF link looked invalid. Check the Drive folder or the Lead’s “Quotation Link”.');
+        return;
+      }
+      safeOpen(url);
+      setLastExport({ url, name: j.pdfFileName });
+    } catch (e) {
+      console.error(e);
+      alert('Export failed. See console for details.');
     } finally {
       setExporting(false);
     }
   };
 
-  const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
-  const itemsFor   = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
-
   if (!canUseQuotation) {
     return (
       <Box sx={{ p: 3, fontFamily: 'Montserrat, sans-serif' }}>
-        <Typography variant="h6" fontWeight={600}>You don’t have access to Quotation Builder.</Typography>
+        <Typography variant="h6" fontWeight={600}>
+          You don’t have access to Quotation Builder.
+        </Typography>
         <Typography variant="body2">Please contact your admin.</Typography>
       </Box>
     );
@@ -174,31 +209,39 @@ export default function QuotationBuilder() {
         <Grid container spacing={2}>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Client Name" value={meta.clientName}
-              onChange={e => setMeta(m => ({...m, clientName: e.target.value}))} inputProps={{style: cellStyle}} />
+              onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Project Name" value={meta.projectName}
-              onChange={e => setMeta(m => ({...m, projectName: e.target.value}))} inputProps={{style: cellStyle}} />
+              onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={4}>
             <TextField fullWidth label="Quotation No." value={meta.quotationNo}
-              onChange={e => setMeta(m => ({...m, quotationNo: e.target.value}))} inputProps={{style: cellStyle}} />
+              onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <TextField fullWidth type="date" label="Date" InputLabelProps={{ shrink: true }}
-              value={meta.dateISO} onChange={e => setMeta(m => ({...m, dateISO: e.target.value}))}
-              inputProps={{style: cellStyle}} />
+              value={meta.dateISO}
+              onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <TextField fullWidth label="Prepared By" value={meta.preparedBy}
-              onChange={e => setMeta(m => ({...m, preparedBy: e.target.value}))} inputProps={{style: cellStyle}} />
+              onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
           <Grid item xs={12} md={3}>
             <FormControl fullWidth>
               <InputLabel>Layout</InputLabel>
-              <Select value={meta.layout} label="Layout"
-                onChange={e => setMeta(m => ({...m, layout: e.target.value}))}
-                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+              <Select
+                value={meta.layout}
+                label="Layout"
+                onChange={e => setMeta(m => ({ ...m, layout: e.target.value }))}
+                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
+              >
                 <MenuItem value="portrait">Portrait</MenuItem>
                 <MenuItem value="landscape">Landscape</MenuItem>
               </Select>
@@ -220,8 +263,9 @@ export default function QuotationBuilder() {
           </Grid>
           <Grid item xs={12}>
             <TextField fullWidth multiline minRows={2} label="Notes"
-              value={meta.notes} onChange={e => setMeta(m => ({...m, notes: e.target.value}))}
-              inputProps={{style: cellStyle}} />
+              value={meta.notes}
+              onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))}
+              inputProps={{ style: cellStyle }} />
           </Grid>
         </Grid>
       </Paper>
@@ -246,9 +290,12 @@ export default function QuotationBuilder() {
             <Grid container spacing={1} key={i} alignItems="center" sx={{ mb: 0.5 }}>
               <Grid item xs={12} md={2}>
                 <FormControl fullWidth>
-                  <Select value={r.category} displayEmpty
+                  <Select
+                    value={r.category}
+                    displayEmpty
                     onChange={e => handleRowChange(i, 'category', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
+                  >
                     <MenuItem value=""><em>Select</em></MenuItem>
                     {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
                   </Select>
@@ -256,9 +303,13 @@ export default function QuotationBuilder() {
               </Grid>
               <Grid item xs={12} md={2}>
                 <FormControl fullWidth>
-                  <Select value={r.subCategory} displayEmpty disabled={!r.category}
+                  <Select
+                    value={r.subCategory}
+                    displayEmpty
+                    disabled={!r.category}
                     onChange={e => handleRowChange(i, 'subCategory', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
+                  >
                     <MenuItem value=""><em>Select</em></MenuItem>
                     {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
                   </Select>
@@ -266,35 +317,61 @@ export default function QuotationBuilder() {
               </Grid>
               <Grid item xs={12} md={2}>
                 <FormControl fullWidth>
-                  <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
+                  <Select
+                    value={r.itemCode}
+                    displayEmpty
+                    disabled={!r.category || !r.subCategory}
                     onChange={e => handleRowChange(i, 'itemCode', e.target.value)}
-                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                    sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
+                  >
                     <MenuItem value=""><em>Select</em></MenuItem>
                     {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
                   </Select>
                 </FormControl>
               </Grid>
               <Grid item xs={12} md={1}>
-                <TextField fullWidth value={r.unit || ''} label="Unit" InputLabelProps={{shrink: true}} inputProps={{readOnly:true, style:cellStyle}} />
+                <TextField
+                  fullWidth
+                  value={r.unit || ''}
+                  label="Unit"
+                  InputLabelProps={{ shrink: true }}
+                  inputProps={{ readOnly: true, style: cellStyle }}
+                />
               </Grid>
               <Grid item xs={12} md={1}>
-                <TextField fullWidth type="number" label="Qty" value={r.qty}
-                  onChange={e => handleRowChange(i, 'qty', e.target.value)} inputProps={{style: cellStyle}} />
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Qty"
+                  value={r.qty}
+                  onChange={e => handleRowChange(i, 'qty', e.target.value)}
+                  inputProps={{ style: cellStyle }}
+                />
               </Grid>
               <Grid item xs={12} md={1.5}>
-                <TextField fullWidth type="number" label="Rate"
+                <TextField
+                  fullWidth
+                  type="number"
+                  label="Rate"
                   value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
                   onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
                   helperText="Leave blank to use item rate"
                   FormHelperTextProps={{ sx: { m: 0 } }}
-                  inputProps={{style: cellStyle}} />
+                  inputProps={{ style: cellStyle }}
+                />
               </Grid>
               <Grid item xs={12} md={2}>
-                <TextField fullWidth label="Description" value={r.desc || ''} onChange={e => handleRowChange(i, 'desc', e.target.value)} inputProps={{style: cellStyle}} />
+                <TextField
+                  fullWidth
+                  label="Description"
+                  value={r.desc || ''}
+                  onChange={e => handleRowChange(i, 'desc', e.target.value)}
+                  inputProps={{ style: cellStyle }}
+                />
               </Grid>
               <Grid item xs={12} md={0.5} sx={{ display: 'flex', gap: 1 }}>
                 {r.imageUrl ? (
-                  <IconButton onClick={() => window.open(r.imageUrl, '_blank')} title="Open image">
+                  <IconButton onClick={() => safeOpen(r.imageUrl)} title="Open image">
                     <PictureInPictureAlt />
                   </IconButton>
                 ) : null}
@@ -303,7 +380,7 @@ export default function QuotationBuilder() {
                 </IconButton>
               </Grid>
 
-              {/* Optional live preview card */}
+              {/* Optional live description preview */}
               {r.desc ? (
                 <Grid item xs={12}>
                   <Paper style={{ padding: 8, fontFamily: 'Montserrat, sans-serif' }}>
@@ -333,8 +410,8 @@ export default function QuotationBuilder() {
           <Button variant="contained" onClick={exportPdf} disabled={exporting}>
             {exporting ? 'Exporting…' : 'Export to PDF + Link Lead'}
           </Button>
-          {lastExport && (
-            <Button variant="outlined" onClick={() => window.open(lastExport.url, '_blank')}>
+          {lastExport && isHttpUrl(lastExport.url) && (
+            <Button variant="outlined" onClick={() => safeOpen(lastExport.url)}>
               Open Last PDF
             </Button>
           )}

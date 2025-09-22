@@ -39,7 +39,7 @@ const DashboardLayout = ({ title, children }) => (
 );
 
 // KK logo (ensure this path exists in your repo)
-import KKLogo from './assets/kk-logo.png';
+import KKLogo from '/assets/kk-logo.png';
 
 /**
  * PROJECT TABLE (Frontend) — Mirrors Leads/Accounts UX

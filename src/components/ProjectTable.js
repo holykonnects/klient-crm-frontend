@@ -31,8 +31,8 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
-//import DashboardLayout from '@/components/DashboardLayout';
-import Logo from '@/components/Logo';
+import DashboardLayout from './components/DashboardLayout';
+
 
 const WEB_APP_BASE = 'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
 
@@ -196,7 +196,7 @@ export default function ProjectTable() {
       <Box sx={{ p: 2, ...fontStyle }}>
         <Paper elevation={0} sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-            <Logo height={36} />
+            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
             <Typography variant="h6" sx={{ ...fontStyle, fontWeight: 700 }}>Projects</Typography>
             <Box sx={{ flex: 1 }} />
             <TextField

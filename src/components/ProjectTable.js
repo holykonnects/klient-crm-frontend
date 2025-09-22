@@ -55,7 +55,7 @@ import KKLogo from '/assets/kk-logo.png';
  *  POST body                    → { action:'addOrUpdateProject', data: {...} }
  */
 
-const WEB_APP_BASE = 'https://script.google.com/macros/s/REPLACE_WITH_YOUR_SCRIPT_ID/exec';
+const WEB_APP_BASE = 'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
 
 // Fallbacks if Validation Tables doesn't provide config
 const DEFAULT_ORDER = [

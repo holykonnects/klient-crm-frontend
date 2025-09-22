@@ -195,21 +195,22 @@ export default function ProjectTable() {
   };
 
   const handleSubmit = async () => {
-    try {
-      const payload = { action: 'addOrUpdateProject', data: editingRow };
-      await fetch(WEB_APP_BASE, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-      setModalOpen(false);
-      setEditingRow(null);
-      await fetchProjects();
-    } catch (err) {
-      console.error(err);
-      alert('Failed to submit. Please try again.');
-    }
-  };
+  try {
+    const payload = { action: 'addOrUpdateProject', data: editingRow };
+    await fetch(WEB_APP_BASE, {
+      method: 'POST',
+      mode: 'no-cors', // 👈 suppress CORS checks
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 👈 avoids preflight
+      body: JSON.stringify(payload)
+    });
+    setModalOpen(false);
+    setEditingRow(null);
+    await fetchProjects();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to submit. Please try again.');
+  }
+};
 
   // ----- Render helpers -----
   const formatMoney = v => {

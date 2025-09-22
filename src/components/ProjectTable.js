@@ -120,7 +120,7 @@ export default function ProjectTable() {
   useEffect(() => {
     fetchProjects();
     fetchValidation();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line
   }, []);
 
   const filteredRows = useMemo(() => {

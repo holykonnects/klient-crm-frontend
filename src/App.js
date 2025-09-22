@@ -16,6 +16,8 @@ import CalendarView from './components/CalendarView';
 import TravelTable from './components/TravelTable';
 import SalesTrackerTable from './components/SalesTrackerTable';
 import QuotationBuilder from './components/QuotationBuilder';
+import ProjectTable from './components/ProjectTable';
+
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -32,6 +34,7 @@ const AppRoutes = () => {
         <Route path="/calendar" element={<CalendarView />} />
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
+        <Route path="projects" element={<ProjectTable />} />
         
         {/* ✅ Travel route with access control */}
         <Route

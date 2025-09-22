@@ -33,8 +33,11 @@ import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
+import HistoryIcon from '@mui/icons-material/History';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
+import { useAuth } from './AuthContext';
+import LoadingOverlay from './LoadingOverlay';
 
 const WEB_APP_BASE =
   'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
@@ -61,10 +64,35 @@ const DATE_FIELDS = new Set(['Timestamp', 'Start Date', 'End Date']);
 const MONEY_FIELDS = new Set(['Budget (₹)', 'Actual Cost (₹)', 'Variance (₹)']);
 const PERCENT_FIELDS = new Set(['Project Progress %']);
 
+// Utilities
+const parseAsDate = (v) => {
+  if (v instanceof Date) return v;
+  const d = new Date(v);
+  return isNaN(d) ? null : d;
+};
+const pad = (n, w = 2) => String(n).padStart(w, '0');
+const formatDDMMYYYY_HHMMSSS = (v) => {
+  const d = parseAsDate(v);
+  if (!d) return String(v ?? '');
+  const dd = pad(d.getDate());
+  const mm = pad(d.getMonth() + 1);
+  const yyyy = d.getFullYear();
+  const HH = pad(d.getHours());
+  const MI = pad(d.getMinutes());
+  const SS = pad(d.getSeconds());
+  const MS = pad(d.getMilliseconds(), 3);
+  return `${dd}${mm}${yyyy} ${HH}${MI}${SS}${MS}`;
+};
+const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
+
 export default function ProjectTable() {
+  const { user } = useAuth(); // expects { username, role } like Leads
+  const username = user?.username;
+  const role = user?.role;
+
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [validation, setValidation] = useState({});
 
@@ -77,27 +105,35 @@ export default function ProjectTable() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState(null);
 
-  // Detect an Owner header to auto-fill from Accounts/Deals picker
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [logsRows, setLogsRows] = useState([]);
+
+  // Detect Owner header to filter and auto-fill (Owner / Account Owner / Lead Owner)
   const OWNER_HEADER = useMemo(() => {
     const lower = headers.map(h => String(h).toLowerCase());
-    const idx = lower.findIndex(
-      h => h === 'owner' || h === 'account owner' || h === 'lead owner'
-    );
+    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner');
     return idx >= 0 ? headers[idx] : null;
   }, [headers]);
 
   // ----- Fetchers -----
   const fetchProjects = async () => {
-    setLoading(true);
     setError('');
+    setLoading(true);
     try {
       const res = await fetch(`${WEB_APP_BASE}?action=getProjects`);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data?.rows)) throw new Error('Invalid payload: rows missing');
-      setRows(data.rows);
+
+      // Frontend role-based filtering (End User only sees own projects)
+      const baseRows = role === 'End User' && OWNER_HEADER
+        ? data.rows.filter(r => (r[OWNER_HEADER] || '') === username)
+        : data.rows;
+
+      setRows(baseRows);
       setHeaders(data.headers || []);
-      if (visibleColumns.length === 0 && Array.isArray(data.headers)) {
+
+      if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem('visibleColumns-projects') || 'null');
         setVisibleColumns(saved || data.headers);
       }
@@ -117,10 +153,7 @@ export default function ProjectTable() {
       setValidation(data?.validation || {});
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
         setVisibleColumns(data.visibleColumns);
-        localStorage.setItem(
-          'visibleColumns-projects',
-          JSON.stringify(data.visibleColumns)
-        );
+        localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
       }
     } catch (err) {
       console.warn('Validation fetch failed', err);
@@ -131,11 +164,32 @@ export default function ProjectTable() {
     fetchProjects();
     fetchValidation();
     // eslint-disable-next-line
-  }, []);
+  }, [username, role]);
+
+  // Deduplicate to latest per Project ID for main table
+  const latestByProjectId = useMemo(() => {
+    const idHeader = 'Project ID (unique, auto-generated)';
+    const map = new Map(); // id -> row
+    rows.forEach(r => {
+      const id = r[idHeader];
+      if (!id) return;
+      const prev = map.get(id);
+      const curTs = parseAsDate(r.Timestamp);
+      if (!prev) {
+        map.set(id, r);
+      } else {
+        const prevTs = parseAsDate(prev.Timestamp);
+        if ((curTs && prevTs && curTs > prevTs) || (curTs && !prevTs)) {
+          map.set(id, r);
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [rows]);
 
   // ----- Derived rows (search/filter/sort) -----
   const filteredRows = useMemo(() => {
-    let out = [...rows];
+    let out = [...latestByProjectId]; // only latest per Project ID
     if (search) {
       const q = search.toLowerCase().trim();
       out = out.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
@@ -148,15 +202,12 @@ export default function ProjectTable() {
       out.sort((a, b) => {
         const aVal = a[key] ?? '';
         const bVal = b[key] ?? '';
-        const cmp = String(aVal).localeCompare(String(bVal), undefined, {
-          numeric: true,
-          sensitivity: 'base'
-        });
+        const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
         return direction === 'asc' ? cmp : -cmp;
       });
     }
     return out;
-  }, [rows, headers, search, filters, sortConfig]);
+  }, [latestByProjectId, headers, search, filters, sortConfig]);
 
   // ----- Handlers -----
   const handleOpenColumns = e => setAnchorEl(e.currentTarget);
@@ -194,23 +245,40 @@ export default function ProjectTable() {
     }));
   };
 
+  // CORS-safe submit (append-only backend)
   const handleSubmit = async () => {
-  try {
-    const payload = { action: 'addOrUpdateProject', data: editingRow };
-    await fetch(WEB_APP_BASE, {
-      method: 'POST',
-      mode: 'no-cors', // 👈 suppress CORS checks
-      headers: { 'Content-Type': 'text/plain;charset=utf-8' }, // 👈 avoids preflight
-      body: JSON.stringify(payload)
-    });
-    setModalOpen(false);
-    setEditingRow(null);
-    await fetchProjects();
-  } catch (err) {
-    console.error(err);
-    alert('Failed to submit. Please try again.');
-  }
-};
+    try {
+      const payload = { action: 'addOrUpdateProject', data: editingRow };
+      await fetch(WEB_APP_BASE, {
+        method: 'POST',
+        mode: 'no-cors', // avoids preflight
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(payload)
+      });
+      setModalOpen(false);
+      setEditingRow(null);
+      await fetchProjects();
+    } catch (err) {
+      console.error(err);
+      alert('Failed to submit. Please try again.');
+    }
+  };
+
+  const openLogs = (projectId) => {
+    const idHeader = 'Project ID (unique, auto-generated)';
+    const items = rows
+      .filter(r => r[idHeader] === projectId)
+      .sort((a, b) => {
+        const da = parseAsDate(a.Timestamp);
+        const db = parseAsDate(b.Timestamp);
+        if (da && db) return db - da; // desc
+        if (da && !db) return -1;
+        if (!da && db) return 1;
+        return 0;
+      });
+    setLogsRows(items);
+    setLogsOpen(true);
+  };
 
   // ----- Render helpers -----
   const formatMoney = v => {
@@ -223,10 +291,7 @@ export default function ProjectTable() {
       maximumFractionDigits: 2
     }).format(n);
   };
-  const formatDate = v => {
-    const d = new Date(v);
-    return isNaN(d) ? String(v ?? '') : d.toISOString().slice(0, 10);
-  };
+
   const renderCell = (header, value) => {
     if (value === null || value === undefined || value === '') return '';
     if (header === 'Project Status') {
@@ -256,51 +321,44 @@ export default function ProjectTable() {
       return isNaN(n) ? String(value) : `${n}%`;
     }
     if (MONEY_FIELDS.has(header)) return formatMoney(value);
-    if (DATE_FIELDS.has(header)) return formatDate(value);
-    if (
-      /Link|Documents/i.test(header) &&
-      typeof value === 'string' &&
-      /^https?:\/\//i.test(value)
-    ) {
+    if (DATE_FIELDS.has(header)) return formatDDMMYYYY_HHMMSSS(value);
+    if (/Link|Documents/i.test(header) && typeof value === 'string' && /^https?:\/\//i.test(value)) {
       return (
         <a href={value} target="_blank" rel="noreferrer">
           Open
         </a>
       );
     }
-    if (
-      header === 'Client (Linked Deal/Account ID)' &&
-      typeof value === 'string' &&
-      value.includes('|')
-    ) {
+    if (header === 'Client (Linked Deal/Account ID)' && typeof value === 'string' && value.includes('|')) {
       // stored as "source:id|label" — display the label only
       return value.split('|').slice(1).join('|');
     }
     return String(value);
   };
 
-  // ----- UI -----
   return (
     <ThemeProvider theme={theme}>
+      {loading && <LoadingOverlay />}
       <Box padding={4}>
-        {/* Title & toolbar (left aligned like Leads) */}
+        {/* Title & toolbar */}
         <Paper
           elevation={0}
           sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
         >
-          <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+          <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
+            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 72 }} />
+          </Box>
+          <Box display="flex" alignItems="center" justifyContent="center" mt={1}>
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Projects
             </Typography>
-            <Box sx={{ flex: 1 }} />
           </Box>
 
           <Box
             display="flex"
             justifyContent="flex-start"
             gap={2}
-            mt={1}
+            mt={2}
             flexWrap="wrap"
             alignItems="center"
           >
@@ -326,6 +384,7 @@ export default function ProjectTable() {
               }}
             />
 
+            {/* Example filters; extend if needed */}
             {['Project Status', 'Project Manager', 'Task Status (Not Started / In Progress / Completed)'].map(
               h => (
                 <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
@@ -389,7 +448,7 @@ export default function ProjectTable() {
           </Box>
         </Popover>
 
-        {/* Table */}
+        {/* Table (latest per Project ID only) */}
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
             <TableHead
@@ -416,13 +475,6 @@ export default function ProjectTable() {
               </TableRow>
             </TableHead>
             <TableBody>
-              {loading && (
-                <TableRow>
-                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
-                    <CircularProgress size={24} />
-                  </TableCell>
-                </TableRow>
-              )}
               {!loading && filteredRows.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
@@ -436,9 +488,16 @@ export default function ProjectTable() {
                     {visibleColumns.map(h => (
                       <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
                     ))}
-                    <TableCell width={120}>
+                    <TableCell width={160}>
                       <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
                         <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
+                        title="Logs"
+                      >
+                        <HistoryIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
                   </TableRow>
@@ -452,6 +511,40 @@ export default function ProjectTable() {
             {error}
           </Typography>
         )}
+
+        {/* Logs Modal: all columns, timestamp DESC */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
+          <DialogTitle>Project Logs</DialogTitle>
+          <DialogContent dividers>
+            {logsRows.length === 0 ? (
+              <Typography>No logs available.</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {headers.map(h => (
+                      <TableCell key={h}>{h}</TableCell>
+                    ))}
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {logsRows.map((row, i) => (
+                    <TableRow key={i}>
+                      {headers.map(h => (
+                        <TableCell key={h}>
+                          {h === 'Timestamp' ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLogsOpen(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
 
         {/* Add/Edit Modal */}
         <Dialog
@@ -505,6 +598,8 @@ export default function ProjectTable() {
                       label={h}
                       value={editingRow?.[h] || ''}
                       onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
+                      multiline={isMultilineHeader(h)}
+                      minRows={isMultilineHeader(h) ? 3 : 1}
                     />
                   )}
                 </Grid>
@@ -535,7 +630,7 @@ function ClientSelector({ value, onPick }) {
   const [source, setSource] = React.useState(() =>
     String(value).startsWith('deals:') ? 'deals' : 'accounts'
   );
-  const [options, setOptions] = React.useState([]); // [{id,label,owner}]
+  const [options, setOptions] = React.useState([]); // [{id,label,owner?}]
   const [loading, setLoading] = React.useState(false);
 
   const fetchOptions = async src => {

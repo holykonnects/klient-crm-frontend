@@ -78,6 +78,13 @@ export default function ProjectTable() {
   const [editingRow, setEditingRow] = useState(null);
   const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
+  // Detect an Owner header we can auto-fill from Accounts/Deals selection
+  const OWNER_HEADER = useMemo(() => {
+    const lower = headers.map(h => String(h).toLowerCase());
+    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner');
+    return idx >= 0 ? headers[idx] : null;
+  }, [headers]);
+
   const fetchProjects = async () => {
     setLoading(true);
     setError('');
@@ -220,7 +227,7 @@ export default function ProjectTable() {
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Projects</Typography>
             <Box sx={{ flex: 1 }} />
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mt: 1, flexWrap: 'wrap', alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mt: 1, flexWrap: 'wrap' }}>
             <TextField
               size="small"
               label="Search"
@@ -268,26 +275,26 @@ export default function ProjectTable() {
 
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
-            <TableHead sx={{ '& th': { backgroundColor: '#6495ED', color: '#fff' } }}>
+            <TableHead sx={{ '& .MuiTableCell-head': { backgroundColor: '#6495ED', color: '#fff', fontWeight: 700 } }}>
               <TableRow>
                 {visibleColumns.map(header => (
                   <TableCell
                     key={header}
                     onClick={() => handleSort(header)}
-                    sx={{ color: '#fff', cursor: 'pointer' }}
+                    sx={{ cursor: 'pointer' }}
                   >
                     {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </TableCell>
                 ))}
-                <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
+                <TableCell>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center"><CircularProgress size={24} /></TableCell></TableRow>
+                <TableRow><TableCell colSpan={(visibleColumns?.length or 0) + 1} align="center"><CircularProgress size={24} /></TableCell></TableRow>
               )}
               {!loading && filteredRows.length === 0 && (
-                <TableRow><TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">No records</TableCell></TableRow>
+                <TableRow><TableCell colSpan={(visibleColumns?.length or 0) + 1} align="center">No records</TableCell></TableRow>
               )}
               {!loading && filteredRows.map((row, idx) => (
                 <TableRow key={idx} hover>
@@ -310,19 +317,30 @@ export default function ProjectTable() {
           <DialogContent dividers>
             <Grid container spacing={2}>
               {headers.map(h => (
-                <Grid item xs={12} sm={6} key={h}>
-                  {validation[h]?.length > 0 ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{h}</InputLabel>
-                      <Select value={editingRow?.[h] || ''} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}>
-                        {validation[h].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <TextField fullWidth size="small" label={h} value={editingRow?.[h] || ''} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))} />
-                  )}
-                </Grid>
-              ))}
+              <Grid item xs={12} sm={6} key={h}>
+                {h === 'Client (Linked Deal/Account ID)' ? (
+                  <ClientSelector
+                    value={editingRow?.[h] || ''}
+                    onPick={({ value, owner }) =>
+                      setEditingRow(prev => ({
+                        ...prev,
+                        [h]: value,
+                        ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
+                      }))
+                    }
+                  />
+                ) : validation[h]?.length > 0 ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>{h}</InputLabel>
+                    <Select value={editingRow?.[h] || ''} label={h} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}>
+                      {validation[h].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField fullWidth size="small" label={h} value={editingRow?.[h] || ''} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))} />
+                )}
+              </Grid>
+            ))}
             </Grid>
           </DialogContent>
           <DialogActions>
@@ -332,5 +350,76 @@ export default function ProjectTable() {
         </Dialog>
       </Box>
     </ThemeProvider>
+  );
+}
+
+function ClientSelector({ value, onPick }) {
+  const [source, setSource] = useState(() =>
+    String(value).startsWith('deals:') ? 'deals' : 'accounts'
+  );
+  const [options, setOptions] = useState([]); //
+
+
+/** ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" and returns owner */
+function ClientSelector({ value, onPick }) {
+  const [source, setSource] = React.useState(() => (String(value).startsWith('deals:') ? 'deals' : 'accounts'));
+  const [options, setOptions] = React.useState([]); // [{id,label,owner}]
+  const [loading, setLoading] = React.useState(false);
+
+  const fetchOptions = async (src) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`);
+      const data = await res.json();
+      const list = Array.isArray(data?.options) ? data.options : [];
+      setOptions(list);
+    } catch (e) {
+      console.error(e);
+      setOptions([]);
+    } finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { fetchOptions(source); }, [source]);
+
+  // Derive current selected id from value format "source:id|label"
+  const currentId = React.useMemo(() => {
+    if (!value) return '';
+    const pipe = String(value).indexOf('|');
+    const colon = String(value).indexOf(':');
+    if (colon === -1) return '';
+    const id = String(value).slice(colon + 1, pipe > colon ? pipe : undefined);
+    return id;
+  }, [value]);
+
+  const handlePick = (id) => {
+    const opt = options.find(o => String(o.id) === String(id));
+    const label = opt?.label || '';
+    const owner = opt?.owner || '';
+    const v = `${source}:${id}${label ? '|' + label : ''}`;
+    onPick && onPick({ value: v, owner });
+  };
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      <FormControl size="small" sx={{ minWidth: 160 }}>
+        <InputLabel>Client Source</InputLabel>
+        <Select label="Client Source" value={source} onChange={(e) => setSource(e.target.value)}>
+          <MenuItem value="accounts">Accounts</MenuItem>
+          <MenuItem value="deals">Deals</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl size="small" fullWidth>
+        <InputLabel>{loading ? 'Loading…' : 'Select Client'}</InputLabel>
+        <Select
+          label={loading ? 'Loading…' : 'Select Client'}
+          value={currentId}
+          onChange={(e) => handlePick(e.target.value)}
+        >
+          {options.map(opt => (
+            <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    </Box>
   );
 }

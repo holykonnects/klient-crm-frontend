@@ -287,7 +287,7 @@ export default function ProjectTable() {
           elevation={0}
           sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
         >
-          <Box display="flex" alignItems="center" gap={2}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" gap={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 36 }} />
             <Typography variant="h6" sx={{ fontWeight: 700 }}>
               Projects

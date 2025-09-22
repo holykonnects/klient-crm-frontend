@@ -1,3 +1,4 @@
+// src/components/ProjectTable.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box,
@@ -31,34 +32,33 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
+import ClearIcon from '@mui/icons-material/Clear';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 
-const WEB_APP_BASE = 'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
+const WEB_APP_BASE =
+  'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
 
 const theme = createTheme({
-  typography: {
-    fontFamily: 'Montserrat, sans-serif',
-    fontSize: 10.5
-  }
+  typography: { fontFamily: 'Montserrat, sans-serif', fontSize: 10.5 }
 });
 
-const selectorStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 8 };
+const selectorStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 12 };
 
 const PROJECT_STATUS_COLORS = {
   'Not Started': 'default',
-  'Active': 'primary',
+  Active: 'primary',
   'On Hold': 'warning',
-  'Completed': 'success',
-  'Cancelled': 'error'
+  Completed: 'success',
+  Cancelled: 'error'
 };
 const TASK_STATUS_COLORS = {
   'Not Started': 'default',
   'In Progress': 'info',
-  'Completed': 'success'
+  Completed: 'success'
 };
-const DATE_FIELDS = new Set(['Timestamp','Start Date','End Date']);
-const MONEY_FIELDS = new Set(['Budget (₹)','Actual Cost (₹)','Variance (₹)']);
+const DATE_FIELDS = new Set(['Timestamp', 'Start Date', 'End Date']);
+const MONEY_FIELDS = new Set(['Budget (₹)', 'Actual Cost (₹)', 'Variance (₹)']);
 const PERCENT_FIELDS = new Set(['Project Progress %']);
 
 export default function ProjectTable() {
@@ -70,33 +70,34 @@ export default function ProjectTable() {
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({});
-
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
+  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState(null);
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
 
-  // Detect an Owner header we can auto-fill from Accounts/Deals selection
+  // Detect an Owner header to auto-fill from Accounts/Deals picker
   const OWNER_HEADER = useMemo(() => {
     const lower = headers.map(h => String(h).toLowerCase());
-    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner');
+    const idx = lower.findIndex(
+      h => h === 'owner' || h === 'account owner' || h === 'lead owner'
+    );
     return idx >= 0 ? headers[idx] : null;
   }, [headers]);
 
+  // ----- Fetchers -----
   const fetchProjects = async () => {
     setLoading(true);
     setError('');
     try {
-      const url = `${WEB_APP_BASE}?action=getProjects`;
-      const res = await fetch(url);
+      const res = await fetch(`${WEB_APP_BASE}?action=getProjects`);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       if (!Array.isArray(data?.rows)) throw new Error('Invalid payload: rows missing');
       setRows(data.rows);
       setHeaders(data.headers || []);
-      if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
+      if (visibleColumns.length === 0 && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem('visibleColumns-projects') || 'null');
         setVisibleColumns(saved || data.headers);
       }
@@ -110,17 +111,19 @@ export default function ProjectTable() {
 
   const fetchValidation = async () => {
     try {
-      const url = `${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`;
-      const res = await fetch(url);
+      const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
       setValidation(data?.validation || {});
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
         setVisibleColumns(data.visibleColumns);
-        localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
+        localStorage.setItem(
+          'visibleColumns-projects',
+          JSON.stringify(data.visibleColumns)
+        );
       }
     } catch (err) {
-      console.error(err);
+      console.warn('Validation fetch failed', err);
     }
   };
 
@@ -130,6 +133,7 @@ export default function ProjectTable() {
     // eslint-disable-next-line
   }, []);
 
+  // ----- Derived rows (search/filter/sort) -----
   const filteredRows = useMemo(() => {
     let out = [...rows];
     if (search) {
@@ -144,31 +148,51 @@ export default function ProjectTable() {
       out.sort((a, b) => {
         const aVal = a[key] ?? '';
         const bVal = b[key] ?? '';
-        const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+        const cmp = String(aVal).localeCompare(String(bVal), undefined, {
+          numeric: true,
+          sensitivity: 'base'
+        });
         return direction === 'asc' ? cmp : -cmp;
       });
     }
     return out;
   }, [rows, headers, search, filters, sortConfig]);
 
-  const handleOpenColumns = (e) => setAnchorEl(e.currentTarget);
+  // ----- Handlers -----
+  const handleOpenColumns = e => setAnchorEl(e.currentTarget);
   const handleCloseColumns = () => setAnchorEl(null);
-  const toggleColumn = (col) => {
+  const toggleColumn = col => {
     setVisibleColumns(prev => {
       const updated = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
       localStorage.setItem('visibleColumns-projects', JSON.stringify(updated));
       return updated;
     });
   };
-  const handleSelectAll = () => { setVisibleColumns(headers); localStorage.setItem('visibleColumns-projects', JSON.stringify(headers)); };
-  const handleDeselectAll = () => { setVisibleColumns([]); localStorage.setItem('visibleColumns-projects', JSON.stringify([])); };
+  const handleSelectAll = () => {
+    setVisibleColumns(headers);
+    localStorage.setItem('visibleColumns-projects', JSON.stringify(headers));
+  };
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem('visibleColumns-projects', JSON.stringify([]));
+  };
 
   const onAdd = () => {
-    const obj = {}; headers.forEach(h => obj[h] = '');
-    setEditingRow(obj); setModalOpen(true);
+    const obj = {};
+    headers.forEach(h => (obj[h] = ''));
+    setEditingRow(obj);
+    setModalOpen(true);
   };
-  const onEdit = (row) => { setEditingRow({ ...row }); setModalOpen(true); };
-  const handleSort = (key) => { setSortConfig(prev => ({ key, direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc' })); };
+  const onEdit = row => {
+    setEditingRow({ ...row });
+    setModalOpen(true);
+  };
+  const handleSort = key => {
+    setSortConfig(prev => ({
+      key,
+      direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
+    }));
+  };
 
   const handleSubmit = async () => {
     try {
@@ -187,25 +211,44 @@ export default function ProjectTable() {
     }
   };
 
-  const formatMoney = (v) => {
+  // ----- Render helpers -----
+  const formatMoney = v => {
     if (v === '' || v === null || v === undefined) return '';
-    const n = typeof v === 'number' ? v : Number(String(v).replace(/[₹,\s]/g,''));
+    const n = typeof v === 'number' ? v : Number(String(v).replace(/[₹,\s]/g, ''));
     if (isNaN(n)) return String(v);
-    return new Intl.NumberFormat('en-IN', { style: 'currency', currency: 'INR', maximumFractionDigits: 2 }).format(n);
+    return new Intl.NumberFormat('en-IN', {
+      style: 'currency',
+      currency: 'INR',
+      maximumFractionDigits: 2
+    }).format(n);
   };
-  const formatDate = (v) => {
+  const formatDate = v => {
     const d = new Date(v);
-    return isNaN(d) ? String(v ?? '') : d.toISOString().slice(0,10);
+    return isNaN(d) ? String(v ?? '') : d.toISOString().slice(0, 10);
   };
   const renderCell = (header, value) => {
     if (value === null || value === undefined || value === '') return '';
     if (header === 'Project Status') {
       const color = PROJECT_STATUS_COLORS[String(value)] || 'default';
-      return <Chip size="small" label={String(value)} color={color} variant={color==='default'?'outlined':'filled'} />;
+      return (
+        <Chip
+          size="small"
+          label={String(value)}
+          color={color}
+          variant={color === 'default' ? 'outlined' : 'filled'}
+        />
+      );
     }
     if (header === 'Task Status (Not Started / In Progress / Completed)') {
       const color = TASK_STATUS_COLORS[String(value)] || 'default';
-      return <Chip size="small" label={String(value)} color={color} variant={color==='default'?'outlined':'filled'} />;
+      return (
+        <Chip
+          size="small"
+          label={String(value)}
+          color={color}
+          variant={color === 'default' ? 'outlined' : 'filled'}
+        />
+      );
     }
     if (PERCENT_FIELDS.has(header)) {
       const n = Number(value);
@@ -213,69 +256,150 @@ export default function ProjectTable() {
     }
     if (MONEY_FIELDS.has(header)) return formatMoney(value);
     if (DATE_FIELDS.has(header)) return formatDate(value);
-    if (/Link|Documents/i.test(header) && typeof value === 'string' && /^https?:\/\//i.test(value)) return <a href={value} target="_blank" rel="noreferrer">Open</a>;
-    if (header === 'Client (Linked Deal/Account ID)' && typeof value === 'string' && value.includes('|')) return value.split('|').slice(1).join('|');
+    if (
+      /Link|Documents/i.test(header) &&
+      typeof value === 'string' &&
+      /^https?:\/\//i.test(value)
+    ) {
+      return (
+        <a href={value} target="_blank" rel="noreferrer">
+          Open
+        </a>
+      );
+    }
+    if (
+      header === 'Client (Linked Deal/Account ID)' &&
+      typeof value === 'string' &&
+      value.includes('|')
+    ) {
+      // stored as "source:id|label" — display the label only
+      return value.split('|').slice(1).join('|');
+    }
     return String(value);
   };
 
+  // ----- UI -----
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
-        <Paper elevation={0} sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+        {/* Title & toolbar (left aligned like Leads) */}
+        <Paper
+          elevation={0}
+          sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
+        >
+          <Box display="flex" alignItems="center" gap={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 36 }} />
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Projects</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Projects
+            </Typography>
             <Box sx={{ flex: 1 }} />
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+
+          <Box
+            display="flex"
+            justifyContent="flex-start"
+            gap={2}
+            mt={1}
+            flexWrap="wrap"
+            alignItems="center"
+          >
             <TextField
               size="small"
               label="Search"
               value={search}
-              onChange={(e) => setSearch(e.target.value)}
+              onChange={e => setSearch(e.target.value)}
               sx={{ minWidth: 240 }}
               InputProps={{
                 startAdornment: (
                   <InputAdornment position="start">
                     <SearchIcon />
                   </InputAdornment>
-                )
+                ),
+                endAdornment: search ? (
+                  <InputAdornment position="end">
+                    <IconButton aria-label="clear search" edge="end" onClick={() => setSearch('')} size="small">
+                      <ClearIcon fontSize="small" />
+                    </IconButton>
+                  </InputAdornment>
+                ) : null
               }}
             />
-            {['Project Status','Project Manager','Task Status (Not Started / In Progress / Completed)'].map(h => (
-              <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
-                <InputLabel>{h}</InputLabel>
-                <Select label={h} value={filters[h] || ''} onChange={(e) => setFilters(prev => ({ ...prev, [h]: e.target.value }))}>
-                  <MenuItem value="">All</MenuItem>
-                  {(validation[h] || []).map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                </Select>
-              </FormControl>
-            ))}
-            <IconButton onClick={handleOpenColumns} title="Columns"><ViewColumnIcon /></IconButton>
-            <IconButton onClick={fetchProjects} title="Refresh"><RefreshIcon /></IconButton>
-            <IconButton onClick={onAdd} color="primary" title="Add Project"><AddIcon /></IconButton>
+
+            {['Project Status', 'Project Manager', 'Task Status (Not Started / In Progress / Completed)'].map(
+              h => (
+                <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
+                  <InputLabel>{h}</InputLabel>
+                  <Select
+                    label={h}
+                    value={filters[h] || ''}
+                    onChange={e => setFilters(prev => ({ ...prev, [h]: e.target.value }))}
+                  >
+                    <MenuItem value="">
+                      <em>All</em>
+                    </MenuItem>
+                    {(validation[h] || []).map(opt => (
+                      <MenuItem key={opt} value={opt}>
+                        {opt}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )
+            )}
+
+            <IconButton onClick={handleOpenColumns} title="Columns">
+              <ViewColumnIcon />
+            </IconButton>
+            <IconButton onClick={fetchProjects} title="Refresh">
+              <RefreshIcon />
+            </IconButton>
+            <IconButton onClick={onAdd} color="primary" title="Add Project">
+              <AddIcon />
+            </IconButton>
           </Box>
         </Paper>
 
-        <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={handleCloseColumns}>
+        {/* Column manager */}
+        <Popover
+          open={Boolean(anchorEl)}
+          anchorEl={anchorEl}
+          onClose={handleCloseColumns}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        >
           <Box padding={2} sx={selectorStyle}>
-            <Button size="small" onClick={handleSelectAll}>Select All</Button>
-            <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+            <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
+              <Button size="small" onClick={handleSelectAll}>
+                Select All
+              </Button>
+              <Button size="small" onClick={handleDeselectAll}>
+                Deselect All
+              </Button>
+            </Box>
             {headers.map(col => (
               <Box key={col}>
                 <Checkbox
                   size="small"
                   checked={visibleColumns.includes(col)}
                   onChange={() => toggleColumn(col)}
-                /> {col}
+                />{' '}
+                {col}
               </Box>
             ))}
           </Box>
         </Popover>
 
+        {/* Table */}
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
-            <TableHead sx={{ '& .MuiTableCell-head': { backgroundColor: '#6495ED', color: '#fff', fontWeight: 700 } }}>
+            <TableHead
+              sx={{
+                '& .MuiTableCell-head': {
+                  backgroundColor: '#6495ED',
+                  color: '#fff',
+                  fontWeight: 700
+                }
+              }}
+            >
               <TableRow>
                 {visibleColumns.map(header => (
                   <TableCell
@@ -283,7 +407,8 @@ export default function ProjectTable() {
                     onClick={() => handleSort(header)}
                     sx={{ cursor: 'pointer' }}
                   >
-                    {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                    {header}{' '}
+                    {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </TableCell>
                 ))}
                 <TableCell>Actions</TableCell>
@@ -291,61 +416,112 @@ export default function ProjectTable() {
             </TableHead>
             <TableBody>
               {loading && (
-                <TableRow><TableCell colSpan={(visibleColumns?.length or 0) + 1} align="center"><CircularProgress size={24} /></TableCell></TableRow>
-              )}
-              {!loading && filteredRows.length === 0 && (
-                <TableRow><TableCell colSpan={(visibleColumns?.length or 0) + 1} align="center">No records</TableCell></TableRow>
-              )}
-              {!loading && filteredRows.map((row, idx) => (
-                <TableRow key={idx} hover>
-                  {visibleColumns.map(h => (
-                    <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
-                  ))}
-                  <TableCell width={120}>
-                    <IconButton size="small" onClick={() => onEdit(row)} title="Edit"><EditIcon fontSize="small" /></IconButton>
+                <TableRow>
+                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
+                    <CircularProgress size={24} />
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
+              {!loading && filteredRows.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
+                    No records
+                  </TableCell>
+                </TableRow>
+              )}
+              {!loading &&
+                filteredRows.map((row, idx) => (
+                  <TableRow key={idx} hover>
+                    {visibleColumns.map(h => (
+                      <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
+                    ))}
+                    <TableCell width={120}>
+                      <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </Paper>
 
-        {error && <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>}
+        {error && (
+          <Typography color="error" sx={{ mt: 2 }}>
+            {error}
+          </Typography>
+        )}
 
-        <Dialog open={modalOpen} onClose={() => { setModalOpen(false); setEditingRow(null); }} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>{editingRow?.['Project ID (unique, auto-generated)'] ? 'Edit Project' : 'Add Project'}</DialogTitle>
+        {/* Add/Edit Modal */}
+        <Dialog
+          open={modalOpen}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingRow(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 700 }}>
+            {editingRow?.['Project ID (unique, auto-generated)'] ? 'Edit Project' : 'Add Project'}
+          </DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
               {headers.map(h => (
-              <Grid item xs={12} sm={6} key={h}>
-                {h === 'Client (Linked Deal/Account ID)' ? (
-                  <ClientSelector
-                    value={editingRow?.[h] || ''}
-                    onPick={({ value, owner }) =>
-                      setEditingRow(prev => ({
-                        ...prev,
-                        [h]: value,
-                        ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
-                      }))
-                    }
-                  />
-                ) : validation[h]?.length > 0 ? (
-                  <FormControl fullWidth size="small">
-                    <InputLabel>{h}</InputLabel>
-                    <Select value={editingRow?.[h] || ''} label={h} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}>
-                      {validation[h].map(opt => <MenuItem key={opt} value={opt}>{opt}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                ) : (
-                  <TextField fullWidth size="small" label={h} value={editingRow?.[h] || ''} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))} />
-                )}
-              </Grid>
-            ))}
+                <Grid item xs={12} sm={6} key={h}>
+                  {h === 'Client (Linked Deal/Account ID)' ? (
+                    <ClientSelector
+                      value={editingRow?.[h] || ''}
+                      onPick={({ value, owner }) =>
+                        setEditingRow(prev => ({
+                          ...prev,
+                          [h]: value,
+                          ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
+                        }))
+                      }
+                    />
+                  ) : validation[h]?.length > 0 ? (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>{h}</InputLabel>
+                      <Select
+                        label={h}
+                        value={editingRow?.[h] || ''}
+                        onChange={e =>
+                          setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
+                        }
+                      >
+                        {validation[h].map(opt => (
+                          <MenuItem key={opt} value={opt}>
+                            {opt}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label={h}
+                      value={editingRow?.[h] || ''}
+                      onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
+                    />
+                  )}
+                </Grid>
+              ))}
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => { setModalOpen(false); setEditingRow(null); }}>Cancel</Button>
-            <Button onClick={handleSubmit} variant="contained" sx={{ backgroundColor: '#6495ED' }}>Save</Button>
+            <Button
+              onClick={() => {
+                setModalOpen(false);
+                setEditingRow(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>
+              Save
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>
@@ -353,35 +529,36 @@ export default function ProjectTable() {
   );
 }
 
-function ClientSelector({ value, onPick }) {
-  const [source, setSource] = useState(() =>
-    String(value).startsWith('deals:') ? 'deals' : 'accounts'
-  );
-  const [options, setOptions] = useState([]); //
-
-
 /** ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" and returns owner */
 function ClientSelector({ value, onPick }) {
-  const [source, setSource] = React.useState(() => (String(value).startsWith('deals:') ? 'deals' : 'accounts'));
+  const [source, setSource] = React.useState(() =>
+    String(value).startsWith('deals:') ? 'deals' : 'accounts'
+  );
   const [options, setOptions] = React.useState([]); // [{id,label,owner}]
   const [loading, setLoading] = React.useState(false);
 
-  const fetchOptions = async (src) => {
+  const fetchOptions = async src => {
     setLoading(true);
     try {
-      const res = await fetch(`${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`);
+      const res = await fetch(
+        `${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`
+      );
       const data = await res.json();
       const list = Array.isArray(data?.options) ? data.options : [];
       setOptions(list);
     } catch (e) {
       console.error(e);
       setOptions([]);
-    } finally { setLoading(false); }
+    } finally {
+      setLoading(false);
+    }
   };
 
-  React.useEffect(() => { fetchOptions(source); }, [source]);
+  React.useEffect(() => {
+    fetchOptions(source);
+  }, [source]);
 
-  // Derive current selected id from value format "source:id|label"
+  // Derive current selected id from value "source:id|label"
   const currentId = React.useMemo(() => {
     if (!value) return '';
     const pipe = String(value).indexOf('|');
@@ -391,7 +568,7 @@ function ClientSelector({ value, onPick }) {
     return id;
   }, [value]);
 
-  const handlePick = (id) => {
+  const handlePick = id => {
     const opt = options.find(o => String(o.id) === String(id));
     const label = opt?.label || '';
     const owner = opt?.owner || '';
@@ -403,7 +580,7 @@ function ClientSelector({ value, onPick }) {
     <Box sx={{ display: 'flex', gap: 1 }}>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel>Client Source</InputLabel>
-        <Select label="Client Source" value={source} onChange={(e) => setSource(e.target.value)}>
+        <Select label="Client Source" value={source} onChange={e => setSource(e.target.value)}>
           <MenuItem value="accounts">Accounts</MenuItem>
           <MenuItem value="deals">Deals</MenuItem>
         </Select>
@@ -413,10 +590,12 @@ function ClientSelector({ value, onPick }) {
         <Select
           label={loading ? 'Loading…' : 'Select Client'}
           value={currentId}
-          onChange={(e) => handlePick(e.target.value)}
+          onChange={e => handlePick(e.target.value)}
         >
           {options.map(opt => (
-            <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
+            <MenuItem key={opt.id} value={opt.id}>
+              {opt.label}
+            </MenuItem>
           ))}
         </Select>
       </FormControl>

@@ -31,7 +31,6 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
-import DashboardLayout from './components/DashboardLayout';
 
 
 const WEB_APP_BASE = 'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';
@@ -192,7 +191,7 @@ export default function ProjectTable() {
   };
 
   return (
-    <DashboardLayout>
+    
       <Box sx={{ p: 2, ...fontStyle }}>
         <Paper elevation={0} sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
@@ -286,7 +285,12 @@ export default function ProjectTable() {
             <Grid container spacing={2}>
               {headers.map(h => (
                 <Grid item xs={12} sm={6} key={h}>
-                  {validation[h]?.length > 0 ? (
+                  {h === 'Client (Linked Deal/Account ID)' ? (
+                    <ClientSelector
+                      value={editingRow?.[h] || ''}
+                      onChange={(val) => setEditingRow(prev => ({ ...prev, [h]: val }))}
+                    />
+                  ) : validation[h]?.length > 0 ? (
                     <FormControl fullWidth size="small">
                       <InputLabel>{h}</InputLabel>
                       <Select value={editingRow?.[h] || ''} onChange={(e) => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}>
@@ -306,6 +310,51 @@ export default function ProjectTable() {
           </DialogActions>
         </Dialog>
       </Box>
-    </DashboardLayout>
+    );
+}
+
+/** ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" */
+function ClientSelector({ value, onChange }) {
+  const [source, setSource] = React.useState(() => (String(value).startsWith('deals:') ? 'deals' : 'accounts'));
+  const [options, setOptions] = React.useState([]); // [{id,label}]
+  const [loading, setLoading] = React.useState(false);
+
+  const fetchOptions = async (src) => {
+    setLoading(true);
+    try {
+      const res = await fetch(`${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`);
+      const data = await res.json();
+      // Expecting server to send label in the format: "Account/Deal Name : First Last : Mobile"
+      setOptions(Array.isArray(data?.options) ? data.options : []);
+    } catch (e) {
+      console.error(e);
+      setOptions([]);
+    } finally { setLoading(false); }
+  };
+
+  React.useEffect(() => { fetchOptions(source); }, [source]);
+
+  return (
+    <Box sx={{ display: 'flex', gap: 1 }}>
+      <FormControl size="small" sx={{ minWidth: 160 }}>
+        <InputLabel>Client Source</InputLabel>
+        <Select label="Client Source" value={source} onChange={(e) => setSource(e.target.value)}>
+          <MenuItem value="accounts">Accounts</MenuItem>
+          <MenuItem value="deals">Deals</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl size="small" fullWidth>
+        <InputLabel>{loading ? 'Loading…' : 'Select Client'}</InputLabel>
+        <Select
+          label={loading ? 'Loading…' : 'Select Client'}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+        >
+          {options.map(opt => (
+            <MenuItem key={opt.id} value={`${source}:${opt.id}|${opt.label}`}>{opt.label}</MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    </Box>
   );
 }

@@ -40,7 +40,8 @@ function DashboardLayout({ children }) {
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
     { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' },
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
-    { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' } 
+    { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
+    { label: 'Manage Project', icon: <BusinessCenter />, route: '/projects', access: 'Project' }
   ];
 
   return (

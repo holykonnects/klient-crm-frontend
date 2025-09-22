@@ -31,7 +31,7 @@ import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import SearchIcon from '@mui/icons-material/Search';
-import DashboardLayout from '@/components/DashboardLayout';
+//import DashboardLayout from '@/components/DashboardLayout';
 import Logo from '@/components/Logo';
 
 const WEB_APP_BASE = 'https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec';

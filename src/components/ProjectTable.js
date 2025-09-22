@@ -38,9 +38,6 @@ const DashboardLayout = ({ title, children }) => (
   </Box>
 );
 
-// KK logo (ensure this path exists in your repo)
-import KKLogo from 'public/assets/kk-logo.png';
-
 /**
  * PROJECT TABLE (Frontend) — Mirrors Leads/Accounts UX
  * ---------------------------------------------------
@@ -202,7 +199,7 @@ export default function ProjectTable() {
       {/* Header mimicking LeadsTable */}
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, px: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <img src={KKLogo} alt="Klient Konnect" style={{ height: 28 }} />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 28 }} />
           <Typography sx={{ ...fontStyle, fontWeight: 700 }}>Project Management</Typography>
         </Box>
         <Box sx={{ flex: 1 }} />

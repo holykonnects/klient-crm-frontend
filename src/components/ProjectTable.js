@@ -220,7 +220,7 @@ export default function ProjectTable() {
             <Typography variant="h6" sx={{ fontWeight: 700 }}>Projects</Typography>
             <Box sx={{ flex: 1 }} />
           </Box>
-          <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 1, flexWrap: 'wrap' }}>
+          <Box sx={{ display: 'flex', justifyContent: 'flex-start', gap: 2, mt: 1, flexWrap: 'wrap' }}>
             <TextField
               size="small"
               label="Search"
@@ -269,17 +269,17 @@ export default function ProjectTable() {
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
             <TableHead>
-              <TableRow style={{ backgroundColor: '#6495ED' }}>
+              <TableRow sx={{ backgroundColor: '#6495ED' }}>
                 {visibleColumns.map(header => (
                   <TableCell
                     key={header}
                     onClick={() => handleSort(header)}
-                    style={{ color: 'white', cursor: 'pointer' }}
+                    sx={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
                   >
                     {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </TableCell>
                 ))}
-                <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
+                <TableCell sx={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>

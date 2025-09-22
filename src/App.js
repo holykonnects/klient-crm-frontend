@@ -18,7 +18,6 @@ import SalesTrackerTable from './components/SalesTrackerTable';
 import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
 
-
 const AppRoutes = () => {
   const { user } = useAuth();
 

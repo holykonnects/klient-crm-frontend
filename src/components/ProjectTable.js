@@ -36,7 +36,6 @@ import ClearIcon from '@mui/icons-material/Clear';
 import HistoryIcon from '@mui/icons-material/History';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
-import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
 
 const WEB_APP_BASE =
@@ -64,7 +63,7 @@ const DATE_FIELDS = new Set(['Timestamp', 'Start Date', 'End Date']);
 const MONEY_FIELDS = new Set(['Budget (₹)', 'Actual Cost (₹)', 'Variance (₹)']);
 const PERCENT_FIELDS = new Set(['Project Progress %']);
 
-// Utilities
+// utils
 const parseAsDate = (v) => {
   if (v instanceof Date) return v;
   const d = new Date(v);
@@ -86,10 +85,6 @@ const formatDDMMYYYY_HHMMSSS = (v) => {
 const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
 
 export default function ProjectTable() {
-  const { user } = useAuth(); // expects { username, role } like Leads
-  const username = user?.username;
-  const role = user?.role;
-
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -108,7 +103,7 @@ export default function ProjectTable() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
 
-  // Detect Owner header to filter and auto-fill (Owner / Account Owner / Lead Owner)
+  // Owner header (for auto-fill when picking client)
   const OWNER_HEADER = useMemo(() => {
     const lower = headers.map(h => String(h).toLowerCase());
     const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner');
@@ -125,12 +120,8 @@ export default function ProjectTable() {
       const data = await res.json();
       if (!Array.isArray(data?.rows)) throw new Error('Invalid payload: rows missing');
 
-      // Frontend role-based filtering (End User only sees own projects)
-      const baseRows = role === 'End User' && OWNER_HEADER
-        ? data.rows.filter(r => (r[OWNER_HEADER] || '') === username)
-        : data.rows;
-
-      setRows(baseRows);
+      // no auth filter: everyone sees all rows
+      setRows(data.rows);
       setHeaders(data.headers || []);
 
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
@@ -164,7 +155,7 @@ export default function ProjectTable() {
     fetchProjects();
     fetchValidation();
     // eslint-disable-next-line
-  }, [username, role]);
+  }, []);
 
   // Deduplicate to latest per Project ID for main table
   const latestByProjectId = useMemo(() => {
@@ -271,7 +262,7 @@ export default function ProjectTable() {
       .sort((a, b) => {
         const da = parseAsDate(a.Timestamp);
         const db = parseAsDate(b.Timestamp);
-        if (da && db) return db - da; // desc
+        if (da && db) return db - da; // desc (latest first)
         if (da && !db) return -1;
         if (!da && db) return 1;
         return 0;
@@ -340,7 +331,7 @@ export default function ProjectTable() {
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
       <Box padding={4}>
-        {/* Title & toolbar */}
+        {/* Top brand */}
         <Paper
           elevation={0}
           sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
@@ -384,7 +375,7 @@ export default function ProjectTable() {
               }}
             />
 
-            {/* Example filters; extend if needed */}
+            {/* Sample filters; extend if needed */}
             {['Project Status', 'Project Manager', 'Task Status (Not Started / In Progress / Completed)'].map(
               h => (
                 <FormControl key={h} size="small" sx={{ minWidth: 180 }}>

@@ -95,7 +95,7 @@ export default function ProjectTable() {
   const [filters, setFilters] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'Timestamp', direction: 'desc' });
 
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRow, setEditingRow] = useState(null);

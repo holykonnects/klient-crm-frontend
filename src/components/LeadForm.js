@@ -130,62 +130,69 @@ function LeadForm() {
     }));
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setSubmitting(true);
+ const handleSubmit = async (e) => {
+  e.preventDefault();
+  if (submitting) return; // prevent double submits
+  setSubmitting(true);
 
-    const now = new Date();
-    const timestamp = now.toLocaleString('en-GB', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false
+  const isBlank = (v) => v == null || String(v).trim() === '';
+
+  // Trim everything first
+  const trimmedValues = Object.fromEntries(
+    Object.entries(formValues).map(([k, v]) => [k, isBlank(v) ? '' : String(v).trim()])
+  );
+
+  // 1) Block completely empty submissions (ignores "Timestamp" if present)
+  const keysExclTimestamp = Object.keys(trimmedValues).filter(
+    (k) => k.toLowerCase() !== 'timestamp'
+  );
+  const isCompletelyBlank = keysExclTimestamp.every((k) => isBlank(trimmedValues[k]));
+  if (isCompletelyBlank) {
+    alert('⚠️ Cannot submit a blank form. Please fill in the required fields.');
+    setSubmitting(false);
+    return;
+  }
+
+  // 2) Require Lead Owner (match header from sheet if it varies)
+  const leadOwnerKey =
+    fields.find((h) => String(h).trim().toLowerCase() === 'lead owner') || 'Lead Owner';
+  const leadOwnerVal = trimmedValues[leadOwnerKey];
+  if (isBlank(leadOwnerVal)) {
+    alert('⚠️ Lead Owner is required.');
+    setSubmitting(false);
+    return;
+  }
+
+  // 3) Build payload after validation
+  const now = new Date();
+  const timestamp = now.toLocaleString('en-GB', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
+  });
+
+  const payload = { ...trimmedValues, Timestamp: timestamp };
+
+  try {
+    await fetch(formSubmitUrl, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
     });
 
-    const payload = {
-      ...formValues,
-      Timestamp: timestamp
-    };
-
-      // ✅ Check for blank submission
-    const isCompletelyBlank = Object.values(formValues).every(
-        (val) => val === '' || val === null || val === undefined
-      );
-    
-      if (isCompletelyBlank) {
-        alert('⚠️ Cannot submit a blank form. Please fill in the required fields.');
-        setSubmitting(false);
-        return;
-      }
-    
-    try {
-      await fetch(formSubmitUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      alert('✅ Lead submitted successfully!');
-      console.log('Lead submitted:', payload);
-
-      // Reset the form
-      const reset = {};
-      Object.keys(formValues).forEach(key => (reset[key] = ''));
-      setFormValues(reset);
-
-    } catch (error) {
-      console.error('❌ Error submitting lead:', error);
-      alert('❌ Submission failed. Please try again.');
-    }
-
+    alert('✅ Lead submitted successfully!');
+    // Reset the form
+    const reset = {};
+    Object.keys(formValues).forEach((k) => (reset[k] = ''));
+    setFormValues(reset);
+  } catch (error) {
+    console.error('❌ Error submitting lead:', error);
+    alert('❌ Submission failed. Please try again.');
+  } finally {
     setSubmitting(false);
-  };
+  }
+};
+
 
   if (loading) {
     return <LoadingOverlay />;

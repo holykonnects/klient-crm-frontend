@@ -180,23 +180,36 @@ export default function ProjectTable() {
 
   // ----- Derived rows (search/filter/sort) -----
   const filteredRows = useMemo(() => {
-    let out = [...latestByProjectId]; // only latest per Project ID
+    const tsKey = 'Timestamp';
+    let out = [...latestByProjectId];
+  
+    // search
     if (search) {
       const q = search.toLowerCase().trim();
       out = out.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
     }
+  
+    // filters
     Object.entries(filters).forEach(([h, val]) => {
       if (val) out = out.filter(r => (r[h] || '') === val);
     });
-    if (sortConfig.key) {
-      const { key, direction } = sortConfig;
-      out.sort((a, b) => {
-        const aVal = a[key] ?? '';
-        const bVal = b[key] ?? '';
+  
+    // sort
+    out.sort((a, b) => {
+      // primary: chosen key if not Timestamp
+      if (sortConfig.key && sortConfig.key !== tsKey) {
+        const aVal = a[sortConfig.key] ?? '';
+        const bVal = b[sortConfig.key] ?? '';
         const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
-        return direction === 'asc' ? cmp : -cmp;
-      });
-    }
+        if (cmp !== 0) return sortConfig.direction === 'asc' ? cmp : -cmp;
+      }
+      // secondary (or primary when key is Timestamp): Timestamp DESC
+      const da = new Date(a[tsKey]);
+      const db = new Date(b[tsKey]);
+      const delta = (db - da) || 0;
+      return delta;
+    });
+  
     return out;
   }, [latestByProjectId, headers, search, filters, sortConfig]);
 

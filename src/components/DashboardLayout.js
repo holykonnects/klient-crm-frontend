@@ -8,7 +8,7 @@ import {
   ChevronLeft, ChevronRight,
   PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
   AssignmentTurnedIn, Assignment, Groups, EditCalendar,
-  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee, BusinessCenter
+  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee, BusinessCenter, Construction
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -41,7 +41,7 @@ function DashboardLayout({ children }) {
     { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' },
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
-    { label: 'Manage Project', icon: <BusinessCenter />, route: '/projects', access: 'Project' }
+    { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' }
   
   ];
 

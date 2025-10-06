@@ -59,11 +59,18 @@ const TASK_STATUS_COLORS = {
   'In Progress': 'info',
   Completed: 'success'
 };
+
 const DATE_FIELDS = new Set(['Timestamp', 'Start Date', 'End Date']);
 const MONEY_FIELDS = new Set(['Budget (₹)', 'Actual Cost (₹)', 'Variance (₹)']);
 const PERCENT_FIELDS = new Set(['Project Progress %']);
 
-// ---------- helpers ----------
+// ----------------- helpers -----------------
+const norm = (s) =>
+  String(s ?? '')
+    .trim()
+    .replace(/\s+/g, ' ')
+    .toLowerCase();
+
 const parseAsDate = (v) => {
   if (v instanceof Date) return v;
   const d = new Date(v);
@@ -84,24 +91,22 @@ const formatDDMMYYYY_HHMMSSS = (v) => {
 };
 const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
 
-// convert unknown input → array<string>
 const toStringArray = (val) => {
-  if (Array.isArray(val)) return val.map(v => String(v).trim()).filter(Boolean);
+  if (Array.isArray(val)) return val.map((v) => String(v).trim()).filter(Boolean);
   if (val == null || val === '') return [];
-  if (typeof val === 'string') {
-    return val.split(/[;,|]\s*/g).map(s => s.trim()).filter(Boolean);
-  }
+  if (typeof val === 'string') return val.split(/[;,|]\s*/g).map((s) => s.trim()).filter(Boolean);
   if (typeof val === 'object') {
     if (Array.isArray(val.values)) return toStringArray(val.values);
-    return Object.values(val).map(v => String(v).trim()).filter(Boolean);
+    return Object.values(val).map((v) => String(v).trim()).filter(Boolean);
   }
   return [];
 };
-
-// normalize any validation entry → array<string>
 const normalizeOptions = (val) => toStringArray(val);
 
-const MULTI_KEY = 'Project Multiselect Fields'; // exact header in Validation
+// control header from Validation sheet
+const MULTI_KEY = 'Project Multiselect Fields'; // exact header name
+// fields that should always behave as multiselect in your setup
+const FALLBACK_MULTI = new Set([norm('Vendors'), norm('Assigned Team')]);
 
 export default function ProjectTable() {
   const [rows, setRows] = useState([]);
@@ -114,7 +119,7 @@ export default function ProjectTable() {
   const [validation, setValidation] = useState({}); // { [header]: [options] }
   const [readonlyColumns, setReadonlyColumns] = useState(new Set());
   const [columnOrder, setColumnOrder] = useState([]);
-  const [multiselectFields, setMultiselectFields] = useState(new Set());
+  const [multiselectSetNorm, setMultiselectSetNorm] = useState(new Set()); // normalized names
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({});
@@ -128,16 +133,18 @@ export default function ProjectTable() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
 
+  const isControlHeader = (h) => norm(h) === norm(MULTI_KEY);
+
   // Owner header (for auto-fill when picking client)
   const OWNER_HEADER = useMemo(() => {
-    const lower = headers.map(h => String(h).toLowerCase());
-    const idx = lower.findIndex(h =>
-      ['owner','account owner','lead owner','project owner','requested by'].includes(h)
+    const lower = headers.map((h) => norm(h));
+    const idx = lower.findIndex((h) =>
+      ['owner', 'account owner', 'lead owner', 'project owner', 'requested by'].includes(h)
     );
     return idx >= 0 ? headers[idx] : null;
   }, [headers]);
 
-  // ---------- fetchers ----------
+  // ----------------- fetchers -----------------
   const fetchProjects = async () => {
     setError('');
     setLoading(true);
@@ -150,7 +157,6 @@ export default function ProjectTable() {
       setRows(data.rows);
       setRawHeaders(data.headers || []);
 
-      // initial visible columns
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem('visibleColumns-projects') || 'null');
         if (saved) setVisibleColumns(saved);
@@ -170,35 +176,33 @@ export default function ProjectTable() {
       const data = await res.json();
 
       const rawValidation = data?.validation || {};
-      // normalize map -> arrays
       const normalizedValidation = Object.fromEntries(
         Object.entries(rawValidation).map(([k, v]) => [k, normalizeOptions(v)])
       );
       setValidation(normalizedValidation);
 
-      // visible columns (persist)
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
         setVisibleColumns(data.visibleColumns);
         localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
       }
 
-      // readonly
       if (Array.isArray(data?.readonlyColumns)) {
         setReadonlyColumns(new Set(data.readonlyColumns));
       }
 
-      // column order
       if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
         setColumnOrder(data.columnOrder);
       }
 
-      // multiselect fields: prefer API field, else derive from "Project Multiselect Fields"
+      // multiselect list: prefer API -> else from Validation column MULTI_KEY
       let msRaw = data?.multiselectFields;
       if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) {
         msRaw = rawValidation[MULTI_KEY];
       }
-      const msList = normalizeOptions(msRaw);
-      setMultiselectFields(new Set(msList));
+      const msList = normalizeOptions(msRaw).map(norm);
+      // add fallbacks explicitly (Vendors, Assigned Team)
+      msList.push(...Array.from(FALLBACK_MULTI));
+      setMultiselectSetNorm(new Set(msList));
     } catch (err) {
       console.warn('Validation fetch failed', err);
     }
@@ -210,32 +214,35 @@ export default function ProjectTable() {
     // eslint-disable-next-line
   }, []);
 
-  // apply column order
+  // apply column order & hide control header in UI
   useEffect(() => {
     if (!rawHeaders.length) return;
+
+    const visible = rawHeaders.filter((h) => !isControlHeader(h)); // hide "Project Multiselect Fields"
     if (columnOrder && columnOrder.length) {
-      const set = new Set(columnOrder);
-      const ordered = [
-        ...columnOrder.filter(h => rawHeaders.includes(h)),
-        ...rawHeaders.filter(h => !set.has(h)),
-      ];
+      const orderFiltered = columnOrder.filter((h) => visible.includes(h));
+      const set = new Set(orderFiltered);
+      const ordered = [...orderFiltered, ...visible.filter((h) => !set.has(h))];
       setHeaders(ordered);
 
       if (visibleColumns.length) {
-        const vis = visibleColumns.filter(h => ordered.includes(h));
-        const rest = ordered.filter(h => !vis.includes(h));
+        const vis = visibleColumns.filter((h) => ordered.includes(h));
+        const rest = ordered.filter((h) => !vis.includes(h));
         setVisibleColumns([...vis, ...rest]);
       }
     } else {
-      setHeaders(rawHeaders);
+      setHeaders(visible);
     }
   }, [rawHeaders, columnOrder]); // eslint-disable-line
+
+  // multiselect check using normalized names
+  const isMulti = (header) => multiselectSetNorm.has(norm(header));
 
   // ---------- latest row per Project ID ----------
   const latestByProjectId = useMemo(() => {
     const idHeader = 'Project ID (unique, auto-generated)';
     const map = new Map();
-    rows.forEach(r => {
+    rows.forEach((r) => {
       const id = r[idHeader];
       if (!id) return;
       const prev = map.get(id);
@@ -257,28 +264,28 @@ export default function ProjectTable() {
     const tsKey = 'Timestamp';
     let out = [...latestByProjectId];
 
-    // search
     if (search) {
       const q = search.toLowerCase().trim();
-      out = out.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
+      out = out.filter((r) => headers.some((h) => String(r[h] || '').toLowerCase().includes(q)));
     }
 
-    // filters (single-select UI filters; extend easily)
     Object.entries(filters).forEach(([h, val]) => {
-      if (val) out = out.filter(r => (r[h] || '') === val);
+      if (val) out = out.filter((r) => (r[h] || '') === val);
     });
 
-    // sort
     out.sort((a, b) => {
       if (sortConfig.key && sortConfig.key !== tsKey) {
         const aVal = a[sortConfig.key] ?? '';
         const bVal = b[sortConfig.key] ?? '';
-        const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+        const cmp = String(aVal).localeCompare(String(bVal), undefined, {
+          numeric: true,
+          sensitivity: 'base'
+        });
         if (cmp !== 0) return sortConfig.direction === 'asc' ? cmp : -cmp;
       }
       const da = new Date(a[tsKey]);
       const db = new Date(b[tsKey]);
-      const delta = (db - da) || 0;
+      const delta = db - da || 0;
       return delta;
     });
 
@@ -286,11 +293,11 @@ export default function ProjectTable() {
   }, [latestByProjectId, headers, search, filters, sortConfig]);
 
   // ---------- UI handlers ----------
-  const handleOpenColumns = e => setAnchorEl(e.currentTarget);
+  const handleOpenColumns = (e) => setAnchorEl(e.currentTarget);
   const handleCloseColumns = () => setAnchorEl(null);
-  const toggleColumn = col => {
-    setVisibleColumns(prev => {
-      const updated = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
+  const toggleColumn = (col) => {
+    setVisibleColumns((prev) => {
+      const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
       localStorage.setItem('visibleColumns-projects', JSON.stringify(updated));
       return updated;
     });
@@ -306,34 +313,31 @@ export default function ProjectTable() {
 
   const onAdd = () => {
     const obj = {};
-    headers.forEach(h => (obj[h] = multiselectFields.has(h) ? [] : ''));
+    headers.forEach((h) => (obj[h] = isMulti(h) ? [] : ''));
     setEditingRow(obj);
     setModalOpen(true);
   };
-  const onEdit = row => {
+  const onEdit = (row) => {
     const obj = { ...row };
-    headers.forEach(h => {
-      if (multiselectFields.has(h)) {
-        obj[h] = toStringArray(obj[h]); // hydrate as array
-      }
+    headers.forEach((h) => {
+      if (isMulti(h)) obj[h] = toStringArray(obj[h]); // hydrate as array
     });
     setEditingRow(obj);
     setModalOpen(true);
   };
-  const handleSort = key => {
-    setSortConfig(prev => ({
+  const handleSort = (key) => {
+    setSortConfig((prev) => ({
       key,
       direction: prev.key === key && prev.direction === 'asc' ? 'desc' : 'asc'
     }));
   };
 
-  // serialize payload: arrays → "A, B, C"
   const serializeRow = (rowObj) => {
     const out = {};
-    headers.forEach(h => {
+    headers.forEach((h) => {
       const v = rowObj[h];
-      if (multiselectFields.has(h)) {
-        out[h] = Array.isArray(v) ? v.join(', ') : (v ?? '');
+      if (isMulti(h)) {
+        out[h] = Array.isArray(v) ? v.join(', ') : v ?? '';
       } else if (typeof v === 'string') {
         out[h] = v.trim();
       } else {
@@ -364,7 +368,7 @@ export default function ProjectTable() {
   const openLogs = (projectId) => {
     const idHeader = 'Project ID (unique, auto-generated)';
     const items = rows
-      .filter(r => r[idHeader] === projectId)
+      .filter((r) => r[idHeader] === projectId)
       .sort((a, b) => {
         const da = parseAsDate(a.Timestamp);
         const db = parseAsDate(b.Timestamp);
@@ -378,7 +382,7 @@ export default function ProjectTable() {
   };
 
   // ---------- render helpers ----------
-  const formatMoney = v => {
+  const formatMoney = (v) => {
     if (v === '' || v === null || v === undefined) return '';
     const n = typeof v === 'number' ? v : Number(String(v).replace(/[₹,\s]/g, ''));
     if (isNaN(n)) return String(v);
@@ -393,11 +397,25 @@ export default function ProjectTable() {
     if (value === null || value === undefined || value === '') return '';
     if (header === 'Project Status') {
       const color = PROJECT_STATUS_COLORS[String(value)] || 'default';
-      return <Chip size="small" label={String(value)} color={color} variant={color === 'default' ? 'outlined' : 'filled'} />;
+      return (
+        <Chip
+          size="small"
+          label={String(value)}
+          color={color}
+          variant={color === 'default' ? 'outlined' : 'filled'}
+        />
+      );
     }
     if (header === 'Task Status (Not Started / In Progress / Completed)') {
       const color = TASK_STATUS_COLORS[String(value)] || 'default';
-      return <Chip size="small" label={String(value)} color={color} variant={color === 'default' ? 'outlined' : 'filled'} />;
+      return (
+        <Chip
+          size="small"
+          label={String(value)}
+          color={color}
+          variant={color === 'default' ? 'outlined' : 'filled'}
+        />
+      );
     }
     if (PERCENT_FIELDS.has(header)) {
       const n = Number(value);
@@ -406,16 +424,22 @@ export default function ProjectTable() {
     if (MONEY_FIELDS.has(header)) return formatMoney(value);
     if (DATE_FIELDS.has(header)) return formatDDMMYYYY_HHMMSSS(value);
     if (/Link|Documents/i.test(header) && typeof value === 'string' && /^https?:\/\//i.test(value)) {
-      return <a href={value} target="_blank" rel="noreferrer">Open</a>;
+      return (
+        <a href={value} target="_blank" rel="noreferrer">
+          Open
+        </a>
+      );
     }
     if (header === 'Client (Linked Deal/Account ID)' && typeof value === 'string' && value.includes('|')) {
       return value.split('|').slice(1).join('|');
     }
-    if (multiselectFields.has(header)) {
+    if (isMulti(header)) {
       const arr = toStringArray(value);
       return (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-          {arr.map((v, i) => <Chip key={`${header}-${i}`} size="small" variant="outlined" label={v} />)}
+          {arr.map((v, i) => (
+            <Chip key={`${header}-${i}`} size="small" variant="outlined" label={v} />
+          ))}
         </Box>
       );
     }
@@ -428,27 +452,39 @@ export default function ProjectTable() {
     'Project Manager',
     'Task Status (Not Started / In Progress / Completed)',
     'Account Owner'
-  ].filter(h => headers.includes(h));
+  ].filter((h) => headers.includes(h));
 
   return (
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
       <Box padding={4}>
-        {/* Top brand */}
-        <Paper elevation={0} sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
+        {/* Brand */}
+        <Paper
+          elevation={0}
+          sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
+        >
           <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 72 }} />
           </Box>
           <Box display="flex" alignItems="center" justifyContent="center" mt={1}>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>Projects</Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>
+              Projects
+            </Typography>
           </Box>
 
-          <Box display="flex" justifyContent="flex-start" gap={2} mt={2} flexWrap="wrap" alignItems="center">
+          <Box
+            display="flex"
+            justifyContent="flex-start"
+            gap={2}
+            mt={2}
+            flexWrap="wrap"
+            alignItems="center"
+          >
             <TextField
               size="small"
               label="Search"
               value={search}
-              onChange={e => setSearch(e.target.value)}
+              onChange={(e) => setSearch(e.target.value)}
               sx={{ minWidth: 240 }}
               InputProps={{
                 startAdornment: (
@@ -458,7 +494,12 @@ export default function ProjectTable() {
                 ),
                 endAdornment: search ? (
                   <InputAdornment position="end">
-                    <IconButton aria-label="clear search" edge="end" onClick={() => setSearch('')} size="small">
+                    <IconButton
+                      aria-label="clear search"
+                      edge="end"
+                      onClick={() => setSearch('')}
+                      size="small"
+                    >
                       <ClearIcon fontSize="small" />
                     </IconButton>
                   </InputAdornment>
@@ -466,17 +507,21 @@ export default function ProjectTable() {
               }}
             />
 
-            {FILTER_LIST.map(h => (
+            {FILTER_LIST.map((h) => (
               <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
                 <InputLabel>{h}</InputLabel>
                 <Select
                   label={h}
                   value={filters[h] || ''}
-                  onChange={e => setFilters(prev => ({ ...prev, [h]: e.target.value }))}
+                  onChange={(e) => setFilters((prev) => ({ ...prev, [h]: e.target.value }))}
                 >
-                  <MenuItem value=""><em>All</em></MenuItem>
-                  {(validation[h] || []).map(opt => (
-                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                  <MenuItem value="">
+                    <em>All</em>
+                  </MenuItem>
+                  {(validation[h] || []).map((opt) => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
+                    </MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -503,25 +548,42 @@ export default function ProjectTable() {
         >
           <Box padding={2} sx={selectorStyle}>
             <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-              <Button size="small" onClick={handleSelectAll}>Select All</Button>
-              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
+              <Button size="small" onClick={handleSelectAll}>
+                Select All
+              </Button>
+              <Button size="small" onClick={handleDeselectAll}>
+                Deselect All
+              </Button>
             </Box>
-            {headers.map(col => (
+            {headers.map((col) => (
               <Box key={col}>
-                <Checkbox size="small" checked={visibleColumns.includes(col)} onChange={() => toggleColumn(col)} /> {col}
+                <Checkbox
+                  size="small"
+                  checked={visibleColumns.includes(col)}
+                  onChange={() => toggleColumn(col)}
+                />{' '}
+                {col}
               </Box>
             ))}
           </Box>
         </Popover>
 
-        {/* Table (latest per Project ID only) */}
+        {/* Table */}
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
-            <TableHead sx={{ '& .MuiTableCell-head': { backgroundColor: '#6495ED', color: '#fff', fontWeight: 700 } }}>
+            <TableHead
+              sx={{
+                '& .MuiTableCell-head': {
+                  backgroundColor: '#6495ED',
+                  color: '#fff',
+                  fontWeight: 700
+                }
+              }}
+            >
               <TableRow>
-                {visibleColumns.map(header => (
+                {visibleColumns.map((header) => (
                   <TableCell key={header} onClick={() => handleSort(header)} sx={{ cursor: 'pointer' }}>
-                    {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                    {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↥' : '↧') : ''}
                   </TableCell>
                 ))}
                 <TableCell>Actions</TableCell>
@@ -530,33 +592,40 @@ export default function ProjectTable() {
             <TableBody>
               {!loading && filteredRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">No records</TableCell>
-                </TableRow>
-              )}
-              {!loading && filteredRows.map((row, idx) => (
-                <TableRow key={idx} hover>
-                  {visibleColumns.map(h => (
-                    <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
-                  ))}
-                  <TableCell width={160}>
-                    <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
-                      <EditIcon fontSize="small" />
-                    </IconButton>
-                    <IconButton
-                      size="small"
-                      onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
-                      title="Logs"
-                    >
-                      <HistoryIcon fontSize="small" />
-                    </IconButton>
+                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
+                    No records
                   </TableCell>
                 </TableRow>
-              ))}
+              )}
+              {!loading &&
+                filteredRows.map((row, idx) => (
+                  <TableRow key={idx} hover>
+                    {visibleColumns.map((h) => (
+                      <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
+                    ))}
+                    <TableCell width={160}>
+                      <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
+                        <EditIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
+                        title="Logs"
+                      >
+                        <HistoryIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
             </TableBody>
           </Table>
         </Paper>
 
-        {error && <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>}
+        {error && (
+          <Typography color="error" sx={{ mt: 2 }}>
+            {error}
+          </Typography>
+        )}
 
         {/* Logs Modal */}
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
@@ -568,13 +637,15 @@ export default function ProjectTable() {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {headers.map(h => <TableCell key={h}>{h}</TableCell>)}
+                    {headers.map((h) => (
+                      <TableCell key={h}>{h}</TableCell>
+                    ))}
                   </TableRow>
                 </TableHead>
                 <TableBody>
                   {logsRows.map((row, i) => (
                     <TableRow key={i}>
-                      {headers.map(h => (
+                      {headers.map((h) => (
                         <TableCell key={h}>
                           {h === 'Timestamp' ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
                         </TableCell>
@@ -593,7 +664,10 @@ export default function ProjectTable() {
         {/* Add/Edit Modal */}
         <Dialog
           open={modalOpen}
-          onClose={() => { setModalOpen(false); setEditingRow(null); }}
+          onClose={() => {
+            setModalOpen(false);
+            setEditingRow(null);
+          }}
           maxWidth="md"
           fullWidth
         >
@@ -602,10 +676,9 @@ export default function ProjectTable() {
           </DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {headers.map(h => {
+              {headers.map((h) => {
                 const isReadonly = readonlyColumns.has(h);
                 const hasOptions = Array.isArray(validation[h]) && validation[h].length > 0;
-                const isMulti = multiselectFields.has(h);
 
                 if (h === 'Client (Linked Deal/Account ID)') {
                   return (
@@ -613,7 +686,7 @@ export default function ProjectTable() {
                       <ClientSelector
                         value={editingRow?.[h] || ''}
                         onPick={({ value, owner }) =>
-                          setEditingRow(prev => ({
+                          setEditingRow((prev) => ({
                             ...prev,
                             [h]: value,
                             ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
@@ -624,13 +697,13 @@ export default function ProjectTable() {
                   );
                 }
 
-                if (hasOptions && isMulti) {
+                if (hasOptions && isMulti(h)) {
                   const safeOptions = (validation[h] || []).map(String);
                   const valueArr = toStringArray(editingRow?.[h]);
                   const handleMultiChange = (e) => {
                     const raw = e.target.value;
                     const next = Array.isArray(raw) ? raw : toStringArray(raw);
-                    setEditingRow(prev => ({ ...prev, [h]: next }));
+                    setEditingRow((prev) => ({ ...prev, [h]: next }));
                   };
 
                   return (
@@ -650,7 +723,7 @@ export default function ProjectTable() {
                             </Box>
                           )}
                         >
-                          {safeOptions.map(opt => {
+                          {safeOptions.map((opt) => {
                             const checked = valueArr.indexOf(opt) > -1;
                             return (
                               <MenuItem key={opt} value={opt}>
@@ -673,10 +746,14 @@ export default function ProjectTable() {
                         <Select
                           label={h}
                           value={editingRow?.[h] || ''}
-                          onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
+                          onChange={(e) =>
+                            setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))
+                          }
                         >
-                          {validation[h].map(opt => (
-                            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+                          {validation[h].map((opt) => (
+                            <MenuItem key={opt} value={opt}>
+                              {opt}
+                            </MenuItem>
                           ))}
                         </Select>
                       </FormControl>
@@ -690,8 +767,12 @@ export default function ProjectTable() {
                       fullWidth
                       size="small"
                       label={h}
-                      value={Array.isArray(editingRow?.[h]) ? (editingRow?.[h] || []).join(', ') : (editingRow?.[h] || '')}
-                      onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
+                      value={
+                        Array.isArray(editingRow?.[h])
+                          ? (editingRow?.[h] || []).join(', ')
+                          : editingRow?.[h] || ''
+                      }
+                      onChange={(e) => setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))}
                       multiline={isMultilineHeader(h)}
                       minRows={isMultilineHeader(h) ? 3 : 1}
                       disabled={isReadonly}
@@ -702,8 +783,17 @@ export default function ProjectTable() {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button onClick={() => { setModalOpen(false); setEditingRow(null); }}>Cancel</Button>
-            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>Save</Button>
+            <Button
+              onClick={() => {
+                setModalOpen(false);
+                setEditingRow(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>
+              Save
+            </Button>
           </DialogActions>
         </Dialog>
       </Box>
@@ -719,7 +809,7 @@ function ClientSelector({ value, onPick }) {
   const [options, setOptions] = React.useState([]); // [{id,label,owner?}]
   const [loading, setLoading] = React.useState(false);
 
-  const fetchOptions = async src => {
+  const fetchOptions = async (src) => {
     setLoading(true);
     try {
       const res = await fetch(
@@ -740,7 +830,6 @@ function ClientSelector({ value, onPick }) {
     fetchOptions(source);
   }, [source]);
 
-  // Derive current selected id from value "source:id|label"
   const currentId = React.useMemo(() => {
     if (!value) return '';
     const pipe = String(value).indexOf('|');
@@ -750,8 +839,8 @@ function ClientSelector({ value, onPick }) {
     return id;
   }, [value]);
 
-  const handlePick = id => {
-    const opt = options.find(o => String(o.id) === String(id));
+  const handlePick = (id) => {
+    const opt = options.find((o) => String(o.id) === String(id));
     const label = opt?.label || '';
     const owner = opt?.owner || '';
     const v = `${source}:${id}${label ? '|' + label : ''}`;
@@ -762,7 +851,7 @@ function ClientSelector({ value, onPick }) {
     <Box sx={{ display: 'flex', gap: 1, width: '100%' }}>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel>Client Source</InputLabel>
-        <Select label="Client Source" value={source} onChange={e => setSource(e.target.value)}>
+        <Select label="Client Source" value={source} onChange={(e) => setSource(e.target.value)}>
           <MenuItem value="accounts">Accounts</MenuItem>
           <MenuItem value="deals">Deals</MenuItem>
         </Select>
@@ -772,14 +861,15 @@ function ClientSelector({ value, onPick }) {
         <Select
           label={loading ? 'Loading…' : 'Select Client'}
           value={currentId}
-          onChange={e => handlePick(e.target.value)}
+          onChange={(e) => handlePick(e.target.value)}
         >
-          {options.map(opt => (
-            <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
+          {options.map((opt) => (
+            <MenuItem key={opt.id} value={opt.id}>
+              {opt.label}
+            </MenuItem>
           ))}
         </Select>
       </FormControl>
     </Box>
   );
 }
-

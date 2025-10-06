@@ -24,7 +24,8 @@ import {
   Popover,
   InputAdornment,
   Chip,
-  Paper
+  Paper,
+  ListItemText
 } from '@mui/material';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import AddIcon from '@mui/icons-material/Add';
@@ -62,7 +63,7 @@ const DATE_FIELDS = new Set(['Timestamp', 'Start Date', 'End Date']);
 const MONEY_FIELDS = new Set(['Budget (₹)', 'Actual Cost (₹)', 'Variance (₹)']);
 const PERCENT_FIELDS = new Set(['Project Progress %']);
 
-// utils
+// ---------- helpers ----------
 const parseAsDate = (v) => {
   if (v instanceof Date) return v;
   const d = new Date(v);
@@ -83,24 +84,37 @@ const formatDDMMYYYY_HHMMSSS = (v) => {
 };
 const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
 
-// split any stored multiselect string to array
-const splitMulti = (val) => {
-  if (Array.isArray(val)) return val;
-  if (!val) return [];
-  // split on comma or semicolon
-  return String(val)
-    .split(/[,;]\s*/g)
-    .map(s => s.trim())
-    .filter(Boolean);
+// convert unknown input → array<string>
+const toStringArray = (val) => {
+  if (Array.isArray(val)) return val.map(v => String(v).trim()).filter(Boolean);
+  if (val == null || val === '') return [];
+  if (typeof val === 'string') {
+    return val.split(/[;,|]\s*/g).map(s => s.trim()).filter(Boolean);
+  }
+  if (typeof val === 'object') {
+    if (Array.isArray(val.values)) return toStringArray(val.values);
+    return Object.values(val).map(v => String(v).trim()).filter(Boolean);
+  }
+  return [];
 };
+
+// normalize any validation entry → array<string>
+const normalizeOptions = (val) => toStringArray(val);
+
+const MULTI_KEY = 'Project Multiselect Fields'; // exact header in Validation
 
 export default function ProjectTable() {
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [rawHeaders, setRawHeaders] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
   const [validation, setValidation] = useState({}); // { [header]: [options] }
+  const [readonlyColumns, setReadonlyColumns] = useState(new Set());
+  const [columnOrder, setColumnOrder] = useState([]);
+  const [multiselectFields, setMultiselectFields] = useState(new Set());
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({});
@@ -114,19 +128,16 @@ export default function ProjectTable() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
 
-  // from Validation controls
-  const [readonlyColumns, setReadonlyColumns] = useState(new Set());
-  const [multiselectFields, setMultiselectFields] = useState(new Set());
-  const [columnOrder, setColumnOrder] = useState([]);
-
   // Owner header (for auto-fill when picking client)
   const OWNER_HEADER = useMemo(() => {
     const lower = headers.map(h => String(h).toLowerCase());
-    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner' || h === 'project owner' || h === 'requested by');
+    const idx = lower.findIndex(h =>
+      ['owner','account owner','lead owner','project owner','requested by'].includes(h)
+    );
     return idx >= 0 ? headers[idx] : null;
   }, [headers]);
 
-  // ----- Fetchers -----
+  // ---------- fetchers ----------
   const fetchProjects = async () => {
     setError('');
     setLoading(true);
@@ -139,7 +150,7 @@ export default function ProjectTable() {
       setRows(data.rows);
       setRawHeaders(data.headers || []);
 
-      // visible columns initial
+      // initial visible columns
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem('visibleColumns-projects') || 'null');
         if (saved) setVisibleColumns(saved);
@@ -152,66 +163,46 @@ export default function ProjectTable() {
     }
   };
 
-  // helper: make sure validation values are arrays
-const normalizeOptions = (val) => {
-  if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
-  if (val == null) return [];
-  if (typeof val === 'string') {
-    // support comma/semicolon and pipe separated lists
-    return val.split(/[;,|]\s*/g).map(s => s.trim()).filter(Boolean);
-  }
-  // some scripts might send {values:[...]} or {0:"A",1:"B"}
-  if (typeof val === 'object') {
-    if (Array.isArray(val.values)) return normalizeOptions(val.values);
-    return Object.values(val).map(String).map(s => s.trim()).filter(Boolean);
-  }
-  return [];
-};
+  const fetchValidation = async () => {
+    try {
+      const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+      const data = await res.json();
 
-const MULTI_KEY = 'Project Multiselect Fields'; // must exactly match your Validation header
+      const rawValidation = data?.validation || {};
+      // normalize map -> arrays
+      const normalizedValidation = Object.fromEntries(
+        Object.entries(rawValidation).map(([k, v]) => [k, normalizeOptions(v)])
+      );
+      setValidation(normalizedValidation);
 
-const fetchValidation = async () => {
-  try {
-    const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
-    if (!res.ok) throw new Error(`Server returned ${res.status}`);
-    const data = await res.json();
+      // visible columns (persist)
+      if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
+        setVisibleColumns(data.visibleColumns);
+        localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
+      }
 
-    // 1) normalize validation maps so ALL are arrays
-    const rawValidation = data?.validation || {};
-    const normalizedValidation = Object.fromEntries(
-      Object.entries(rawValidation).map(([k, v]) => [k, normalizeOptions(v)])
-    );
-    setValidation(normalizedValidation);
+      // readonly
+      if (Array.isArray(data?.readonlyColumns)) {
+        setReadonlyColumns(new Set(data.readonlyColumns));
+      }
 
-    // 2) visible columns
-    if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
-      setVisibleColumns(data.visibleColumns);
-      localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
+      // column order
+      if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
+        setColumnOrder(data.columnOrder);
+      }
+
+      // multiselect fields: prefer API field, else derive from "Project Multiselect Fields"
+      let msRaw = data?.multiselectFields;
+      if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) {
+        msRaw = rawValidation[MULTI_KEY];
+      }
+      const msList = normalizeOptions(msRaw);
+      setMultiselectFields(new Set(msList));
+    } catch (err) {
+      console.warn('Validation fetch failed', err);
     }
-
-    // 3) readonly columns
-    if (Array.isArray(data?.readonlyColumns)) {
-      setReadonlyColumns(new Set(data.readonlyColumns));
-    }
-
-    // 4) column order
-    if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
-      setColumnOrder(data.columnOrder);
-    }
-
-    // 5) multiselect fields:
-    //    prefer backend's multiselectFields; else fall back to the Validation column/row "Project Multiselect Fields"
-    let msRaw = data?.multiselectFields;
-    if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) {
-      msRaw = rawValidation[MULTI_KEY]; // could be array or CSV string or object
-    }
-    const msList = normalizeOptions(msRaw);
-    setMultiselectFields(new Set(msList));
-  } catch (err) {
-    console.warn('Validation fetch failed', err);
-  }
-};
-
+  };
 
   useEffect(() => {
     fetchProjects();
@@ -219,32 +210,31 @@ const fetchValidation = async () => {
     // eslint-disable-next-line
   }, []);
 
-  // Apply column order from validation when both raw headers & order are known
+  // apply column order
   useEffect(() => {
     if (!rawHeaders.length) return;
     if (columnOrder && columnOrder.length) {
-      // put ordered first, then any remaining headers
       const set = new Set(columnOrder);
       const ordered = [
         ...columnOrder.filter(h => rawHeaders.includes(h)),
         ...rawHeaders.filter(h => !set.has(h)),
       ];
       setHeaders(ordered);
-      // ensure visible columns match order if already chosen
+
       if (visibleColumns.length) {
         const vis = visibleColumns.filter(h => ordered.includes(h));
         const rest = ordered.filter(h => !vis.includes(h));
-        setVisibleColumns([...vis, ...rest]); // keep current selection but align order
+        setVisibleColumns([...vis, ...rest]);
       }
     } else {
       setHeaders(rawHeaders);
     }
   }, [rawHeaders, columnOrder]); // eslint-disable-line
 
-  // Deduplicate to latest per Project ID for main table
+  // ---------- latest row per Project ID ----------
   const latestByProjectId = useMemo(() => {
     const idHeader = 'Project ID (unique, auto-generated)';
-    const map = new Map(); // id -> row
+    const map = new Map();
     rows.forEach(r => {
       const id = r[idHeader];
       if (!id) return;
@@ -262,7 +252,7 @@ const fetchValidation = async () => {
     return Array.from(map.values());
   }, [rows]);
 
-  // ----- Derived rows (search/filter/sort) -----
+  // ---------- derived rows (search/filter/sort) ----------
   const filteredRows = useMemo(() => {
     const tsKey = 'Timestamp';
     let out = [...latestByProjectId];
@@ -273,21 +263,19 @@ const fetchValidation = async () => {
       out = out.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
     }
 
-    // filters (single-select filters; multiselect filters can be added similarly if required)
+    // filters (single-select UI filters; extend easily)
     Object.entries(filters).forEach(([h, val]) => {
       if (val) out = out.filter(r => (r[h] || '') === val);
     });
 
     // sort
     out.sort((a, b) => {
-      // primary: chosen key if not Timestamp
       if (sortConfig.key && sortConfig.key !== tsKey) {
         const aVal = a[sortConfig.key] ?? '';
         const bVal = b[sortConfig.key] ?? '';
         const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
         if (cmp !== 0) return sortConfig.direction === 'asc' ? cmp : -cmp;
       }
-      // secondary (or primary when key is Timestamp): Timestamp DESC
       const da = new Date(a[tsKey]);
       const db = new Date(b[tsKey]);
       const delta = (db - da) || 0;
@@ -297,7 +285,7 @@ const fetchValidation = async () => {
     return out;
   }, [latestByProjectId, headers, search, filters, sortConfig]);
 
-  // ----- Handlers -----
+  // ---------- UI handlers ----------
   const handleOpenColumns = e => setAnchorEl(e.currentTarget);
   const handleCloseColumns = () => setAnchorEl(null);
   const toggleColumn = col => {
@@ -324,10 +312,9 @@ const fetchValidation = async () => {
   };
   const onEdit = row => {
     const obj = { ...row };
-    // hydrate multiselect fields into arrays
     headers.forEach(h => {
       if (multiselectFields.has(h)) {
-        obj[h] = splitMulti(obj[h]);
+        obj[h] = toStringArray(obj[h]); // hydrate as array
       }
     });
     setEditingRow(obj);
@@ -340,7 +327,7 @@ const fetchValidation = async () => {
     }));
   };
 
-  // Prepare payload: join multiselect arrays and trim strings
+  // serialize payload: arrays → "A, B, C"
   const serializeRow = (rowObj) => {
     const out = {};
     headers.forEach(h => {
@@ -356,13 +343,12 @@ const fetchValidation = async () => {
     return out;
   };
 
-  // CORS-safe submit (append/update backend)
   const handleSubmit = async () => {
     try {
       const payload = { action: 'addOrUpdateProject', data: serializeRow(editingRow || {}) };
       await fetch(WEB_APP_BASE, {
         method: 'POST',
-        mode: 'no-cors', // avoids preflight
+        mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
@@ -382,7 +368,7 @@ const fetchValidation = async () => {
       .sort((a, b) => {
         const da = parseAsDate(a.Timestamp);
         const db = parseAsDate(b.Timestamp);
-        if (da && db) return db - da; // desc (latest first)
+        if (da && db) return db - da;
         if (da && !db) return -1;
         if (!da && db) return 1;
         return 0;
@@ -391,7 +377,7 @@ const fetchValidation = async () => {
     setLogsOpen(true);
   };
 
-  // ----- Render helpers -----
+  // ---------- render helpers ----------
   const formatMoney = v => {
     if (v === '' || v === null || v === undefined) return '';
     const n = typeof v === 'number' ? v : Number(String(v).replace(/[₹,\s]/g, ''));
@@ -407,25 +393,11 @@ const fetchValidation = async () => {
     if (value === null || value === undefined || value === '') return '';
     if (header === 'Project Status') {
       const color = PROJECT_STATUS_COLORS[String(value)] || 'default';
-      return (
-        <Chip
-          size="small"
-          label={String(value)}
-          color={color}
-          variant={color === 'default' ? 'outlined' : 'filled'}
-        />
-      );
+      return <Chip size="small" label={String(value)} color={color} variant={color === 'default' ? 'outlined' : 'filled'} />;
     }
     if (header === 'Task Status (Not Started / In Progress / Completed)') {
       const color = TASK_STATUS_COLORS[String(value)] || 'default';
-      return (
-        <Chip
-          size="small"
-          label={String(value)}
-          color={color}
-          variant={color === 'default' ? 'outlined' : 'filled'}
-        />
-      );
+      return <Chip size="small" label={String(value)} color={color} variant={color === 'default' ? 'outlined' : 'filled'} />;
     }
     if (PERCENT_FIELDS.has(header)) {
       const n = Number(value);
@@ -434,35 +406,28 @@ const fetchValidation = async () => {
     if (MONEY_FIELDS.has(header)) return formatMoney(value);
     if (DATE_FIELDS.has(header)) return formatDDMMYYYY_HHMMSSS(value);
     if (/Link|Documents/i.test(header) && typeof value === 'string' && /^https?:\/\//i.test(value)) {
-      return (
-        <a href={value} target="_blank" rel="noreferrer">
-          Open
-        </a>
-      );
+      return <a href={value} target="_blank" rel="noreferrer">Open</a>;
     }
     if (header === 'Client (Linked Deal/Account ID)' && typeof value === 'string' && value.includes('|')) {
-      // stored as "source:id|label" — display the label only
       return value.split('|').slice(1).join('|');
     }
-    // pretty print multiselect values as chips
     if (multiselectFields.has(header)) {
-      const arr = splitMulti(value);
+      const arr = toStringArray(value);
       return (
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-          {arr.map((v, i) => (
-            <Chip key={`${header}-${i}`} size="small" variant="outlined" label={v} />
-          ))}
+          {arr.map((v, i) => <Chip key={`${header}-${i}`} size="small" variant="outlined" label={v} />)}
         </Box>
       );
     }
     return String(value);
   };
 
-  // Basic curated filter list; feel free to extend with other validated fields
+  // curated filters; extend as needed
   const FILTER_LIST = [
     'Project Status',
     'Project Manager',
-    'Task Status (Not Started / In Progress / Completed)'
+    'Task Status (Not Started / In Progress / Completed)',
+    'Account Owner'
   ].filter(h => headers.includes(h));
 
   return (
@@ -470,27 +435,15 @@ const fetchValidation = async () => {
       {loading && <LoadingOverlay />}
       <Box padding={4}>
         {/* Top brand */}
-        <Paper
-          elevation={0}
-          sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}
-        >
+        <Paper elevation={0} sx={{ p: 1.5, mb: 2, borderRadius: 3, border: '1px solid', borderColor: 'divider' }}>
           <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 72 }} />
           </Box>
           <Box display="flex" alignItems="center" justifyContent="center" mt={1}>
-            <Typography variant="h6" sx={{ fontWeight: 700 }}>
-              Projects
-            </Typography>
+            <Typography variant="h6" sx={{ fontWeight: 700 }}>Projects</Typography>
           </Box>
 
-          <Box
-            display="flex"
-            justifyContent="flex-start"
-            gap={2}
-            mt={2}
-            flexWrap="wrap"
-            alignItems="center"
-          >
+          <Box display="flex" justifyContent="flex-start" gap={2} mt={2} flexWrap="wrap" alignItems="center">
             <TextField
               size="small"
               label="Search"
@@ -521,13 +474,9 @@ const fetchValidation = async () => {
                   value={filters[h] || ''}
                   onChange={e => setFilters(prev => ({ ...prev, [h]: e.target.value }))}
                 >
-                  <MenuItem value="">
-                    <em>All</em>
-                  </MenuItem>
+                  <MenuItem value=""><em>All</em></MenuItem>
                   {(validation[h] || []).map(opt => (
-                    <MenuItem key={opt} value={opt}>
-                      {opt}
-                    </MenuItem>
+                    <MenuItem key={opt} value={opt}>{opt}</MenuItem>
                   ))}
                 </Select>
               </FormControl>
@@ -554,21 +503,12 @@ const fetchValidation = async () => {
         >
           <Box padding={2} sx={selectorStyle}>
             <Box sx={{ display: 'flex', gap: 1, mb: 1 }}>
-              <Button size="small" onClick={handleSelectAll}>
-                Select All
-              </Button>
-              <Button size="small" onClick={handleDeselectAll}>
-                Deselect All
-              </Button>
+              <Button size="small" onClick={handleSelectAll}>Select All</Button>
+              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
             </Box>
             {headers.map(col => (
               <Box key={col}>
-                <Checkbox
-                  size="small"
-                  checked={visibleColumns.includes(col)}
-                  onChange={() => toggleColumn(col)}
-                />{' '}
-                {col}
+                <Checkbox size="small" checked={visibleColumns.includes(col)} onChange={() => toggleColumn(col)} /> {col}
               </Box>
             ))}
           </Box>
@@ -577,24 +517,11 @@ const fetchValidation = async () => {
         {/* Table (latest per Project ID only) */}
         <Paper variant="outlined" sx={{ borderRadius: 3, overflow: 'hidden' }}>
           <Table size="small" stickyHeader>
-            <TableHead
-              sx={{
-                '& .MuiTableCell-head': {
-                  backgroundColor: '#6495ED',
-                  color: '#fff',
-                  fontWeight: 700
-                }
-              }}
-            >
+            <TableHead sx={{ '& .MuiTableCell-head': { backgroundColor: '#6495ED', color: '#fff', fontWeight: 700 } }}>
               <TableRow>
                 {visibleColumns.map(header => (
-                  <TableCell
-                    key={header}
-                    onClick={() => handleSort(header)}
-                    sx={{ cursor: 'pointer' }}
-                  >
-                    {header}{' '}
-                    {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  <TableCell key={header} onClick={() => handleSort(header)} sx={{ cursor: 'pointer' }}>
+                    {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
                   </TableCell>
                 ))}
                 <TableCell>Actions</TableCell>
@@ -603,42 +530,35 @@ const fetchValidation = async () => {
             <TableBody>
               {!loading && filteredRows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">
-                    No records
-                  </TableCell>
+                  <TableCell colSpan={(visibleColumns?.length || 0) + 1} align="center">No records</TableCell>
                 </TableRow>
               )}
-              {!loading &&
-                filteredRows.map((row, idx) => (
-                  <TableRow key={idx} hover>
-                    {visibleColumns.map(h => (
-                      <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
-                    ))}
-                    <TableCell width={160}>
-                      <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
-                        <EditIcon fontSize="small" />
-                      </IconButton>
-                      <IconButton
-                        size="small"
-                        onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
-                        title="Logs"
-                      >
-                        <HistoryIcon fontSize="small" />
-                      </IconButton>
-                    </TableCell>
-                  </TableRow>
-                ))}
+              {!loading && filteredRows.map((row, idx) => (
+                <TableRow key={idx} hover>
+                  {visibleColumns.map(h => (
+                    <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
+                  ))}
+                  <TableCell width={160}>
+                    <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
+                      <EditIcon fontSize="small" />
+                    </IconButton>
+                    <IconButton
+                      size="small"
+                      onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
+                      title="Logs"
+                    >
+                      <HistoryIcon fontSize="small" />
+                    </IconButton>
+                  </TableCell>
+                </TableRow>
+              ))}
             </TableBody>
           </Table>
         </Paper>
 
-        {error && (
-          <Typography color="error" sx={{ mt: 2 }}>
-            {error}
-          </Typography>
-        )}
+        {error && <Typography color="error" sx={{ mt: 2 }}>{error}</Typography>}
 
-        {/* Logs Modal: all columns, timestamp DESC */}
+        {/* Logs Modal */}
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
           <DialogTitle>Project Logs</DialogTitle>
           <DialogContent dividers>
@@ -648,9 +568,7 @@ const fetchValidation = async () => {
               <Table size="small">
                 <TableHead>
                   <TableRow>
-                    {headers.map(h => (
-                      <TableCell key={h}>{h}</TableCell>
-                    ))}
+                    {headers.map(h => <TableCell key={h}>{h}</TableCell>)}
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -675,10 +593,7 @@ const fetchValidation = async () => {
         {/* Add/Edit Modal */}
         <Dialog
           open={modalOpen}
-          onClose={() => {
-            setModalOpen(false);
-            setEditingRow(null);
-          }}
+          onClose={() => { setModalOpen(false); setEditingRow(null); }}
           maxWidth="md"
           fullWidth
         >
@@ -710,7 +625,14 @@ const fetchValidation = async () => {
                 }
 
                 if (hasOptions && isMulti) {
-                  const valueArr = Array.isArray(editingRow?.[h]) ? editingRow[h] : splitMulti(editingRow?.[h]);
+                  const safeOptions = (validation[h] || []).map(String);
+                  const valueArr = toStringArray(editingRow?.[h]);
+                  const handleMultiChange = (e) => {
+                    const raw = e.target.value;
+                    const next = Array.isArray(raw) ? raw : toStringArray(raw);
+                    setEditingRow(prev => ({ ...prev, [h]: next }));
+                  };
+
                   return (
                     <Grid item xs={12} sm={6} key={h}>
                       <FormControl fullWidth size="small" disabled={isReadonly}>
@@ -719,9 +641,7 @@ const fetchValidation = async () => {
                           label={h}
                           multiple
                           value={valueArr}
-                          onChange={(e) =>
-                            setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
-                          }
+                          onChange={handleMultiChange}
                           renderValue={(selected) => (
                             <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                               {selected.map((val) => (
@@ -730,12 +650,15 @@ const fetchValidation = async () => {
                             </Box>
                           )}
                         >
-                          {validation[h].map(opt => (
-                            <MenuItem key={opt} value={opt}>
-                              <Checkbox size="small" checked={valueArr.indexOf(opt) > -1} />
-                              {opt}
-                            </MenuItem>
-                          ))}
+                          {safeOptions.map(opt => {
+                            const checked = valueArr.indexOf(opt) > -1;
+                            return (
+                              <MenuItem key={opt} value={opt}>
+                                <Checkbox size="small" checked={checked} />
+                                <ListItemText primary={opt} />
+                              </MenuItem>
+                            );
+                          })}
                         </Select>
                       </FormControl>
                     </Grid>
@@ -750,14 +673,10 @@ const fetchValidation = async () => {
                         <Select
                           label={h}
                           value={editingRow?.[h] || ''}
-                          onChange={e =>
-                            setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
-                          }
+                          onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
                         >
                           {validation[h].map(opt => (
-                            <MenuItem key={opt} value={opt}>
-                              {opt}
-                            </MenuItem>
+                            <MenuItem key={opt} value={opt}>{opt}</MenuItem>
                           ))}
                         </Select>
                       </FormControl>
@@ -783,17 +702,8 @@ const fetchValidation = async () => {
             </Grid>
           </DialogContent>
           <DialogActions>
-            <Button
-              onClick={() => {
-                setModalOpen(false);
-                setEditingRow(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>
-              Save
-            </Button>
+            <Button onClick={() => { setModalOpen(false); setEditingRow(null); }}>Cancel</Button>
+            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>Save</Button>
           </DialogActions>
         </Dialog>
       </Box>
@@ -865,12 +775,11 @@ function ClientSelector({ value, onPick }) {
           onChange={e => handlePick(e.target.value)}
         >
           {options.map(opt => (
-            <MenuItem key={opt.id} value={opt.id}>
-              {opt.label}
-            </MenuItem>
+            <MenuItem key={opt.id} value={opt.id}>{opt.label}</MenuItem>
           ))}
         </Select>
       </FormControl>
     </Box>
   );
 }
+

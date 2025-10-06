@@ -152,39 +152,66 @@ export default function ProjectTable() {
     }
   };
 
-  const fetchValidation = async () => {
-    try {
-      const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
-      if (!res.ok) throw new Error(`Server returned ${res.status}`);
-      const data = await res.json();
+  // helper: make sure validation values are arrays
+const normalizeOptions = (val) => {
+  if (Array.isArray(val)) return val.map(String).map(s => s.trim()).filter(Boolean);
+  if (val == null) return [];
+  if (typeof val === 'string') {
+    // support comma/semicolon and pipe separated lists
+    return val.split(/[;,|]\s*/g).map(s => s.trim()).filter(Boolean);
+  }
+  // some scripts might send {values:[...]} or {0:"A",1:"B"}
+  if (typeof val === 'object') {
+    if (Array.isArray(val.values)) return normalizeOptions(val.values);
+    return Object.values(val).map(String).map(s => s.trim()).filter(Boolean);
+  }
+  return [];
+};
 
-      // options map for dropdowns
-      setValidation(data?.validation || {});
+const MULTI_KEY = 'Project Multiselect Fields'; // must exactly match your Validation header
 
-      // column order
-      if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
-        setColumnOrder(data.columnOrder);
-      }
+const fetchValidation = async () => {
+  try {
+    const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    const data = await res.json();
 
-      // visible columns
-      if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
-        setVisibleColumns(data.visibleColumns);
-        localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
-      }
+    // 1) normalize validation maps so ALL are arrays
+    const rawValidation = data?.validation || {};
+    const normalizedValidation = Object.fromEntries(
+      Object.entries(rawValidation).map(([k, v]) => [k, normalizeOptions(v)])
+    );
+    setValidation(normalizedValidation);
 
-      // readonly
-      if (Array.isArray(data?.readonlyColumns)) {
-        setReadonlyColumns(new Set(data.readonlyColumns));
-      }
-
-      // multiselect list
-      if (Array.isArray(data?.multiselectFields)) {
-        setMultiselectFields(new Set(data.multiselectFields));
-      }
-    } catch (err) {
-      console.warn('Validation fetch failed', err);
+    // 2) visible columns
+    if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
+      setVisibleColumns(data.visibleColumns);
+      localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
     }
-  };
+
+    // 3) readonly columns
+    if (Array.isArray(data?.readonlyColumns)) {
+      setReadonlyColumns(new Set(data.readonlyColumns));
+    }
+
+    // 4) column order
+    if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
+      setColumnOrder(data.columnOrder);
+    }
+
+    // 5) multiselect fields:
+    //    prefer backend's multiselectFields; else fall back to the Validation column/row "Project Multiselect Fields"
+    let msRaw = data?.multiselectFields;
+    if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) {
+      msRaw = rawValidation[MULTI_KEY]; // could be array or CSV string or object
+    }
+    const msList = normalizeOptions(msRaw);
+    setMultiselectFields(new Set(msList));
+  } catch (err) {
+    console.warn('Validation fetch failed', err);
+  }
+};
+
 
   useEffect(() => {
     fetchProjects();

@@ -22,7 +22,6 @@ import {
   Checkbox,
   Button,
   Popover,
-  CircularProgress,
   InputAdornment,
   Chip,
   Paper
@@ -84,12 +83,24 @@ const formatDDMMYYYY_HHMMSSS = (v) => {
 };
 const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
 
+// split any stored multiselect string to array
+const splitMulti = (val) => {
+  if (Array.isArray(val)) return val;
+  if (!val) return [];
+  // split on comma or semicolon
+  return String(val)
+    .split(/[,;]\s*/g)
+    .map(s => s.trim())
+    .filter(Boolean);
+};
+
 export default function ProjectTable() {
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
+  const [rawHeaders, setRawHeaders] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [validation, setValidation] = useState({});
+  const [validation, setValidation] = useState({}); // { [header]: [options] }
 
   const [search, setSearch] = useState('');
   const [filters, setFilters] = useState({});
@@ -103,10 +114,15 @@ export default function ProjectTable() {
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
 
+  // from Validation controls
+  const [readonlyColumns, setReadonlyColumns] = useState(new Set());
+  const [multiselectFields, setMultiselectFields] = useState(new Set());
+  const [columnOrder, setColumnOrder] = useState([]);
+
   // Owner header (for auto-fill when picking client)
   const OWNER_HEADER = useMemo(() => {
     const lower = headers.map(h => String(h).toLowerCase());
-    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner');
+    const idx = lower.findIndex(h => h === 'owner' || h === 'account owner' || h === 'lead owner' || h === 'project owner' || h === 'requested by');
     return idx >= 0 ? headers[idx] : null;
   }, [headers]);
 
@@ -120,13 +136,13 @@ export default function ProjectTable() {
       const data = await res.json();
       if (!Array.isArray(data?.rows)) throw new Error('Invalid payload: rows missing');
 
-      // no auth filter: everyone sees all rows
       setRows(data.rows);
-      setHeaders(data.headers || []);
+      setRawHeaders(data.headers || []);
 
+      // visible columns initial
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem('visibleColumns-projects') || 'null');
-        setVisibleColumns(saved || data.headers);
+        if (saved) setVisibleColumns(saved);
       }
     } catch (err) {
       console.error(err);
@@ -141,10 +157,29 @@ export default function ProjectTable() {
       const res = await fetch(`${WEB_APP_BASE}?action=getValidation&sheet=Validation Tables`);
       if (!res.ok) throw new Error(`Server returned ${res.status}`);
       const data = await res.json();
+
+      // options map for dropdowns
       setValidation(data?.validation || {});
+
+      // column order
+      if (Array.isArray(data?.columnOrder) && data.columnOrder.length) {
+        setColumnOrder(data.columnOrder);
+      }
+
+      // visible columns
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
         setVisibleColumns(data.visibleColumns);
         localStorage.setItem('visibleColumns-projects', JSON.stringify(data.visibleColumns));
+      }
+
+      // readonly
+      if (Array.isArray(data?.readonlyColumns)) {
+        setReadonlyColumns(new Set(data.readonlyColumns));
+      }
+
+      // multiselect list
+      if (Array.isArray(data?.multiselectFields)) {
+        setMultiselectFields(new Set(data.multiselectFields));
       }
     } catch (err) {
       console.warn('Validation fetch failed', err);
@@ -156,6 +191,28 @@ export default function ProjectTable() {
     fetchValidation();
     // eslint-disable-next-line
   }, []);
+
+  // Apply column order from validation when both raw headers & order are known
+  useEffect(() => {
+    if (!rawHeaders.length) return;
+    if (columnOrder && columnOrder.length) {
+      // put ordered first, then any remaining headers
+      const set = new Set(columnOrder);
+      const ordered = [
+        ...columnOrder.filter(h => rawHeaders.includes(h)),
+        ...rawHeaders.filter(h => !set.has(h)),
+      ];
+      setHeaders(ordered);
+      // ensure visible columns match order if already chosen
+      if (visibleColumns.length) {
+        const vis = visibleColumns.filter(h => ordered.includes(h));
+        const rest = ordered.filter(h => !vis.includes(h));
+        setVisibleColumns([...vis, ...rest]); // keep current selection but align order
+      }
+    } else {
+      setHeaders(rawHeaders);
+    }
+  }, [rawHeaders, columnOrder]); // eslint-disable-line
 
   // Deduplicate to latest per Project ID for main table
   const latestByProjectId = useMemo(() => {
@@ -182,18 +239,18 @@ export default function ProjectTable() {
   const filteredRows = useMemo(() => {
     const tsKey = 'Timestamp';
     let out = [...latestByProjectId];
-  
+
     // search
     if (search) {
       const q = search.toLowerCase().trim();
       out = out.filter(r => headers.some(h => String(r[h] || '').toLowerCase().includes(q)));
     }
-  
-    // filters
+
+    // filters (single-select filters; multiselect filters can be added similarly if required)
     Object.entries(filters).forEach(([h, val]) => {
       if (val) out = out.filter(r => (r[h] || '') === val);
     });
-  
+
     // sort
     out.sort((a, b) => {
       // primary: chosen key if not Timestamp
@@ -209,7 +266,7 @@ export default function ProjectTable() {
       const delta = (db - da) || 0;
       return delta;
     });
-  
+
     return out;
   }, [latestByProjectId, headers, search, filters, sortConfig]);
 
@@ -234,12 +291,19 @@ export default function ProjectTable() {
 
   const onAdd = () => {
     const obj = {};
-    headers.forEach(h => (obj[h] = ''));
+    headers.forEach(h => (obj[h] = multiselectFields.has(h) ? [] : ''));
     setEditingRow(obj);
     setModalOpen(true);
   };
   const onEdit = row => {
-    setEditingRow({ ...row });
+    const obj = { ...row };
+    // hydrate multiselect fields into arrays
+    headers.forEach(h => {
+      if (multiselectFields.has(h)) {
+        obj[h] = splitMulti(obj[h]);
+      }
+    });
+    setEditingRow(obj);
     setModalOpen(true);
   };
   const handleSort = key => {
@@ -249,10 +313,26 @@ export default function ProjectTable() {
     }));
   };
 
-  // CORS-safe submit (append-only backend)
+  // Prepare payload: join multiselect arrays and trim strings
+  const serializeRow = (rowObj) => {
+    const out = {};
+    headers.forEach(h => {
+      const v = rowObj[h];
+      if (multiselectFields.has(h)) {
+        out[h] = Array.isArray(v) ? v.join(', ') : (v ?? '');
+      } else if (typeof v === 'string') {
+        out[h] = v.trim();
+      } else {
+        out[h] = v ?? '';
+      }
+    });
+    return out;
+  };
+
+  // CORS-safe submit (append/update backend)
   const handleSubmit = async () => {
     try {
-      const payload = { action: 'addOrUpdateProject', data: editingRow };
+      const payload = { action: 'addOrUpdateProject', data: serializeRow(editingRow || {}) };
       await fetch(WEB_APP_BASE, {
         method: 'POST',
         mode: 'no-cors', // avoids preflight
@@ -337,8 +417,26 @@ export default function ProjectTable() {
       // stored as "source:id|label" — display the label only
       return value.split('|').slice(1).join('|');
     }
+    // pretty print multiselect values as chips
+    if (multiselectFields.has(header)) {
+      const arr = splitMulti(value);
+      return (
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {arr.map((v, i) => (
+            <Chip key={`${header}-${i}`} size="small" variant="outlined" label={v} />
+          ))}
+        </Box>
+      );
+    }
     return String(value);
   };
+
+  // Basic curated filter list; feel free to extend with other validated fields
+  const FILTER_LIST = [
+    'Project Status',
+    'Project Manager',
+    'Task Status (Not Started / In Progress / Completed)'
+  ].filter(h => headers.includes(h));
 
   return (
     <ThemeProvider theme={theme}>
@@ -388,28 +486,25 @@ export default function ProjectTable() {
               }}
             />
 
-            {/* Sample filters; extend if needed */}
-            {['Project Status', 'Project Manager', 'Task Status (Not Started / In Progress / Completed)'].map(
-              h => (
-                <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
-                  <InputLabel>{h}</InputLabel>
-                  <Select
-                    label={h}
-                    value={filters[h] || ''}
-                    onChange={e => setFilters(prev => ({ ...prev, [h]: e.target.value }))}
-                  >
-                    <MenuItem value="">
-                      <em>All</em>
+            {FILTER_LIST.map(h => (
+              <FormControl key={h} size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>{h}</InputLabel>
+                <Select
+                  label={h}
+                  value={filters[h] || ''}
+                  onChange={e => setFilters(prev => ({ ...prev, [h]: e.target.value }))}
+                >
+                  <MenuItem value="">
+                    <em>All</em>
+                  </MenuItem>
+                  {(validation[h] || []).map(opt => (
+                    <MenuItem key={opt} value={opt}>
+                      {opt}
                     </MenuItem>
-                    {(validation[h] || []).map(opt => (
-                      <MenuItem key={opt} value={opt}>
-                        {opt}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              )
-            )}
+                  ))}
+                </Select>
+              </FormControl>
+            ))}
 
             <IconButton onClick={handleOpenColumns} title="Columns">
               <ViewColumnIcon />
@@ -565,49 +660,99 @@ export default function ProjectTable() {
           </DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {headers.map(h => (
-                <Grid item xs={12} sm={6} key={h}>
-                  {h === 'Client (Linked Deal/Account ID)' ? (
-                    <ClientSelector
-                      value={editingRow?.[h] || ''}
-                      onPick={({ value, owner }) =>
-                        setEditingRow(prev => ({
-                          ...prev,
-                          [h]: value,
-                          ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
-                        }))
-                      }
-                    />
-                  ) : validation[h]?.length > 0 ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{h}</InputLabel>
-                      <Select
-                        label={h}
+              {headers.map(h => {
+                const isReadonly = readonlyColumns.has(h);
+                const hasOptions = Array.isArray(validation[h]) && validation[h].length > 0;
+                const isMulti = multiselectFields.has(h);
+
+                if (h === 'Client (Linked Deal/Account ID)') {
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <ClientSelector
                         value={editingRow?.[h] || ''}
-                        onChange={e =>
-                          setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
+                        onPick={({ value, owner }) =>
+                          setEditingRow(prev => ({
+                            ...prev,
+                            [h]: value,
+                            ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {})
+                          }))
                         }
-                      >
-                        {validation[h].map(opt => (
-                          <MenuItem key={opt} value={opt}>
-                            {opt}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
+                      />
+                    </Grid>
+                  );
+                }
+
+                if (hasOptions && isMulti) {
+                  const valueArr = Array.isArray(editingRow?.[h]) ? editingRow[h] : splitMulti(editingRow?.[h]);
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <FormControl fullWidth size="small" disabled={isReadonly}>
+                        <InputLabel>{h}</InputLabel>
+                        <Select
+                          label={h}
+                          multiple
+                          value={valueArr}
+                          onChange={(e) =>
+                            setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
+                          }
+                          renderValue={(selected) => (
+                            <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                              {selected.map((val) => (
+                                <Chip key={`${h}-${val}`} size="small" variant="outlined" label={val} />
+                              ))}
+                            </Box>
+                          )}
+                        >
+                          {validation[h].map(opt => (
+                            <MenuItem key={opt} value={opt}>
+                              <Checkbox size="small" checked={valueArr.indexOf(opt) > -1} />
+                              {opt}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  );
+                }
+
+                if (hasOptions) {
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <FormControl fullWidth size="small" disabled={isReadonly}>
+                        <InputLabel>{h}</InputLabel>
+                        <Select
+                          label={h}
+                          value={editingRow?.[h] || ''}
+                          onChange={e =>
+                            setEditingRow(prev => ({ ...prev, [h]: e.target.value }))
+                          }
+                        >
+                          {validation[h].map(opt => (
+                            <MenuItem key={opt} value={opt}>
+                              {opt}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                  );
+                }
+
+                return (
+                  <Grid item xs={12} sm={6} key={h}>
                     <TextField
                       fullWidth
                       size="small"
                       label={h}
-                      value={editingRow?.[h] || ''}
+                      value={Array.isArray(editingRow?.[h]) ? (editingRow?.[h] || []).join(', ') : (editingRow?.[h] || '')}
                       onChange={e => setEditingRow(prev => ({ ...prev, [h]: e.target.value }))}
                       multiline={isMultilineHeader(h)}
                       minRows={isMultilineHeader(h) ? 3 : 1}
+                      disabled={isReadonly}
                     />
-                  )}
-                </Grid>
-              ))}
+                  </Grid>
+                );
+              })}
             </Grid>
           </DialogContent>
           <DialogActions>
@@ -677,7 +822,7 @@ function ClientSelector({ value, onPick }) {
   };
 
   return (
-    <Box sx={{ display: 'flex', gap: 1 }}>
+    <Box sx={{ display: 'flex', gap: 1, width: '100%' }}>
       <FormControl size="small" sx={{ minWidth: 160 }}>
         <InputLabel>Client Source</InputLabel>
         <Select label="Client Source" value={source} onChange={e => setSource(e.target.value)}>

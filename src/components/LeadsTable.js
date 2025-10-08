@@ -40,6 +40,17 @@ const normalizeUrl = (val = '') => {
 };
 const displayUrl = (val = '') => String(val).trim().replace(/^https?:\/\//i, '');
 
+/* ---------- sort helpers ---------- */
+const safeDate = (v) => {
+  const d = new Date(v);
+  return isNaN(d.getTime()) ? 0 : d.getTime();
+};
+
+/* ---------- key helper: Lead ID primary, Mobile fallback ---------- */
+const getLeadKey = (row = {}) =>
+  String(row['Lead ID'] || row['Mobile Number'] || '').trim();
+
+/* ---------- theme ---------- */
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -74,9 +85,12 @@ const LeadsTable = () => {
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [entryType, setEntryType] = useState('');
 
+  // Logs modal states
   const [leadLogs, setLeadLogs] = useState([]);
+  const [logColumns, setLogColumns] = useState([]);
   const [logsOpen, setLogsOpen] = useState(false);
   const [allLeads, setAllLeads] = useState([]);
+  const [logsKeyInfo, setLogsKeyInfo] = useState({ mobile: '', name: '', company: '' });
 
   const { user } = useAuth();
   const username = user?.username;
@@ -103,12 +117,13 @@ const LeadsTable = () => {
 
         setAllLeads(filteredData);
 
-        // dedupe by Mobile Number keeping latest Timestamp
+        // dedupe by Lead ID (fallback Mobile) keeping latest Timestamp
         const seen = new Map();
         filteredData.forEach(row => {
-          const key = row['Mobile Number'];
+          const key = getLeadKey(row);
+          if (!key) return; // skip if no identifier
           const existing = seen.get(key);
-          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+          if (!existing || safeDate(row.Timestamp) > safeDate(existing.Timestamp)) {
             seen.set(key, row);
           }
         });
@@ -194,10 +209,46 @@ const LeadsTable = () => {
     localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([]));
   };
 
+  /* ---------- Logs: show full rows, newest first ---------- */
+  const preferredOrderBoost = (columns) => {
+    const priority = [
+      'Timestamp',
+      'Lead ID',
+      'Lead Status',
+      'Lead Owner',
+      'Remarks',
+      'Quotation Link',
+      'First Name',
+      'Last Name',
+      'Company',
+      'Mobile Number',
+      'Email ID'
+    ];
+    const set = new Set(priority);
+    const prioritized = priority.filter(c => columns.includes(c));
+    const rest = columns.filter(c => !set.has(c)).sort((a, b) => a.localeCompare(b));
+    return [...prioritized, ...rest];
+  };
+
   const handleViewLogs = (leadRow) => {
-    const key = leadRow['Mobile Number'];
-    const logs = allLeads.filter(lead => lead['Mobile Number'] === key);
+    const key = getLeadKey(leadRow);
+    const logs = allLeads
+      .filter(lead => getLeadKey(lead) === key)
+      .sort((a, b) => safeDate(b.Timestamp) - safeDate(a.Timestamp)); // newest first
+
+    // Dynamic union of columns
+    const colSet = new Set();
+    logs.forEach(row => Object.keys(row || {}).forEach(k => colSet.add(k)));
+    const allCols = preferredOrderBoost(Array.from(colSet));
+
+    setLogsKeyInfo({
+      mobile: leadRow['Mobile Number'] || '',
+      name: [leadRow['First Name'], leadRow['Last Name']].filter(Boolean).join(' ').trim(),
+      company: leadRow['Company'] || ''
+    });
+
     setLeadLogs(logs);
+    setLogColumns(allCols);
     setLogsOpen(true);
   };
 
@@ -397,30 +448,55 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Logs Modal */}
-        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Lead Change Logs</DialogTitle>
-          <DialogContent>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Timestamp</TableCell>
-                  <TableCell>Lead Status</TableCell>
-                  <TableCell>Lead Owner</TableCell>
-                  <TableCell>Remarks</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {leadLogs.map((log, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{log.Timestamp}</TableCell>
-                    <TableCell>{log['Lead Status']}</TableCell>
-                    <TableCell>{log['Lead Owner']}</TableCell>
-                    <TableCell>{log['Remarks']}</TableCell>
+        {/* Logs Modal - FULL ROWS, NEWEST FIRST */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
+          <DialogTitle>
+            Lead Change Logs
+            <Typography variant="body2" sx={{ mt: 0.5 }}>
+              {logsKeyInfo.company ? `${logsKeyInfo.company} • ` : ''}
+              {logsKeyInfo.name ? `${logsKeyInfo.name} • ` : ''}
+              {logsKeyInfo.mobile ? `+91 ${logsKeyInfo.mobile}` : ''}
+            </Typography>
+          </DialogTitle>
+          <DialogContent dividers>
+            {leadLogs.length === 0 ? (
+              <Typography>No logs found for this lead.</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow>
+                    {logColumns.map(col => (
+                      <TableCell key={col} sx={{ fontWeight: 600 }}>{col}</TableCell>
+                    ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {leadLogs.map((log, idx) => (
+                    <TableRow key={idx}>
+                      {logColumns.map((col) => {
+                        const val = log[col] ?? '';
+                        if (col === 'Quotation Link' && looksLikeUrl(val)) {
+                          return (
+                            <TableCell key={col}>
+                              <MUILink
+                                href={normalizeUrl(val)}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                underline="hover"
+                                sx={{ wordBreak: 'break-all' }}
+                              >
+                                {displayUrl(val)}
+                              </MUILink>
+                            </TableCell>
+                          );
+                        }
+                        return <TableCell key={col}>{String(val)}</TableCell>;
+                      })}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </DialogContent>
         </Dialog>
 

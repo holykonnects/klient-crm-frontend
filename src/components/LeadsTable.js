@@ -1,9 +1,10 @@
 // LeadsTable.js
-import React, { useEffect, useMemo, useState, useDeferredValue } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover, InputAdornment
+  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover,
+  InputAdornment, TablePagination
 } from '@mui/material';
 import { Link as MUILink } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -40,7 +41,7 @@ const normalizeUrl = (val = '') => {
 };
 const displayUrl = (val = '') => String(val).trim().replace(/^https?:\/\//i, '');
 
-/* ---------- sort helpers ---------- */
+/* ---------- sort/helpers ---------- */
 const safeDate = (v) => {
   const d = new Date(v);
   return isNaN(d.getTime()) ? 0 : d.getTime();
@@ -70,7 +71,6 @@ const LeadsTable = () => {
   // live search state
   const [searchInput, setSearchInput] = useState('');
   const debouncedSearch = useDebouncedValue(searchInput, 250);
-  const deferredSearch = useDeferredValue(debouncedSearch);
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -84,6 +84,13 @@ const LeadsTable = () => {
   const [selectedEntryRow, setSelectedEntryRow] = useState(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [entryType, setEntryType] = useState('');
+
+  // submit guard
+  const [submitting, setSubmitting] = useState(false);
+
+  // pagination
+  const [page, setPage] = useState(0);
+  const [rowsPerPage, setRowsPerPage] = useState(100);
 
   // Logs modal states
   const [leadLogs, setLeadLogs] = useState([]);
@@ -161,23 +168,28 @@ const LeadsTable = () => {
     }));
   };
 
-  const sortedLeads = useMemo(() => {
-    if (!sortConfig.key) return leads;
-    const { key, direction } = sortConfig;
-    const copy = [...leads];
-    copy.sort((a, b) => {
-      const aVal = a[key] ?? '';
-      const bVal = b[key] ?? '';
-      const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
-      return direction === 'asc' ? cmp : -cmp;
-    });
-    return copy;
-  }, [leads, sortConfig]);
+  /* ---------- memoized unique values for dropdowns ---------- */
+  const uniqueValues = useMemo(() => {
+    const status = new Set();
+    const source = new Set();
+    const owner = new Set();
+    for (const d of leads) {
+      if (d['Lead Status']) status.add(d['Lead Status']);
+      if (d['Lead Source']) source.add(d['Lead Source']);
+      if (d['Lead Owner']) owner.add(d['Lead Owner']);
+    }
+    return {
+      status: [...status],
+      source: [...source],
+      owner: [...owner]
+    };
+  }, [leads]);
 
-  // live filter
+  /* ---------- filter first, then sort (on smaller set) ---------- */
   const filteredLeads = useMemo(() => {
-    const q = (deferredSearch || '').toLowerCase().trim();
-    return sortedLeads.filter(lead => {
+    const q = (debouncedSearch || '').toLowerCase().trim();
+
+    const filtered = leads.filter(lead => {
       const matchesSearch = !q || ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(k =>
         String(lead[k] || '').toLowerCase().includes(q)
       );
@@ -186,9 +198,24 @@ const LeadsTable = () => {
       const matchesOwner  = !filterOwner  || lead['Lead Owner']  === filterOwner;
       return matchesSearch && matchesStatus && matchesSource && matchesOwner;
     });
-  }, [sortedLeads, deferredSearch, filterStatus, filterSource, filterOwner]);
 
-  const unique = (key) => [...new Set(leads.map(d => d[key]).filter(Boolean))];
+    if (!sortConfig.key) return filtered;
+
+    const { key, direction } = sortConfig;
+    return [...filtered].sort((a, b) => {
+      const aVal = a[key] ?? '';
+      const bVal = b[key] ?? '';
+      const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
+      return direction === 'asc' ? cmp : -cmp;
+    });
+  }, [leads, debouncedSearch, filterStatus, filterSource, filterOwner, sortConfig]);
+
+  /* ---------- pagination (and cap while searching) ---------- */
+  const pagedRows = useMemo(() => {
+    if ((debouncedSearch || '').trim()) return filteredLeads.slice(0, 300); // extra snappy while typing
+    const start = page * rowsPerPage;
+    return filteredLeads.slice(start, start + rowsPerPage);
+  }, [filteredLeads, page, rowsPerPage, debouncedSearch]);
 
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev => {
@@ -257,11 +284,18 @@ const LeadsTable = () => {
     setEditRow(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleEditSubmit = async () => {
+  const handleEditSubmit = async (e) => {
+    if (e?.preventDefault) e.preventDefault();
+
+    // Guard against double-submits
+    if (submitting) return;
+    setSubmitting(true);
+
     const updated = {
       ...editRow,
       'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
     };
+
     try {
       await fetch(formSubmitUrl, {
         method: 'POST',
@@ -271,8 +305,12 @@ const LeadsTable = () => {
       });
       alert('✅ Lead updated successfully');
       setEditRow(null);
-    } catch {
+    } catch (err) {
+      console.error(err);
       alert('❌ Error updating lead');
+    } finally {
+      // Always release the lock
+      setTimeout(() => setSubmitting(false), 0);
     }
   };
 
@@ -298,7 +336,7 @@ const LeadsTable = () => {
               size="small"
               label="Search"
               value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
+              onChange={(e) => { setSearchInput(e.target.value); setPage(0); }}
               sx={{ minWidth: 240 }}
               InputProps={{
                 startAdornment: (
@@ -311,7 +349,7 @@ const LeadsTable = () => {
                     <IconButton
                       aria-label="clear search"
                       edge="end"
-                      onClick={() => setSearchInput('')}
+                      onClick={() => { setSearchInput(''); setPage(0); }}
                       size="small"
                     >
                       <ClearIcon fontSize="small" />
@@ -332,16 +370,19 @@ const LeadsTable = () => {
                   filterOwner
                 }
                 label={filterKey}
-                onChange={e =>
-                  filterKey === 'Lead Status' ? setFilterStatus(e.target.value) :
-                  filterKey === 'Lead Source' ? setFilterSource(e.target.value) :
-                  setFilterOwner(e.target.value)
-                }
+                onChange={e => {
+                  if (filterKey === 'Lead Status') setFilterStatus(e.target.value);
+                  else if (filterKey === 'Lead Source') setFilterSource(e.target.value);
+                  else setFilterOwner(e.target.value);
+                  setPage(0);
+                }}
               >
                 <MenuItem value="">All</MenuItem>
-                {unique(filterKey).map(item => (
-                  <MenuItem key={item} value={item}>{item}</MenuItem>
-                ))}
+                {(filterKey === 'Lead Status' ? uniqueValues.status
+                  : filterKey === 'Lead Source' ? uniqueValues.source
+                  : uniqueValues.owner).map(item => (
+                    <MenuItem key={item} value={item}>{item}</MenuItem>
+                  ))}
               </Select>
             </FormControl>
           ))}
@@ -382,7 +423,7 @@ const LeadsTable = () => {
             </TableRow>
           </TableHead>
           <TableBody>
-            {filteredLeads.map((lead, index) => (
+            {pagedRows.map((lead, index) => (
               <TableRow key={index}>
                 {visibleColumns.map((key, i) => {
                   const value = lead[key];
@@ -406,15 +447,25 @@ const LeadsTable = () => {
                   return <TableCell key={i}>{value}</TableCell>;
                 })}
                 <TableCell>
-                  <IconButton onClick={() => setViewRow(lead)}><VisibilityIcon /></IconButton>
-                  <IconButton onClick={() => setEditRow(lead)}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleViewLogs(lead)}><HistoryIcon /></IconButton>
-                  <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')}><EventIcon /></IconButton>
+                  <IconButton onClick={() => setViewRow(lead)} disabled={submitting}><VisibilityIcon /></IconButton>
+                  <IconButton onClick={() => setEditRow(lead)} disabled={submitting}><EditIcon /></IconButton>
+                  <IconButton onClick={() => handleViewLogs(lead)} disabled={submitting}><HistoryIcon /></IconButton>
+                  <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')} disabled={submitting}><EventIcon /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
+
+        <TablePagination
+          component="div"
+          count={filteredLeads.length}
+          page={page}
+          onPageChange={(_, p) => setPage(p)}
+          rowsPerPage={rowsPerPage}
+          onRowsPerPageChange={(e) => { setRowsPerPage(parseInt(e.target.value, 10)); setPage(0); }}
+          rowsPerPageOptions={[50, 100, 200]}
+        />
 
         {/* View Modal */}
         <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
@@ -501,14 +552,34 @@ const LeadsTable = () => {
         </Dialog>
 
         {/* Edit Modal */}
-        <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
+        <Dialog
+          open={!!editRow}
+          onClose={() => {
+            if (submitting) return; // prevent close during save
+            setSubmitting(false);
+            setEditRow(null);
+          }}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle>Edit Lead</DialogTitle>
-          <DialogContent dividers>
+
+          {/* Wrap fields in a form so Enter uses the guarded handler */}
+          <DialogContent
+            dividers
+            component="form"
+            onSubmit={handleEditSubmit}
+            onKeyDown={(e) => {
+              if (submitting && (e.key === 'Enter' || e.key === 'NumpadEnter')) {
+                e.preventDefault();
+              }
+            }}
+          >
             <Grid container spacing={2}>
               {editRow && Object.keys(editRow).map((key, i) => (
                 <Grid item xs={6} key={i}>
                   {validationOptions[key] ? (
-                    <FormControl fullWidth size="small">
+                    <FormControl fullWidth size="small" disabled={submitting}>
                       <InputLabel>{key}</InputLabel>
                       <Select
                         name={key}
@@ -529,14 +600,33 @@ const LeadsTable = () => {
                       value={editRow[key]}
                       onChange={handleUpdateChange}
                       size="small"
+                      disabled={submitting}
+                      autoFocus={i === 0}
                     />
                   )}
                 </Grid>
               ))}
             </Grid>
-            <Box mt={3} display="flex" justifyContent="flex-end">
-              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleEditSubmit}>
-                Save Changes
+
+            <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+              <Button
+                onClick={() => {
+                  if (submitting) return;
+                  setEditRow(null);
+                }}
+                disabled={submitting}
+                variant="text"
+              >
+                Cancel
+              </Button>
+
+              <Button
+                type="submit"
+                variant="contained"
+                sx={{ backgroundColor: '#6495ED' }}
+                disabled={submitting}
+              >
+                {submitting ? 'Saving…' : 'Save Changes'}
               </Button>
             </Box>
           </DialogContent>

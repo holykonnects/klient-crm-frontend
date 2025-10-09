@@ -84,7 +84,6 @@ const LeadsTable = () => {
   const [selectedEntryRow, setSelectedEntryRow] = useState(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [entryType, setEntryType] = useState('');
-  const [submitting, setSubmitting] = useState(false);
 
   // Logs modal states
   const [leadLogs, setLeadLogs] = useState([]);
@@ -258,35 +257,24 @@ const LeadsTable = () => {
     setEditRow(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleEditSubmit = async (e) => {
-  if (e?.preventDefault) e.preventDefault();
-
-  // 🚧 Guard against double-submits
-  if (submitting) return;
-  setSubmitting(true);
-
-  const updated = {
-    ...editRow,
-    'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
+  const handleEditSubmit = async () => {
+    const updated = {
+      ...editRow,
+      'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
+    };
+    try {
+      await fetch(formSubmitUrl, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(updated)
+      });
+      alert('✅ Lead updated successfully');
+      setEditRow(null);
+    } catch {
+      alert('❌ Error updating lead');
+    }
   };
-
-  try {
-    await fetch(formSubmitUrl, {
-      method: 'POST',
-      mode: 'no-cors',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated)
-    });
-    alert('✅ Lead updated successfully');
-    setEditRow(null);
-  } catch (err) {
-    console.error(err);
-    alert('❌ Error updating lead');
-  } finally {
-    setSubmitting(false);
-  }
-};
-
 
   const handleOpenMeetingFromRow = (row, type) => {
     setSelectedEntryRow(row);
@@ -513,84 +501,46 @@ const LeadsTable = () => {
         </Dialog>
 
         {/* Edit Modal */}
-<Dialog
-  open={!!editRow}
-  onClose={() => {
-    if (submitting) return; // ⛔ prevent close during save
-    setEditRow(null);
-  }}
-  maxWidth="md"
-  fullWidth
->
-  <DialogTitle>Edit Lead</DialogTitle>
-
-  {/* Wrap fields in a form so Enter uses the guarded handler */}
-  <DialogContent
-    dividers
-    component="form"
-    onSubmit={handleEditSubmit}
-    onKeyDown={(e) => {
-      if (e.key === 'Enter' && submitting) {
-        e.preventDefault(); e.stopPropagation(); // block rapid Enter presses
-      }
-    }}
-  >
-    <Grid container spacing={2}>
-      {editRow && Object.keys(editRow).map((key, i) => (
-        <Grid item xs={6} key={i}>
-          {validationOptions[key] ? (
-            <FormControl fullWidth size="small" disabled={submitting}>
-              <InputLabel>{key}</InputLabel>
-              <Select
-                name={key}
-                value={editRow[key]}
-                onChange={handleUpdateChange}
-                label={key}
-              >
-                {validationOptions[key].map((opt, idx) => (
-                  <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          ) : (
-            <TextField
-              fullWidth
-              label={key}
-              name={key}
-              value={editRow[key]}
-              onChange={handleUpdateChange}
-              size="small"
-              disabled={submitting}
-            />
-          )}
-        </Grid>
-      ))}
-    </Grid>
-
-    <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
-      <Button
-        onClick={() => {
-          if (submitting) return;
-          setEditRow(null);
-        }}
-        disabled={submitting}
-        variant="text"
-      >
-        Cancel
-      </Button>
-
-      <Button
-        type="submit"
-        variant="contained"
-        sx={{ backgroundColor: '#6495ED' }}
-        disabled={submitting}
-      >
-        {submitting ? 'Saving…' : 'Save Changes'}
-      </Button>
-    </Box>
-  </DialogContent>
-</Dialog>
-
+        <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
+          <DialogTitle>Edit Lead</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={2}>
+              {editRow && Object.keys(editRow).map((key, i) => (
+                <Grid item xs={6} key={i}>
+                  {validationOptions[key] ? (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>{key}</InputLabel>
+                      <Select
+                        name={key}
+                        value={editRow[key]}
+                        onChange={handleUpdateChange}
+                        label={key}
+                      >
+                        {validationOptions[key].map((opt, idx) => (
+                          <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      label={key}
+                      name={key}
+                      value={editRow[key]}
+                      onChange={handleUpdateChange}
+                      size="small"
+                    />
+                  )}
+                </Grid>
+              ))}
+            </Grid>
+            <Box mt={3} display="flex" justifyContent="flex-end">
+              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleEditSubmit}>
+                Save Changes
+              </Button>
+            </Box>
+          </DialogContent>
+        </Dialog>
 
         {showCalendarModal && (
           <CalendarView

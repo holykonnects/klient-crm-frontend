@@ -553,28 +553,22 @@ const LeadsTable = () => {
 
         {/* Edit Modal */}
         <Dialog
-          open={!!editRow}
-          onClose={() => {
-            if (submitting) return; // prevent close during save
-            setSubmitting(false);
-            setEditRow(null);
-          }}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle>Edit Lead</DialogTitle>
-
-          {/* Wrap fields in a form so Enter uses the guarded handler */}
-          <DialogContent
-            dividers
-            component="form"
-            onSubmit={handleEditSubmit}
-            onKeyDown={(e) => {
-              if (submitting && (e.key === 'Enter' || e.key === 'NumpadEnter')) {
-                e.preventDefault();
-              }
-            }}
-          >
+        open={!!editRow}
+        onClose={() => {
+          if (submitting) return; // prevent close during save
+          setSubmitting(false);
+          setEditRow(null);
+        }}
+        maxWidth="md"
+        fullWidth
+      >
+        <DialogTitle>Edit Lead</DialogTitle>
+      
+        {/* ✅ Use a real <form> wrapper */}
+        <form onSubmit={handleEditSubmit} onKeyDown={(e) => {
+          if (submitting && (e.key === 'Enter' || e.key === 'NumpadEnter')) e.preventDefault();
+        }}>
+          <DialogContent dividers>
             <Grid container spacing={2}>
               {editRow && Object.keys(editRow).map((key, i) => (
                 <Grid item xs={6} key={i}>
@@ -607,7 +601,7 @@ const LeadsTable = () => {
                 </Grid>
               ))}
             </Grid>
-
+      
             <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
               <Button
                 onClick={() => {
@@ -619,7 +613,8 @@ const LeadsTable = () => {
               >
                 Cancel
               </Button>
-
+      
+              {/* ✅ This actually submits the <form> */}
               <Button
                 type="submit"
                 variant="contained"
@@ -630,7 +625,9 @@ const LeadsTable = () => {
               </Button>
             </Box>
           </DialogContent>
-        </Dialog>
+        </form>
+      </Dialog>
+
 
         {showCalendarModal && (
           <CalendarView

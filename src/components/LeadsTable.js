@@ -1,5 +1,12 @@
-// LeadsTable.js
-import React, { useEffect, useMemo, useState } from 'react';
+// LeadsTable.js — optimized for typing responsiveness
+import React, {
+  useEffect,
+  useMemo,
+  useState,
+  useDeferredValue,
+  startTransition,
+  useCallback
+} from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -64,13 +71,100 @@ const selectorStyle = {
   fontSize: 8
 };
 
+/* =====================================
+   Edit Dialog (isolated to avoid table re-renders)
+   ===================================== */
+const EditLeadDialog = React.memo(function EditLeadDialog({
+  open,
+  row,
+  validationOptions,
+  onClose,
+  onSubmit,
+  submitting
+}) {
+  const [form, setForm] = useState(() => row || {});
+  useEffect(() => { setForm(row || {}); }, [row]);
+
+  // Keep typing smooth even if parent is busy
+  const deferredForm = useDeferredValue(form);
+
+  const handleChange = useCallback((e) => {
+    const { name, value } = e.target;
+    startTransition(() => {
+      setForm(prev => ({ ...prev, [name]: value }));
+    });
+  }, []);
+
+  const handleSubmit = useCallback((e) => {
+    e.preventDefault();
+    onSubmit({
+      ...deferredForm,
+      'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
+    });
+  }, [onSubmit, deferredForm]);
+
+  return (
+    <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="md" fullWidth keepMounted>
+      <DialogTitle>Edit Lead</DialogTitle>
+      <form onSubmit={handleSubmit} onKeyDown={(e) => {
+        if (submitting && (e.key === 'Enter' || e.key === 'NumpadEnter')) e.preventDefault();
+      }}>
+        <DialogContent dividers>
+          <Grid container spacing={2}>
+            {row && Object.keys(row).map((key, i) => (
+              <Grid item xs={6} key={key}>
+                {validationOptions?.[key] ? (
+                  <FormControl fullWidth size="small" disabled={submitting}>
+                    <InputLabel>{key}</InputLabel>
+                    <Select
+                      name={key}
+                      value={form[key] ?? ''}
+                      onChange={handleChange}
+                      label={key}
+                      MenuProps={{ disablePortal: true }}
+                    >
+                      {validationOptions[key].map((opt, idx) => (
+                        <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    label={key}
+                    name={key}
+                    value={form[key] ?? ''}
+                    onChange={handleChange}
+                    size="small"
+                    disabled={submitting}
+                    autoFocus={i === 0}
+                    inputProps={{ autoComplete: 'off', spellCheck: 'false' }}
+                  />
+                )}
+              </Grid>
+            ))}
+          </Grid>
+
+          <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
+            <Button onClick={onClose} disabled={submitting} variant="text">Cancel</Button>
+            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }} disabled={submitting}>
+              {submitting ? 'Saving…' : 'Save Changes'}
+            </Button>
+          </Box>
+        </DialogContent>
+      </form>
+    </Dialog>
+  );
+});
+
 const LeadsTable = () => {
   const [leads, setLeads] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // live search state
+  // live search state (deferred + debounced)
   const [searchInput, setSearchInput] = useState('');
-  const debouncedSearch = useDebouncedValue(searchInput, 250);
+  const deferredSearchInput = useDeferredValue(searchInput);
+  const debouncedSearch = useDebouncedValue(deferredSearchInput, 200);
 
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
@@ -185,7 +279,7 @@ const LeadsTable = () => {
     };
   }, [leads]);
 
-  /* ---------- filter first, then sort (on smaller set) ---------- */
+  /* ---------- filters (search deferred+debounced) ---------- */
   const filteredLeads = useMemo(() => {
     const q = (debouncedSearch || '').toLowerCase().trim();
 
@@ -279,46 +373,60 @@ const LeadsTable = () => {
     setLogsOpen(true);
   };
 
-  const handleUpdateChange = (e) => {
-    const { name, value } = e.target;
-    setEditRow(prev => ({ ...prev, [name]: value }));
-  };
-
-  const handleEditSubmit = async (e) => {
-    if (e?.preventDefault) e.preventDefault();
-
-    // Guard against double-submits
-    if (submitting) return;
-    setSubmitting(true);
-
-    const updated = {
-      ...editRow,
-      'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
-    };
-
-    try {
-      await fetch(formSubmitUrl, {
-        method: 'POST',
-        mode: 'no-cors',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updated)
-      });
-      alert('✅ Lead updated successfully');
-      setEditRow(null);
-    } catch (err) {
-      console.error(err);
-      alert('❌ Error updating lead');
-    } finally {
-      // Always release the lock
-      setTimeout(() => setSubmitting(false), 0);
-    }
-  };
-
   const handleOpenMeetingFromRow = (row, type) => {
     setSelectedEntryRow(row);
     setEntryType(type); // 'Lead', 'Account', 'Deal'
     setShowCalendarModal(true);
   };
+
+  // --- typing-friendly handlers ---
+  const onSearchChange = useCallback((e) => {
+    const v = e.target.value;
+    startTransition(() => setSearchInput(v));
+    setPage(0);
+  }, []);
+
+  const setStatusFast = useCallback((v) => { startTransition(() => setFilterStatus(v)); setPage(0); }, []);
+  const setSourceFast = useCallback((v) => { startTransition(() => setFilterSource(v)); setPage(0); }, []);
+  const setOwnerFast  = useCallback((v) => { startTransition(() => setFilterOwner(v));  setPage(0); }, []);
+
+  const handleOpenEdit = useCallback((row) => setEditRow(row), []);
+
+  // Memoize the table body so unrelated state (like modal typing) doesn't rebuild rows
+  const tableBodyMemo = useMemo(() => (
+    <TableBody>
+      {pagedRows.map((lead, index) => (
+        <TableRow key={index}>
+          {visibleColumns.map((key, i) => {
+            const value = lead[key];
+            if (key === 'Quotation Link' && looksLikeUrl(value)) {
+              const href = normalizeUrl(value);
+              return (
+                <TableCell key={i}>
+                  <MUILink
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    underline="hover"
+                    sx={{ wordBreak: 'break-all' }}
+                  >
+                    {displayUrl(value)}
+                  </MUILink>
+                </TableCell>
+              );
+            }
+            return <TableCell key={i}>{value}</TableCell>;
+          })}
+          <TableCell>
+            <IconButton onClick={() => setViewRow(lead)} disabled={submitting}><VisibilityIcon /></IconButton>
+            <IconButton onClick={() => handleOpenEdit(lead)} disabled={submitting}><EditIcon /></IconButton>
+            <IconButton onClick={() => handleViewLogs(lead)} disabled={submitting}><HistoryIcon /></IconButton>
+            <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')} disabled={submitting}><EventIcon /></IconButton>
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  ), [pagedRows, visibleColumns, submitting, handleOpenEdit]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -330,13 +438,13 @@ const LeadsTable = () => {
         </Box>
 
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          {/* Search (live, debounced, no helper text) */}
+          {/* Search (deferred + debounced) */}
           <Box display="flex" alignItems="center">
             <TextField
               size="small"
               label="Search"
               value={searchInput}
-              onChange={(e) => { setSearchInput(e.target.value); setPage(0); }}
+              onChange={onSearchChange}
               sx={{ minWidth: 240 }}
               InputProps={{
                 startAdornment: (
@@ -357,6 +465,7 @@ const LeadsTable = () => {
                   </InputAdornment>
                 ) : null
               }}
+              inputProps={{ autoComplete: 'off', spellCheck: 'false', inputMode: 'search' }}
             />
           </Box>
 
@@ -371,11 +480,12 @@ const LeadsTable = () => {
                 }
                 label={filterKey}
                 onChange={e => {
-                  if (filterKey === 'Lead Status') setFilterStatus(e.target.value);
-                  else if (filterKey === 'Lead Source') setFilterSource(e.target.value);
-                  else setFilterOwner(e.target.value);
-                  setPage(0);
+                  const v = e.target.value;
+                  if (filterKey === 'Lead Status') setStatusFast(v);
+                  else if (filterKey === 'Lead Source') setSourceFast(v);
+                  else setOwnerFast(v);
                 }}
+                MenuProps={{ disablePortal: true }}
               >
                 <MenuItem value="">All</MenuItem>
                 {(filterKey === 'Lead Status' ? uniqueValues.status
@@ -422,39 +532,7 @@ const LeadsTable = () => {
               <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
             </TableRow>
           </TableHead>
-          <TableBody>
-            {pagedRows.map((lead, index) => (
-              <TableRow key={index}>
-                {visibleColumns.map((key, i) => {
-                  const value = lead[key];
-                  // Auto-link ONLY Quotation Link column
-                  if (key === 'Quotation Link' && looksLikeUrl(value)) {
-                    const href = normalizeUrl(value);
-                    return (
-                      <TableCell key={i}>
-                        <MUILink
-                          href={href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          underline="hover"
-                          sx={{ wordBreak: 'break-all' }}
-                        >
-                          {displayUrl(value)}
-                        </MUILink>
-                      </TableCell>
-                    );
-                  }
-                  return <TableCell key={i}>{value}</TableCell>;
-                })}
-                <TableCell>
-                  <IconButton onClick={() => setViewRow(lead)} disabled={submitting}><VisibilityIcon /></IconButton>
-                  <IconButton onClick={() => setEditRow(lead)} disabled={submitting}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleViewLogs(lead)} disabled={submitting}><HistoryIcon /></IconButton>
-                  <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')} disabled={submitting}><EventIcon /></IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
+          {tableBodyMemo}
         </Table>
 
         <TablePagination
@@ -468,7 +546,7 @@ const LeadsTable = () => {
         />
 
         {/* View Modal */}
-        <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>
+        <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth keepMounted>
           <DialogTitle>View Lead</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
@@ -500,7 +578,7 @@ const LeadsTable = () => {
         </Dialog>
 
         {/* Logs Modal - FULL ROWS, NEWEST FIRST */}
-        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth keepMounted>
           <DialogTitle>
             Lead Change Logs
             <Typography variant="body2" sx={{ mt: 0.5 }}>
@@ -551,83 +629,33 @@ const LeadsTable = () => {
           </DialogContent>
         </Dialog>
 
-        {/* Edit Modal */}
-        <Dialog
-        open={!!editRow}
-        onClose={() => {
-          if (submitting) return; // prevent close during save
-          setSubmitting(false);
-          setEditRow(null);
-        }}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Edit Lead</DialogTitle>
-      
-        {/* ✅ Use a real <form> wrapper */}
-        <form onSubmit={handleEditSubmit} onKeyDown={(e) => {
-          if (submitting && (e.key === 'Enter' || e.key === 'NumpadEnter')) e.preventDefault();
-        }}>
-          <DialogContent dividers>
-            <Grid container spacing={2}>
-              {editRow && Object.keys(editRow).map((key, i) => (
-                <Grid item xs={6} key={i}>
-                  {validationOptions[key] ? (
-                    <FormControl fullWidth size="small" disabled={submitting}>
-                      <InputLabel>{key}</InputLabel>
-                      <Select
-                        name={key}
-                        value={editRow[key]}
-                        onChange={handleUpdateChange}
-                        label={key}
-                      >
-                        {validationOptions[key].map((opt, idx) => (
-                          <MenuItem key={idx} value={opt}>{opt}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <TextField
-                      fullWidth
-                      label={key}
-                      name={key}
-                      value={editRow[key]}
-                      onChange={handleUpdateChange}
-                      size="small"
-                      disabled={submitting}
-                      autoFocus={i === 0}
-                    />
-                  )}
-                </Grid>
-              ))}
-            </Grid>
-      
-            <Box mt={3} display="flex" justifyContent="flex-end" gap={1}>
-              <Button
-                onClick={() => {
-                  if (submitting) return;
-                  setEditRow(null);
-                }}
-                disabled={submitting}
-                variant="text"
-              >
-                Cancel
-              </Button>
-      
-              {/* ✅ This actually submits the <form> */}
-              <Button
-                type="submit"
-                variant="contained"
-                sx={{ backgroundColor: '#6495ED' }}
-                disabled={submitting}
-              >
-                {submitting ? 'Saving…' : 'Save Changes'}
-              </Button>
-            </Box>
-          </DialogContent>
-        </form>
-      </Dialog>
-
+        {/* Edit Modal (isolated + memoized) */}
+        <EditLeadDialog
+          open={!!editRow}
+          row={editRow}
+          validationOptions={validationOptions}
+          submitting={submitting}
+          onClose={() => { if (!submitting) setEditRow(null); }}
+          onSubmit={async (payload) => {
+            if (submitting) return;
+            setSubmitting(true);
+            try {
+              await fetch(formSubmitUrl, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+              });
+              alert('✅ Lead updated successfully');
+              setEditRow(null);
+            } catch (err) {
+              console.error(err);
+              alert('❌ Error updating lead');
+            } finally {
+              setTimeout(() => setSubmitting(false), 0);
+            }
+          }}
+        />
 
         {showCalendarModal && (
           <CalendarView

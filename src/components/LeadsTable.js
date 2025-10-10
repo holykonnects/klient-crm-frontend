@@ -1,17 +1,18 @@
-// LeadsTable.js — optimized for typing responsiveness
+// LeadsTable.js — typing-snappy + Lead ID search + latest-updated sort + optimistic save + live revalidate
 import React, {
   useEffect,
   useMemo,
   useState,
   useDeferredValue,
   startTransition,
-  useCallback
+  useCallback,
+  useRef
 } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover,
-  InputAdornment, TablePagination
+  InputAdornment, TablePagination, Tooltip
 } from '@mui/material';
 import { Link as MUILink } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -21,6 +22,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ClearIcon from '@mui/icons-material/Clear';
 import HistoryIcon from '@mui/icons-material/History';
 import EventIcon from '@mui/icons-material/Event';
+import RefreshIcon from '@mui/icons-material/Refresh';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
@@ -48,11 +50,16 @@ const normalizeUrl = (val = '') => {
 };
 const displayUrl = (val = '') => String(val).trim().replace(/^https?:\/\//i, '');
 
-/* ---------- sort/helpers ---------- */
+/* ---------- date/sort helpers ---------- */
 const safeDate = (v) => {
   const d = new Date(v);
   return isNaN(d.getTime()) ? 0 : d.getTime();
 };
+const lastUpdatedMillis = (row = {}) => Math.max(
+  safeDate(row['Lead Updated Time']),
+  safeDate(row['Timestamp']),
+  safeDate(row['Created Time'])
+);
 
 /* ---------- key helper: Lead ID primary, Mobile fallback ---------- */
 const getLeadKey = (row = {}) =>
@@ -166,10 +173,15 @@ const LeadsTable = () => {
   const deferredSearchInput = useDeferredValue(searchInput);
   const debouncedSearch = useDebouncedValue(deferredSearchInput, 200);
 
+  // Lead ID quick finder (separate to keep typing ultra-fast)
+  const [leadIdInput, setLeadIdInput] = useState('');
+  const deferredLeadId = useDeferredValue(leadIdInput);
+  const debouncedLeadId = useDebouncedValue(deferredLeadId, 180);
+
   const [filterStatus, setFilterStatus] = useState('');
   const [filterSource, setFilterSource] = useState('');
   const [filterOwner, setFilterOwner] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: 'Timestamp', direction: 'desc' }); // default: latest updated first
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [anchorEl, setAnchorEl] = useState(null);
   const [viewRow, setViewRow] = useState(null);
@@ -202,6 +214,39 @@ const LeadsTable = () => {
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
   const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
 
+  const fetchAbortRef = useRef(null);
+  const revalidate = useCallback(async () => {
+    try {
+      fetchAbortRef.current?.abort();
+      const ctrl = new AbortController();
+      fetchAbortRef.current = ctrl;
+      const res = await fetch(dataUrl, { signal: ctrl.signal });
+      const data = await res.json();
+      const filteredData = role === 'End User'
+        ? data.filter(lead => lead['Lead Owner'] === username)
+        : data;
+
+      // dedupe by latest updated time
+      const seen = new Map();
+      filteredData.forEach(row => {
+        const key = getLeadKey(row);
+        if (!key) return;
+        const existing = seen.get(key);
+        if (!existing || lastUpdatedMillis(row) > lastUpdatedMillis(existing)) {
+          seen.set(key, row);
+        }
+      });
+      const deduped = Array.from(seen.values());
+      startTransition(() => {
+        setAllLeads(filteredData);
+        setLeads(deduped);
+      });
+    } catch (e) {
+      // ignore aborts
+      if (e?.name !== 'AbortError') console.error('revalidate failed', e);
+    }
+  }, [dataUrl, role, username]);
+
   useEffect(() => {
     let cancelled = false;
 
@@ -218,13 +263,13 @@ const LeadsTable = () => {
 
         setAllLeads(filteredData);
 
-        // dedupe by Lead ID (fallback Mobile) keeping latest Timestamp
+        // dedupe by latest updated time
         const seen = new Map();
         filteredData.forEach(row => {
           const key = getLeadKey(row);
           if (!key) return; // skip if no identifier
           const existing = seen.get(key);
-          if (!existing || safeDate(row.Timestamp) > safeDate(existing.Timestamp)) {
+          if (!existing || lastUpdatedMillis(row) > lastUpdatedMillis(existing)) {
             seen.set(key, row);
           }
         });
@@ -252,7 +297,7 @@ const LeadsTable = () => {
       }
     })();
 
-    return () => { cancelled = true; };
+    return () => { cancelled = true; fetchAbortRef.current?.abort(); };
   }, [username, role]);
 
   const handleSort = (key) => {
@@ -279,12 +324,35 @@ const LeadsTable = () => {
     };
   }, [leads]);
 
-  /* ---------- filters (search deferred+debounced) ---------- */
+  /* ---------- index map for O(1) exact Lead ID lookups ---------- */
+  const leadIdIndex = useMemo(() => {
+    const m = new Map();
+    for (const d of leads) {
+      const id = String(d['Lead ID'] || '').trim();
+      if (id) m.set(id.toLowerCase(), d);
+    }
+    return m;
+  }, [leads]);
+
+  /* ---------- filters + sorting ---------- */
   const filteredLeads = useMemo(() => {
     const q = (debouncedSearch || '').toLowerCase().trim();
+    const idq = (debouncedLeadId || '').toLowerCase().trim();
 
-    const filtered = leads.filter(lead => {
-      const matchesSearch = !q || ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(k =>
+    let base = leads;
+
+    // Lead ID fast path
+    if (idq) {
+      const exact = leadIdIndex.get(idq);
+      if (exact) {
+        base = [exact];
+      } else {
+        base = leads.filter(l => String(l['Lead ID'] || '').toLowerCase().includes(idq));
+      }
+    }
+
+    const filtered = base.filter(lead => {
+      const matchesSearch = !q || ['Lead ID', 'First Name', 'Last Name', 'Company', 'Mobile Number'].some(k =>
         String(lead[k] || '').toLowerCase().includes(q)
       );
       const matchesStatus = !filterStatus || lead['Lead Status'] === filterStatus;
@@ -293,23 +361,37 @@ const LeadsTable = () => {
       return matchesSearch && matchesStatus && matchesSource && matchesOwner;
     });
 
-    if (!sortConfig.key) return filtered;
+    const { key, direction } = sortConfig || {};
 
-    const { key, direction } = sortConfig;
-    return [...filtered].sort((a, b) => {
+    // Default/explicit: sort by latest updated first when key is 'Timestamp'
+    const sorted = [...filtered].sort((a, b) => {
+      if (!key || key === 'Timestamp') {
+        return direction === 'asc'
+          ? lastUpdatedMillis(a) - lastUpdatedMillis(b)
+          : lastUpdatedMillis(b) - lastUpdatedMillis(a);
+      }
+      if (key === 'Lead Updated Time' || key === 'Created Time') {
+        const av = safeDate(a[key]);
+        const bv = safeDate(b[key]);
+        return direction === 'asc' ? av - bv : bv - av;
+      }
+      // string-ish fallback
       const aVal = a[key] ?? '';
       const bVal = b[key] ?? '';
       const cmp = String(aVal).localeCompare(String(bVal), undefined, { numeric: true, sensitivity: 'base' });
       return direction === 'asc' ? cmp : -cmp;
     });
-  }, [leads, debouncedSearch, filterStatus, filterSource, filterOwner, sortConfig]);
+
+    return sorted;
+  }, [leads, debouncedSearch, debouncedLeadId, filterStatus, filterSource, filterOwner, sortConfig, leadIdIndex]);
 
   /* ---------- pagination (and cap while searching) ---------- */
   const pagedRows = useMemo(() => {
-    if ((debouncedSearch || '').trim()) return filteredLeads.slice(0, 300); // extra snappy while typing
+    const searching = (debouncedSearch || '').trim() || (debouncedLeadId || '').trim();
+    if (searching) return filteredLeads.slice(0, 300); // extra snappy while typing
     const start = page * rowsPerPage;
     return filteredLeads.slice(start, start + rowsPerPage);
-  }, [filteredLeads, page, rowsPerPage, debouncedSearch]);
+  }, [filteredLeads, page, rowsPerPage, debouncedSearch, debouncedLeadId]);
 
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev => {
@@ -334,6 +416,7 @@ const LeadsTable = () => {
   const preferredOrderBoost = (columns) => {
     const priority = [
       'Timestamp',
+      'Lead Updated Time',
       'Lead ID',
       'Lead Status',
       'Lead Owner',
@@ -355,7 +438,7 @@ const LeadsTable = () => {
     const key = getLeadKey(leadRow);
     const logs = allLeads
       .filter(lead => getLeadKey(lead) === key)
-      .sort((a, b) => safeDate(b.Timestamp) - safeDate(a.Timestamp)); // newest first
+      .sort((a, b) => (lastUpdatedMillis(b) - lastUpdatedMillis(a))); // newest first by effective time
 
     // Dynamic union of columns
     const colSet = new Set();
@@ -439,7 +522,7 @@ const LeadsTable = () => {
 
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           {/* Search (deferred + debounced) */}
-          <Box display="flex" alignItems="center">
+          <Box display="flex" alignItems="center" gap={2}>
             <TextField
               size="small"
               label="Search"
@@ -467,6 +550,26 @@ const LeadsTable = () => {
               }}
               inputProps={{ autoComplete: 'off', spellCheck: 'false', inputMode: 'search' }}
             />
+
+            {/* Lead ID quick search (exact or partial) */}
+            <TextField
+              size="small"
+              label="Lead ID"
+              value={leadIdInput}
+              onChange={(e) => { startTransition(() => setLeadIdInput(e.target.value)); setPage(0); }}
+              sx={{ minWidth: 160 }}
+              placeholder="Exact or partial"
+              inputProps={{ autoComplete: 'off', spellCheck: 'false' }}
+            />
+
+            {/* Manual refresh (non-blocking) */}
+            <Tooltip title="Refresh data">
+              <span>
+                <IconButton onClick={() => startTransition(() => revalidate())} disabled={loading}>
+                  <RefreshIcon />
+                </IconButton>
+              </span>
+            </Tooltip>
           </Box>
 
           {['Lead Status', 'Lead Source', 'Lead Owner'].map(filterKey => (
@@ -648,6 +751,24 @@ const LeadsTable = () => {
               });
               alert('✅ Lead updated successfully');
               setEditRow(null);
+
+              // 1) Optimistic local update so it reflects instantly
+              const key = getLeadKey(payload);
+              startTransition(() => {
+                setLeads(prev => {
+                  const next = prev.some(r => getLeadKey(r) === key)
+                    ? prev.map(r => (getLeadKey(r) === key ? { ...r, ...payload } : r))
+                    : [{ ...payload }, ...prev];
+                  next.sort((a, b) => lastUpdatedMillis(b) - lastUpdatedMillis(a));
+                  return next;
+                });
+                // also extend logs source so View Logs shows latest
+                setAllLeads(prev => [...prev, payload]);
+              });
+
+              // 2) Background revalidate (non-blocking, using startTransition)
+              startTransition(() => { revalidate(); });
+
             } catch (err) {
               console.error(err);
               alert('❌ Error updating lead');

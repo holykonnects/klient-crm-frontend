@@ -12,6 +12,7 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
+    // --- Initialize editor ---
     const editor = grapesjs.init({
       container: editorRef.current,
       height: "calc(100vh - 72px)",
@@ -21,14 +22,6 @@ export default function EmailTemplateStudio() {
       noticeOnUnload: false,
       showOffsets: true,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
-      pluginsOpts: {
-        "grapesjs-preset-newsletter": {
-          modalLabelImport: "Paste your HTML here",
-          modalLabelExport: "Copy the HTML below",
-          codeViewOptions: "htmlmixed",
-        },
-        "grapesjs-mjml": {},
-      },
       canvas: {
         styles: [
           "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
@@ -36,71 +29,52 @@ export default function EmailTemplateStudio() {
       },
       panels: { defaults: [] },
     });
-
     gjsRef.current = editor;
 
-    // ✅ Create left sidebar for block manager
-    const panelManager = editor.Panels;
-    panelManager.addPanel({
-      id: "panel-left",
-      el: ".gjs-panel-left",
-      resizable: { maxDim: 400, minDim: 200, cl: 1, cr: 0, tc: 0, bc: 0 },
-    });
-
-    // ✅ Add top toolbar
-    panelManager.addPanel({
+    // --- Add Top Toolbar ---
+    editor.Panels.addPanel({
       id: "panel-top",
       el: ".gjs-panel-top",
       buttons: [
-        {
-          id: "undo",
-          className: "fa fa-undo",
-          command: "core:undo",
-          attributes: { title: "Undo" },
-        },
-        {
-          id: "redo",
-          className: "fa fa-repeat",
-          command: "core:redo",
-          attributes: { title: "Redo" },
-        },
-        {
-          id: "export",
-          className: "fa fa-code",
-          command: "export-template",
-          attributes: { title: "View HTML" },
-        },
-        {
-          id: "save",
-          className: "fa fa-save",
-          command: "save-template",
-          attributes: { title: "Save Template" },
-        },
+        { id: "undo", className: "fa fa-undo", command: "core:undo" },
+        { id: "redo", className: "fa fa-repeat", command: "core:redo" },
+        { id: "code", className: "fa fa-code", command: "export-template" },
+        { id: "save", className: "fa fa-save", command: "save-template" },
       ],
     });
 
-    // ✅ Block Manager appears on load
-    editor.on("load", () => {
-      editor.BlockManager.render();
+    // --- Left Toolbar (Block Manager) ---
+    editor.Panels.addPanel({
+      id: "panel-left",
+      el: ".gjs-panel-left",
+      resizable: { minDim: 200, maxDim: 350, cl: 1, cr: 0 },
     });
 
-    // ✅ Add Save Command with no-cors
+    // --- Render Block Manager on load ---
+    editor.on("load", () => {
+      editor.BlockManager.render();
+      editor.runCommand("open-blocks"); // 👈 force it visible
+    });
+
+    // --- Safe no-cors Save Command ---
     editor.Commands.add("save-template", {
       run: async () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
         localStorage.setItem("email_template_draft", html);
-        alert("✅ Template saved locally. (no-cors safe)");
+        alert("✅ Template saved locally (no-cors mode).");
+
         try {
           await fetch(
             "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec",
             {
               method: "POST",
               mode: "no-cors",
+              headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "saveTemplate", html }),
             }
-          );
-        } catch (e) {
-          console.error("Save failed (no-cors)", e);
+          ).catch(() => {}); // suppress network errors
+        } catch {
+          /* ignored intentionally */
         }
       },
     });
@@ -108,16 +82,12 @@ export default function EmailTemplateStudio() {
 
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* --- Header --- */}
+      {/* Header */}
       <Stack
         direction="row"
         justifyContent="space-between"
         alignItems="center"
-        sx={{
-          background: "#f0f4ff",
-          borderBottom: "1px solid #d9e3f0",
-          p: 2,
-        }}
+        sx={{ background: "#f0f4ff", borderBottom: "1px solid #d9e3f0", p: 2 }}
       >
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
@@ -127,17 +97,17 @@ export default function EmailTemplateStudio() {
           sx={{ background: "#6495ED", fontWeight: 500 }}
           onClick={() => {
             const html = localStorage.getItem("email_template_draft");
-            console.log("Draft HTML:", html);
-            alert("Open console to view saved HTML.");
+            console.log("Saved draft HTML:", html);
+            alert("Open console to preview saved HTML");
           }}
         >
           Save & Preview
         </Button>
       </Stack>
 
-      {/* --- Main Layout --- */}
+      {/* Main Layout */}
       <Box sx={{ display: "flex", height: "calc(100vh - 72px)" }}>
-        {/* LEFT TOOLBAR */}
+        {/* Left Toolbar */}
         <div
           className="gjs-panel-left"
           style={{
@@ -146,29 +116,24 @@ export default function EmailTemplateStudio() {
             borderRight: "1px solid #ddd",
             overflowY: "auto",
           }}
-        />
+        ></div>
 
-        {/* MAIN CANVAS + TOP TOOLBAR */}
-        <Box sx={{ flexGrow: 1, position: "relative" }}>
+        {/* Main Canvas */}
+        <Box sx={{ flexGrow: 1 }}>
           <div
             className="gjs-panel-top"
             style={{
               display: "flex",
+              gap: "12px",
               alignItems: "center",
-              gap: "14px",
               padding: "8px 12px",
               background: "#fff",
               borderBottom: "1px solid #ddd",
-              fontSize: "14px",
             }}
-          />
+          ></div>
           <div
             ref={editorRef}
-            style={{
-              height: "calc(100% - 45px)",
-              background: "#fff",
-              overflow: "hidden",
-            }}
+            style={{ height: "calc(100% - 45px)", background: "#fff" }}
           />
         </Box>
       </Box>

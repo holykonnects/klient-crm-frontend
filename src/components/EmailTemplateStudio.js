@@ -12,21 +12,21 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // ✨ Full 3-column layout: left (blocks), center (canvas), right (style)
+    // 🎨 Layout: Left (Blocks), Center (Canvas), Right (Styles)
     const container = editorRef.current;
     container.innerHTML = `
       <div id="gjs-wrapper" style="display:flex;height:100%;width:100%;">
         <div id="blocks" style="
           width:260px;
-          background:#f9fafc;
+          background:#f7f9fc;
           border-right:1px solid #ddd;
           overflow-y:auto;
           padding:10px;
         "></div>
         <div id="gjs-canvas" style="flex-grow:1;background:#fff;"></div>
         <div id="styles" style="
-          width:280px;
-          background:#f9fafc;
+          width:300px;
+          background:#f7f9fc;
           border-left:1px solid #ddd;
           overflow-y:auto;
           padding:10px;
@@ -36,9 +36,9 @@ export default function EmailTemplateStudio() {
 
     const editor = grapesjs.init({
       container: "#gjs-canvas",
-      fromElement: false,
       height: "calc(100vh - 72px)",
       width: "100%",
+      fromElement: false,
       storageManager: false,
       noticeOnUnload: false,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
@@ -51,13 +51,49 @@ export default function EmailTemplateStudio() {
       },
       panels: { defaults: [] },
     });
-
     gjsRef.current = editor;
 
-    // 🎨 Auto-load sample layout
+    // 🧱 Define custom blocks (sections, columns, image)
+    const bm = editor.BlockManager;
+
+    bm.add("section", {
+      label: "Section",
+      category: "Layout",
+      content: `
+        <section style="padding:40px; background:#ffffff;">
+          <h2 style="font-family:Montserrat, sans-serif;">New Section</h2>
+          <p>Write something amazing here...</p>
+        </section>
+      `,
+    });
+
+    bm.add("image-block", {
+      label: "Image",
+      category: "Media",
+      content: '<img src="https://via.placeholder.com/600x200" style="width:100%;border-radius:8px;">',
+    });
+
+    bm.add("text-block", {
+      label: "Text",
+      category: "Content",
+      content: '<p style="font-family:Montserrat,sans-serif;">Add your text here...</p>',
+    });
+
+    // Add a background image option in the Style Manager
+    editor.StyleManager.addProperty("extra", {
+      id: "background-image",
+      name: "Background Image",
+      type: "file",
+      property: "background-image",
+      defaults: "",
+      full: true,
+    });
+
+    // Load default layout
     editor.on("load", () => {
       editor.BlockManager.render();
       editor.StyleManager.render();
+
       editor.setComponents(`
         <table width="100%" style="font-family: Montserrat, sans-serif; color:#333;">
           <tr>
@@ -92,7 +128,7 @@ export default function EmailTemplateStudio() {
       `);
     });
 
-    // 💾 Save (no-CORS safe)
+    // 💾 Save (no-cors)
     editor.Commands.add("save-template", {
       run: async () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
@@ -111,11 +147,20 @@ export default function EmailTemplateStudio() {
         } catch {}
       },
     });
+
+    // 👁️ Preview
+    editor.Commands.add("preview-template", {
+      run: () => {
+        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
+        const preview = window.open("", "_blank");
+        preview.document.write(html);
+        preview.document.close();
+      },
+    });
   }, []);
 
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* Header */}
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -129,9 +174,9 @@ export default function EmailTemplateStudio() {
           <Button
             variant="outlined"
             sx={{ color: "#6495ED", borderColor: "#6495ED" }}
-            onClick={() => gjsRef.current?.runCommand("open-blocks")}
+            onClick={() => gjsRef.current?.runCommand("preview-template")}
           >
-            Toggle Blocks
+            Preview in Browser
           </Button>
           <Button
             variant="contained"
@@ -143,7 +188,6 @@ export default function EmailTemplateStudio() {
         </Stack>
       </Stack>
 
-      {/* Editor */}
       <Box ref={editorRef} sx={{ height: "calc(100vh - 72px)" }} />
     </Box>
   );

@@ -17,6 +17,8 @@ import TravelTable from './components/TravelTable';
 import SalesTrackerTable from './components/SalesTrackerTable';
 import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
+import EmailTemplatesTable from './components/EmailTemplatesTable';
+import EmailTemplateStudio from './components/EmailTemplateStudio';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -34,8 +36,8 @@ const AppRoutes = () => {
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
-        //<Route path="email-templates" element={<EmailTemplatesTable />} />
-        //<Route path="email-studio" element={<EmailTemplateStudio />} />
+        <Route path="email-templates" element={<EmailTemplatesTable />} />
+        <Route path="email-studio" element={<EmailTemplateStudio />} />
         
         {/* ✅ Travel route with access control */}
         <Route

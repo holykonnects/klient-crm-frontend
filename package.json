@@ -17,7 +17,7 @@
   "@fullcalendar/timegrid": "^6.1.8",
   "@fullcalendar/interaction": "^6.1.8",
   "grapesjs": "^0.22.5",
-  "grapesjs-preset-newsletter": "^0.2.35",
+  "grapesjs-preset-newsletter": "^0.2.1",
   "grapesjs-mjml": "^0.4.1"
 }
 ,

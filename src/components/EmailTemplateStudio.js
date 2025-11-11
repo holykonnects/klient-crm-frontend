@@ -14,9 +14,12 @@ export default function EmailTemplateStudio() {
 
     const editor = grapesjs.init({
       container: editorRef.current,
-      height: "100vh",
+      height: "calc(100vh - 64px)",
+      width: "100%",
       fromElement: false,
       storageManager: false,
+      showOffsets: true,
+      noticeOnUnload: false,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
       pluginsOpts: {
         "grapesjs-preset-newsletter": {
@@ -37,7 +40,7 @@ export default function EmailTemplateStudio() {
 
     gjsRef.current = editor;
 
-    // ✅ Add panels (top + left)
+    // ✅ Define Left & Top Panels
     editor.Panels.addPanel({
       id: "panel-top",
       el: ".panel__top",
@@ -81,41 +84,46 @@ export default function EmailTemplateStudio() {
       ],
     });
 
+    // ✅ Add block manager (left toolbar)
     editor.Panels.addPanel({
       id: "panel-left",
       el: ".panel__left",
-      buttons: [
-        {
-          id: "add-block",
-          className: "fa fa-plus-square",
-          command: "show-blocks",
-          active: true,
-          attributes: { title: "Blocks" },
-        },
-      ],
+      resizable: {
+        maxDim: 350,
+        minDim: 200,
+        tc: 0,
+        cl: 1,
+        cr: 0,
+        bc: 0,
+      },
     });
 
-    // ✅ Render default blocks
-    const bm = editor.BlockManager;
+    // ✅ Show the block manager content
+    const blockManager = editor.BlockManager;
     editor.on("load", () => {
-      bm.render();
+      blockManager.render();
     });
 
-    // ✅ Save template locally (can later connect to Apps Script)
+    // ✅ Add Save Command
     editor.Commands.add("save-template", {
       run: () => {
         const html = editor.getHtml();
         const css = editor.getCss();
         const fullHTML = `<style>${css}</style>${html}`;
         localStorage.setItem("email_template_draft", fullHTML);
-        alert("✅ Template saved locally. We’ll connect Google Sheets next.");
+        alert("✅ Template saved locally. Will connect to Google Sheets next.");
       },
     });
-
   }, []);
 
   return (
-    <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
+    <Box
+      sx={{
+        height: "100vh",
+        fontFamily: "Montserrat, sans-serif",
+        overflow: "hidden",
+      }}
+    >
       {/* --- Header Bar --- */}
       <Stack
         direction="row"
@@ -140,19 +148,54 @@ export default function EmailTemplateStudio() {
         </Button>
       </Stack>
 
-      {/* --- Toolbar Containers --- */}
-      <div className="panel__top"></div>
-      <div className="panel__basic-actions"></div>
-      <div className="panel__left"></div>
+      {/* --- Layout Wrapper --- */}
+      <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
+        {/* LEFT TOOLBAR (Block Manager) */}
+        <div
+          className="panel__left"
+          style={{
+            width: "250px",
+            background: "#fafafa",
+            borderRight: "1px solid #ccc",
+            overflowY: "auto",
+          }}
+        ></div>
 
-      {/* --- Editor Container --- */}
-      <div
-        ref={editorRef}
-        style={{
-          height: "calc(100vh - 64px)",
-          overflow: "hidden",
-        }}
-      />
+        {/* MAIN EDITOR AREA */}
+        <Box sx={{ flexGrow: 1, position: "relative" }}>
+          <div
+            className="panel__top"
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "10px",
+              padding: "8px 10px",
+              background: "#fff",
+              borderBottom: "1px solid #ddd",
+            }}
+          ></div>
+
+          <div
+            className="panel__basic-actions"
+            style={{
+              display: "flex",
+              gap: "12px",
+              alignItems: "center",
+              padding: "8px 12px",
+              background: "#f7f9fc",
+              borderBottom: "1px solid #ddd",
+            }}
+          ></div>
+
+          <div
+            ref={editorRef}
+            style={{
+              height: "calc(100% - 60px)",
+              overflow: "hidden",
+            }}
+          />
+        </Box>
+      </Box>
     </Box>
   );
 }

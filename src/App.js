@@ -34,8 +34,8 @@ const AppRoutes = () => {
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
-        <Route path="email-templates" element={<EmailTemplatesTable />} />
-        <Route path="email-studio" element={<EmailTemplateStudio />} />
+        //<Route path="email-templates" element={<EmailTemplatesTable />} />
+        //<Route path="email-studio" element={<EmailTemplateStudio />} />
         
         {/* ✅ Travel route with access control */}
         <Route

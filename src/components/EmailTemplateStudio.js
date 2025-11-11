@@ -12,7 +12,24 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // --- Initialize editor ---
+    // Create block panel container dynamically
+    const blockPanel = document.createElement("div");
+    blockPanel.id = "blocks";
+    blockPanel.style.width = "280px";
+    blockPanel.style.background = "#f8f9fb";
+    blockPanel.style.borderRight = "1px solid #ddd";
+    blockPanel.style.overflowY = "auto";
+    blockPanel.style.padding = "10px";
+    blockPanel.style.boxSizing = "border-box";
+
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.height = "100%";
+    wrapper.appendChild(blockPanel);
+    wrapper.appendChild(editorRef.current.parentNode.replaceChild(wrapper, editorRef.current));
+    wrapper.appendChild(editorRef.current);
+
+    // Initialize GrapesJS
     const editor = grapesjs.init({
       container: editorRef.current,
       height: "calc(100vh - 72px)",
@@ -20,8 +37,14 @@ export default function EmailTemplateStudio() {
       fromElement: false,
       storageManager: false,
       noticeOnUnload: false,
-      showOffsets: true,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
+      pluginsOpts: {
+        "grapesjs-preset-newsletter": {},
+        "grapesjs-mjml": {},
+      },
+      blockManager: {
+        appendTo: "#blocks",
+      },
       canvas: {
         styles: [
           "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
@@ -29,39 +52,21 @@ export default function EmailTemplateStudio() {
       },
       panels: { defaults: [] },
     });
+
     gjsRef.current = editor;
 
-    // --- Add Top Toolbar ---
-    editor.Panels.addPanel({
-      id: "panel-top",
-      el: ".gjs-panel-top",
-      buttons: [
-        { id: "undo", className: "fa fa-undo", command: "core:undo" },
-        { id: "redo", className: "fa fa-repeat", command: "core:redo" },
-        { id: "code", className: "fa fa-code", command: "export-template" },
-        { id: "save", className: "fa fa-save", command: "save-template" },
-      ],
-    });
-
-    // --- Left Toolbar (Block Manager) ---
-    editor.Panels.addPanel({
-      id: "panel-left",
-      el: ".gjs-panel-left",
-      resizable: { minDim: 200, maxDim: 350, cl: 1, cr: 0 },
-    });
-
-    // --- Render Block Manager on load ---
+    // Force block manager to load immediately
     editor.on("load", () => {
       editor.BlockManager.render();
-      editor.runCommand("open-blocks"); // 👈 force it visible
+      editor.runCommand("open-blocks");
     });
 
-    // --- Safe no-cors Save Command ---
+    // Add save command with no-cors
     editor.Commands.add("save-template", {
       run: async () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
         localStorage.setItem("email_template_draft", html);
-        alert("✅ Template saved locally (no-cors mode).");
+        alert("✅ Template saved locally (no-cors).");
 
         try {
           await fetch(
@@ -72,10 +77,8 @@ export default function EmailTemplateStudio() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "saveTemplate", html }),
             }
-          ).catch(() => {}); // suppress network errors
-        } catch {
-          /* ignored intentionally */
-        }
+          ).catch(() => {});
+        } catch {}
       },
     });
   }, []);
@@ -105,37 +108,15 @@ export default function EmailTemplateStudio() {
         </Button>
       </Stack>
 
-      {/* Main Layout */}
-      <Box sx={{ display: "flex", height: "calc(100vh - 72px)" }}>
-        {/* Left Toolbar */}
-        <div
-          className="gjs-panel-left"
-          style={{
-            width: "260px",
-            background: "#f8f9fb",
-            borderRight: "1px solid #ddd",
-            overflowY: "auto",
-          }}
-        ></div>
-
-        {/* Main Canvas */}
-        <Box sx={{ flexGrow: 1 }}>
-          <div
-            className="gjs-panel-top"
-            style={{
-              display: "flex",
-              gap: "12px",
-              alignItems: "center",
-              padding: "8px 12px",
-              background: "#fff",
-              borderBottom: "1px solid #ddd",
-            }}
-          ></div>
-          <div
-            ref={editorRef}
-            style={{ height: "calc(100% - 45px)", background: "#fff" }}
-          />
-        </Box>
+      {/* Canvas */}
+      <Box
+        sx={{
+          display: "flex",
+          height: "calc(100vh - 72px)",
+          background: "#fff",
+        }}
+      >
+        <div ref={editorRef} style={{ flexGrow: 1 }} />
       </Box>
     </Box>
   );

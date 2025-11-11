@@ -1,90 +1,73 @@
-import { useEffect, useRef, useState } from "react";
-import grapesjs from "grapesjs";
-import "grapesjs/dist/css/grapes.min.css";
-import "grapesjs-preset-newsletter";
-import { Box, Button, Stack, Typography } from "@mui/material";
+// src/components/EmailTemplateStudio.js
+import { useEffect, useRef } from 'react';
+import { Box, Button, Stack, Typography } from '@mui/material';
+import grapesjs from 'grapesjs';
+import 'grapesjs/dist/css/grapes.min.css';
+import 'grapesjs-preset-newsletter';
+import 'grapesjs-mjml';
 
-const WEBAPP_URL =
-  "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec";
-
-export default function EmailTemplateStudio({ template, onClose }) {
+export default function EmailTemplateStudio() {
   const editorRef = useRef(null);
-  const [editor, setEditor] = useState(null);
+  const gjsRef = useRef(null);
 
   useEffect(() => {
-    const e = grapesjs.init({
-      container: "#gjs",
-      height: "85vh",
+    if (!editorRef.current || gjsRef.current) return;
+
+    gjsRef.current = grapesjs.init({
+      container: editorRef.current,
+      height: '100vh',
       fromElement: false,
       storageManager: false,
-      plugins: ["gjs-preset-newsletter"],
-      pluginsOpts: { "gjs-preset-newsletter": {} },
-      styleManager: { sectors: [] },
-      assetManager: {
-        upload: false,
-        assets: [
-          // optional default images
-          "https://ridosports.com/logo.png",
+      plugins: ['grapesjs-preset-newsletter', 'grapesjs-mjml'],
+      pluginsOpts: {
+        'grapesjs-preset-newsletter': {
+          modalLabelImport: 'Paste your HTML here',
+          modalLabelExport: 'Copy the email HTML',
+          codeViewOptions: 'htmlmixed',
+          panels: { defaults: [] },
+        },
+        'grapesjs-mjml': {},
+      },
+      canvas: {
+        styles: [
+          'https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css',
+          'https://fonts.googleapis.com/css?family=Montserrat:400,500,700',
         ],
       },
     });
-    // Load existing HTML if editing
-    if (template?.HTML) e.setComponents(template.HTML);
 
-    // Add a block group for tokens
-    e.BlockManager.add("token-firstname", {
-      label: "{{First Name}}",
-      category: "Tokens",
-      content: "{{First Name}}",
-    });
-    e.BlockManager.add("token-company", {
-      label: "{{Company}}",
-      category: "Tokens",
-      content: "{{Company}}",
-    });
-    e.BlockManager.add("token-unsub", {
-      label: "{{UnsubscribeURL}}",
-      category: "Tokens",
-      content: '<a href="{{UnsubscribeURL}}">Unsubscribe</a>',
-    });
+    // Add save button
+    gjsRef.current.Panels.addButton('options', [{
+      id: 'save-template',
+      className: 'fa fa-save',
+      command: 'save-template',
+      attributes: { title: 'Save Template' },
+    }]);
 
-    editorRef.current = e;
-    setEditor(e);
-    return () => e.destroy();
-  }, [template]);
-
-  const handleSave = async () => {
-    const html = editorRef.current.getHtml();
-    const payload = {
-      action: "saveTemplate",
-      templateId: template?.["Template ID"],
-      name: template?.["Template Name"] || "New Template",
-      subject: template?.Subject || "Untitled",
-      fromName: template?.["From Name"] || "Rido Sports",
-      fromEmail: template?.["From Email"] || "info@ridosports.com",
-      html,
-    };
-    await fetch(WEBAPP_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+    // Define save command
+    gjsRef.current.Commands.add('save-template', {
+      run: () => {
+        const html = gjsRef.current.getHtml();
+        const css = gjsRef.current.getCss();
+        const fullHTML = `<style>${css}</style>${html}`;
+        localStorage.setItem('email_template_draft', fullHTML);
+        alert('Template saved locally. Integrate POST save next.');
+      },
     });
-    onClose && onClose();
-  };
+  }, []);
 
   return (
-    <Box sx={{ p: 2, fontFamily: "Montserrat, sans-serif" }}>
-      <Typography variant="h6" fontWeight={600} mb={2}>
-        Email Template Studio
-      </Typography>
-      <div id="gjs" style={{ border: "1px solid #ccc" }}></div>
-
-      <Stack direction="row" spacing={2} justifyContent="flex-end" mt={2}>
-        <Button onClick={onClose}>Cancel</Button>
-        <Button variant="contained" onClick={handleSave} sx={{ background: "#6495ED" }}>
-          Save Template
+    <Box sx={{ height: '100vh', fontFamily: 'Montserrat, sans-serif' }}>
+      <Stack direction="row" justifyContent="space-between" alignItems="center" p={2} sx={{ background: '#f0f4ff' }}>
+        <Typography variant="h6" fontWeight={600}>Email Template Studio</Typography>
+        <Button variant="contained" onClick={() => {
+          const html = localStorage.getItem('email_template_draft');
+          console.log('Saved draft HTML:', html);
+        }} sx={{ background: '#6495ED' }}>
+          Save & Preview
         </Button>
       </Stack>
+      <div ref={editorRef} style={{ height: 'calc(100vh - 64px)' }} />
     </Box>
   );
 }

@@ -12,30 +12,38 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // ✅ Build layout containers safely
+    // ✨ Full 3-column layout: left (blocks), center (canvas), right (style)
     const container = editorRef.current;
     container.innerHTML = `
-      <div id="gjs-wrapper" style="display:flex;height:100%;">
+      <div id="gjs-wrapper" style="display:flex;height:100%;width:100%;">
         <div id="blocks" style="
           width:260px;
-          background:#f8f9fb;
+          background:#f9fafc;
           border-right:1px solid #ddd;
           overflow-y:auto;
           padding:10px;
         "></div>
-        <div id="gjs-canvas" style="flex-grow:1;"></div>
+        <div id="gjs-canvas" style="flex-grow:1;background:#fff;"></div>
+        <div id="styles" style="
+          width:280px;
+          background:#f9fafc;
+          border-left:1px solid #ddd;
+          overflow-y:auto;
+          padding:10px;
+        "></div>
       </div>
     `;
 
-    // ✅ Initialize GrapesJS
     const editor = grapesjs.init({
       container: "#gjs-canvas",
       fromElement: false,
       height: "calc(100vh - 72px)",
       width: "100%",
       storageManager: false,
+      noticeOnUnload: false,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
       blockManager: { appendTo: "#blocks" },
+      styleManager: { appendTo: "#styles" },
       canvas: {
         styles: [
           "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
@@ -43,13 +51,13 @@ export default function EmailTemplateStudio() {
       },
       panels: { defaults: [] },
     });
+
     gjsRef.current = editor;
 
-    // ✅ Ensure blocks appear and default layout loads
+    // 🎨 Auto-load sample layout
     editor.on("load", () => {
       editor.BlockManager.render();
-      editor.runCommand("open-blocks");
-      // Auto-load layout for immediate visibility
+      editor.StyleManager.render();
       editor.setComponents(`
         <table width="100%" style="font-family: Montserrat, sans-serif; color:#333;">
           <tr>
@@ -84,7 +92,7 @@ export default function EmailTemplateStudio() {
       `);
     });
 
-    // ✅ Save (no-CORS safe)
+    // 💾 Save (no-CORS safe)
     editor.Commands.add("save-template", {
       run: async () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
@@ -107,6 +115,7 @@ export default function EmailTemplateStudio() {
 
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
+      {/* Header */}
       <Stack
         direction="row"
         justifyContent="space-between"
@@ -116,20 +125,25 @@ export default function EmailTemplateStudio() {
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
         </Typography>
-        <Button
-          variant="contained"
-          sx={{ background: "#6495ED", fontWeight: 500 }}
-          onClick={() => {
-            const html = localStorage.getItem("email_template_draft");
-            console.log("Saved draft HTML:", html);
-            alert("Open console to preview saved HTML");
-          }}
-        >
-          Save & Preview
-        </Button>
+        <Stack direction="row" spacing={2}>
+          <Button
+            variant="outlined"
+            sx={{ color: "#6495ED", borderColor: "#6495ED" }}
+            onClick={() => gjsRef.current?.runCommand("open-blocks")}
+          >
+            Toggle Blocks
+          </Button>
+          <Button
+            variant="contained"
+            sx={{ background: "#6495ED", fontWeight: 500 }}
+            onClick={() => gjsRef.current?.runCommand("save-template")}
+          >
+            Save & Preview
+          </Button>
+        </Stack>
       </Stack>
 
-      {/* GrapesJS Mount Point */}
+      {/* Editor */}
       <Box ref={editorRef} sx={{ height: "calc(100vh - 72px)" }} />
     </Box>
   );

@@ -14,12 +14,12 @@ export default function EmailTemplateStudio() {
 
     const editor = grapesjs.init({
       container: editorRef.current,
-      height: "calc(100vh - 64px)",
+      height: "calc(100vh - 72px)",
       width: "100%",
       fromElement: false,
       storageManager: false,
-      showOffsets: true,
       noticeOnUnload: false,
+      showOffsets: true,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
       pluginsOpts: {
         "grapesjs-preset-newsletter": {
@@ -29,51 +29,46 @@ export default function EmailTemplateStudio() {
         },
         "grapesjs-mjml": {},
       },
-      panels: { defaults: [] },
       canvas: {
         styles: [
-          "https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css",
-          "https://fonts.googleapis.com/css?family=Montserrat:400,500,700",
+          "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
         ],
       },
+      panels: { defaults: [] },
     });
 
     gjsRef.current = editor;
 
-    // ✅ Define Left & Top Panels
-    editor.Panels.addPanel({
-      id: "panel-top",
-      el: ".panel__top",
+    // ✅ Create left sidebar for block manager
+    const panelManager = editor.Panels;
+    panelManager.addPanel({
+      id: "panel-left",
+      el: ".gjs-panel-left",
+      resizable: { maxDim: 400, minDim: 200, cl: 1, cr: 0, tc: 0, bc: 0 },
     });
 
-    editor.Panels.addPanel({
-      id: "basic-actions",
-      el: ".panel__basic-actions",
+    // ✅ Add top toolbar
+    panelManager.addPanel({
+      id: "panel-top",
+      el: ".gjs-panel-top",
       buttons: [
-        {
-          id: "visibility",
-          className: "fa fa-square-o",
-          command: "sw-visibility",
-          active: true,
-          attributes: { title: "Toggle Canvas" },
-        },
-        {
-          id: "export",
-          className: "fa fa-code",
-          command: "export-template",
-          attributes: { title: "View Code" },
-        },
         {
           id: "undo",
           className: "fa fa-undo",
-          command: "undo",
+          command: "core:undo",
           attributes: { title: "Undo" },
         },
         {
           id: "redo",
           className: "fa fa-repeat",
-          command: "redo",
+          command: "core:redo",
           attributes: { title: "Redo" },
+        },
+        {
+          id: "export",
+          className: "fa fa-code",
+          command: "export-template",
+          attributes: { title: "View HTML" },
         },
         {
           id: "save",
@@ -84,113 +79,94 @@ export default function EmailTemplateStudio() {
       ],
     });
 
-    // ✅ Add block manager (left toolbar)
-    editor.Panels.addPanel({
-      id: "panel-left",
-      el: ".panel__left",
-      resizable: {
-        maxDim: 350,
-        minDim: 200,
-        tc: 0,
-        cl: 1,
-        cr: 0,
-        bc: 0,
-      },
-    });
-
-    // ✅ Show the block manager content
-    const blockManager = editor.BlockManager;
+    // ✅ Block Manager appears on load
     editor.on("load", () => {
-      blockManager.render();
+      editor.BlockManager.render();
     });
 
-    // ✅ Add Save Command
+    // ✅ Add Save Command with no-cors
     editor.Commands.add("save-template", {
-      run: () => {
-        const html = editor.getHtml();
-        const css = editor.getCss();
-        const fullHTML = `<style>${css}</style>${html}`;
-        localStorage.setItem("email_template_draft", fullHTML);
-        alert("✅ Template saved locally. Will connect to Google Sheets next.");
+      run: async () => {
+        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
+        localStorage.setItem("email_template_draft", html);
+        alert("✅ Template saved locally. (no-cors safe)");
+        try {
+          await fetch(
+            "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec",
+            {
+              method: "POST",
+              mode: "no-cors",
+              body: JSON.stringify({ action: "saveTemplate", html }),
+            }
+          );
+        } catch (e) {
+          console.error("Save failed (no-cors)", e);
+        }
       },
     });
   }, []);
 
   return (
-    <Box
-      sx={{
-        height: "100vh",
-        fontFamily: "Montserrat, sans-serif",
-        overflow: "hidden",
-      }}
-    >
-      {/* --- Header Bar --- */}
+    <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
+      {/* --- Header --- */}
       <Stack
         direction="row"
         justifyContent="space-between"
         alignItems="center"
-        p={2}
-        sx={{ background: "#f0f4ff", borderBottom: "1px solid #ccc" }}
+        sx={{
+          background: "#f0f4ff",
+          borderBottom: "1px solid #d9e3f0",
+          p: 2,
+        }}
       >
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
         </Typography>
         <Button
           variant="contained"
+          sx={{ background: "#6495ED", fontWeight: 500 }}
           onClick={() => {
             const html = localStorage.getItem("email_template_draft");
-            console.log("Saved draft HTML:", html);
-            alert("Open console to preview saved HTML");
+            console.log("Draft HTML:", html);
+            alert("Open console to view saved HTML.");
           }}
-          sx={{ background: "#6495ED" }}
         >
           Save & Preview
         </Button>
       </Stack>
 
-      {/* --- Layout Wrapper --- */}
-      <Box sx={{ display: "flex", height: "calc(100vh - 64px)" }}>
-        {/* LEFT TOOLBAR (Block Manager) */}
+      {/* --- Main Layout --- */}
+      <Box sx={{ display: "flex", height: "calc(100vh - 72px)" }}>
+        {/* LEFT TOOLBAR */}
         <div
-          className="panel__left"
+          className="gjs-panel-left"
           style={{
-            width: "250px",
-            background: "#fafafa",
-            borderRight: "1px solid #ccc",
+            width: "260px",
+            background: "#f8f9fb",
+            borderRight: "1px solid #ddd",
             overflowY: "auto",
           }}
-        ></div>
+        />
 
-        {/* MAIN EDITOR AREA */}
+        {/* MAIN CANVAS + TOP TOOLBAR */}
         <Box sx={{ flexGrow: 1, position: "relative" }}>
           <div
-            className="panel__top"
+            className="gjs-panel-top"
             style={{
               display: "flex",
               alignItems: "center",
-              gap: "10px",
-              padding: "8px 10px",
+              gap: "14px",
+              padding: "8px 12px",
               background: "#fff",
               borderBottom: "1px solid #ddd",
+              fontSize: "14px",
             }}
-          ></div>
-
-          <div
-            className="panel__basic-actions"
-            style={{
-              display: "flex",
-              gap: "12px",
-              alignItems: "center",
-              padding: "8px 12px",
-              background: "#f7f9fc",
-              borderBottom: "1px solid #ddd",
-            }}
-          ></div>
-
+          />
           <div
             ref={editorRef}
             style={{
-              height: "calc(100% - 60px)",
+              height: "calc(100% - 45px)",
+              background: "#fff",
               overflow: "hidden",
             }}
           />

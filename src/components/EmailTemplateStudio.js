@@ -12,112 +12,147 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // Create block panel container dynamically
-    const blockPanel = document.createElement("div");
-    blockPanel.id = "blocks";
-    blockPanel.style.width = "280px";
-    blockPanel.style.background = "#f8f9fb";
-    blockPanel.style.borderRight = "1px solid #ddd";
-    blockPanel.style.overflowY = "auto";
-    blockPanel.style.padding = "10px";
-    blockPanel.style.boxSizing = "border-box";
-
-    const wrapper = document.createElement("div");
-    wrapper.style.display = "flex";
-    wrapper.style.height = "100%";
-    wrapper.appendChild(blockPanel);
-    wrapper.appendChild(editorRef.current.parentNode.replaceChild(wrapper, editorRef.current));
-    wrapper.appendChild(editorRef.current);
-
-    // Initialize GrapesJS
     const editor = grapesjs.init({
       container: editorRef.current,
-      height: "calc(100vh - 72px)",
-      width: "100%",
+      height: "100vh",
       fromElement: false,
       storageManager: false,
-      noticeOnUnload: false,
       plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
       pluginsOpts: {
-        "grapesjs-preset-newsletter": {},
+        "grapesjs-preset-newsletter": {
+          modalLabelImport: "Paste your HTML here",
+          modalLabelExport: "Copy the HTML below",
+          codeViewOptions: "htmlmixed",
+        },
         "grapesjs-mjml": {},
       },
-      blockManager: {
-        appendTo: "#blocks",
-      },
+      panels: { defaults: [] },
       canvas: {
         styles: [
-          "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
+          "https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css",
+          "https://fonts.googleapis.com/css?family=Montserrat:400,500,700",
         ],
       },
-      panels: { defaults: [] },
     });
 
     gjsRef.current = editor;
 
-    // Force block manager to load immediately
-    editor.on("load", () => {
-      editor.BlockManager.render();
-      editor.runCommand("open-blocks");
+    // ✅ Add panels (top + left)
+    editor.Panels.addPanel({
+      id: "panel-top",
+      el: ".panel__top",
     });
 
-    // Add save command with no-cors
-    editor.Commands.add("save-template", {
-      run: async () => {
-        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
-        localStorage.setItem("email_template_draft", html);
-        alert("✅ Template saved locally (no-cors).");
+    editor.Panels.addPanel({
+      id: "basic-actions",
+      el: ".panel__basic-actions",
+      buttons: [
+        {
+          id: "visibility",
+          className: "fa fa-square-o",
+          command: "sw-visibility",
+          active: true,
+          attributes: { title: "Toggle Canvas" },
+        },
+        {
+          id: "export",
+          className: "fa fa-code",
+          command: "export-template",
+          attributes: { title: "View Code" },
+        },
+        {
+          id: "undo",
+          className: "fa fa-undo",
+          command: "undo",
+          attributes: { title: "Undo" },
+        },
+        {
+          id: "redo",
+          className: "fa fa-repeat",
+          command: "redo",
+          attributes: { title: "Redo" },
+        },
+        {
+          id: "save",
+          className: "fa fa-save",
+          command: "save-template",
+          attributes: { title: "Save Template" },
+        },
+      ],
+    });
 
-        try {
-          await fetch(
-            "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec",
-            {
-              method: "POST",
-              mode: "no-cors",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ action: "saveTemplate", html }),
-            }
-          ).catch(() => {});
-        } catch {}
+    editor.Panels.addPanel({
+      id: "panel-left",
+      el: ".panel__left",
+      buttons: [
+        {
+          id: "add-block",
+          className: "fa fa-plus-square",
+          command: "show-blocks",
+          active: true,
+          attributes: { title: "Blocks" },
+        },
+      ],
+    });
+
+    // ✅ Render default blocks
+    const bm = editor.BlockManager;
+    editor.on("load", () => {
+      bm.render();
+    });
+
+    // ✅ Save template locally (can later connect to Apps Script)
+    editor.Commands.add("save-template", {
+      run: () => {
+        const html = editor.getHtml();
+        const css = editor.getCss();
+        const fullHTML = `<style>${css}</style>${html}`;
+        localStorage.setItem("email_template_draft", fullHTML);
+        alert("✅ Template saved locally. We’ll connect Google Sheets next.");
       },
     });
+
   }, []);
 
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* Header */}
+      {/* --- Header Bar --- */}
       <Stack
         direction="row"
         justifyContent="space-between"
         alignItems="center"
-        sx={{ background: "#f0f4ff", borderBottom: "1px solid #d9e3f0", p: 2 }}
+        p={2}
+        sx={{ background: "#f0f4ff", borderBottom: "1px solid #ccc" }}
       >
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
         </Typography>
         <Button
           variant="contained"
-          sx={{ background: "#6495ED", fontWeight: 500 }}
           onClick={() => {
             const html = localStorage.getItem("email_template_draft");
             console.log("Saved draft HTML:", html);
             alert("Open console to preview saved HTML");
           }}
+          sx={{ background: "#6495ED" }}
         >
           Save & Preview
         </Button>
       </Stack>
 
-      {/* Canvas */}
-      <Box
-        sx={{
-          display: "flex",
-          height: "calc(100vh - 72px)",
-          background: "#fff",
+      {/* --- Toolbar Containers --- */}
+      <div className="panel__top"></div>
+      <div className="panel__basic-actions"></div>
+      <div className="panel__left"></div>
+
+      {/* --- Editor Container --- */}
+      <div
+        ref={editorRef}
+        style={{
+          height: "calc(100vh - 64px)",
+          overflow: "hidden",
         }}
-      >
-        <div ref={editorRef} style={{ flexGrow: 1 }} />
-      </Box>
+      />
     </Box>
   );
 }

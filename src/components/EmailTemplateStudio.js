@@ -1,3 +1,4 @@
+// /src/pages/EmailTemplateStudio.js
 import { useEffect, useRef, useState } from "react";
 import {
   Box,
@@ -12,43 +13,29 @@ import TextFieldsIcon from "@mui/icons-material/TextFields";
 import ImageIcon from "@mui/icons-material/Image";
 import SmartButtonIcon from "@mui/icons-material/SmartButton";
 import GridViewIcon from "@mui/icons-material/GridView";
-import ViewSidebarIcon from "@mui/icons-material/ViewSidebar";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import SaveIcon from "@mui/icons-material/Save";
 import ZoomOutMapIcon from "@mui/icons-material/ZoomOutMap";
 import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
-import TuneIcon from "@mui/icons-material/Tune";
 import grapesjs from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
+import "@fontsource/montserrat";
 
 const WEBAPP_URL =
   "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec";
 
-const PAGE_SIZES = {
-  "A4 Portrait": { w: 794, h: 1123 },
-  "A4 Landscape": { w: 1123, h: 794 },
-};
-
 export default function EmailTemplateStudio() {
   const mountRef = useRef(null);
   const editorRef = useRef(null);
-  const [drawer, setDrawer] = useState(""); // which side panel is open
+  const [drawer, setDrawer] = useState("");
 
-  const toggleDrawer = (name) => {
-    setDrawer(drawer === name ? "" : name);
-  };
-
-  // --- Helpers
-  const getPage = () => {
-    const ed = editorRef.current;
-    const frame = ed?.Canvas.getFrameEl();
-    const doc = frame?.contentDocument;
-    return doc?.getElementById("kk-body") || null;
-  };
+  const toggleDrawer = (name) => setDrawer(drawer === name ? "" : name);
 
   const fitWidth = () => {
     const ed = editorRef.current;
-    const page = getPage();
+    const frame = ed?.Canvas.getFrameEl();
+    const doc = frame?.contentDocument;
+    const page = doc?.getElementById("kk-page");
     if (!ed || !page) return;
     const rect = ed.Canvas.getElement().getBoundingClientRect();
     const scale = Math.min(1, (rect.width - 48) / page.offsetWidth);
@@ -58,7 +45,9 @@ export default function EmailTemplateStudio() {
 
   const fitPage = () => {
     const ed = editorRef.current;
-    const page = getPage();
+    const frame = ed?.Canvas.getFrameEl();
+    const doc = frame?.contentDocument;
+    const page = doc?.getElementById("kk-page");
     if (!ed || !page) return;
     const rect = ed.Canvas.getElement().getBoundingClientRect();
     const scale = Math.min(
@@ -70,53 +59,47 @@ export default function EmailTemplateStudio() {
     ed.Canvas.centerContent();
   };
 
-  // --- Editor setup
   useEffect(() => {
     if (!mountRef.current || editorRef.current) return;
 
-    const shell = document.createElement("div");
-    shell.id = "gjs-shell";
-    shell.style.cssText = "display:flex;height:100%;width:100%;";
-    shell.innerHTML = `<div id="gjs-canvas" style="flex:1;background:#e9ecf4;overflow:hidden;"></div>`;
-    mountRef.current.appendChild(shell);
-
     const editor = grapesjs.init({
-      container: "#gjs-canvas",
-      height: "calc(100vh - 56px)",
+      container: mountRef.current,
+      height: "calc(100vh - 60px)",
       storageManager: false,
-      blockManager: {},
-      styleManager: { appendTo: null },
-      canvas: {
-        styles: ["https://fonts.googleapis.com/css?family=Montserrat:400,600&display=swap"],
-      },
+      styleManager: false,
       panels: { defaults: [] },
+      canvas: {
+        styles: [
+          "https://fonts.googleapis.com/css?family=Montserrat:400,600&display=swap",
+        ],
+      },
     });
     editorRef.current = editor;
 
-    // theme polish
+    // custom theme
     const css = document.createElement("style");
     css.innerHTML = `
       .gjs-one-bg { background:#f6f9ff !important; }
       .gjs-two-color { color:#6495ED !important; }
       .gjs-three-bg { background:#6495ED !important; }
-      .gjs-block { border-radius:10px; background:#fff; border:1px solid #e6eeff; padding:10px; text-align:center; cursor:grab; }
+      .gjs-block { border-radius:10px; background:#fff; border:1px solid #e6eeff; padding:10px; text-align:center; cursor:grab; font-size:12px; }
       .gjs-block:hover { box-shadow:0 6px 16px rgba(100,149,237,.25); transform:translateY(-1px); }
     `;
     document.head.appendChild(css);
 
-    // --- Components ---
+    // Initial scaffold
     const scaffold = `
-      <div id="page-wrap" style="display:flex;justify-content:center;min-height:100%;padding:32px 0;background:#e9ecf4;">
+      <div style="display:flex;justify-content:center;align-items:flex-start;padding:32px;background:#e9ecf4;min-height:100%;">
         <div id="kk-page" style="width:794px;min-height:1123px;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(9,30,66,.15);overflow:hidden;display:flex;flex-direction:column;font-family:Montserrat;">
-          <div id="kk-header" style="padding:16px 20px;background:#f0f4ff;border-bottom:1px solid #d6e1fb;">
+          <header style="padding:16px 20px;background:#f0f4ff;border-bottom:1px solid #d6e1fb;">
             <table width="100%">
               <tr>
                 <td><img src="https://via.placeholder.com/120x34?text=Logo"/></td>
                 <td align="right"><b>{{Company}}</b></td>
               </tr>
             </table>
-          </div>
-          <div id="kk-body" style="flex:1;padding:20px;" data-gjs-droppable="true">
+          </header>
+          <main id="kk-body" style="flex:1;padding:24px;" data-gjs-droppable="true">
             <table width="100%">
               <tr>
                 <td width="50%" style="padding:8px;vertical-align:top">
@@ -129,8 +112,8 @@ export default function EmailTemplateStudio() {
                 </td>
               </tr>
             </table>
-          </div>
-          <div id="kk-footer" style="padding:14px 16px;background:#f8f8f8;border-top:1px solid #eee;text-align:center;font-size:12px;color:#666;">
+          </main>
+          <footer style="padding:14px 16px;background:#f8f8f8;border-top:1px solid #eee;text-align:center;font-size:12px;color:#666;">
             <div><a href="{{Unsubscribe}}" style="color:#6495ED;text-decoration:none;">Unsubscribe</a></div>
             <div style="margin:8px 0;">
               <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=F" style="margin:0 6px"/>
@@ -139,15 +122,13 @@ export default function EmailTemplateStudio() {
               <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=L" style="margin:0 6px"/>
             </div>
             <div>© {{Company}} | {{Year}}</div>
-          </div>
+          </footer>
         </div>
       </div>`;
-
     editor.setComponents(scaffold);
-    editor.on("load", () => fitWidth());
+    editor.on("load", fitWidth);
   }, []);
 
-  // --- Save / Preview
   const doPreview = () => {
     const ed = editorRef.current;
     const html = `<style>${ed.getCss()}</style>${ed.getHtml()}`;
@@ -168,24 +149,52 @@ export default function EmailTemplateStudio() {
     alert("✅ Saved (no-CORS).");
   };
 
-  // --- Drawer content (Wix style left panel)
-  const blockCategories = {
+  // blocks for drawer
+  const blocks = {
     layout: [
-      { label: "Section", html: "<section style='padding:20px;'>Section</section>" },
-      { label: "2 Columns", html: "<table width='100%'><tr><td width='50%'>Left</td><td width='50%'>Right</td></tr></table>" },
+      {
+        icon: <GridViewIcon fontSize="small" />,
+        label: "Section",
+        html: "<section style='padding:20px;'>New Section</section>",
+      },
+      {
+        icon: <GridViewIcon fontSize="small" />,
+        label: "2 Columns",
+        html: "<table width='100%'><tr><td width='50%'>Left</td><td width='50%'>Right</td></tr></table>",
+      },
     ],
     text: [
-      { label: "Heading", html: "<h2>Heading Text</h2>" },
-      { label: "Paragraph", html: "<p>Type your paragraph...</p>" },
+      {
+        icon: <TextFieldsIcon fontSize="small" />,
+        label: "Heading",
+        html: "<h2>Heading Text</h2>",
+      },
+      {
+        icon: <TextFieldsIcon fontSize="small" />,
+        label: "Paragraph",
+        html: "<p>Type your paragraph...</p>",
+      },
     ],
     media: [
-      { label: "Image", html: "<img src='https://via.placeholder.com/800x300' style='width:100%;'/>" },
+      {
+        icon: <ImageIcon fontSize="small" />,
+        label: "Image",
+        html: "<img src='https://via.placeholder.com/800x300' style='width:100%;'/>",
+      },
     ],
     button: [
-      { label: "Button", html: "<a href='#' style='background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;'>Button</a>" },
+      {
+        icon: <SmartButtonIcon fontSize="small" />,
+        label: "Button",
+        html: "<a href='#' style='background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;'>Button</a>",
+      },
     ],
     sections: [
-      { label: "Footer", html: "<footer style='padding:20px;text-align:center;'>Footer Section</footer>" },
+      {
+        icon: <DescriptionIcon fontSize="small" />,
+        label: "Footer",
+        html: "<footer style='padding:20px;text-align:center;'>Footer Section</footer>",
+      },
     ],
   };
 
@@ -196,21 +205,28 @@ export default function EmailTemplateStudio() {
           <Box
             key={i}
             sx={{
+              display: "flex",
+              alignItems: "center",
+              gap: 1,
               border: "1px solid #e6eeff",
               borderRadius: 2,
               p: 1,
-              textAlign: "center",
               fontSize: 12,
               cursor: "grab",
               bgcolor: "#fff",
-              "&:hover": { boxShadow: "0 4px 10px rgba(100,149,237,.25)" },
+              "&:hover": {
+                boxShadow: "0 4px 10px rgba(100,149,237,.25)",
+              },
             }}
             onClick={() => {
               const ed = editorRef.current;
-              const body = getPage();
+              const frame = ed?.Canvas.getFrameEl();
+              const doc = frame?.contentDocument;
+              const body = doc?.getElementById("kk-body");
               body?.insertAdjacentHTML("beforeend", it.html);
             }}
           >
+            {it.icon}
             {it.label}
           </Box>
         ))}
@@ -219,8 +235,15 @@ export default function EmailTemplateStudio() {
   );
 
   return (
-    <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* --- Toolbar --- */}
+    <Box
+      sx={{
+        height: "100vh",
+        fontFamily: "Montserrat, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      {/* Toolbar */}
       <Stack
         direction="row"
         alignItems="center"
@@ -230,6 +253,7 @@ export default function EmailTemplateStudio() {
           px: 1,
           borderBottom: "1px solid #d6e1fb",
           background: "#f0f4ff",
+          flexShrink: 0,
         }}
       >
         <Stack direction="row" alignItems="center" spacing={1}>
@@ -284,17 +308,26 @@ export default function EmailTemplateStudio() {
         </Stack>
       </Stack>
 
-      {/* --- Canvas --- */}
-      <Box ref={mountRef} sx={{ height: "calc(100vh - 56px)" }} />
+      {/* Canvas */}
+      <Box
+        ref={mountRef}
+        sx={{
+          flex: 1,
+          overflow: "hidden",
+          background: "#e9ecf4",
+        }}
+      />
 
-      {/* --- Wix-style Drawer --- */}
+      {/* Drawer */}
       <Drawer
         anchor="left"
         open={Boolean(drawer)}
         onClose={() => setDrawer("")}
-        PaperProps={{ sx: { background: "#f6f9ff", borderRight: "1px solid #d6e1fb" } }}
+        PaperProps={{
+          sx: { background: "#f6f9ff", borderRight: "1px solid #d6e1fb" },
+        }}
       >
-        {drawer && <DrawerContent items={blockCategories[drawer]} />}
+        {drawer && <DrawerContent items={blocks[drawer]} />}
       </Drawer>
     </Box>
   );

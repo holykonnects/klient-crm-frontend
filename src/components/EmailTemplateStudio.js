@@ -1,334 +1,123 @@
-// /src/pages/EmailTemplateStudio.js
-import { useEffect, useRef, useState } from "react";
-import {
-  Box,
-  IconButton,
-  Tooltip,
-  Stack,
-  Drawer,
-  Divider,
-} from "@mui/material";
-import DescriptionIcon from "@mui/icons-material/Description";
-import TextFieldsIcon from "@mui/icons-material/TextFields";
-import ImageIcon from "@mui/icons-material/Image";
-import SmartButtonIcon from "@mui/icons-material/SmartButton";
-import GridViewIcon from "@mui/icons-material/GridView";
-import VisibilityIcon from "@mui/icons-material/Visibility";
-import SaveIcon from "@mui/icons-material/Save";
-import ZoomOutMapIcon from "@mui/icons-material/ZoomOutMap";
-import ZoomInMapIcon from "@mui/icons-material/ZoomInMap";
+import { useEffect, useRef } from "react";
+import { Box, Button, Stack, Typography } from "@mui/material";
 import grapesjs from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
-import "@fontsource/montserrat";
-
-const WEBAPP_URL =
-  "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec";
+import "grapesjs-preset-newsletter";
+import "grapesjs-mjml";
 
 export default function EmailTemplateStudio() {
-  const mountRef = useRef(null);
   const editorRef = useRef(null);
-  const [drawer, setDrawer] = useState("");
-
-  const toggleDrawer = (name) => setDrawer(drawer === name ? "" : name);
-
-  const fitWidth = () => {
-    const ed = editorRef.current;
-    const frame = ed?.Canvas.getFrameEl();
-    const doc = frame?.contentDocument;
-    const page = doc?.getElementById("kk-page");
-    if (!ed || !page) return;
-    const rect = ed.Canvas.getElement().getBoundingClientRect();
-    const scale = Math.min(1, (rect.width - 48) / page.offsetWidth);
-    ed.Canvas.setZoom(scale || 1);
-    ed.Canvas.centerContent();
-  };
-
-  const fitPage = () => {
-    const ed = editorRef.current;
-    const frame = ed?.Canvas.getFrameEl();
-    const doc = frame?.contentDocument;
-    const page = doc?.getElementById("kk-page");
-    if (!ed || !page) return;
-    const rect = ed.Canvas.getElement().getBoundingClientRect();
-    const scale = Math.min(
-      1,
-      (rect.width - 48) / page.offsetWidth,
-      (rect.height - 48) / page.offsetHeight
-    );
-    ed.Canvas.setZoom(scale || 1);
-    ed.Canvas.centerContent();
-  };
+  const gjsRef = useRef(null);
 
   useEffect(() => {
-    if (!mountRef.current || editorRef.current) return;
+    if (!editorRef.current || gjsRef.current) return;
 
+    // Create block panel container dynamically
+    const blockPanel = document.createElement("div");
+    blockPanel.id = "blocks";
+    blockPanel.style.width = "280px";
+    blockPanel.style.background = "#f8f9fb";
+    blockPanel.style.borderRight = "1px solid #ddd";
+    blockPanel.style.overflowY = "auto";
+    blockPanel.style.padding = "10px";
+    blockPanel.style.boxSizing = "border-box";
+
+    const wrapper = document.createElement("div");
+    wrapper.style.display = "flex";
+    wrapper.style.height = "100%";
+    wrapper.appendChild(blockPanel);
+    wrapper.appendChild(editorRef.current.parentNode.replaceChild(wrapper, editorRef.current));
+    wrapper.appendChild(editorRef.current);
+
+    // Initialize GrapesJS
     const editor = grapesjs.init({
-      container: mountRef.current,
-      height: "calc(100vh - 60px)",
+      container: editorRef.current,
+      height: "calc(100vh - 72px)",
+      width: "100%",
+      fromElement: false,
       storageManager: false,
-      styleManager: false,
-      panels: { defaults: [] },
+      noticeOnUnload: false,
+      plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
+      pluginsOpts: {
+        "grapesjs-preset-newsletter": {},
+        "grapesjs-mjml": {},
+      },
+      blockManager: {
+        appendTo: "#blocks",
+      },
       canvas: {
         styles: [
-          "https://fonts.googleapis.com/css?family=Montserrat:400,600&display=swap",
+          "https://fonts.googleapis.com/css?family=Montserrat:400,500,600,700&display=swap",
         ],
       },
+      panels: { defaults: [] },
     });
-    editorRef.current = editor;
 
-    // custom theme
-    const css = document.createElement("style");
-    css.innerHTML = `
-      .gjs-one-bg { background:#f6f9ff !important; }
-      .gjs-two-color { color:#6495ED !important; }
-      .gjs-three-bg { background:#6495ED !important; }
-      .gjs-block { border-radius:10px; background:#fff; border:1px solid #e6eeff; padding:10px; text-align:center; cursor:grab; font-size:12px; }
-      .gjs-block:hover { box-shadow:0 6px 16px rgba(100,149,237,.25); transform:translateY(-1px); }
-    `;
-    document.head.appendChild(css);
+    gjsRef.current = editor;
 
-    // Initial scaffold
-    const scaffold = `
-      <div style="display:flex;justify-content:center;align-items:flex-start;padding:32px;background:#e9ecf4;min-height:100%;">
-        <div id="kk-page" style="width:794px;min-height:1123px;background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(9,30,66,.15);overflow:hidden;display:flex;flex-direction:column;font-family:Montserrat;">
-          <header style="padding:16px 20px;background:#f0f4ff;border-bottom:1px solid #d6e1fb;">
-            <table width="100%">
-              <tr>
-                <td><img src="https://via.placeholder.com/120x34?text=Logo"/></td>
-                <td align="right"><b>{{Company}}</b></td>
-              </tr>
-            </table>
-          </header>
-          <main id="kk-body" style="flex:1;padding:24px;" data-gjs-droppable="true">
-            <table width="100%">
-              <tr>
-                <td width="50%" style="padding:8px;vertical-align:top">
-                  <h3>Left Column</h3>
-                  <p>Write something...</p>
-                </td>
-                <td width="50%" style="padding:8px;vertical-align:top">
-                  <h3>Right Column</h3>
-                  <p>Write something...</p>
-                </td>
-              </tr>
-            </table>
-          </main>
-          <footer style="padding:14px 16px;background:#f8f8f8;border-top:1px solid #eee;text-align:center;font-size:12px;color:#666;">
-            <div><a href="{{Unsubscribe}}" style="color:#6495ED;text-decoration:none;">Unsubscribe</a></div>
-            <div style="margin:8px 0;">
-              <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=F" style="margin:0 6px"/>
-              <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=T" style="margin:0 6px"/>
-              <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=I" style="margin:0 6px"/>
-              <img src="https://via.placeholder.com/20/6495ED/FFFFFF?text=L" style="margin:0 6px"/>
-            </div>
-            <div>© {{Company}} | {{Year}}</div>
-          </footer>
-        </div>
-      </div>`;
-    editor.setComponents(scaffold);
-    editor.on("load", fitWidth);
+    // Force block manager to load immediately
+    editor.on("load", () => {
+      editor.BlockManager.render();
+      editor.runCommand("open-blocks");
+    });
+
+    // Add save command with no-cors
+    editor.Commands.add("save-template", {
+      run: async () => {
+        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
+        localStorage.setItem("email_template_draft", html);
+        alert("✅ Template saved locally (no-cors).");
+
+        try {
+          await fetch(
+            "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec",
+            {
+              method: "POST",
+              mode: "no-cors",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ action: "saveTemplate", html }),
+            }
+          ).catch(() => {});
+        } catch {}
+      },
+    });
   }, []);
 
-  const doPreview = () => {
-    const ed = editorRef.current;
-    const html = `<style>${ed.getCss()}</style>${ed.getHtml()}`;
-    const w = window.open("", "_blank");
-    w.document.write(html);
-    w.document.close();
-  };
-
-  const doSave = async () => {
-    const ed = editorRef.current;
-    const html = `<style>${ed.getCss()}</style>${ed.getHtml()}`;
-    await fetch(WEBAPP_URL, {
-      method: "POST",
-      mode: "no-cors",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "saveTemplate", html }),
-    }).catch(() => {});
-    alert("✅ Saved (no-CORS).");
-  };
-
-  // blocks for drawer
-  const blocks = {
-    layout: [
-      {
-        icon: <GridViewIcon fontSize="small" />,
-        label: "Section",
-        html: "<section style='padding:20px;'>New Section</section>",
-      },
-      {
-        icon: <GridViewIcon fontSize="small" />,
-        label: "2 Columns",
-        html: "<table width='100%'><tr><td width='50%'>Left</td><td width='50%'>Right</td></tr></table>",
-      },
-    ],
-    text: [
-      {
-        icon: <TextFieldsIcon fontSize="small" />,
-        label: "Heading",
-        html: "<h2>Heading Text</h2>",
-      },
-      {
-        icon: <TextFieldsIcon fontSize="small" />,
-        label: "Paragraph",
-        html: "<p>Type your paragraph...</p>",
-      },
-    ],
-    media: [
-      {
-        icon: <ImageIcon fontSize="small" />,
-        label: "Image",
-        html: "<img src='https://via.placeholder.com/800x300' style='width:100%;'/>",
-      },
-    ],
-    button: [
-      {
-        icon: <SmartButtonIcon fontSize="small" />,
-        label: "Button",
-        html: "<a href='#' style='background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;'>Button</a>",
-      },
-    ],
-    sections: [
-      {
-        icon: <DescriptionIcon fontSize="small" />,
-        label: "Footer",
-        html: "<footer style='padding:20px;text-align:center;'>Footer Section</footer>",
-      },
-    ],
-  };
-
-  const DrawerContent = ({ items }) => (
-    <Box sx={{ width: 240, p: 2 }}>
-      <Stack spacing={1}>
-        {items.map((it, i) => (
-          <Box
-            key={i}
-            sx={{
-              display: "flex",
-              alignItems: "center",
-              gap: 1,
-              border: "1px solid #e6eeff",
-              borderRadius: 2,
-              p: 1,
-              fontSize: 12,
-              cursor: "grab",
-              bgcolor: "#fff",
-              "&:hover": {
-                boxShadow: "0 4px 10px rgba(100,149,237,.25)",
-              },
-            }}
-            onClick={() => {
-              const ed = editorRef.current;
-              const frame = ed?.Canvas.getFrameEl();
-              const doc = frame?.contentDocument;
-              const body = doc?.getElementById("kk-body");
-              body?.insertAdjacentHTML("beforeend", it.html);
-            }}
-          >
-            {it.icon}
-            {it.label}
-          </Box>
-        ))}
-      </Stack>
-    </Box>
-  );
-
   return (
-    <Box
-      sx={{
-        height: "100vh",
-        fontFamily: "Montserrat, sans-serif",
-        display: "flex",
-        flexDirection: "column",
-      }}
-    >
-      {/* Toolbar */}
+    <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
+      {/* Header */}
       <Stack
         direction="row"
-        alignItems="center"
         justifyContent="space-between"
-        sx={{
-          height: 56,
-          px: 1,
-          borderBottom: "1px solid #d6e1fb",
-          background: "#f0f4ff",
-          flexShrink: 0,
-        }}
+        alignItems="center"
+        sx={{ background: "#f0f4ff", borderBottom: "1px solid #d9e3f0", p: 2 }}
       >
-        <Stack direction="row" alignItems="center" spacing={1}>
-          <Tooltip title="Layout">
-            <IconButton onClick={() => toggleDrawer("layout")}>
-              <GridViewIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Text">
-            <IconButton onClick={() => toggleDrawer("text")}>
-              <TextFieldsIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Media">
-            <IconButton onClick={() => toggleDrawer("media")}>
-              <ImageIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Buttons">
-            <IconButton onClick={() => toggleDrawer("button")}>
-              <SmartButtonIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Sections">
-            <IconButton onClick={() => toggleDrawer("sections")}>
-              <DescriptionIcon />
-            </IconButton>
-          </Tooltip>
-        </Stack>
-
-        <Stack direction="row" spacing={1}>
-          <Tooltip title="Fit Width">
-            <IconButton onClick={fitWidth}>
-              <ZoomInMapIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Fit Page">
-            <IconButton onClick={fitPage}>
-              <ZoomOutMapIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Preview">
-            <IconButton onClick={doPreview}>
-              <VisibilityIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Save">
-            <IconButton onClick={doSave}>
-              <SaveIcon sx={{ color: "#6495ED" }} />
-            </IconButton>
-          </Tooltip>
-        </Stack>
+        <Typography variant="h6" fontWeight={600}>
+          Email Template Studio
+        </Typography>
+        <Button
+          variant="contained"
+          sx={{ background: "#6495ED", fontWeight: 500 }}
+          onClick={() => {
+            const html = localStorage.getItem("email_template_draft");
+            console.log("Saved draft HTML:", html);
+            alert("Open console to preview saved HTML");
+          }}
+        >
+          Save & Preview
+        </Button>
       </Stack>
 
       {/* Canvas */}
       <Box
-        ref={mountRef}
         sx={{
-          flex: 1,
-          overflow: "hidden",
-          background: "#e9ecf4",
-        }}
-      />
-
-      {/* Drawer */}
-      <Drawer
-        anchor="left"
-        open={Boolean(drawer)}
-        onClose={() => setDrawer("")}
-        PaperProps={{
-          sx: { background: "#f6f9ff", borderRight: "1px solid #d6e1fb" },
+          display: "flex",
+          height: "calc(100vh - 72px)",
+          background: "#fff",
         }}
       >
-        {drawer && <DrawerContent items={blocks[drawer]} />}
-      </Drawer>
+        <div ref={editorRef} style={{ flexGrow: 1 }} />
+      </Box>
     </Box>
   );
 }

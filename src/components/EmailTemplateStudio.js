@@ -1,9 +1,6 @@
 // /components/EmailTemplateStudio.js
 import { useEffect, useRef } from "react";
 import { Box, Button, Stack, Tooltip, IconButton, Typography } from "@mui/material";
-import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
-import TabletMacIcon from "@mui/icons-material/TabletMac";
-import SmartphoneIcon from "@mui/icons-material/Smartphone";
 import SaveIcon from "@mui/icons-material/Save";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
@@ -20,7 +17,7 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // ---- Build container layout ----
+    // ----- Layout containers -----
     const container = editorRef.current;
     container.innerHTML = `
       <div id="gjs-wrapper" style="display:flex;height:100%;width:100%;">
@@ -30,7 +27,7 @@ export default function EmailTemplateStudio() {
       </div>
     `;
 
-    // ---- Initialize GrapesJS ----
+    // ----- GrapesJS init -----
     const editor = grapesjs.init({
       container: "#gjs-canvas",
       height: "calc(100vh - 72px)",
@@ -49,9 +46,37 @@ export default function EmailTemplateStudio() {
     });
     gjsRef.current = editor;
 
-    // ---- Define basic building blocks ----
-    const bm = editor.BlockManager;
+    // ----- Responsive scaling CSS -----
+    const responsiveCSS = `
+      html, body { margin:0; padding:0; box-sizing:border-box; }
+      * { box-sizing:border-box; }
+      img, .gjs-image {
+        max-width:100% !important;
+        height:auto !important;
+        object-fit:contain !important;
+      }
+      table, td {
+        border-collapse:collapse !important;
+        width:auto;
+      }
+      @media only screen and (max-width:1024px) {
+        body { zoom:0.9; }
+      }
+      @media only screen and (max-width:768px) {
+        body { zoom:0.85; }
+        h1, h2, h3, h4 { font-size:calc(1em + 0.3vw); }
+        table, td { width:100% !important; display:block; }
+        section { padding:20px !important; }
+      }
+      @media only screen and (max-width:480px) {
+        body { zoom:0.8; }
+        img { width:100% !important; height:auto !important; }
+        h1, h2, h3 { font-size:calc(1em + 0.2vw); }
+      }
+    `;
 
+    // ----- Add blocks -----
+    const bm = editor.BlockManager;
     bm.add("section", {
       label: "Section",
       category: "Layout",
@@ -61,12 +86,11 @@ export default function EmailTemplateStudio() {
           <p>Add your content here...</p>
         </section>`,
     });
-
     bm.add("two-columns", {
       label: "2 Columns",
       category: "Layout",
       content: `
-        <table width="100%" style="border-collapse:collapse;">
+        <table width="100%">
           <tr>
             <td width="50%" style="padding:10px;vertical-align:top;">
               <p>Left column content</p>
@@ -77,39 +101,33 @@ export default function EmailTemplateStudio() {
           </tr>
         </table>`,
     });
-
     bm.add("image", {
       label: "Image",
       category: "Media",
-      content:
-        '<img src="https://via.placeholder.com/600x200" style="width:100%;border-radius:8px;">',
+      content: `<img src="https://via.placeholder.com/600x200" style="width:100%;border-radius:8px;">`,
     });
-
     bm.add("button", {
       label: "Button",
       category: "Content",
-      content:
-        '<a href="#" style="display:inline-block;background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Click Me</a>',
+      content: `<a href="#" style="display:inline-block;background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Click Me</a>`,
     });
-
     bm.add("text", {
       label: "Text",
       category: "Content",
-      content:
-        '<p style="font-family:Montserrat,sans-serif;">Type your text here...</p>',
+      content: `<p style="font-family:Montserrat,sans-serif;">Type your text here...</p>`,
     });
 
-    // ---- Default layout scaffold ----
+    // ----- Load initial content -----
     editor.on("load", () => {
       editor.BlockManager.render();
       editor.StyleManager.render();
-
       editor.setComponents(`
         <table width="100%" style="font-family:Montserrat,sans-serif;color:#333;">
           <tr>
             <td align="center" style="background:#f0f4ff;padding:20px;">
               <h1 style="margin:0;">{{Company}} Newsletter</h1>
               <p style="margin:5px 0 0 0;">Bringing you the latest updates</p>
+              <img src="https://via.placeholder.com/200x60?text=Logo" style="margin-top:10px;">
             </td>
           </tr>
           <tr>
@@ -130,29 +148,35 @@ export default function EmailTemplateStudio() {
           </tr>
           <tr>
             <td align="center" style="background:#f8f8f8;padding:15px;font-size:12px;color:#777;">
-              <p>© {{Company}} | {{Year}}<br>
-              <a href="{{UnsubscribeURL}}" style="color:#6495ED;">Unsubscribe</a></p>
+              <p>© {{Company}} | {{Year}}<br><a href="{{UnsubscribeURL}}" style="color:#6495ED;">Unsubscribe</a></p>
             </td>
           </tr>
         </table>
       `);
+      // Inject responsive CSS inside canvas
+      const frame = editor.Canvas.getFrameEl();
+      const doc = frame?.contentDocument;
+      if (doc) {
+        const styleEl = doc.createElement("style");
+        styleEl.innerHTML = responsiveCSS;
+        doc.head.appendChild(styleEl);
+      }
     });
 
-    // ---- Device preview buttons ----
-    editor.Commands.add("set-device-desktop", {
-      run: () => editor.setDevice("Desktop"),
-    });
-    editor.Commands.add("set-device-tablet", {
-      run: () => editor.setDevice("Tablet"),
-    });
-    editor.Commands.add("set-device-mobile", {
-      run: () => editor.setDevice("Mobile portrait"),
-    });
+    // ----- Smart scaling (auto responsive toggle) -----
+    const resizeHandler = () => {
+      const width = window.innerWidth;
+      if (width > 1024) editor.setDevice("Desktop");
+      else if (width > 768) editor.setDevice("Tablet");
+      else editor.setDevice("Mobile portrait");
+    };
+    window.addEventListener("resize", resizeHandler);
+    resizeHandler();
 
-    // ---- Save (no-CORS safe) ----
+    // ----- Save -----
     editor.Commands.add("save-template", {
       run: async () => {
-        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
+        const html = `<style>${editor.getCss()}</style>${responsiveCSS}${editor.getHtml()}`;
         localStorage.setItem("email_template_draft", html);
         alert("✅ Template saved locally (no-CORS).");
         try {
@@ -169,51 +193,33 @@ export default function EmailTemplateStudio() {
       },
     });
 
-    // ---- Preview ----
+    // ----- Preview -----
     editor.Commands.add("preview-template", {
       run: () => {
-        const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
+        const html = `<style>${editor.getCss()}</style>${responsiveCSS}${editor.getHtml()}`;
         const w = window.open("", "_blank");
         w.document.write(html);
         w.document.close();
       },
     });
+
+    return () => window.removeEventListener("resize", resizeHandler);
   }, []);
 
+  // ----- Toolbar -----
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* ---- Toolbar ---- */}
       <Stack
         direction="row"
         justifyContent="space-between"
         alignItems="center"
-        sx={{
-          background: "#f0f4ff",
-          borderBottom: "1px solid #d9e3f0",
-          p: 2,
-        }}
+        sx={{ background: "#f0f4ff", borderBottom: "1px solid #d9e3f0", p: 2 }}
       >
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
         </Typography>
 
         <Stack direction="row" spacing={1}>
-          <Tooltip title="Desktop View">
-            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-desktop")}>
-              <DesktopWindowsIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Tablet View">
-            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-tablet")}>
-              <TabletMacIcon />
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Mobile View">
-            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-mobile")}>
-              <SmartphoneIcon />
-            </IconButton>
-          </Tooltip>
-
           <Tooltip title="Add Section">
             <IconButton
               onClick={() => {
@@ -253,7 +259,7 @@ export default function EmailTemplateStudio() {
         </Stack>
       </Stack>
 
-      {/* ---- GrapesJS Mount Point ---- */}
+      {/* GrapesJS Mount */}
       <Box ref={editorRef} sx={{ height: "calc(100vh - 72px)" }} />
     </Box>
   );

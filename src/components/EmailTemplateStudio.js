@@ -5,6 +5,9 @@ import SaveIcon from "@mui/icons-material/Save";
 import VisibilityIcon from "@mui/icons-material/Visibility";
 import AddIcon from "@mui/icons-material/Add";
 import DeleteIcon from "@mui/icons-material/Delete";
+import LaptopMacIcon from "@mui/icons-material/LaptopMac";
+import TabletMacIcon from "@mui/icons-material/TabletMac";
+import PhoneIphoneIcon from "@mui/icons-material/PhoneIphone";
 import grapesjs from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
 import "grapesjs-preset-newsletter";
@@ -43,39 +46,24 @@ export default function EmailTemplateStudio() {
         ],
       },
       panels: { defaults: [] },
+      deviceManager: {
+        devices: [
+          { name: "Desktop", width: "" },
+          { name: "Tablet", width: "768px" },
+          { name: "Mobile portrait", width: "480px" },
+        ],
+      },
     });
     gjsRef.current = editor;
 
-    // ----- Responsive scaling CSS -----
+    // ----- Basic responsive CSS -----
     const responsiveCSS = `
-      html, body { margin:0; padding:0; box-sizing:border-box; }
-      * { box-sizing:border-box; }
-      img, .gjs-image {
-        max-width:100% !important;
-        height:auto !important;
-        object-fit:contain !important;
-      }
-      table, td {
-        border-collapse:collapse !important;
-        width:auto;
-      }
-      @media only screen and (max-width:1024px) {
-        body { zoom:0.9; }
-      }
-      @media only screen and (max-width:768px) {
-        body { zoom:0.85; }
-        h1, h2, h3, h4 { font-size:calc(1em + 0.3vw); }
-        table, td { width:100% !important; display:block; }
-        section { padding:20px !important; }
-      }
-      @media only screen and (max-width:480px) {
-        body { zoom:0.8; }
-        img { width:100% !important; height:auto !important; }
-        h1, h2, h3 { font-size:calc(1em + 0.2vw); }
-      }
+      *{box-sizing:border-box;}
+      img{max-width:100%;height:auto;}
+      table{border-collapse:collapse;}
     `;
 
-    // ----- Add blocks -----
+    // ----- Blocks -----
     const bm = editor.BlockManager;
     bm.add("section", {
       label: "Section",
@@ -117,7 +105,7 @@ export default function EmailTemplateStudio() {
       content: `<p style="font-family:Montserrat,sans-serif;">Type your text here...</p>`,
     });
 
-    // ----- Load initial content -----
+    // ----- Default template -----
     editor.on("load", () => {
       editor.BlockManager.render();
       editor.StyleManager.render();
@@ -153,7 +141,8 @@ export default function EmailTemplateStudio() {
           </tr>
         </table>
       `);
-      // Inject responsive CSS inside canvas
+
+      // inject basic responsive css
       const frame = editor.Canvas.getFrameEl();
       const doc = frame?.contentDocument;
       if (doc) {
@@ -162,16 +151,6 @@ export default function EmailTemplateStudio() {
         doc.head.appendChild(styleEl);
       }
     });
-
-    // ----- Smart scaling (auto responsive toggle) -----
-    const resizeHandler = () => {
-      const width = window.innerWidth;
-      if (width > 1024) editor.setDevice("Desktop");
-      else if (width > 768) editor.setDevice("Tablet");
-      else editor.setDevice("Mobile portrait");
-    };
-    window.addEventListener("resize", resizeHandler);
-    resizeHandler();
 
     // ----- Save -----
     editor.Commands.add("save-template", {
@@ -202,8 +181,6 @@ export default function EmailTemplateStudio() {
         w.document.close();
       },
     });
-
-    return () => window.removeEventListener("resize", resizeHandler);
   }, []);
 
   // ----- Toolbar -----
@@ -219,7 +196,23 @@ export default function EmailTemplateStudio() {
           Email Template Studio
         </Typography>
 
-        <Stack direction="row" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Tooltip title="Desktop View">
+            <IconButton onClick={() => gjsRef.current?.setDevice("Desktop")}>
+              <LaptopMacIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Tablet View">
+            <IconButton onClick={() => gjsRef.current?.setDevice("Tablet")}>
+              <TabletMacIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Mobile View">
+            <IconButton onClick={() => gjsRef.current?.setDevice("Mobile portrait")}>
+              <PhoneIphoneIcon />
+            </IconButton>
+          </Tooltip>
+
           <Tooltip title="Add Section">
             <IconButton
               onClick={() => {

@@ -1,5 +1,13 @@
+// /components/EmailTemplateStudio.js
 import { useEffect, useRef } from "react";
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { Box, Button, Stack, Tooltip, IconButton, Typography } from "@mui/material";
+import DesktopWindowsIcon from "@mui/icons-material/DesktopWindows";
+import TabletMacIcon from "@mui/icons-material/TabletMac";
+import SmartphoneIcon from "@mui/icons-material/Smartphone";
+import SaveIcon from "@mui/icons-material/Save";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import AddIcon from "@mui/icons-material/Add";
+import DeleteIcon from "@mui/icons-material/Delete";
 import grapesjs from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
 import "grapesjs-preset-newsletter";
@@ -12,32 +20,20 @@ export default function EmailTemplateStudio() {
   useEffect(() => {
     if (!editorRef.current || gjsRef.current) return;
 
-    // 🎨 Layout: Left (Blocks), Center (Canvas), Right (Styles)
+    // ---- Build container layout ----
     const container = editorRef.current;
     container.innerHTML = `
       <div id="gjs-wrapper" style="display:flex;height:100%;width:100%;">
-        <div id="blocks" style="
-          width:260px;
-          background:#f7f9fc;
-          border-right:1px solid #ddd;
-          overflow-y:auto;
-          padding:10px;
-        "></div>
+        <div id="blocks" style="width:260px;background:#f7f9fc;border-right:1px solid #d9e3f0;overflow-y:auto;padding:10px;"></div>
         <div id="gjs-canvas" style="flex-grow:1;background:#fff;"></div>
-        <div id="styles" style="
-          width:300px;
-          background:#f7f9fc;
-          border-left:1px solid #ddd;
-          overflow-y:auto;
-          padding:10px;
-        "></div>
+        <div id="styles" style="width:320px;background:#f7f9fc;border-left:1px solid #d9e3f0;overflow-y:auto;padding:10px;"></div>
       </div>
     `;
 
+    // ---- Initialize GrapesJS ----
     const editor = grapesjs.init({
       container: "#gjs-canvas",
       height: "calc(100vh - 72px)",
-      width: "100%",
       fromElement: false,
       storageManager: false,
       noticeOnUnload: false,
@@ -53,51 +49,65 @@ export default function EmailTemplateStudio() {
     });
     gjsRef.current = editor;
 
-    // 🧱 Define custom blocks (sections, columns, image)
+    // ---- Define basic building blocks ----
     const bm = editor.BlockManager;
 
     bm.add("section", {
       label: "Section",
       category: "Layout",
       content: `
-        <section style="padding:40px; background:#ffffff;">
-          <h2 style="font-family:Montserrat, sans-serif;">New Section</h2>
-          <p>Write something amazing here...</p>
-        </section>
-      `,
+        <section style="padding:40px;background:#ffffff;">
+          <h2 style="font-family:Montserrat,sans-serif;">New Section</h2>
+          <p>Add your content here...</p>
+        </section>`,
     });
 
-    bm.add("image-block", {
+    bm.add("two-columns", {
+      label: "2 Columns",
+      category: "Layout",
+      content: `
+        <table width="100%" style="border-collapse:collapse;">
+          <tr>
+            <td width="50%" style="padding:10px;vertical-align:top;">
+              <p>Left column content</p>
+            </td>
+            <td width="50%" style="padding:10px;vertical-align:top;">
+              <p>Right column content</p>
+            </td>
+          </tr>
+        </table>`,
+    });
+
+    bm.add("image", {
       label: "Image",
       category: "Media",
-      content: '<img src="https://via.placeholder.com/600x200" style="width:100%;border-radius:8px;">',
+      content:
+        '<img src="https://via.placeholder.com/600x200" style="width:100%;border-radius:8px;">',
     });
 
-    bm.add("text-block", {
+    bm.add("button", {
+      label: "Button",
+      category: "Content",
+      content:
+        '<a href="#" style="display:inline-block;background:#6495ED;color:#fff;padding:10px 18px;border-radius:6px;text-decoration:none;">Click Me</a>',
+    });
+
+    bm.add("text", {
       label: "Text",
       category: "Content",
-      content: '<p style="font-family:Montserrat,sans-serif;">Add your text here...</p>',
+      content:
+        '<p style="font-family:Montserrat,sans-serif;">Type your text here...</p>',
     });
 
-    // Add a background image option in the Style Manager
-    editor.StyleManager.addProperty("extra", {
-      id: "background-image",
-      name: "Background Image",
-      type: "file",
-      property: "background-image",
-      defaults: "",
-      full: true,
-    });
-
-    // Load default layout
+    // ---- Default layout scaffold ----
     editor.on("load", () => {
       editor.BlockManager.render();
       editor.StyleManager.render();
 
       editor.setComponents(`
-        <table width="100%" style="font-family: Montserrat, sans-serif; color:#333;">
+        <table width="100%" style="font-family:Montserrat,sans-serif;color:#333;">
           <tr>
-            <td align="center" style="background:#f0f4ff; padding:20px;">
+            <td align="center" style="background:#f0f4ff;padding:20px;">
               <h1 style="margin:0;">{{Company}} Newsletter</h1>
               <p style="margin:5px 0 0 0;">Bringing you the latest updates</p>
             </td>
@@ -106,12 +116,12 @@ export default function EmailTemplateStudio() {
             <td style="padding:20px;">
               <table width="100%">
                 <tr>
-                  <td width="50%" style="padding:10px; vertical-align:top;">
+                  <td width="50%" style="padding:10px;vertical-align:top;">
                     <h2>Left Column Title</h2>
                     <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit.</p>
                     <a href="#" style="color:#6495ED;">Read more →</a>
                   </td>
-                  <td width="50%" style="padding:10px; vertical-align:top;">
+                  <td width="50%" style="padding:10px;vertical-align:top;">
                     <img src="https://via.placeholder.com/250" width="100%" style="border-radius:8px;">
                   </td>
                 </tr>
@@ -119,7 +129,7 @@ export default function EmailTemplateStudio() {
             </td>
           </tr>
           <tr>
-            <td align="center" style="background:#f8f8f8; padding:15px; font-size:12px; color:#777;">
+            <td align="center" style="background:#f8f8f8;padding:15px;font-size:12px;color:#777;">
               <p>© {{Company}} | {{Year}}<br>
               <a href="{{UnsubscribeURL}}" style="color:#6495ED;">Unsubscribe</a></p>
             </td>
@@ -128,12 +138,23 @@ export default function EmailTemplateStudio() {
       `);
     });
 
-    // 💾 Save (no-cors)
+    // ---- Device preview buttons ----
+    editor.Commands.add("set-device-desktop", {
+      run: () => editor.setDevice("Desktop"),
+    });
+    editor.Commands.add("set-device-tablet", {
+      run: () => editor.setDevice("Tablet"),
+    });
+    editor.Commands.add("set-device-mobile", {
+      run: () => editor.setDevice("Mobile portrait"),
+    });
+
+    // ---- Save (no-CORS safe) ----
     editor.Commands.add("save-template", {
       run: async () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
         localStorage.setItem("email_template_draft", html);
-        alert("✅ Template saved locally (no-cors).");
+        alert("✅ Template saved locally (no-CORS).");
         try {
           await fetch(
             "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec",
@@ -143,51 +164,96 @@ export default function EmailTemplateStudio() {
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ action: "saveTemplate", html }),
             }
-          ).catch(() => {});
+          );
         } catch {}
       },
     });
 
-    // 👁️ Preview
+    // ---- Preview ----
     editor.Commands.add("preview-template", {
       run: () => {
         const html = `<style>${editor.getCss()}</style>${editor.getHtml()}`;
-        const preview = window.open("", "_blank");
-        preview.document.write(html);
-        preview.document.close();
+        const w = window.open("", "_blank");
+        w.document.write(html);
+        w.document.close();
       },
     });
   }, []);
 
   return (
     <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
+      {/* ---- Toolbar ---- */}
       <Stack
         direction="row"
         justifyContent="space-between"
         alignItems="center"
-        sx={{ background: "#f0f4ff", borderBottom: "1px solid #d9e3f0", p: 2 }}
+        sx={{
+          background: "#f0f4ff",
+          borderBottom: "1px solid #d9e3f0",
+          p: 2,
+        }}
       >
         <Typography variant="h6" fontWeight={600}>
           Email Template Studio
         </Typography>
-        <Stack direction="row" spacing={2}>
-          <Button
-            variant="outlined"
-            sx={{ color: "#6495ED", borderColor: "#6495ED" }}
-            onClick={() => gjsRef.current?.runCommand("preview-template")}
-          >
-            Preview in Browser
-          </Button>
-          <Button
-            variant="contained"
-            sx={{ background: "#6495ED", fontWeight: 500 }}
-            onClick={() => gjsRef.current?.runCommand("save-template")}
-          >
-            Save & Preview
-          </Button>
+
+        <Stack direction="row" spacing={1}>
+          <Tooltip title="Desktop View">
+            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-desktop")}>
+              <DesktopWindowsIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Tablet View">
+            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-tablet")}>
+              <TabletMacIcon />
+            </IconButton>
+          </Tooltip>
+          <Tooltip title="Mobile View">
+            <IconButton onClick={() => gjsRef.current?.runCommand("set-device-mobile")}>
+              <SmartphoneIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Add Section">
+            <IconButton
+              onClick={() => {
+                const ed = gjsRef.current;
+                ed.addComponents(
+                  `<section style="padding:40px;background:#ffffff;"><h2>New Section</h2><p>Write your content here...</p></section>`
+                );
+              }}
+            >
+              <AddIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Delete Selected">
+            <IconButton
+              onClick={() => {
+                const ed = gjsRef.current;
+                const selected = ed.getSelected();
+                if (selected) selected.remove();
+              }}
+            >
+              <DeleteIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Preview Template">
+            <IconButton onClick={() => gjsRef.current?.runCommand("preview-template")}>
+              <VisibilityIcon />
+            </IconButton>
+          </Tooltip>
+
+          <Tooltip title="Save Template">
+            <IconButton onClick={() => gjsRef.current?.runCommand("save-template")}>
+              <SaveIcon sx={{ color: "#6495ED" }} />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
 
+      {/* ---- GrapesJS Mount Point ---- */}
       <Box ref={editorRef} sx={{ height: "calc(100vh - 72px)" }} />
     </Box>
   );

@@ -1,158 +1,90 @@
-import { useEffect, useRef } from "react";
-import { Box, Button, Stack, Typography } from "@mui/material";
+import { useEffect, useRef, useState } from "react";
 import grapesjs from "grapesjs";
 import "grapesjs/dist/css/grapes.min.css";
 import "grapesjs-preset-newsletter";
-import "grapesjs-mjml";
+import { Box, Button, Stack, Typography } from "@mui/material";
 
-export default function EmailTemplateStudio() {
+const WEBAPP_URL =
+  "https://script.google.com/macros/s/AKfycbxE6byG1FUHiBPg902xADIJwOIQ8IlwCx4riqkQ2fLG_2TxuxYsseUPqG9SR0ePhXBf/exec";
+
+export default function EmailTemplateStudio({ template, onClose }) {
   const editorRef = useRef(null);
-  const gjsRef = useRef(null);
+  const [editor, setEditor] = useState(null);
 
   useEffect(() => {
-    if (!editorRef.current || gjsRef.current) return;
-
-    const editor = grapesjs.init({
-      container: editorRef.current,
-      height: "100vh",
+    const e = grapesjs.init({
+      container: "#gjs",
+      height: "85vh",
       fromElement: false,
       storageManager: false,
-      plugins: ["grapesjs-preset-newsletter", "grapesjs-mjml"],
-      pluginsOpts: {
-        "grapesjs-preset-newsletter": {
-          modalLabelImport: "Paste your HTML here",
-          modalLabelExport: "Copy the HTML below",
-          codeViewOptions: "htmlmixed",
-        },
-        "grapesjs-mjml": {},
-      },
-      panels: { defaults: [] },
-      canvas: {
-        styles: [
-          "https://cdnjs.cloudflare.com/ajax/libs/meyer-reset/2.0/reset.min.css",
-          "https://fonts.googleapis.com/css?family=Montserrat:400,500,700",
+      plugins: ["gjs-preset-newsletter"],
+      pluginsOpts: { "gjs-preset-newsletter": {} },
+      styleManager: { sectors: [] },
+      assetManager: {
+        upload: false,
+        assets: [
+          // optional default images
+          "https://ridosports.com/logo.png",
         ],
       },
     });
+    // Load existing HTML if editing
+    if (template?.HTML) e.setComponents(template.HTML);
 
-    gjsRef.current = editor;
-
-    // ✅ Add panels (top + left)
-    editor.Panels.addPanel({
-      id: "panel-top",
-      el: ".panel__top",
+    // Add a block group for tokens
+    e.BlockManager.add("token-firstname", {
+      label: "{{First Name}}",
+      category: "Tokens",
+      content: "{{First Name}}",
+    });
+    e.BlockManager.add("token-company", {
+      label: "{{Company}}",
+      category: "Tokens",
+      content: "{{Company}}",
+    });
+    e.BlockManager.add("token-unsub", {
+      label: "{{UnsubscribeURL}}",
+      category: "Tokens",
+      content: '<a href="{{UnsubscribeURL}}">Unsubscribe</a>',
     });
 
-    editor.Panels.addPanel({
-      id: "basic-actions",
-      el: ".panel__basic-actions",
-      buttons: [
-        {
-          id: "visibility",
-          className: "fa fa-square-o",
-          command: "sw-visibility",
-          active: true,
-          attributes: { title: "Toggle Canvas" },
-        },
-        {
-          id: "export",
-          className: "fa fa-code",
-          command: "export-template",
-          attributes: { title: "View Code" },
-        },
-        {
-          id: "undo",
-          className: "fa fa-undo",
-          command: "undo",
-          attributes: { title: "Undo" },
-        },
-        {
-          id: "redo",
-          className: "fa fa-repeat",
-          command: "redo",
-          attributes: { title: "Redo" },
-        },
-        {
-          id: "save",
-          className: "fa fa-save",
-          command: "save-template",
-          attributes: { title: "Save Template" },
-        },
-      ],
-    });
+    editorRef.current = e;
+    setEditor(e);
+    return () => e.destroy();
+  }, [template]);
 
-    editor.Panels.addPanel({
-      id: "panel-left",
-      el: ".panel__left",
-      buttons: [
-        {
-          id: "add-block",
-          className: "fa fa-plus-square",
-          command: "show-blocks",
-          active: true,
-          attributes: { title: "Blocks" },
-        },
-      ],
+  const handleSave = async () => {
+    const html = editorRef.current.getHtml();
+    const payload = {
+      action: "saveTemplate",
+      templateId: template?.["Template ID"],
+      name: template?.["Template Name"] || "New Template",
+      subject: template?.Subject || "Untitled",
+      fromName: template?.["From Name"] || "Rido Sports",
+      fromEmail: template?.["From Email"] || "info@ridosports.com",
+      html,
+    };
+    await fetch(WEBAPP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-
-    // ✅ Render default blocks
-    const bm = editor.BlockManager;
-    editor.on("load", () => {
-      bm.render();
-    });
-
-    // ✅ Save template locally (can later connect to Apps Script)
-    editor.Commands.add("save-template", {
-      run: () => {
-        const html = editor.getHtml();
-        const css = editor.getCss();
-        const fullHTML = `<style>${css}</style>${html}`;
-        localStorage.setItem("email_template_draft", fullHTML);
-        alert("✅ Template saved locally. We’ll connect Google Sheets next.");
-      },
-    });
-
-  }, []);
+    onClose && onClose();
+  };
 
   return (
-    <Box sx={{ height: "100vh", fontFamily: "Montserrat, sans-serif" }}>
-      {/* --- Header Bar --- */}
-      <Stack
-        direction="row"
-        justifyContent="space-between"
-        alignItems="center"
-        p={2}
-        sx={{ background: "#f0f4ff", borderBottom: "1px solid #ccc" }}
-      >
-        <Typography variant="h6" fontWeight={600}>
-          Email Template Studio
-        </Typography>
-        <Button
-          variant="contained"
-          onClick={() => {
-            const html = localStorage.getItem("email_template_draft");
-            console.log("Saved draft HTML:", html);
-            alert("Open console to preview saved HTML");
-          }}
-          sx={{ background: "#6495ED" }}
-        >
-          Save & Preview
+    <Box sx={{ p: 2, fontFamily: "Montserrat, sans-serif" }}>
+      <Typography variant="h6" fontWeight={600} mb={2}>
+        Email Template Studio
+      </Typography>
+      <div id="gjs" style={{ border: "1px solid #ccc" }}></div>
+
+      <Stack direction="row" spacing={2} justifyContent="flex-end" mt={2}>
+        <Button onClick={onClose}>Cancel</Button>
+        <Button variant="contained" onClick={handleSave} sx={{ background: "#6495ED" }}>
+          Save Template
         </Button>
       </Stack>
-
-      {/* --- Toolbar Containers --- */}
-      <div className="panel__top"></div>
-      <div className="panel__basic-actions"></div>
-      <div className="panel__left"></div>
-
-      {/* --- Editor Container --- */}
-      <div
-        ref={editorRef}
-        style={{
-          height: "calc(100vh - 64px)",
-          overflow: "hidden",
-        }}
-      />
     </Box>
   );
 }

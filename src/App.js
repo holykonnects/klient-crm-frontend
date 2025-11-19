@@ -39,7 +39,7 @@ const AppRoutes = () => {
         <Route path="projects" element={<ProjectTable />} />
         <Route path="email-templates" element={<EmailTemplatesTable />} />
         <Route path="email-studio" element={<EmailTemplateStudio />} />
-        <Route path="send-email" element={<EmailDashboard />} />
+        <Route path="email-dashboard" element={<EmailDashboard />} />
         
         {/* ✅ Travel route with access control */}
         <Route

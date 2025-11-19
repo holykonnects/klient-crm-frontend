@@ -16,7 +16,6 @@ import HistoryIcon from "@mui/icons-material/History";
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import SendEmailModal from "./SendEmailModal";
-import { useAuth } from "../AuthContext";
 
 const cornflowerBlue = "#6495ED";
 
@@ -24,14 +23,12 @@ export default function EmailDashboard() {
   const [tab, setTab] = useState(0);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
 
-  const { user } = useAuth(); // ⭐ Pass user into SendEmailModal
-
   return (
     <Box sx={{ fontFamily: "Montserrat, sans-serif", p: 2 }}>
       {/* PAGE TITLE */}
       <Typography
         variant="h5"
-        fontWeight={700}
+        fontWeight="700"
         sx={{
           mb: 2,
           color: cornflowerBlue,
@@ -41,7 +38,7 @@ export default function EmailDashboard() {
         Email Dashboard
       </Typography>
 
-      {/* TABS BAR */}
+      {/* TABS */}
       <Tabs
         value={tab}
         onChange={(e, v) => setTab(v)}
@@ -69,7 +66,7 @@ export default function EmailDashboard() {
             Choose an action
           </Typography>
 
-          <Stack direction="row" spacing={3} flexWrap="wrap" rowGap={3}>
+          <Stack direction="row" spacing={3} flexWrap="wrap">
             {/* SEND EMAIL CARD */}
             <Card
               sx={{
@@ -87,7 +84,7 @@ export default function EmailDashboard() {
                   <Typography
                     sx={{
                       mt: 2,
-                      fontFamily: "Montserrat, sans-serif",
+                      fontFamily: "Montserrat",
                       fontWeight: 600,
                     }}
                   >
@@ -97,7 +94,7 @@ export default function EmailDashboard() {
               </CardActionArea>
             </Card>
 
-            {/* TEMPLATES CARD */}
+            {/* MANAGE TEMPLATES CARD */}
             <Card
               sx={{
                 width: 250,
@@ -114,7 +111,7 @@ export default function EmailDashboard() {
                   <Typography
                     sx={{
                       mt: 2,
-                      fontFamily: "Montserrat, sans-serif",
+                      fontFamily: "Montserrat",
                       fontWeight: 600,
                     }}
                   >
@@ -141,7 +138,7 @@ export default function EmailDashboard() {
                   <Typography
                     sx={{
                       mt: 2,
-                      fontFamily: "Montserrat, sans-serif",
+                      fontFamily: "Montserrat",
                       fontWeight: 600,
                     }}
                   >
@@ -156,12 +153,11 @@ export default function EmailDashboard() {
           <SendEmailModal
             open={sendEmailOpen}
             onClose={() => setSendEmailOpen(false)}
-            user={user}        {/* ⭐️ NOW CORRECTLY PASSED */}
           />
         </Box>
       )}
 
-      {/* TEMPLATE MANAGER TAB */}
+      {/* TEMPLATES TAB */}
       {tab === 1 && (
         <Box sx={{ mt: 2 }}>
           <EmailTemplatesTable />
@@ -173,7 +169,7 @@ export default function EmailDashboard() {
         <Box sx={{ mt: 2 }}>
           <Typography
             sx={{
-              fontFamily: "Montserrat, sans-serif",
+              fontFamily: "Montserrat",
               fontWeight: 600,
               mt: 1,
               mb: 1,
@@ -182,6 +178,7 @@ export default function EmailDashboard() {
             Email Logs (Coming Soon)
           </Typography>
 
+          {/* PLACEHOLDER */}
           <Box
             sx={{
               p: 3,
@@ -191,7 +188,7 @@ export default function EmailDashboard() {
               fontStyle: "italic",
             }}
           >
-            Logs from your “Email_Events” sheet will appear here.
+            Logs from the “Email_Events” sheet will appear here.
           </Box>
         </Box>
       )}

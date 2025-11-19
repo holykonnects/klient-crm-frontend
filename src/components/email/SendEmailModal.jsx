@@ -18,16 +18,19 @@ import {
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CloseIcon from "@mui/icons-material/Close";
 
+// --- GAS ENDPOINT ---
 const WEBAPP_URL =
   "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
 
 export default function SendEmailModal({ open, onClose, user = {} }) {
-  /************************************
-   * STATES
-   ************************************/
-  const [mode, setMode] = useState("new"); // DEFAULT = NEW LEAD
+  /****************************************
+   * DEFAULT MODE = NEW LEAD
+   ****************************************/
+  const [mode, setMode] = useState("new"); // NEW is default
+
   const [templates, setTemplates] = useState([]);
   const [leads, setLeads] = useState([]);
+
   const [validation, setValidation] = useState({
     leadSources: [],
     leadStatuses: [],
@@ -39,9 +42,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  /************************************
-   * LEAD OWNER
-   ************************************/
+  /****************************************
+   * OWNER FIELD (CRITICAL FIX)
+   ****************************************/
   const owner =
     user?.username ||
     user?.LoginUsername ||
@@ -49,10 +52,10 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
     user?.email ||
     "Unknown";
 
-  /************************************
-   * NEW LEAD STRUCTURE (Option B)
-   ************************************/
-  const initialNewLead = {
+  /****************************************
+   * NEW LEAD STATE
+   ****************************************/
+  const [newLead, setNewLead] = useState({
     "Lead Owner": owner,
     "First Name": "",
     "Last Name": "",
@@ -74,17 +77,14 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
     Country: "",
     PinCode: "",
     "Additional Description/Remarks": "",
-  };
+  });
 
-  const [newLead, setNewLead] = useState(initialNewLead);
+  const updateNewLead = (k, v) =>
+    setNewLead((prev) => ({ ...prev, [k]: v }));
 
-  const updateNewLead = (key, value) => {
-    setNewLead((prev) => ({ ...prev, [key]: value }));
-  };
-
-  /************************************
+  /****************************************
    * LOAD TEMPLATES
-   ************************************/
+   ****************************************/
   const loadTemplates = async () => {
     try {
       const res = await fetch(`${WEBAPP_URL}?action=getTemplates`);
@@ -95,79 +95,89 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
     }
   };
 
-  /************************************
+  /****************************************
    * LOAD EXISTING LEADS
-   ************************************/
+   ****************************************/
   const loadLeads = async () => {
     try {
       const res = await fetch(
         `${WEBAPP_URL}?action=getLeads&user=${encodeURIComponent(owner)}`
       );
       const json = await res.json();
-      if (json.ok) setLeads(json.data || []);
+
+      if (json.ok) {
+        setLeads(json.data || []);
+      }
     } catch (err) {
       console.error("Lead load error:", err);
     }
   };
 
-  /************************************
+  /****************************************
    * LOAD VALIDATION TABLES
-   ************************************/
+   ****************************************/
   const loadValidation = async () => {
     try {
       const res = await fetch(`${WEBAPP_URL}?action=getLeadValidation`);
       const json = await res.json();
-      if (json.ok && json.data) setValidation(json.data);
-    } catch (e) {
-      console.error("Validation load error:", e);
+
+      if (json.ok) setValidation(json.data);
+    } catch (err) {
+      console.error("Validation load error:", err);
     }
   };
 
-  /************************************
-   * LOAD ALL DATA WHEN MODAL OPENS
-   ************************************/
+  /****************************************
+   * LOAD EVERYTHING WHEN MODAL OPENS
+   ****************************************/
   useEffect(() => {
     if (open) {
-      setMode("new");
-      setNewLead(initialNewLead);
       loadTemplates();
       loadLeads();
       loadValidation();
     }
   }, [open]);
 
-  /************************************
-   * PREVIEW TEMPLATE
-   ************************************/
+  /****************************************
+   * TEMPLATE PREVIEW
+   ****************************************/
   const handlePreview = async () => {
-    if (!selectedTemplateId) return alert("Select a template first.");
-    if (!selectedLeadId) return alert("Select a lead first.");
+    if (!selectedTemplateId)
+      return alert("Select a template first.");
 
     const res = await fetch(
       `${WEBAPP_URL}?action=getTemplateHtml&templateId=${selectedTemplateId}`
     );
     const json = await res.json();
 
-    if (!json.ok) return alert("Failed to load template text.");
+    if (!json.ok) return alert("Failed to load template.");
+
     let html = json.html;
 
-    const lead = leads.find((l) => l["Lead ID"] === selectedLeadId);
-    if (!lead) return alert("Lead data missing.");
+    const dataObj =
+      mode === "existing"
+        ? leads.find((l) => l["Lead ID"] === selectedLeadId)
+        : newLead;
 
-    Object.keys(lead).forEach((key) => {
-      html = html.replaceAll(`{{${key}}}`, lead[key] || "");
+    if (!dataObj) return alert("Lead data missing.");
+
+    Object.keys(dataObj).forEach((key) => {
+      const ph = `{{${key}}}`;
+      html = html.replaceAll(ph, dataObj[key] || "");
     });
 
     setPreviewHtml(html);
     setPreviewOpen(true);
   };
 
-  /************************************
-   * SUBMIT NEW LEAD
-   ************************************/
+  /****************************************
+   * CREATE NEW LEAD
+   ****************************************/
   const submitNewLead = async () => {
-    if (!newLead["Lead Source"]) return alert("Lead Source is mandatory.");
-    if (!newLead["Lead Status"]) return alert("Lead Status is mandatory.");
+    if (!newLead["Lead Source"])
+      return alert("Lead Source is mandatory.");
+    if (!newLead["Lead Status"])
+      return alert("Lead Status is mandatory.");
 
     setLoading(true);
 
@@ -184,19 +194,18 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
 
     if (!json.ok) return alert("Failed to create lead.");
 
-    // Auto switching to existing mode
+    alert("Lead created successfully!");
+
+    setSelectedLeadId(json.lead["Lead ID"]);
+
+    // SWITCH MODE → existing
     setMode("existing");
-
-    // Reload leads and auto-select new lead
-    await loadLeads();
-    setSelectedLeadId(json.leadId);
-
-    alert("Lead created and selected!");
+    loadLeads();
   };
 
-  /************************************
+  /****************************************
    * SEND EMAIL
-   ************************************/
+   ****************************************/
   const sendEmail = async () => {
     if (!selectedTemplateId) return alert("Select a template.");
     if (!selectedLeadId) return alert("Select a lead.");
@@ -218,13 +227,13 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
 
     if (!json.ok) return alert("Email failed.");
 
-    alert("Email sent successfully!");
+    alert("Email sent!");
     onClose();
   };
 
-  /************************************
-   * UI
-   ************************************/
+  /****************************************
+   * UI START
+   ****************************************/
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="md">
@@ -248,14 +257,12 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
             <Button
               variant={mode === "existing" ? "contained" : "outlined"}
               onClick={() => setMode("existing")}
-              sx={{ textTransform: "none" }}
             >
               Existing Lead
             </Button>
             <Button
               variant={mode === "new" ? "contained" : "outlined"}
               onClick={() => setMode("new")}
-              sx={{ textTransform: "none" }}
             >
               New Lead
             </Button>
@@ -266,14 +273,15 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
             <TextField
               select
               fullWidth
-              sx={{ mb: 3 }}
               label="Select Lead"
+              sx={{ mb: 2 }}
               value={selectedLeadId}
               onChange={(e) => setSelectedLeadId(e.target.value)}
             >
               {leads.map((l) => (
                 <MenuItem key={l["Lead ID"]} value={l["Lead ID"]}>
-                  {`${l["Lead ID"]} — ${l["First Name"]} ${l["Last Name"]} — ${l["Company"]}`}
+                  {l.Company || "No Company"} — {l["First Name"]}{" "}
+                  {l["Last Name"]}
                 </MenuItem>
               ))}
             </TextField>
@@ -282,7 +290,6 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
           {/* NEW LEAD ACCORDIONS */}
           {mode === "new" && (
             <Box>
-
               {/* CONTACT DETAILS */}
               <Accordion defaultExpanded>
                 <AccordionSummary expandIcon={<ExpandMoreIcon />}>
@@ -292,11 +299,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                   <Stack spacing={2}>
                     <TextField
                       label="Lead Owner"
-                      fullWidth
                       value={newLead["Lead Owner"]}
                       InputProps={{ readOnly: true }}
                     />
-
                     <Stack direction="row" spacing={2}>
                       <TextField
                         label="First Name"
@@ -340,7 +345,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                         label="Fax"
                         fullWidth
                         value={newLead.Fax}
-                        onChange={(e) => updateNewLead("Fax", e.target.value)}
+                        onChange={(e) =>
+                          updateNewLead("Fax", e.target.value)
+                        }
                       />
                       <TextField
                         label="Social Media"
@@ -366,7 +373,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                       label="Company"
                       fullWidth
                       value={newLead.Company}
-                      onChange={(e) => updateNewLead("Company", e.target.value)}
+                      onChange={(e) =>
+                        updateNewLead("Company", e.target.value)
+                      }
                     />
 
                     <Stack direction="row" spacing={2}>
@@ -399,6 +408,7 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                         updateNewLead("Requirement", e.target.value)
                       }
                     />
+
                     <TextField
                       label="Website"
                       fullWidth
@@ -421,34 +431,34 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                     <Stack direction="row" spacing={2}>
                       <TextField
                         select
+                        fullWidth
                         required
                         label="Lead Source"
-                        fullWidth
                         value={newLead["Lead Source"]}
                         onChange={(e) =>
                           updateNewLead("Lead Source", e.target.value)
                         }
                       >
-                        {validation.leadSources.map((s) => (
-                          <MenuItem key={s} value={s}>
-                            {s}
+                        {validation.leadSources.map((v) => (
+                          <MenuItem key={v} value={v}>
+                            {v}
                           </MenuItem>
                         ))}
                       </TextField>
 
                       <TextField
                         select
+                        fullWidth
                         required
                         label="Lead Status"
-                        fullWidth
                         value={newLead["Lead Status"]}
                         onChange={(e) =>
                           updateNewLead("Lead Status", e.target.value)
                         }
                       >
-                        {validation.leadStatuses.map((s) => (
-                          <MenuItem key={s} value={s}>
-                            {s}
+                        {validation.leadStatuses.map((v) => (
+                          <MenuItem key={v} value={v}>
+                            {v}
                           </MenuItem>
                         ))}
                       </TextField>
@@ -493,7 +503,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                       label="Street"
                       fullWidth
                       value={newLead.Street}
-                      onChange={(e) => updateNewLead("Street", e.target.value)}
+                      onChange={(e) =>
+                        updateNewLead("Street", e.target.value)
+                      }
                     />
 
                     <Stack direction="row" spacing={2}>
@@ -501,14 +513,17 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                         label="City"
                         fullWidth
                         value={newLead.City}
-                        onChange={(e) => updateNewLead("City", e.target.value)}
+                        onChange={(e) =>
+                          updateNewLead("City", e.target.value)
+                        }
                       />
-
                       <TextField
                         label="State"
                         fullWidth
                         value={newLead.State}
-                        onChange={(e) => updateNewLead("State", e.target.value)}
+                        onChange={(e) =>
+                          updateNewLead("State", e.target.value)
+                        }
                       />
                     </Stack>
 
@@ -521,7 +536,6 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
                           updateNewLead("Country", e.target.value)
                         }
                       />
-
                       <TextField
                         label="PinCode"
                         fullWidth
@@ -539,15 +553,15 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
               <Box textAlign="right" sx={{ mt: 2 }}>
                 <Button
                   variant="contained"
-                  onClick={submitNewLead}
                   disabled={loading}
-                  sx={{
-                    background: "#6495ED",
-                    textTransform: "none",
-                    fontFamily: "Montserrat",
-                  }}
+                  onClick={submitNewLead}
+                  sx={{ background: "#6495ED" }}
                 >
-                  {loading ? <CircularProgress size={22} /> : "Create Lead"}
+                  {loading ? (
+                    <CircularProgress size={22} />
+                  ) : (
+                    "Create Lead"
+                  )}
                 </Button>
               </Box>
             </Box>
@@ -569,19 +583,22 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
             ))}
           </TextField>
 
-          {/* ACTION BUTTONS */}
+          {/* SEND + PREVIEW */}
           <Stack direction="row" spacing={2} sx={{ mt: 3 }}>
             <Button variant="outlined" onClick={handlePreview}>
               Preview Template
             </Button>
-
             <Button
               variant="contained"
               sx={{ background: "#6495ED" }}
               onClick={sendEmail}
               disabled={loading}
             >
-              {loading ? <CircularProgress size={22} /> : "Send Email"}
+              {loading ? (
+                <CircularProgress size={22} />
+              ) : (
+                "Send Email"
+              )}
             </Button>
           </Stack>
         </DialogContent>
@@ -594,7 +611,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
         maxWidth="lg"
         fullWidth
       >
-        <DialogTitle sx={{ fontFamily: "Montserrat", fontWeight: 600 }}>
+        <DialogTitle
+          sx={{ fontFamily: "Montserrat", fontWeight: 600 }}
+        >
           Template Preview
         </DialogTitle>
         <DialogContent>
@@ -602,9 +621,9 @@ export default function SendEmailModal({ open, onClose, user = {} }) {
             dangerouslySetInnerHTML={{ __html: previewHtml }}
             sx={{
               p: 2,
-              border: "1px solid #ccc",
-              borderRadius: "6px",
               fontFamily: "Montserrat",
+              border: "1px solid #ccc",
+              borderRadius: "8px",
             }}
           />
         </DialogContent>

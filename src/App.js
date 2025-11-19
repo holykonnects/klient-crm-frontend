@@ -19,6 +19,7 @@ import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
 import EmailTemplatesTable from './components/EmailTemplatesTable';
 import EmailTemplateStudio from './components/EmailTemplateStudio';
+import EmailDashboard from './components/email/EmailDashboard';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -38,6 +39,7 @@ const AppRoutes = () => {
         <Route path="projects" element={<ProjectTable />} />
         <Route path="email-templates" element={<EmailTemplatesTable />} />
         <Route path="email-studio" element={<EmailTemplateStudio />} />
+        <Route path="send-email" element={<EmailDashboard />} />
         
         {/* ✅ Travel route with access control */}
         <Route

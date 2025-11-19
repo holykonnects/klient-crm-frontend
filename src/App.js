@@ -17,7 +17,7 @@ import TravelTable from './components/TravelTable';
 import SalesTrackerTable from './components/SalesTrackerTable';
 import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
-import EmailTemplatesTable from './components/EmailTemplatesTable';
+import EmailTemplatesTable from './components/email/EmailTemplatesTable';
 import EmailTemplateStudio from './components/EmailTemplateStudio';
 import EmailDashboard from './components/email/EmailDashboard';
 

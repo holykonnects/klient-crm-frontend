@@ -18,7 +18,6 @@ import SalesTrackerTable from './components/SalesTrackerTable';
 import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
 import EmailTemplatesTable from './components/email/EmailTemplatesTable';
-//import EmailTemplateStudio from './components/EmailTemplateStudio';
 import EmailDashboard from './components/email/EmailDashboard';
 
 const AppRoutes = () => {
@@ -38,7 +37,6 @@ const AppRoutes = () => {
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
         <Route path="email-templates" element={<EmailTemplatesTable />} />
-        //<Route path="email-studio" element={<EmailTemplateStudio />} />
         <Route path="email-dashboard" element={<EmailDashboard />} />
         
         {/* ✅ Travel route with access control */}

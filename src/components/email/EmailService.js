@@ -1,51 +1,70 @@
-// EmailService.js
-const GAS_URL = "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
+const API =
+  "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
+
+function safeJSON(text) {
+  try {
+    return JSON.parse(text);
+  } catch (e) {
+    return null;
+  }
+}
 
 const EmailService = {
-
   async getTemplates() {
-    const res = await fetch(`${GAS_URL}?action=getTemplates`, {
-      method: "GET"
-    });
-    return res.json();
-  },
+    const res = await fetch(`${API}?action=getTemplates`);
+    const text = await res.text();
+    const json = safeJSON(text);
 
-  async previewTemplate(id) {
-    const res = await fetch(`${GAS_URL}?action=previewTemplate&id=${id}`, {
-      method: "GET"
-    });
-    return res.json();
+    if (!json || !json.ok) return [];
+
+    return json.data; // <-- EXTRACT ARRAY
   },
 
   async getLeads() {
-    const res = await fetch(`${GAS_URL}?action=getLeads`, {
-      method: "GET"
-    });
-    return res.json();
+    const res = await fetch(`${API}?action=getLeads`);
+    const text = await res.text();
+    const arr = safeJSON(text);
+
+    if (!Array.isArray(arr)) return [];
+
+    // Map GAS column headers → frontend format
+    return arr.map((l) => ({
+      firstName: l["First Name"] || "",
+      lastName: l["Last Name"] || "",
+      email: l["Email ID"] || "",
+      leadSource: l["Lead Source"] || "",
+      remarks: l["Remarks"] || "",
+      raw: l,
+    }));
   },
 
-  async getEvents() {
-    const res = await fetch(`${GAS_URL}?action=getEvents`, {
-      method: "GET"
-    });
-    return res.json();
+  async previewTemplate(id) {
+    const res = await fetch(`${API}?action=previewTemplate&id=${id}`);
+    const text = await res.text();
+    return safeJSON(text);
   },
 
-  async sendEmail(body) {
-    await fetch(`${GAS_URL}?action=sendEmail`, {
+  async createLead(data) {
+    await fetch(API, {
       method: "POST",
-      mode: "no-cors",
-      body: JSON.stringify(body)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "createLead",
+        ...data
+      }),
     });
   },
 
-  async createLead(body) {
-    await fetch(`${GAS_URL}?action=createLead`, {
+  async sendEmail(payload) {
+    await fetch(API, {
       method: "POST",
-      mode: "no-cors",
-      body: JSON.stringify(body)
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "sendEmail",
+        ...payload
+      }),
     });
-  }
+  },
 };
 
 export default EmailService;

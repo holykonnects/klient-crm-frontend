@@ -39,10 +39,10 @@ export default function SendEmailModal({ open, onClose }) {
   });
 
   const [selectedTemplate, setSelectedTemplate] = useState("");
-  the [selectedLead, setSelectedLead] = useState("");
+  const [selectedLead, setSelectedLead] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  the [sending, setSending] = useState(false);
+  const [sending, setSending] = useState(false);
 
   const userEmail = localStorage.getItem("email") || "";
 

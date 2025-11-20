@@ -1,233 +1,201 @@
-import React, { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogActions,
-  Button,
-  TextField,
-  MenuItem,
-  Typography,
-  Box,
-  CircularProgress,
-  Stack,               // ✅ FIX: Added!
+  Box, Button, Dialog, TextField, Typography,
+  Select, MenuItem, Divider, Stack
 } from "@mui/material";
-
-const endpoint =
-  "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
-
-/********************************************
- * SAFE JSON PARSER
- ********************************************/
-async function safeJSON(res) {
-  try {
-    const text = await res.text();
-    return JSON.parse(text);
-  } catch (err) {
-    console.warn("JSON parse failed:", err);
-    return { ok: false, error: "parse_failed" };
-  }
-}
+import EmailService from "./EmailService";
+import TemplatePreviewModal from "./TemplatePreviewModal";
 
 export default function SendEmailModal({ open, onClose }) {
-  const [loading, setLoading] = useState(true);
-  const [templates, setTemplates] = useState([]);
+
+  const [mode, setMode] = useState("existing");
   const [leads, setLeads] = useState([]);
-  const [validation, setValidation] = useState({
-    leadSources: [],
-    leadStatuses: [],
+  const [templates, setTemplates] = useState([]);
+  const [selectedLead, setSelectedLead] = useState(null);
+  const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [subject, setSubject] = useState("");
+
+  const [newLead, setNewLead] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    leadSource: "",
+    remarks: ""
   });
 
-  const [selectedTemplate, setSelectedTemplate] = useState("");
-  const [selectedLead, setSelectedLead] = useState("");
-  const [previewHtml, setPreviewHtml] = useState("");
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [sending, setSending] = useState(false);
-
-  const userEmail = localStorage.getItem("email") || "";
-
-  /********************************************
-   * LOAD DASHBOARD ON OPEN
-   ********************************************/
   useEffect(() => {
-    if (!open) return;
+    EmailService.getLeads().then(setLeads);
+    EmailService.getTemplates().then(setTemplates);
+  }, []);
 
-    async function load() {
-      setLoading(true);
+  const sendEmail = async () => {
+    const payload =
+      mode === "existing"
+        ? selectedLead
+        : newLead;
 
-      const url =
-        endpoint +
-        "?action=loadEmailDashboard&user=" +
-        encodeURIComponent(userEmail);
-
-      const res = await fetch(url, { method: "GET", mode: "no-cors" });
-      const json = await safeJSON(res);
-
-      if (json.ok && json.data) {
-        setTemplates(json.data.templates || []);
-        setLeads(json.data.leads || []);
-        setValidation(json.data.validation || {});
-      } else {
-        console.warn("Dashboard load failed:", json.error);
-      }
-
-      setLoading(false);
+    if (mode === "new") {
+      await EmailService.createLead(newLead);
     }
 
-    load();
-  }, [open]);
-
-  /********************************************
-   * LOAD TEMPLATE HTML FOR PREVIEW
-   ********************************************/
-  async function loadPreview() {
-    if (!selectedTemplate) return;
-
-    const url =
-      endpoint +
-      "?action=getTemplateHtml&templateId=" +
-      encodeURIComponent(selectedTemplate);
-
-    const res = await fetch(url, { method: "GET", mode: "no-cors" });
-    const json = await safeJSON(res);
-
-    if (json.ok) {
-      setPreviewHtml(json.html || "");
-      setPreviewOpen(true);
-    } else {
-      alert("Template preview failed: " + json.error);
-    }
-  }
-
-  /********************************************
-   * SEND EMAIL
-   ********************************************/
-  async function sendEmail() {
-    if (!selectedTemplate || !selectedLead) {
-      alert("Select template and lead!");
-      return;
-    }
-
-    setSending(true);
-
-    const payload = {
-      action: "sendEmail",
-      templateId: selectedTemplate,
-      leadId: selectedLead,
-      userEmail,
-    };
-
-    const res = await fetch(endpoint, {
-      method: "POST",
-      mode: "no-cors",
-      body: JSON.stringify(payload),
+    await EmailService.sendEmail({
+      to: payload.email,
+      subject,
+      templateId: selectedTemplate.id,
+      placeholders: payload
     });
 
-    const json = await safeJSON(res);
+    alert("Email Sent!");
+    onClose();
+  };
 
-    setSending(false);
-
-    if (json.ok) {
-      alert("Email sent!");
-      onClose();
-    } else {
-      alert("Send failed: " + json.error);
-    }
-  }
-
-  /********************************************
-   * UI — MODAL
-   ********************************************/
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle sx={{ fontFamily: "Montserrat", fontWeight: 700 }}>
-        Send Email
-      </DialogTitle>
+      <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
 
-      <DialogContent sx={{ py: 2 }}>
-        {loading ? (
-          <Stack
-            alignItems="center"
-            justifyContent="center"
-            sx={{ py: 4 }}
+        <Typography variant="h6" fontWeight="bold">Send Email</Typography>
+
+        <Stack direction="row" spacing={2} mt={2}>
+          <Button
+            variant={mode === "existing" ? "contained" : "outlined"}
+            onClick={() => setMode("existing")}
           >
-            <CircularProgress />
-          </Stack>
-        ) : (
-          <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
-            <TextField
-              select
-              label="Select Template"
-              value={selectedTemplate}
-              onChange={(e) => setSelectedTemplate(e.target.value)}
-              fullWidth
-            >
-              {templates.map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.name}
-                </MenuItem>
-              ))}
-            </TextField>
+            Existing Lead
+          </Button>
 
-            <TextField
-              select
-              label="Select Lead"
-              value={selectedLead}
-              onChange={(e) => setSelectedLead(e.target.value)}
+          <Button
+            variant={mode === "new" ? "contained" : "outlined"}
+            onClick={() => setMode("new")}
+          >
+            New Lead
+          </Button>
+        </Stack>
+
+        {/* Existing Lead */}
+        {mode === "existing" && (
+          <Box mt={3}>
+            <Typography>Choose Lead</Typography>
+            <Select
               fullWidth
+              value={selectedLead?.email || ""}
+              onChange={(e) => {
+                const lead = leads.find((l) => l.email === e.target.value);
+                setSelectedLead(lead);
+              }}
             >
-              {leads.map((l) => (
-                <MenuItem key={l["Lead ID"]} value={l["Lead ID"]}>
-                  {`${l.Company || ""} | ${l["First Name"] || ""} ${
-                    l["Last Name"] || ""
-                  } | ${l["Mobile Number"] || ""}`}
+              {leads.map((l, i) => (
+                <MenuItem value={l.email} key={i}>
+                  {l.firstName} {l.lastName} — {l.email}
                 </MenuItem>
               ))}
-            </TextField>
+            </Select>
           </Box>
         )}
-      </DialogContent>
 
-      <DialogActions>
-        <Button onClick={onClose}>Cancel</Button>
+        {/* New Lead */}
+        {mode === "new" && (
+          <Box mt={3}>
+            <TextField
+              fullWidth
+              label="First Name"
+              sx={{ mb: 2 }}
+              value={newLead.firstName}
+              onChange={(e) => setNewLead({ ...newLead, firstName: e.target.value })}
+            />
+
+            <TextField
+              fullWidth
+              label="Last Name"
+              sx={{ mb: 2 }}
+              value={newLead.lastName}
+              onChange={(e) => setNewLead({ ...newLead, lastName: e.target.value })}
+            />
+
+            <TextField
+              fullWidth
+              label="Email"
+              sx={{ mb: 2 }}
+              value={newLead.email}
+              onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
+            />
+
+            <TextField
+              fullWidth
+              label="Lead Source"
+              sx={{ mb: 2 }}
+              value={newLead.leadSource}
+              onChange={(e) => setNewLead({ ...newLead, leadSource: e.target.value })}
+            />
+
+            <TextField
+              fullWidth
+              multiline
+              rows={2}
+              label="Remarks"
+              value={newLead.remarks}
+              onChange={(e) => setNewLead({ ...newLead, remarks: e.target.value })}
+            />
+          </Box>
+        )}
+
+        {/* Template Selector */}
+        <Box mt={3}>
+          <Typography>Template</Typography>
+          <Select
+            fullWidth
+            value={selectedTemplate?.id || ""}
+            onChange={(e) => {
+              const t = templates.find((t) => t.id === e.target.value);
+              setSelectedTemplate(t);
+            }}
+          >
+            {templates.map((t) => (
+              <MenuItem value={t.id} key={t.id}>
+                {t.name}
+              </MenuItem>
+            ))}
+          </Select>
+
+          {selectedTemplate && (
+            <Button
+              size="small"
+              sx={{ mt: 1 }}
+              onClick={() => setPreviewOpen(true)}
+            >
+              Preview Template
+            </Button>
+          )}
+        </Box>
+
+        {/* Subject */}
+        <TextField
+          fullWidth
+          label="Subject"
+          sx={{ mt: 3 }}
+          value={subject}
+          onChange={(e) => setSubject(e.target.value)}
+        />
 
         <Button
-          disabled={!selectedTemplate}
-          onClick={loadPreview}
-          sx={{ color: "#6495ED", fontWeight: 600 }}
-        >
-          Preview
-        </Button>
-
-        <Button
-          disabled={!selectedTemplate || !selectedLead || sending}
-          onClick={sendEmail}
+          fullWidth
           variant="contained"
-          sx={{ background: "#6495ED", fontWeight: 600 }}
+          sx={{ mt: 3 }}
+          onClick={sendEmail}
         >
-          {sending ? "Sending..." : "Send"}
+          Send Email
         </Button>
-      </DialogActions>
 
-      {/* PREVIEW MODAL */}
-      <Dialog
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        maxWidth="md"
-        fullWidth
-      >
-        <DialogTitle>Preview Email</DialogTitle>
-        <DialogContent dividers>
-          <Box
-            sx={{ border: "1px solid #ddd", p: 2 }}
-            dangerouslySetInnerHTML={{ __html: previewHtml }}
-          />
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setPreviewOpen(false)}>Close</Button>
-        </DialogActions>
-      </Dialog>
+      </Box>
+
+      {/* Preview Modal */}
+      {selectedTemplate && (
+        <TemplatePreviewModal
+          open={previewOpen}
+          onClose={() => setPreviewOpen(false)}
+          templateId={selectedTemplate.id}
+        />
+      )}
     </Dialog>
   );
 }
-

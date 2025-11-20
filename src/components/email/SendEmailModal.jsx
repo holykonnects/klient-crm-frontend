@@ -230,3 +230,4 @@ export default function SendEmailModal({ open, onClose }) {
     </Dialog>
   );
 }
+

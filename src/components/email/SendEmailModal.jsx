@@ -10,6 +10,7 @@ import {
   Typography,
   Box,
   CircularProgress,
+  Stack,               // ✅ FIX: Added!
 } from "@mui/material";
 
 const endpoint =
@@ -38,12 +39,12 @@ export default function SendEmailModal({ open, onClose }) {
   });
 
   const [selectedTemplate, setSelectedTemplate] = useState("");
-  const [selectedLead, setSelectedLead] = useState("");
+  the [selectedLead, setSelectedLead] = useState("");
   const [previewHtml, setPreviewHtml] = useState("");
   const [previewOpen, setPreviewOpen] = useState(false);
-  const [sending, setSending] = useState(false);
+  the [sending, setSending] = useState(false);
 
-  const userEmail = localStorage.getItem("email") || ""; // real login email
+  const userEmail = localStorage.getItem("email") || "";
 
   /********************************************
    * LOAD DASHBOARD ON OPEN
@@ -135,19 +136,21 @@ export default function SendEmailModal({ open, onClose }) {
   }
 
   /********************************************
-   * UI
+   * UI — MODAL
    ********************************************/
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle
-        sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}
-      >
+      <DialogTitle sx={{ fontFamily: "Montserrat", fontWeight: 700 }}>
         Send Email
       </DialogTitle>
 
       <DialogContent sx={{ py: 2 }}>
         {loading ? (
-          <Stack alignItems="center" justifyContent="center" sx={{ py: 4 }}>
+          <Stack
+            alignItems="center"
+            justifyContent="center"
+            sx={{ py: 4 }}
+          >
             <CircularProgress />
           </Stack>
         ) : (

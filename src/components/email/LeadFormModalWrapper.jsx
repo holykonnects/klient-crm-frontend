@@ -6,15 +6,11 @@ export default function LeadFormModalWrapper({
   onClose,
   onLeadCreated
 }) {
+
   const handleSuccess = (lead) => {
-    // 1. Immediately close the modal BEFORE LeadForm resets itself
-    onClose();
-
-    // 2. Push the lead back to SendEmailModal
+    // Pass the lead straight back to the parent
     onLeadCreated(lead);
-
-    // 3. DO NOT LET LeadForm reopen itself
-    // (we do NOT call any reset or allow ref mounts)
+    // Parent handles closing the modal
   };
 
   return (

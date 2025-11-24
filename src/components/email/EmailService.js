@@ -1,63 +1,98 @@
-// src/components/email/EmailService.js
-
 const BASE_URL =
   "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
 
+function safeArray(data) {
+  if (Array.isArray(data)) return data;
+  if (data && Array.isArray(data.leads)) return data.leads;
+  if (data && Array.isArray(data.templates)) return data.templates;
+  return [];
+}
+
+function isValidLead(lead) {
+  if (!lead) return false;
+  if (typeof lead !== "object") return false;
+
+  // Must have at least email OR name
+  const hasName =
+    (lead.firstName && lead.firstName.trim() !== "") ||
+    (lead.lastName && lead.lastName.trim() !== "");
+
+  const hasEmail = lead.email && lead.email.trim() !== "";
+
+  return hasEmail || hasName;
+}
+
 const EmailService = {
-  // 🔹 Get Leads – simple GET, no custom headers, no preflight
+  // ------------------------
+  // GET LEADS (safe, sorted)
+  // ------------------------
   async getLeads() {
-    const res = await fetch(`${BASE_URL}?action=getLeads`); // GET only
-    const data = await res.json().catch(() => null);
+    try {
+      const res = await fetch(`${BASE_URL}?action=getLeads`);
 
-    // normalise to array
-    let leads = [];
-    if (Array.isArray(data)) {
-      leads = data;
-    } else if (data && Array.isArray(data.leads)) {
-      leads = data.leads;
+      const data = await res.json().catch(() => []);
+
+      let leads = safeArray(data);
+
+      // Remove blank leads
+      leads = leads.filter(isValidLead);
+
+      // Sort descending by timestamp if exists
+      leads.sort((a, b) => {
+        if (!a.timestamp || !b.timestamp) return 0;
+        return new Date(b.timestamp) - new Date(a.timestamp);
+      });
+
+      return leads;
+    } catch (err) {
+      console.error("EmailService.getLeads ERROR:", err);
+      return [];
     }
-
-    // sort by timestamp desc if present
-    const sorted = [...leads].sort((a, b) => {
-      if (!a.timestamp || !b.timestamp) return 0;
-      return new Date(b.timestamp) - new Date(a.timestamp);
-    });
-
-    return sorted;
   },
 
-  // 🔹 Get Templates – simple GET, no custom headers, no preflight
+  // ---------------------------
+  // GET TEMPLATES (safe)
+  // ---------------------------
   async getTemplates() {
-    const res = await fetch(`${BASE_URL}?action=getTemplates`);
-    const data = await res.json().catch(() => null);
+    try {
+      const res = await fetch(`${BASE_URL}?action=getTemplates`);
+      const data = await res.json().catch(() => []);
 
-    let templates = [];
-    if (Array.isArray(data)) {
-      templates = data;
-    } else if (data && Array.isArray(data.templates)) {
-      templates = data.templates;
+      let templates = safeArray(data);
+
+      // Remove blanks (very rare)
+      templates = templates.filter(
+        (t) => t && t.id && t.name && t.name.trim() !== ""
+      );
+
+      return templates;
+    } catch (err) {
+      console.error("EmailService.getTemplates ERROR:", err);
+      return [];
     }
-
-    return templates;
   },
 
-  // 🔹 Send Email – this one *may* need POST; leave as you had it earlier
-  // If this wasn’t causing preflight earlier, keep your old pattern here.
+  // ---------------------------
+  // SEND EMAIL (use your OLD working pattern)
+  // ---------------------------
   async sendEmail(payload) {
-    // If your old sendEmail was working, reuse that.
-    // Placeholder safe pattern:
-    await fetch(BASE_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        action: "sendEmail",
-        ...payload,
-      }),
-    });
+    try {
+      await fetch(BASE_URL, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          action: "sendEmail",
+          ...payload,
+        }),
+      });
 
-    return { status: "ok" };
+      return { status: "ok" };
+    } catch (err) {
+      console.error("EmailService.sendEmail ERROR:", err);
+      return { status: "fail" };
+    }
   },
 };
 

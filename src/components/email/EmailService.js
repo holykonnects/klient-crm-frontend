@@ -1,98 +1,45 @@
+// src/components/email/EmailService.js
+
 const BASE_URL =
   "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
 
-function safeArray(data) {
-  if (Array.isArray(data)) return data;
-  if (data && Array.isArray(data.leads)) return data.leads;
-  if (data && Array.isArray(data.templates)) return data.templates;
-  return [];
-}
-
-function isValidLead(lead) {
-  if (!lead) return false;
-  if (typeof lead !== "object") return false;
-
-  // Must have at least email OR name
-  const hasName =
-    (lead.firstName && lead.firstName.trim() !== "") ||
-    (lead.lastName && lead.lastName.trim() !== "");
-
-  const hasEmail = lead.email && lead.email.trim() !== "";
-
-  return hasEmail || hasName;
-}
-
 const EmailService = {
-  // ------------------------
-  // GET LEADS (safe, sorted)
-  // ------------------------
+  // 🔹 Get Leads – simple GET, no custom headers, then sort by timestamp desc
   async getLeads() {
-    try {
-      const res = await fetch(`${BASE_URL}?action=getLeads`);
+    const res = await fetch(`${BASE_URL}?action=getLeads`); // simple GET
+    const data = await res.json();
 
-      const data = await res.json().catch(() => []);
+    // sort by timestamp: latest on top
+    const sorted = [...data].sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    );
 
-      let leads = safeArray(data);
-
-      // Remove blank leads
-      leads = leads.filter(isValidLead);
-
-      // Sort descending by timestamp if exists
-      leads.sort((a, b) => {
-        if (!a.timestamp || !b.timestamp) return 0;
-        return new Date(b.timestamp) - new Date(a.timestamp);
-      });
-
-      return leads;
-    } catch (err) {
-      console.error("EmailService.getLeads ERROR:", err);
-      return [];
-    }
+    return sorted;
   },
 
-  // ---------------------------
-  // GET TEMPLATES (safe)
-  // ---------------------------
+  // 🔹 Get Templates – also simple GET
   async getTemplates() {
-    try {
-      const res = await fetch(`${BASE_URL}?action=getTemplates`);
-      const data = await res.json().catch(() => []);
-
-      let templates = safeArray(data);
-
-      // Remove blanks (very rare)
-      templates = templates.filter(
-        (t) => t && t.id && t.name && t.name.trim() !== ""
-      );
-
-      return templates;
-    } catch (err) {
-      console.error("EmailService.getTemplates ERROR:", err);
-      return [];
-    }
+    const res = await fetch(`${BASE_URL}?action=getTemplates`);
+    const data = await res.json();
+    return data;
   },
 
-  // ---------------------------
-  // SEND EMAIL (use your OLD working pattern)
-  // ---------------------------
+  // 🔹 Send Email – POST with no-cors to avoid preflight
   async sendEmail(payload) {
-    try {
-      await fetch(BASE_URL, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          action: "sendEmail",
-          ...payload,
-        }),
-      });
+    await fetch(BASE_URL, {
+      method: "POST",
+      mode: "no-cors", // ⬅ avoids OPTIONS preflight
+      body: JSON.stringify({
+        action: "sendEmail",
+        ...payload,
+      }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+    });
 
-      return { status: "ok" };
-    } catch (err) {
-      console.error("EmailService.sendEmail ERROR:", err);
-      return { status: "fail" };
-    }
+    // no-cors => you won't get a JSON response; just fire-and-forget
+    return { status: "queued" };
   },
 };
 

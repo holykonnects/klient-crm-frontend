@@ -1,49 +1,60 @@
 import { useState, useEffect } from "react";
 import {
   Box, Button, Dialog, TextField, Typography,
-  Select, MenuItem, Divider, Stack
+  Select, MenuItem, Stack
 } from "@mui/material";
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
+
+// 🔥 wrapper around your existing AddLeadModal (from LeadsTable.js)
+import AddLeadModalForEmail from "./AddLeadModalForEmail";
 
 export default function SendEmailModal({ open, onClose }) {
 
   const [mode, setMode] = useState("existing");
   const [leads, setLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
+
   const [selectedLead, setSelectedLead] = useState(null);
   const [selectedTemplate, setSelectedTemplate] = useState(null);
   const [previewOpen, setPreviewOpen] = useState(false);
   const [subject, setSubject] = useState("");
 
-  const [newLead, setNewLead] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    leadSource: "",
-    remarks: ""
-  });
+  // NEW: external Add Lead modal
+  const [leadModalOpen, setLeadModalOpen] = useState(false);
+  const [newlyCreatedLead, setNewlyCreatedLead] = useState(null);
 
   useEffect(() => {
     EmailService.getLeads().then(setLeads);
     EmailService.getTemplates().then(setTemplates);
   }, []);
 
-  const sendEmail = async () => {
-    const payload =
-      mode === "existing"
-        ? selectedLead
-        : newLead;
+  // 🚀 When a new lead is created from AddLead modal
+  const handleLeadCreated = async (lead) => {
+    setNewlyCreatedLead(lead);
 
-    if (mode === "new") {
-      await EmailService.createLead(newLead);
+    // Refresh leads
+    const updated = await EmailService.getLeads();
+    setLeads(updated);
+
+    // Auto-select new lead
+    setSelectedLead(lead);
+    setMode("existing");
+
+    setLeadModalOpen(false);
+  };
+
+  const sendEmail = async () => {
+    if (!selectedLead || !selectedTemplate) {
+      alert("Please select Lead & Template");
+      return;
     }
 
     await EmailService.sendEmail({
-      to: payload.email,
+      to: selectedLead.email,
       subject,
       templateId: selectedTemplate.id,
-      placeholders: payload
+      placeholders: selectedLead
     });
 
     alert("Email Sent!");
@@ -51,151 +62,120 @@ export default function SendEmailModal({ open, onClose }) {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
+    <>
+      {/* MAIN SEND EMAIL MODAL */}
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
+        <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
 
-        <Typography variant="h6" fontWeight="bold">Send Email</Typography>
+          <Typography variant="h6" fontWeight="bold">Send Email</Typography>
 
-        <Stack direction="row" spacing={2} mt={2}>
-          <Button
-            variant={mode === "existing" ? "contained" : "outlined"}
-            onClick={() => setMode("existing")}
-          >
-            Existing Lead
-          </Button>
+          {/* MODE SWITCH */}
+          <Stack direction="row" spacing={2} mt={2}>
+            <Button
+              variant={mode === "existing" ? "contained" : "outlined"}
+              onClick={() => setMode("existing")}
+            >
+              Existing Lead
+            </Button>
 
-          <Button
-            variant={mode === "new" ? "contained" : "outlined"}
-            onClick={() => setMode("new")}
-          >
-            New Lead
-          </Button>
-        </Stack>
-
-        {/* Existing Lead */}
-        {mode === "existing" && (
-          <Box mt={3}>
-            <Typography>Choose Lead</Typography>
-            <Select
-              fullWidth
-              value={selectedLead?.email || ""}
-              onChange={(e) => {
-                const lead = leads.find((l) => l.email === e.target.value);
-                setSelectedLead(lead);
+            <Button
+              variant={mode === "new" ? "contained" : "outlined"}
+              onClick={() => {
+                setMode("new");
+                setLeadModalOpen(true);
               }}
             >
-              {leads.map((l, i) => (
-                <MenuItem value={l.email} key={i}>
-                  {l.firstName} {l.lastName} — {l.email}
+              New Lead
+            </Button>
+          </Stack>
+
+          {/* EXISTING LEAD SELECTOR */}
+          {mode === "existing" && (
+            <Box mt={3}>
+              <Typography>Choose Lead</Typography>
+              <Select
+                fullWidth
+                value={selectedLead?.email || ""}
+                onChange={(e) => {
+                  const lead = leads.find((l) => l.email === e.target.value);
+                  setSelectedLead(lead);
+                }}
+              >
+                {leads.map((l, i) => (
+                  <MenuItem value={l.email} key={i}>
+                    {l.firstName} {l.lastName} — {l.email}
+                  </MenuItem>
+                ))}
+              </Select>
+            </Box>
+          )}
+
+          {/* TEMPLATE SELECTOR */}
+          <Box mt={3}>
+            <Typography>Template</Typography>
+            <Select
+              fullWidth
+              value={selectedTemplate?.id || ""}
+              onChange={(e) => {
+                const t = templates.find((t) => t.id === e.target.value);
+                setSelectedTemplate(t);
+              }}
+            >
+              {templates.map((t) => (
+                <MenuItem value={t.id} key={t.id}>
+                  {t.name}
                 </MenuItem>
               ))}
             </Select>
+
+            {selectedTemplate && (
+              <Button
+                size="small"
+                sx={{ mt: 1 }}
+                onClick={() => setPreviewOpen(true)}
+              >
+                Preview Template
+              </Button>
+            )}
           </Box>
-        )}
 
-        {/* New Lead */}
-        {mode === "new" && (
-          <Box mt={3}>
-            <TextField
-              fullWidth
-              label="First Name"
-              sx={{ mb: 2 }}
-              value={newLead.firstName}
-              onChange={(e) => setNewLead({ ...newLead, firstName: e.target.value })}
-            />
-
-            <TextField
-              fullWidth
-              label="Last Name"
-              sx={{ mb: 2 }}
-              value={newLead.lastName}
-              onChange={(e) => setNewLead({ ...newLead, lastName: e.target.value })}
-            />
-
-            <TextField
-              fullWidth
-              label="Email"
-              sx={{ mb: 2 }}
-              value={newLead.email}
-              onChange={(e) => setNewLead({ ...newLead, email: e.target.value })}
-            />
-
-            <TextField
-              fullWidth
-              label="Lead Source"
-              sx={{ mb: 2 }}
-              value={newLead.leadSource}
-              onChange={(e) => setNewLead({ ...newLead, leadSource: e.target.value })}
-            />
-
-            <TextField
-              fullWidth
-              multiline
-              rows={2}
-              label="Remarks"
-              value={newLead.remarks}
-              onChange={(e) => setNewLead({ ...newLead, remarks: e.target.value })}
-            />
-          </Box>
-        )}
-
-        {/* Template Selector */}
-        <Box mt={3}>
-          <Typography>Template</Typography>
-          <Select
+          {/* SUBJECT */}
+          <TextField
             fullWidth
-            value={selectedTemplate?.id || ""}
-            onChange={(e) => {
-              const t = templates.find((t) => t.id === e.target.value);
-              setSelectedTemplate(t);
-            }}
-          >
-            {templates.map((t) => (
-              <MenuItem value={t.id} key={t.id}>
-                {t.name}
-              </MenuItem>
-            ))}
-          </Select>
+            label="Subject"
+            sx={{ mt: 3 }}
+            value={subject}
+            onChange={(e) => setSubject(e.target.value)}
+          />
 
-          {selectedTemplate && (
-            <Button
-              size="small"
-              sx={{ mt: 1 }}
-              onClick={() => setPreviewOpen(true)}
-            >
-              Preview Template
-            </Button>
-          )}
+          {/* SEND */}
+          <Button
+            fullWidth
+            variant="contained"
+            sx={{ mt: 3 }}
+            onClick={sendEmail}
+            disabled={!selectedLead || !selectedTemplate}
+          >
+            Send Email
+          </Button>
         </Box>
 
-        {/* Subject */}
-        <TextField
-          fullWidth
-          label="Subject"
-          sx={{ mt: 3 }}
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-        />
+        {/* TEMPLATE PREVIEW */}
+        {selectedTemplate && (
+          <TemplatePreviewModal
+            open={previewOpen}
+            onClose={() => setPreviewOpen(false)}
+            templateId={selectedTemplate.id}
+          />
+        )}
+      </Dialog>
 
-        <Button
-          fullWidth
-          variant="contained"
-          sx={{ mt: 3 }}
-          onClick={sendEmail}
-        >
-          Send Email
-        </Button>
-
-      </Box>
-
-      {/* Preview Modal */}
-      {selectedTemplate && (
-        <TemplatePreviewModal
-          open={previewOpen}
-          onClose={() => setPreviewOpen(false)}
-          templateId={selectedTemplate.id}
-        />
-      )}
-    </Dialog>
+      {/* FULL ADD LEAD MODAL (from LeadsTable.js) */}
+      <AddLeadModalForEmail
+        open={leadModalOpen}
+        onClose={() => setLeadModalOpen(false)}
+        onLeadCreated={handleLeadCreated}
+      />
+    </>
   );
 }

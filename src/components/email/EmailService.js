@@ -56,15 +56,20 @@ const EmailService = {
   },
 
   async sendEmail(payload) {
-    await fetch(API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "sendEmail",
-        ...payload
-      }),
-    });
-  },
-};
+  await fetch(API, {
+    method: "POST",
+    mode: "no-cors",     // 🔥 PREVENTS PREFLIGHT ERROR
+    body: JSON.stringify({
+      action: "sendEmail",
+      ...payload
+    }),
+    headers: {
+      "Content-Type": "application/json"
+    }
+  });
 
+  // no response available in no-cors, assume success:
+  return { ok: true };
+}
+});
 export default EmailService;

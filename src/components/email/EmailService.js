@@ -71,5 +71,5 @@ const EmailService = {
   // no response available in no-cors, assume success:
   return { ok: true };
 }
-});
+};
 export default EmailService;

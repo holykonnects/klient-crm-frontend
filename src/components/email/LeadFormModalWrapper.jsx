@@ -1,5 +1,7 @@
 import { Dialog, Box } from "@mui/material";
-import LeadForm from "../components/LeadForm";   // adjust path based on your folder structure
+
+// ⭐ Correct path to LeadForm.jsx
+import LeadForm from "../LeadForm";
 
 export default function LeadFormModalWrapper({ open, onClose, onLeadCreated }) {
   return (
@@ -7,8 +9,8 @@ export default function LeadFormModalWrapper({ open, onClose, onLeadCreated }) {
       <Box sx={{ p: 2 }}>
         <LeadForm
           mode="add"
-          onSuccess={(newLead) => {
-            onLeadCreated(newLead);  // return new lead to SendEmailModal
+          onSuccess={(lead) => {
+            onLeadCreated(lead);
           }}
           onCancel={onClose}
         />

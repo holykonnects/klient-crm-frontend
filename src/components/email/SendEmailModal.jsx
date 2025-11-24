@@ -1,13 +1,18 @@
 import { useState, useEffect } from "react";
 import {
-  Box, Button, Dialog, TextField, Typography,
-  Select, MenuItem, Stack
+  Box,
+  Button,
+  Dialog,
+  TextField,
+  Typography,
+  Select,
+  MenuItem,
+  Stack
 } from "@mui/material";
+
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
-
-// 🔥 wrapper around your existing AddLeadModal (from LeadsTable.js)
-import AddLeadModalForEmail from "./AddLeadModalForEmail";
+import LeadFormModalWrapper from "./LeadFormModalWrapper";  // ⭐ NEW WRAPPER
 
 export default function SendEmailModal({ open, onClose }) {
 
@@ -20,35 +25,33 @@ export default function SendEmailModal({ open, onClose }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [subject, setSubject] = useState("");
 
-  // NEW: external Add Lead modal
-  const [leadModalOpen, setLeadModalOpen] = useState(false);
-  const [newlyCreatedLead, setNewlyCreatedLead] = useState(null);
+  // Lead Form (Add Lead)
+  const [leadFormOpen, setLeadFormOpen] = useState(false);
 
+  // Load Leads + Templates
   useEffect(() => {
     EmailService.getLeads().then(setLeads);
     EmailService.getTemplates().then(setTemplates);
   }, []);
 
-  // 🚀 When a new lead is created from AddLead modal
+  // When a new Lead is created from LeadForm.js
   const handleLeadCreated = async (lead) => {
-    setNewlyCreatedLead(lead);
-
-    // Refresh leads
-    const updated = await EmailService.getLeads();
-    setLeads(updated);
+    // Refresh leads from backend
+    const updatedLeads = await EmailService.getLeads();
+    setLeads(updatedLeads);
 
     // Auto-select new lead
     setSelectedLead(lead);
-    setMode("existing");
 
-    setLeadModalOpen(false);
+    // Switch back to existing mode
+    setMode("existing");
+    setLeadFormOpen(false);
   };
 
+  // Send email
   const sendEmail = async () => {
-    if (!selectedLead || !selectedTemplate) {
-      alert("Please select Lead & Template");
-      return;
-    }
+    if (!selectedLead) return alert("Please select a lead.");
+    if (!selectedTemplate) return alert("Please select a template.");
 
     await EmailService.sendEmail({
       to: selectedLead.email,
@@ -57,19 +60,23 @@ export default function SendEmailModal({ open, onClose }) {
       placeholders: selectedLead
     });
 
-    alert("Email Sent!");
+    alert("Email Sent Successfully!");
     onClose();
   };
 
   return (
     <>
-      {/* MAIN SEND EMAIL MODAL */}
+      {/* ─────────────────────────────── */}
+      {/*   MAIN SEND EMAIL MODAL        */}
+      {/* ─────────────────────────────── */}
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
 
-          <Typography variant="h6" fontWeight="bold">Send Email</Typography>
+          <Typography variant="h6" fontWeight="bold">
+            Send Email
+          </Typography>
 
-          {/* MODE SWITCH */}
+          {/* ─── Switch between Existing / New Lead ─── */}
           <Stack direction="row" spacing={2} mt={2}>
             <Button
               variant={mode === "existing" ? "contained" : "outlined"}
@@ -82,17 +89,18 @@ export default function SendEmailModal({ open, onClose }) {
               variant={mode === "new" ? "contained" : "outlined"}
               onClick={() => {
                 setMode("new");
-                setLeadModalOpen(true);
+                setLeadFormOpen(true);   // 🔥 Open LeadForm.js modal
               }}
             >
               New Lead
             </Button>
           </Stack>
 
-          {/* EXISTING LEAD SELECTOR */}
+          {/* ─── Existing Lead Dropdown ─── */}
           {mode === "existing" && (
             <Box mt={3}>
-              <Typography>Choose Lead</Typography>
+              <Typography>Select Lead</Typography>
+
               <Select
                 fullWidth
                 value={selectedLead?.email || ""}
@@ -110,14 +118,15 @@ export default function SendEmailModal({ open, onClose }) {
             </Box>
           )}
 
-          {/* TEMPLATE SELECTOR */}
+          {/* ─── Template Selector ─── */}
           <Box mt={3}>
             <Typography>Template</Typography>
+
             <Select
               fullWidth
               value={selectedTemplate?.id || ""}
               onChange={(e) => {
-                const t = templates.find((t) => t.id === e.target.value);
+                const t = templates.find((temp) => temp.id === e.target.value);
                 setSelectedTemplate(t);
               }}
             >
@@ -129,17 +138,13 @@ export default function SendEmailModal({ open, onClose }) {
             </Select>
 
             {selectedTemplate && (
-              <Button
-                size="small"
-                sx={{ mt: 1 }}
-                onClick={() => setPreviewOpen(true)}
-              >
+              <Button size="small" sx={{ mt: 1 }} onClick={() => setPreviewOpen(true)}>
                 Preview Template
               </Button>
             )}
           </Box>
 
-          {/* SUBJECT */}
+          {/* ─── Subject Field ─── */}
           <TextField
             fullWidth
             label="Subject"
@@ -148,7 +153,7 @@ export default function SendEmailModal({ open, onClose }) {
             onChange={(e) => setSubject(e.target.value)}
           />
 
-          {/* SEND */}
+          {/* ─── Send Button ─── */}
           <Button
             fullWidth
             variant="contained"
@@ -158,9 +163,10 @@ export default function SendEmailModal({ open, onClose }) {
           >
             Send Email
           </Button>
+
         </Box>
 
-        {/* TEMPLATE PREVIEW */}
+        {/* Template Preview */}
         {selectedTemplate && (
           <TemplatePreviewModal
             open={previewOpen}
@@ -170,10 +176,12 @@ export default function SendEmailModal({ open, onClose }) {
         )}
       </Dialog>
 
-      {/* FULL ADD LEAD MODAL (from LeadsTable.js) */}
-      <AddLeadModalForEmail
-        open={leadModalOpen}
-        onClose={() => setLeadModalOpen(false)}
+      {/* ─────────────────────────────── */}
+      {/*   LEAD FORM MODAL (LeadForm.js) */}
+      {/* ─────────────────────────────── */}
+      <LeadFormModalWrapper
+        open={leadFormOpen}
+        onClose={() => setLeadFormOpen(false)}
         onLeadCreated={handleLeadCreated}
       />
     </>

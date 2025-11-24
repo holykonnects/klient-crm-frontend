@@ -1,69 +1,45 @@
-const API =
+// src/components/email/EmailService.js
+
+const BASE_URL =
   "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
 
-function safeJSON(text) {
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    return null;
-  }
-}
-
 const EmailService = {
-  async getTemplates() {
-    const res = await fetch(`${API}?action=getTemplates`);
-    const text = await res.text();
-    const json = safeJSON(text);
-
-    if (!json || !json.ok) return [];
-
-    return json.data; // <-- EXTRACT ARRAY
-  },
-
+  // 🔹 Get Leads – simple GET, no custom headers, then sort by timestamp desc
   async getLeads() {
-    const res = await fetch(`${API}?action=getLeads`);
-    const text = await res.text();
-    const arr = safeJSON(text);
+    const res = await fetch(`${BASE_URL}?action=getLeads`); // simple GET
+    const data = await res.json();
 
-    if (!Array.isArray(arr)) return [];
+    // sort by timestamp: latest on top
+    const sorted = [...data].sort(
+      (a, b) => new Date(b.timestamp) - new Date(a.timestamp)
+    );
 
-    // Map GAS column headers → frontend format
-    return arr.map((l) => ({
-      firstName: l["First Name"] || "",
-      lastName: l["Last Name"] || "",
-      email: l["Email ID"] || "",
-      leadSource: l["Lead Source"] || "",
-      remarks: l["Remarks"] || "",
-      raw: l,
-    }));
+    return sorted;
   },
 
-  async previewTemplate(id) {
-    const res = await fetch(`${API}?action=previewTemplate&id=${id}`);
-    const text = await res.text();
-    return safeJSON(text);
+  // 🔹 Get Templates – also simple GET
+  async getTemplates() {
+    const res = await fetch(`${BASE_URL}?action=getTemplates`);
+    const data = await res.json();
+    return data;
   },
 
-  async createLead(data) {
-    await fetch(API, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "createLead",
-        ...data
-      }),
-    });
-  },
-
+  // 🔹 Send Email – POST with no-cors to avoid preflight
   async sendEmail(payload) {
-    await fetch(API, {
+    await fetch(BASE_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors", // ⬅ avoids OPTIONS preflight
       body: JSON.stringify({
         action: "sendEmail",
-        ...payload
+        ...payload,
       }),
+      headers: {
+        "Content-Type": "application/json",
+      },
     });
+
+    // no-cors => you won't get a JSON response; just fire-and-forget
+    return { status: "queued" };
   },
 };
 

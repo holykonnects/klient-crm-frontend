@@ -12,8 +12,6 @@ import {
 
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
-
-// ⭐ Correct wrapper import (same folder)
 import LeadFormModalWrapper from "./LeadFormModalWrapper";
 
 export default function SendEmailModal({ open, onClose }) {
@@ -29,19 +27,41 @@ export default function SendEmailModal({ open, onClose }) {
 
   const [leadFormOpen, setLeadFormOpen] = useState(false);
 
-  // Load Leads & Templates
+  // Load leads and templates when the modal opens
   useEffect(() => {
-    EmailService.getLeads().then(setLeads);
-    EmailService.getTemplates().then(setTemplates);
-  }, []);
+    if (!open) return;
 
-  // When LeadForm creates a new lead
-  const handleLeadCreated = async (lead) => {
-    const updated = await EmailService.getLeads();
-    setLeads(updated);
+    (async () => {
+      const fetchedLeads = await EmailService.getLeads();
+      const fetchedTemplates = await EmailService.getTemplates();
 
-    setSelectedLead(lead);
+      setLeads(Array.isArray(fetchedLeads) ? fetchedLeads : []);
+      setTemplates(Array.isArray(fetchedTemplates) ? fetchedTemplates : []);
+    })();
+  }, [open]);
+
+  // ⭐ NEW WORKFLOW — no wait for GAS sync
+  const handleLeadCreated = (leadFromForm) => {
+    // 1️⃣ Create a temporary lead entry
+    const tempLead = {
+      firstName: leadFromForm.firstName || "",
+      lastName: leadFromForm.lastName || "",
+      email: leadFromForm.email || "",
+      leadSource: leadFromForm.leadSource || "",
+      remarks: leadFromForm.remarks || "",
+      isNew: true
+    };
+
+    // 2️⃣ Insert at top of list
+    setLeads(prev => [tempLead, ...prev]);
+
+    // 3️⃣ Auto-select the newly added lead
+    setSelectedLead(tempLead);
+
+    // 4️⃣ Force back to Existing Lead view
     setMode("existing");
+
+    // 5️⃣ Close the Add Lead modal
     setLeadFormOpen(false);
   };
 
@@ -83,7 +103,7 @@ export default function SendEmailModal({ open, onClose }) {
               variant={mode === "new" ? "contained" : "outlined"}
               onClick={() => {
                 setMode("new");
-                setLeadFormOpen(true);   // open LeadForm.js
+                setLeadFormOpen(true);
               }}
             >
               New Lead
@@ -100,7 +120,7 @@ export default function SendEmailModal({ open, onClose }) {
                 value={selectedLead?.email || ""}
                 onChange={(e) => {
                   const lead = leads.find((l) => l.email === e.target.value);
-                  setSelectedLead(lead);
+                  setSelectedLead(lead || null);
                 }}
               >
                 {leads.map((l, i) => (
@@ -120,8 +140,8 @@ export default function SendEmailModal({ open, onClose }) {
               fullWidth
               value={selectedTemplate?.id || ""}
               onChange={(e) => {
-                const t = templates.find((t) => t.id === e.target.value);
-                setSelectedTemplate(t);
+                const t = templates.find((temp) => temp.id === e.target.value);
+                setSelectedTemplate(t || null);
               }}
             >
               {templates.map((t) => (
@@ -160,7 +180,7 @@ export default function SendEmailModal({ open, onClose }) {
 
         </Box>
 
-        {/* Preview Modal */}
+        {/* Template Preview Modal */}
         {selectedTemplate && (
           <TemplatePreviewModal
             open={previewOpen}

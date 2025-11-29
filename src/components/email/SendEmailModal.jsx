@@ -26,10 +26,9 @@ export default function SendEmailModal({ open, onClose }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [subject, setSubject] = useState("");
 
-  // NEW MODAL STATES
-  const [quickLeadOpen, setQuickLeadOpen] = useState(false);     // minimal modal
-  const [fullLeadFormOpen, setFullLeadFormOpen] = useState(false); // full form modal
-  const [prefillEmail, setPrefillEmail] = useState("");            // email to pass into LeadForm
+  // NEW MODALS
+  const [quickLeadOpen, setQuickLeadOpen] = useState(false);
+  const [fullLeadFormOpen, setFullLeadFormOpen] = useState(false);
 
   // Load leads & templates when modal opens
   useEffect(() => {
@@ -64,12 +63,11 @@ export default function SendEmailModal({ open, onClose }) {
     setMode("existing");
     setQuickLeadOpen(false);
 
-    // Ask user whether to show full LeadForm
+    // Ask user whether to open full LeadForm
     setTimeout(() => {
       const yes = confirm("Email saved. Would you like to add full lead details?");
       if (yes) {
-        setPrefillEmail(data.email);
-        setFullLeadFormOpen(true);
+        setFullLeadFormOpen(true);   // ⭐ Open full LeadForm (no prefill)
       }
     }, 200);
   };
@@ -213,7 +211,6 @@ export default function SendEmailModal({ open, onClose }) {
         open={fullLeadFormOpen}
         onClose={() => setFullLeadFormOpen(false)}
         onLeadCreated={() => {}}
-        prefillEmail={prefillEmail}
       />
     </>
   );

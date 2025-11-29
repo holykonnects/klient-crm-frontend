@@ -13,6 +13,7 @@ import {
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
 import LeadFormModalWrapper from "./LeadFormModalWrapper";
+import MinimalLeadModal from "./MinimalLeadModal";   // ⭐ NEW
 
 export default function SendEmailModal({ open, onClose }) {
 
@@ -25,9 +26,12 @@ export default function SendEmailModal({ open, onClose }) {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [subject, setSubject] = useState("");
 
-  const [leadFormOpen, setLeadFormOpen] = useState(false);
+  // NEW MODAL STATES
+  const [quickLeadOpen, setQuickLeadOpen] = useState(false);     // minimal modal
+  const [fullLeadFormOpen, setFullLeadFormOpen] = useState(false); // full form modal
+  const [prefillEmail, setPrefillEmail] = useState("");            // email to pass into LeadForm
 
-  // Load leads and templates when the modal opens
+  // Load leads & templates when modal opens
   useEffect(() => {
     if (!open) return;
 
@@ -40,31 +44,40 @@ export default function SendEmailModal({ open, onClose }) {
     })();
   }, [open]);
 
-  // ⭐ NEW WORKFLOW — no wait for GAS sync
-  const handleLeadCreated = (leadFromForm) => {
-    // 1️⃣ Create a temporary lead entry
+
+  /********************************************
+   * ⭐ HANDLE QUICK LEAD CREATED (MINIMAL DETAILS)
+   ********************************************/
+  const handleQuickLeadCreated = (data) => {
     const tempLead = {
-      firstName: leadFromForm.firstName || "",
-      lastName: leadFromForm.lastName || "",
-      email: leadFromForm.email || "",
-      leadSource: leadFromForm.leadSource || "",
-      remarks: leadFromForm.remarks || "",
+      email: data.email,
+      firstName: data.firstName || "",
+      lastName: data.lastName || "",
+      leadSource: "",
+      remarks: "",
       isNew: true
     };
 
-    // 2️⃣ Insert at top of list
+    // Add to dropdown list
     setLeads(prev => [tempLead, ...prev]);
-
-    // 3️⃣ Auto-select the newly added lead
     setSelectedLead(tempLead);
-
-    // 4️⃣ Force back to Existing Lead view
     setMode("existing");
+    setQuickLeadOpen(false);
 
-    // 5️⃣ Close the Add Lead modal
-    setLeadFormOpen(false);
+    // Ask user whether to show full LeadForm
+    setTimeout(() => {
+      const yes = confirm("Email saved. Would you like to add full lead details?");
+      if (yes) {
+        setPrefillEmail(data.email);
+        setFullLeadFormOpen(true);
+      }
+    }, 200);
   };
 
+
+  /********************************************
+   * SEND EMAIL
+   ********************************************/
   const sendEmail = async () => {
     if (!selectedLead) return alert("Please select a lead.");
     if (!selectedTemplate) return alert("Please select a template.");
@@ -80,15 +93,14 @@ export default function SendEmailModal({ open, onClose }) {
     onClose();
   };
 
+
   return (
     <>
       {/* ───────── SEND EMAIL MODAL ───────── */}
       <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
         <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
 
-          <Typography variant="h6" fontWeight="bold">
-            Send Email
-          </Typography>
+          <Typography variant="h6" fontWeight="bold">Send Email</Typography>
 
           {/* Mode Switch */}
           <Stack direction="row" spacing={2} mt={2}>
@@ -103,7 +115,7 @@ export default function SendEmailModal({ open, onClose }) {
               variant={mode === "new" ? "contained" : "outlined"}
               onClick={() => {
                 setMode("new");
-                setLeadFormOpen(true);
+                setQuickLeadOpen(true);      // ⭐ OPEN MINIMAL MODAL
               }}
             >
               New Lead
@@ -145,9 +157,7 @@ export default function SendEmailModal({ open, onClose }) {
               }}
             >
               {templates.map((t) => (
-                <MenuItem key={t.id} value={t.id}>
-                  {t.name}
-                </MenuItem>
+                <MenuItem key={t.id} value={t.id}>{t.name}</MenuItem>
               ))}
             </Select>
 
@@ -190,11 +200,20 @@ export default function SendEmailModal({ open, onClose }) {
         )}
       </Dialog>
 
-      {/* ───────── LEAD FORM MODAL ───────── */}
+
+      {/* ───────── MINIMAL QUICK LEAD MODAL ───────── */}
+      <MinimalLeadModal
+        open={quickLeadOpen}
+        onClose={() => setQuickLeadOpen(false)}
+        onSave={handleQuickLeadCreated}
+      />
+
+      {/* ───────── FULL LEAD FORM MODAL ───────── */}
       <LeadFormModalWrapper
-        open={leadFormOpen}
-        onClose={() => setLeadFormOpen(false)}
-        onLeadCreated={handleLeadCreated}
+        open={fullLeadFormOpen}
+        onClose={() => setFullLeadFormOpen(false)}
+        onLeadCreated={() => {}}
+        prefillEmail={prefillEmail}
       />
     </>
   );

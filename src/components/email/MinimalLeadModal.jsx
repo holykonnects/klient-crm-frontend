@@ -39,7 +39,7 @@ export default function MinimalLeadModal({ open, onClose, onSave }) {
           />
 
           <TextField
-            label="Last Name (Optional)"
+            label="Company (Optional)"
             fullWidth
             value={Company}
             onChange={(e) => setCompany(e.target.value)}

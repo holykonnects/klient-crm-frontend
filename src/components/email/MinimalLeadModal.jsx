@@ -4,7 +4,7 @@ import { useState } from "react";
 export default function MinimalLeadModal({ open, onClose, onSave }) {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
-  const [Company, setCompany] = useState("");
+  const [company, setCompany] = useState("");
 
   const handleSubmit = () => {
     if (!email) return alert("Email is required.");
@@ -12,7 +12,7 @@ export default function MinimalLeadModal({ open, onClose, onSave }) {
     onSave({
       email,
       firstName,
-      Company
+      company
     });
   };
 
@@ -41,7 +41,7 @@ export default function MinimalLeadModal({ open, onClose, onSave }) {
           <TextField
             label="Company (Optional)"
             fullWidth
-            value={Company}
+            value={company}
             onChange={(e) => setCompany(e.target.value)}
           />
 

@@ -84,7 +84,12 @@ export default function SendEmailModal({ open, onClose }) {
       to: selectedLead.email,
       subject,
       templateId: selectedTemplate.id,
-      placeholders: selectedLead
+      placeholders: {
+      FIRST_NAME: minimalValues.firstName || "",
+      COMPANY: minimalValues.company || "",
+      DATE: today,
+      EMAIL: selectedLead.email
+    }
     });
 
     alert("Email Sent Successfully!");

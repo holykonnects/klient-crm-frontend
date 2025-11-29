@@ -1,10 +1,19 @@
 import { Dialog, Box, TextField, Button, Typography, Stack } from "@mui/material";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export default function MinimalLeadModal({ open, onClose, onSave }) {
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [company, setCompany] = useState("");
+
+  // Reset form when modal re-opens
+  useEffect(() => {
+    if (open) {
+      setEmail("");
+      setFirstName("");
+      setCompany("");
+    }
+  }, [open]);
 
   const handleSubmit = () => {
     if (!email) return alert("Email is required.");
@@ -24,22 +33,26 @@ export default function MinimalLeadModal({ open, onClose, onSave }) {
         </Typography>
 
         <Stack spacing={2}>
+          {/* Email */}
           <TextField
-            label="Email (Required)"
+            label="Email *"
+            required
             fullWidth
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
 
+          {/* First Name */}
           <TextField
-            label="First Name (Optional)"
+            label="First Name"
             fullWidth
             value={firstName}
             onChange={(e) => setFirstName(e.target.value)}
           />
 
+          {/* Company */}
           <TextField
-            label="Company (Optional)"
+            label="Company"
             fullWidth
             value={company}
             onChange={(e) => setCompany(e.target.value)}

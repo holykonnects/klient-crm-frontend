@@ -18,7 +18,7 @@ const cornflowerBlue = "#6495ED";
 
 // Same Web App as bulk sender, but using ?action=getEmailEvents
 const EMAIL_LOGS_URL =
-  "https://script.google.com/a/macros/klientkonnect.com/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
+  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
 
 export default function EmailLogsTable() {
   const [logs, setLogs] = useState([]);

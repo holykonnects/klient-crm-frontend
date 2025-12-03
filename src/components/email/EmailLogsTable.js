@@ -20,6 +20,7 @@ const cornflowerBlue = "#6495ED";
 const EMAIL_LOGS_URL =
   "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
 
+
 export default function EmailLogsTable() {
   const [logs, setLogs] = useState([]);
   const [filtered, setFiltered] = useState([]);

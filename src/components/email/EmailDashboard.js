@@ -13,19 +13,26 @@ import {
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import DescriptionIcon from "@mui/icons-material/Description";
 import HistoryIcon from "@mui/icons-material/History";
-import GroupIcon from "@mui/icons-material/Group"; // for bulk email sender
+import GroupIcon from "@mui/icons-material/Group";
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import SendEmailModal from "./SendEmailModal";
-// ⬇️ Hook your existing multi-email sender here
-// import MultipleEmailSenderModal from "./MultipleEmailSenderModal";
 
 const cornflowerBlue = "#6495ED";
+
+// Bulk sender – existing Apps Script tool
+const MULTIPLE_EMAIL_SENDER_URL =
+  "https://script.google.com/a/macros/klientkonnect.com/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec";
 
 export default function EmailDashboard() {
   const [tab, setTab] = useState(0);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
-  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
+
+  const handleOpenBulkSender = () => {
+    if (typeof window !== "undefined") {
+      window.open(MULTIPLE_EMAIL_SENDER_URL, "_blank", "noopener,noreferrer");
+    }
+  };
 
   return (
     <Box sx={{ fontFamily: "Montserrat, sans-serif", p: 2 }}>
@@ -50,7 +57,7 @@ export default function EmailDashboard() {
           {/* Klient Konnect Logo */}
           <Box
             component="img"
-            src="/kk-logo.png"
+            src="/assets/kk-logo.png"
             alt="Klient Konnect"
             sx={{
               height: 40,
@@ -220,7 +227,7 @@ export default function EmailDashboard() {
               </CardActionArea>
             </Card>
 
-            {/* ✅ BULK / MULTIPLE EMAIL SENDER CARD (4th button) */}
+            {/* BULK / MULTIPLE EMAIL SENDER CARD (4th button) */}
             <Card
               sx={{
                 width: 250,
@@ -229,7 +236,7 @@ export default function EmailDashboard() {
                 border: `2px solid ${cornflowerBlue}`,
               }}
             >
-              <CardActionArea onClick={() => setBulkEmailOpen(true)}>
+              <CardActionArea onClick={handleOpenBulkSender}>
                 <CardContent sx={{ textAlign: "center", py: 4 }}>
                   <GroupIcon sx={{ fontSize: 40, color: cornflowerBlue }} />
                   <Typography
@@ -248,7 +255,7 @@ export default function EmailDashboard() {
                       color: "#666",
                     }}
                   >
-                    Send campaigns to multiple leads/accounts with one template.
+                    Open the multi-recipient email sender tool.
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -260,15 +267,6 @@ export default function EmailDashboard() {
             open={sendEmailOpen}
             onClose={() => setSendEmailOpen(false)}
           />
-
-          {/* BULK / MULTIPLE EMAIL MODAL */}
-          {/* Replace with your actual multi-email sender component & props */}
-          {/* 
-          <MultipleEmailSenderModal
-            open={bulkEmailOpen}
-            onClose={() => setBulkEmailOpen(false)}
-          />
-          */}
         </Box>
       )}
 

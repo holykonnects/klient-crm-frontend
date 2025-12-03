@@ -94,7 +94,7 @@ export default function EmailDashboard() {
       {tab === 0 && (
         <Box sx={{ px: 4, pb: 4 }}>
           <Typography fontWeight={600} sx={{ mb: 2 }}>
-            //Choose an action
+            {/*Choose an action *?}
           </Typography>
 
           <Stack direction="row" spacing={3} flexWrap="wrap">

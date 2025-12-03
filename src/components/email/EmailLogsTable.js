@@ -12,14 +12,14 @@ import {
   TextField,
   Chip,
   CircularProgress,
+  Link,
 } from "@mui/material";
 
 const cornflowerBlue = "#6495ED";
 
-// Same Web App as bulk sender, but using ?action=getEmailEvents
+// ✅ Use public /macros URL
 const EMAIL_LOGS_URL =
   "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
-
 
 export default function EmailLogsTable() {
   const [logs, setLogs] = useState([]);
@@ -75,6 +75,7 @@ export default function EmailLogsTable() {
           log.companyName,
           log.mode,
           log.status,
+          log.templateText,      // 🔍 include template in search
         ]
           .filter(Boolean)
           .join(" ")
@@ -126,7 +127,7 @@ export default function EmailLogsTable() {
 
         <TextField
           size="small"
-          placeholder="Search by email, subject, company..."
+          placeholder="Search by email, subject, company, template..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{
@@ -189,6 +190,7 @@ export default function EmailLogsTable() {
                 <TableCell>To</TableCell>
                 <TableCell>Subject</TableCell>
                 <TableCell>Company</TableCell>
+                <TableCell>Template</TableCell> {/* 🔹 new column */}
                 <TableCell>Status</TableCell>
                 <TableCell>Error</TableCell>
               </TableRow>
@@ -213,6 +215,25 @@ export default function EmailLogsTable() {
                   <TableCell>{log.to}</TableCell>
                   <TableCell>{log.subject}</TableCell>
                   <TableCell>{log.companyName}</TableCell>
+                  <TableCell>
+                    {log.templateUrl ? (
+                      <Link
+                        href={log.templateUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          fontSize: 10,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        {log.templateText || "Open Template"}
+                      </Link>
+                    ) : (
+                      <Typography sx={{ fontSize: 10 }}>
+                        {log.templateText || "—"}
+                      </Typography>
+                    )}
+                  </TableCell>
                   <TableCell>{renderStatusChip(log.status)}</TableCell>
                   <TableCell>
                     {log.error && (

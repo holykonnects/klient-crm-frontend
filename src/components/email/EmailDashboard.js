@@ -17,7 +17,7 @@ import GroupIcon from "@mui/icons-material/Group";
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import SendEmailModal from "./SendEmailModal";
-import EmailLogsTable from "./EmailLogstable";
+import EmailLogsTable from "./EmailLogsTable";
 
 const cornflowerBlue = "#6495ED";
 

@@ -23,7 +23,8 @@ const cornflowerBlue = "#6495ED";
 
 // Bulk sender – existing Apps Script tool
 const MULTIPLE_EMAIL_SENDER_URL =
-  "https://script.google.com/a/macros/klientkonnect.com/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec";
+  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
+
 
 export default function EmailDashboard() {
   const [tab, setTab] = useState(0);
@@ -93,8 +94,8 @@ export default function EmailDashboard() {
 
       {tab === 0 && (
         <Box sx={{ px: 4, pb: 4 }}>
-          <Typography fontWeight={600} sx={{ mb: 2 }}>
-            {/*Choose an action *?}
+          <Typography fontWeight={200} sx={{ mb: 2 }}>
+            Choose an action
           </Typography>
 
           <Stack direction="row" spacing={3} flexWrap="wrap">

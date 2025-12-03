@@ -13,30 +13,75 @@ import {
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
 import DescriptionIcon from "@mui/icons-material/Description";
 import HistoryIcon from "@mui/icons-material/History";
+import GroupIcon from "@mui/icons-material/Group"; // for bulk email sender
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import SendEmailModal from "./SendEmailModal";
+// ⬇️ Hook your existing multi-email sender here
+// import MultipleEmailSenderModal from "./MultipleEmailSenderModal";
 
 const cornflowerBlue = "#6495ED";
 
 export default function EmailDashboard() {
   const [tab, setTab] = useState(0);
   const [sendEmailOpen, setSendEmailOpen] = useState(false);
+  const [bulkEmailOpen, setBulkEmailOpen] = useState(false);
 
   return (
     <Box sx={{ fontFamily: "Montserrat, sans-serif", p: 2 }}>
-      {/* PAGE TITLE */}
-      <Typography
-        variant="h5"
-        fontWeight="700"
+      {/* HEADER WITH KK LOGO + TITLE */}
+      <Box
         sx={{
           mb: 2,
-          color: cornflowerBlue,
-          letterSpacing: 0.5,
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          flexWrap: "wrap",
+          rowGap: 1.5,
         }}
       >
-        Email Dashboard
-      </Typography>
+        <Box
+          sx={{
+            display: "flex",
+            alignItems: "center",
+            gap: 2,
+          }}
+        >
+          {/* Klient Konnect Logo */}
+          <Box
+            component="img"
+            src="/kk-logo.png"
+            alt="Klient Konnect"
+            sx={{
+              height: 40,
+              objectFit: "contain",
+            }}
+          />
+
+          <Box>
+            <Typography
+              variant="h6"
+              fontWeight={700}
+              sx={{
+                color: cornflowerBlue,
+                letterSpacing: 0.5,
+              }}
+            >
+              Email Dashboard
+            </Typography>
+            <Typography
+              variant="body2"
+              sx={{
+                color: "#555",
+                mt: 0.3,
+              }}
+            >
+              Manage templates, send single mails, and run bulk campaigns –
+              empowered by Klient Konnect.
+            </Typography>
+          </Box>
+        </Box>
+      </Box>
 
       {/* TABS */}
       <Tabs
@@ -67,7 +112,7 @@ export default function EmailDashboard() {
           </Typography>
 
           <Stack direction="row" spacing={3} flexWrap="wrap">
-            {/* SEND EMAIL CARD */}
+            {/* SEND EMAIL CARD (Single Email) */}
             <Card
               sx={{
                 width: 250,
@@ -89,6 +134,15 @@ export default function EmailDashboard() {
                     }}
                   >
                     Send Email
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mt: 0.5,
+                      color: "#666",
+                    }}
+                  >
+                    One-to-one email with templates & preview.
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -117,6 +171,15 @@ export default function EmailDashboard() {
                   >
                     Manage Templates
                   </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mt: 0.5,
+                      color: "#666",
+                    }}
+                  >
+                    Create and edit reusable email templates.
+                  </Typography>
                 </CardContent>
               </CardActionArea>
             </Card>
@@ -144,16 +207,68 @@ export default function EmailDashboard() {
                   >
                     View Logs
                   </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mt: 0.5,
+                      color: "#666",
+                    }}
+                  >
+                    Track email events and delivery history.
+                  </Typography>
+                </CardContent>
+              </CardActionArea>
+            </Card>
+
+            {/* ✅ BULK / MULTIPLE EMAIL SENDER CARD (4th button) */}
+            <Card
+              sx={{
+                width: 250,
+                borderRadius: 3,
+                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
+                border: `2px solid ${cornflowerBlue}`,
+              }}
+            >
+              <CardActionArea onClick={() => setBulkEmailOpen(true)}>
+                <CardContent sx={{ textAlign: "center", py: 4 }}>
+                  <GroupIcon sx={{ fontSize: 40, color: cornflowerBlue }} />
+                  <Typography
+                    sx={{
+                      mt: 2,
+                      fontFamily: "Montserrat",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Bulk Email Sender
+                  </Typography>
+                  <Typography
+                    variant="body2"
+                    sx={{
+                      mt: 0.5,
+                      color: "#666",
+                    }}
+                  >
+                    Send campaigns to multiple leads/accounts with one template.
+                  </Typography>
                 </CardContent>
               </CardActionArea>
             </Card>
           </Stack>
 
-          {/* SEND EMAIL MODAL */}
+          {/* SEND EMAIL MODAL (single) */}
           <SendEmailModal
             open={sendEmailOpen}
             onClose={() => setSendEmailOpen(false)}
           />
+
+          {/* BULK / MULTIPLE EMAIL MODAL */}
+          {/* Replace with your actual multi-email sender component & props */}
+          {/* 
+          <MultipleEmailSenderModal
+            open={bulkEmailOpen}
+            onClose={() => setBulkEmailOpen(false)}
+          />
+          */}
         </Box>
       )}
 
@@ -178,7 +293,6 @@ export default function EmailDashboard() {
             Email Logs (Coming Soon)
           </Typography>
 
-          {/* PLACEHOLDER */}
           <Box
             sx={{
               p: 3,

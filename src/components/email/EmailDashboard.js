@@ -23,7 +23,7 @@ const cornflowerBlue = "#6495ED";
 
 // Bulk sender – existing Apps Script tool
 const MULTIPLE_EMAIL_SENDER_URL =
-  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
+  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec";
 
 
 export default function EmailDashboard() {

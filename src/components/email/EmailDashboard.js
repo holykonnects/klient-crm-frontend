@@ -35,69 +35,44 @@ export default function EmailDashboard() {
   };
 
   return (
-    <Box sx={{ fontFamily: "Montserrat, sans-serif", p: 2 }}>
-      {/* HEADER WITH KK LOGO + TITLE */}
-      <Box
-        sx={{
-          mb: 2,
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-          flexWrap: "wrap",
-          rowGap: 1.5,
-        }}
-      >
+    <Box sx={{ fontFamily: "Montserrat, sans-serif" }}>
+      {/* ========================================= */}
+      {/* 🔵 HEADER WITH KK LOGO (CONSISTENT DESIGN) */}
+      {/* ========================================= */}
+      <Box padding={4}>
         <Box
-          sx={{
-            display: "flex",
-            alignItems: "center",
-            gap: 2,
-          }}
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          mb={2}
         >
-          {/* Klient Konnect Logo */}
-          <Box
-            component="img"
+          <img
             src="/assets/kk-logo.png"
             alt="Klient Konnect"
-            sx={{
-              height: 40,
-              objectFit: "contain",
-            }}
+            style={{ height: 100 }}
           />
 
-          <Box>
-            <Typography
-              variant="h6"
-              fontWeight={700}
-              sx={{
-                color: cornflowerBlue,
-                letterSpacing: 0.5,
-              }}
-            >
-              Email Dashboard
-            </Typography>
-            <Typography
-              variant="body2"
-              sx={{
-                color: "#555",
-                mt: 0.3,
-              }}
-            >
-              Manage templates, send single mails, and run bulk campaigns –
-              empowered by Klient Konnect.
-            </Typography>
-          </Box>
+          <Typography
+            variant="h5"
+            fontWeight="bold"
+            sx={{ fontFamily: "Montserrat, sans-serif", color: cornflowerBlue }}
+          >
+            Email Dashboard
+          </Typography>
         </Box>
       </Box>
 
-      {/* TABS */}
+      {/* ========================================= */}
+      {/*                TABS                      */}
+      {/* ========================================= */}
+
       <Tabs
         value={tab}
         onChange={(e, v) => setTab(v)}
         textColor="primary"
         indicatorColor="primary"
         sx={{
-          mb: 2,
+          px: 4,
           "& .MuiTab-root": {
             fontFamily: "Montserrat, sans-serif",
             textTransform: "none",
@@ -111,15 +86,18 @@ export default function EmailDashboard() {
         <Tab label="Logs" />
       </Tabs>
 
-      {/* SEND EMAIL TAB */}
+      {/* ========================================= */}
+      {/*              TAB: SEND EMAIL              */}
+      {/* ========================================= */}
+
       {tab === 0 && (
-        <Box>
+        <Box sx={{ px: 4, pb: 4 }}>
           <Typography fontWeight={600} sx={{ mb: 2 }}>
             Choose an action
           </Typography>
 
           <Stack direction="row" spacing={3} flexWrap="wrap">
-            {/* SEND EMAIL CARD (Single Email) */}
+            {/* SEND EMAIL CARD */}
             <Card
               sx={{
                 width: 250,
@@ -130,9 +108,7 @@ export default function EmailDashboard() {
             >
               <CardActionArea onClick={() => setSendEmailOpen(true)}>
                 <CardContent sx={{ textAlign: "center", py: 4 }}>
-                  <MailOutlineIcon
-                    sx={{ fontSize: 40, color: cornflowerBlue }}
-                  />
+                  <MailOutlineIcon sx={{ fontSize: 40, color: cornflowerBlue }} />
                   <Typography
                     sx={{
                       mt: 2,
@@ -141,15 +117,6 @@ export default function EmailDashboard() {
                     }}
                   >
                     Send Email
-                  </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.5,
-                      color: "#666",
-                    }}
-                  >
-                    One-to-one email with templates & preview.
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -178,15 +145,6 @@ export default function EmailDashboard() {
                   >
                     Manage Templates
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.5,
-                      color: "#666",
-                    }}
-                  >
-                    Create and edit reusable email templates.
-                  </Typography>
                 </CardContent>
               </CardActionArea>
             </Card>
@@ -214,20 +172,11 @@ export default function EmailDashboard() {
                   >
                     View Logs
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.5,
-                      color: "#666",
-                    }}
-                  >
-                    Track email events and delivery history.
-                  </Typography>
                 </CardContent>
               </CardActionArea>
             </Card>
 
-            {/* BULK / MULTIPLE EMAIL SENDER CARD (4th button) */}
+            {/* BULK EMAIL SENDER CARD */}
             <Card
               sx={{
                 width: 250,
@@ -248,21 +197,12 @@ export default function EmailDashboard() {
                   >
                     Bulk Email Sender
                   </Typography>
-                  <Typography
-                    variant="body2"
-                    sx={{
-                      mt: 0.5,
-                      color: "#666",
-                    }}
-                  >
-                    Open the multi-recipient email sender tool.
-                  </Typography>
                 </CardContent>
               </CardActionArea>
             </Card>
           </Stack>
 
-          {/* SEND EMAIL MODAL (single) */}
+          {/* SEND EMAIL MODAL */}
           <SendEmailModal
             open={sendEmailOpen}
             onClose={() => setSendEmailOpen(false)}
@@ -270,16 +210,22 @@ export default function EmailDashboard() {
         </Box>
       )}
 
-      {/* TEMPLATES TAB */}
+      {/* ========================================= */}
+      {/*              TAB: TEMPLATES               */}
+      {/* ========================================= */}
+
       {tab === 1 && (
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ px: 4, py: 2 }}>
           <EmailTemplatesTable />
         </Box>
       )}
 
-      {/* LOGS TAB */}
+      {/* ========================================= */}
+      {/*               TAB: LOGS                   */}
+      {/* ========================================= */}
+
       {tab === 2 && (
-        <Box sx={{ mt: 2 }}>
+        <Box sx={{ px: 4, py: 2 }}>
           <Typography
             sx={{
               fontFamily: "Montserrat",

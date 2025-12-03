@@ -17,6 +17,7 @@ import GroupIcon from "@mui/icons-material/Group";
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import SendEmailModal from "./SendEmailModal";
+import EmailLogsTable from "./EmailLogstable";
 
 const cornflowerBlue = "#6495ED";
 
@@ -223,33 +224,13 @@ export default function EmailDashboard() {
       {/* ========================================= */}
       {/*               TAB: LOGS                   */}
       {/* ========================================= */}
-
+      
       {tab === 2 && (
         <Box sx={{ px: 4, py: 2 }}>
-          <Typography
-            sx={{
-              fontFamily: "Montserrat",
-              fontWeight: 600,
-              mt: 1,
-              mb: 1,
-            }}
-          >
-            Email Logs (Coming Soon)
-          </Typography>
-
-          <Box
-            sx={{
-              p: 3,
-              borderRadius: 2,
-              border: "1px dashed #ccc",
-              color: "#444",
-              fontStyle: "italic",
-            }}
-          >
-            Logs from the “Email_Events” sheet will appear here.
-          </Box>
+          <EmailLogsTable />
         </Box>
       )}
+
     </Box>
   );
 }

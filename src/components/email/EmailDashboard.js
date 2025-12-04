@@ -104,8 +104,8 @@ export default function EmailDashboard() {
       {/* ========================================= */}
       {tab === 0 && (
         <Box>
-          <Typography fontWeight={400} sx={{ fontFamily: 'Montserrat,sans-serif', fontSize: 11, mb: 2 }}>
-            Choose an action
+          <Typography fontWeight={400} sx={{ fontFamily: 'Montserrat,sans-serif', fontSize: 9, mb: 2 }}>
+            Select action
           </Typography>
 
           <Stack direction="row" spacing={3} flexWrap="wrap">

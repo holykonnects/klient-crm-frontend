@@ -81,7 +81,7 @@ function DashboardLayout({ children }) {
                 <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
                 {open && (
                   <ListItemText
-                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 600, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>{label}</Typography>}
+                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>{label}</Typography>}
                   />
                 )}
               </ListItem>
@@ -105,7 +105,7 @@ function DashboardLayout({ children }) {
               </ListItemIcon>
               {open && (
                 <ListItemText
-                  primary={<Typography sx={{ color: 'red', fontWeight: 600, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>Logout</Typography>}
+                  primary={<Typography sx={{ color: 'red', fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>Logout</Typography>}
                 />
               )}
             </ListItem>

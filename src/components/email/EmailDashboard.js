@@ -127,7 +127,7 @@ export default function EmailDashboard() {
                       fontWeight: 600,
                     }}
                   >
-                    Send Email
+                    Lead Emails
                   </Typography>
                   <Typography
                     sx={{
@@ -136,7 +136,7 @@ export default function EmailDashboard() {
                       color: "#555",
                     }}
                   >
-                    Single email to one recipient
+                    Single email to new or existing lead
                   </Typography>
                 </CardContent>
               </CardActionArea>
@@ -161,7 +161,7 @@ export default function EmailDashboard() {
                       fontWeight: 600,
                     }}
                   >
-                    Bulk Email Sender
+                    Email Sender
                   </Typography>
                   <Typography
                     sx={{

@@ -17,7 +17,7 @@ import {
 
 const cornflowerBlue = "#6495ED";
 
-// ✅ Use public /macros URL
+// ✅ Public /macros URL
 const EMAIL_LOGS_URL =
   "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
 
@@ -27,6 +27,21 @@ export default function EmailLogsTable() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+
+  // 🔹 Read role from localStorage (adjust key if needed)
+  const [role, setRole] = useState("End User");
+  useEffect(() => {
+    try {
+      const storedRole =
+        localStorage.getItem("crmRole") ||
+        localStorage.getItem("role") ||
+        "End User";
+      setRole(storedRole);
+    } catch (e) {
+      // ignore if localStorage not available
+    }
+  }, []);
+  const isAdmin = role?.toLowerCase() === "admin";
 
   useEffect(() => {
     const fetchLogs = async () => {
@@ -39,7 +54,7 @@ export default function EmailLogsTable() {
         }
         const json = await res.json();
         const data = Array.isArray(json.data) ? json.data : [];
-        // Sort: latest first by timestamp if possible
+        // Sort: latest first
         const sorted = [...data].sort((a, b) => {
           const da = new Date(a.timestamp).getTime() || 0;
           const db = new Date(b.timestamp).getTime() || 0;
@@ -75,7 +90,8 @@ export default function EmailLogsTable() {
           log.companyName,
           log.mode,
           log.status,
-          log.templateText,      // 🔍 include template in search
+          log.templateText,
+          log.quotationLink, // 🔍 include quotation link in search
         ]
           .filter(Boolean)
           .join(" ")
@@ -187,10 +203,11 @@ export default function EmailLogsTable() {
               >
                 <TableCell>Timestamp</TableCell>
                 <TableCell>Mode</TableCell>
-                <TableCell>To</TableCell>
+                {isAdmin && <TableCell>To</TableCell>}
                 <TableCell>Subject</TableCell>
                 <TableCell>Company</TableCell>
-                <TableCell>Template</TableCell> {/* 🔹 new column */}
+                <TableCell>Template</TableCell>
+                <TableCell>Quotation</TableCell> {/* 🔹 new visible column */}
                 <TableCell>Status</TableCell>
                 <TableCell>Error</TableCell>
               </TableRow>
@@ -212,9 +229,13 @@ export default function EmailLogsTable() {
                       : ""}
                   </TableCell>
                   <TableCell>{log.mode}</TableCell>
-                  <TableCell>{log.to}</TableCell>
+
+                  {isAdmin && <TableCell>{log.to}</TableCell>}
+
                   <TableCell>{log.subject}</TableCell>
                   <TableCell>{log.companyName}</TableCell>
+
+                  {/* Template link */}
                   <TableCell>
                     {log.templateUrl ? (
                       <Link
@@ -234,6 +255,28 @@ export default function EmailLogsTable() {
                       </Typography>
                     )}
                   </TableCell>
+
+                  {/* Quotation link */}
+                  <TableCell>
+                    {log.quotationLink ? (
+                      <Link
+                        href={log.quotationLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{
+                          fontSize: 10,
+                          textDecoration: "underline",
+                        }}
+                      >
+                        {`Quotation for ${
+                          log.companyName || "client"
+                        }`}
+                      </Link>
+                    ) : (
+                      "—"
+                    )}
+                  </TableCell>
+
                   <TableCell>{renderStatusChip(log.status)}</TableCell>
                   <TableCell>
                     {log.error && (

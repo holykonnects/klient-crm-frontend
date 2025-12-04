@@ -42,7 +42,7 @@ function DashboardLayout({ children }) {
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
-    { label: 'Client Communication', icon: <Email />, route: '/email-dashboard', access: 'Email' }
+    { label: 'Client Comms', icon: <Email />, route: '/email-dashboard', access: 'Email' }
   
   ];
 
@@ -80,7 +80,7 @@ function DashboardLayout({ children }) {
                 <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
                 {open && (
                   <ListItemText
-                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 600 }}>{label}</Typography>}
+                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 400 }}>{label}</Typography>}
                   />
                 )}
               </ListItem>

@@ -61,7 +61,8 @@ function DashboardLayout({ children }) {
             overflowX: 'hidden',
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
-            zIndex: 1200
+            zIndex: 1200,
+            fontFamily: 'Montserrat, sans-serif'
           }
         }}
       >
@@ -80,7 +81,7 @@ function DashboardLayout({ children }) {
                 <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
                 {open && (
                   <ListItemText
-                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 400 }}>{label}</Typography>}
+                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 400, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>{label}</Typography>}
                   />
                 )}
               </ListItem>
@@ -104,7 +105,7 @@ function DashboardLayout({ children }) {
               </ListItemIcon>
               {open && (
                 <ListItemText
-                  primary={<Typography sx={{ color: 'red', fontWeight: 600 }}>Logout</Typography>}
+                  primary={<Typography sx={{ color: 'red', fontWeight: 400, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>Logout</Typography>}
                 />
               )}
             </ListItem>

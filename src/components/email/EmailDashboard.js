@@ -56,15 +56,18 @@ export default function EmailDashboard() {
             <Typography
               variant="h6"
               sx={{
-                fontWeight: 700,
+                fontFamily: 'Montserrat, sans-serif',
+                fontWeight: 500,
                 color: cornflowerBlue,
                 letterSpacing: 0.5,
               }}
             >
-              Email Dashboard
+              Client Communication Dashboard
             </Typography>
             <Typography
               sx={{
+                fontFamily: 'Montserrat, sans-serif',
+                fontWeight: 500,
                 fontSize: 11,
                 color: "#555",
               }}

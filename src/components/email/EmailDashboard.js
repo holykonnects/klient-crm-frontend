@@ -176,77 +176,7 @@ export default function EmailDashboard() {
               </CardActionArea>
             </Card>
 
-            {/* MANAGE TEMPLATES CARD */}
-            <Card
-              sx={{
-                width: 250,
-                borderRadius: 3,
-                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-                border: `2px solid ${cornflowerBlue}`,
-              }}
-            >
-              <CardActionArea onClick={() => setTab(1)}>
-                <CardContent sx={{ textAlign: "center", py: 4 }}>
-                  <DescriptionIcon
-                    sx={{ fontSize: 40, color: cornflowerBlue }}
-                  />
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      fontFamily: "Montserrat",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Manage Templates
-                  </Typography>
-                  <Typography
-                    sx={{
-                      mt: 0.5,
-                      fontSize: 11,
-                      color: "#555",
-                    }}
-                  >
-                    Create / edit email docs
-                  </Typography>
-                </CardContent>
-              </CardActionArea>
-            </Card>
-
-            {/* LOGS CARD */}
-            <Card
-              sx={{
-                width: 250,
-                borderRadius: 3,
-                boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
-                border: `2px solid ${cornflowerBlue}`,
-              }}
-            >
-              <CardActionArea onClick={() => setTab(2)}>
-                <CardContent sx={{ textAlign: "center", py: 4 }}>
-                  <HistoryIcon
-                    sx={{ fontSize: 40, color: cornflowerBlue }}
-                  />
-                  <Typography
-                    sx={{
-                      mt: 2,
-                      fontFamily: "Montserrat",
-                      fontWeight: 600,
-                    }}
-                  >
-                    View Logs
-                  </Typography>
-                  <Typography
-                    sx={{
-                      mt: 0.5,
-                      fontSize: 11,
-                      color: "#555",
-                    }}
-                  >
-                    Track sent emails & status
-                  </Typography>
-                </CardContent>
-              </CardActionArea>
-            </Card>
+            
           </Stack>
 
           {/* SINGLE SEND MODAL */}

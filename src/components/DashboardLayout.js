@@ -8,7 +8,8 @@ import {
   ChevronLeft, ChevronRight,
   PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
   AssignmentTurnedIn, Assignment, Groups, EditCalendar,
-  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee, BusinessCenter, Construction, Email
+  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee,
+  BusinessCenter, Construction, Email, ManageSearch
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -34,6 +35,10 @@ function DashboardLayout({ children }) {
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
+
+    // ✅ NEW PAGE (route added in App.js as "existence-check")
+    { label: 'Existence Check', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
+
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
@@ -43,7 +48,6 @@ function DashboardLayout({ children }) {
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Client Comms', icon: <Email />, route: '/email-dashboard', access: 'Email' }
-  
   ];
 
   return (
@@ -62,7 +66,11 @@ function DashboardLayout({ children }) {
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
             zIndex: 1200,
-            fontFamily: 'Montserrat, sans-serif'
+            fontFamily: 'Montserrat, sans-serif',
+
+            // ✅ keeps logout at bottom if menu grows
+            display: 'flex',
+            flexDirection: 'column'
           }
         }}
       >
@@ -73,30 +81,43 @@ function DashboardLayout({ children }) {
           </IconButton>
         </Box>
 
-        {/* Menu Items */}
-        <List>
-          {menuItems.filter(item => user?.pageAccess?.includes(item.access)).map(({ label, icon, route }) => (
-            <Tooltip key={label} title={open ? '' : label} placement="right">
-              <ListItem button component={Link} to={route}>
-                <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
-                {open && (
-                  <ListItemText
-                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>{label}</Typography>}
-                  />
-                )}
-              </ListItem>
-            </Tooltip>
-          ))}
-        </List>
+        {/* ✅ Scrollable area for menu */}
+        <Box sx={{ flex: 1, overflowY: 'auto' }}>
+          <List>
+            {menuItems
+              .filter(item => user?.pageAccess?.includes(item.access))
+              .map(({ label, icon, route }) => (
+                <Tooltip key={label} title={open ? '' : label} placement="right">
+                  <ListItem button component={Link} to={route}>
+                    <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
+                    {open && (
+                      <ListItemText
+                        primary={
+                          <Typography
+                            sx={{
+                              color: cornflowerBlue,
+                              fontWeight: 500,
+                              fontFamily: 'Montserrat, sans-serif',
+                              fontSize: 13
+                            }}
+                          >
+                            {label}
+                          </Typography>
+                        }
+                      />
+                    )}
+                  </ListItem>
+                </Tooltip>
+              ))}
+          </List>
 
-        {/* Spacer using Dividers */}
-        <Box>
-          {[...Array(1)].map((_, i) => (
-            <Divider key={`divider-${i}`} sx={{ my: 1 , borderColor: '#6495ED', borderBottomWidth: 3 }} />
-          ))}
+          {/* Divider */}
+          <Box>
+            <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 3 }} />
+          </Box>
         </Box>
 
-        {/* Logout Button */}
+        {/* Logout Button (Pinned at bottom) */}
         <List>
           <Tooltip title="Logout" placement="right">
             <ListItem button onClick={logout}>
@@ -105,7 +126,18 @@ function DashboardLayout({ children }) {
               </ListItemIcon>
               {open && (
                 <ListItemText
-                  primary={<Typography sx={{ color: 'red', fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>Logout</Typography>}
+                  primary={
+                    <Typography
+                      sx={{
+                        color: 'red',
+                        fontWeight: 500,
+                        fontFamily: 'Montserrat, sans-serif',
+                        fontSize: 13
+                      }}
+                    >
+                      Logout
+                    </Typography>
+                  }
                 />
               )}
             </ListItem>

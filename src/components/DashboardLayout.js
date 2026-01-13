@@ -8,22 +8,14 @@ import {
   ChevronLeft, ChevronRight,
   PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
   AssignmentTurnedIn, Assignment, Groups, EditCalendar,
-  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee,
-  BusinessCenter, Construction, Email
+  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee, BusinessCenter, Construction, Email
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
 
-// ✅ NEW: Existence Search UI
-import ExistenceSearch from './ExistenceSearch';
-
 const drawerWidth = 240;
 const cornflowerBlue = '#6495ED';
 const sidebarBackground = '#fdfdfd';
-
-// ✅ NEW: Dedicated backend URL constant
-const EXISTENCE_SEARCH_BACKEND_URL =
-  'https://script.google.com/macros/s/AKfycbzlQehb3L1sGPfJY0llUf-24bu8PjiGAJtEGXvh6mQJkbfDJLTU2o4g_HLxinBX_q6B4g/exec';
 
 function DashboardLayout({ children }) {
   const [open, setOpen] = useState(true);
@@ -51,18 +43,8 @@ function DashboardLayout({ children }) {
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Client Comms', icon: <Email />, route: '/email-dashboard', access: 'Email' }
+  
   ];
-
-  // ✅ Access gate for Existence Search:
-  // Show if Admin OR user has access to any of the underlying modules.
-  const isAdmin =
-    String(user?.role || '').toLowerCase() === 'admin';
-
-  const canUseExistenceSearch =
-    isAdmin ||
-    (user?.pageAccess || []).includes('Lead') ||
-    (user?.pageAccess || []).includes('Account') ||
-    (user?.pageAccess || []).includes('Deal');
 
   return (
     <Box display="flex">
@@ -80,11 +62,7 @@ function DashboardLayout({ children }) {
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
             zIndex: 1200,
-            fontFamily: 'Montserrat, sans-serif',
-
-            // ✅ NEW: allow sidebar content + pinned logout
-            display: 'flex',
-            flexDirection: 'column'
+            fontFamily: 'Montserrat, sans-serif'
           }
         }}
       >
@@ -95,52 +73,30 @@ function DashboardLayout({ children }) {
           </IconButton>
         </Box>
 
-        {/* ✅ Scrollable section: Menu + Utilities */}
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          {/* Menu Items */}
-          <List>
-            {menuItems
-              .filter(item => user?.pageAccess?.includes(item.access))
-              .map(({ label, icon, route }) => (
-                <Tooltip key={label} title={open ? '' : label} placement="right">
-                  <ListItem button component={Link} to={route}>
-                    <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
-                    {open && (
-                      <ListItemText
-                        primary={
-                          <Typography
-                            sx={{
-                              color: cornflowerBlue,
-                              fontWeight: 500,
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontSize: 13
-                            }}
-                          >
-                            {label}
-                          </Typography>
-                        }
-                      />
-                    )}
-                  </ListItem>
-                </Tooltip>
-              ))}
-          </List>
+        {/* Menu Items */}
+        <List>
+          {menuItems.filter(item => user?.pageAccess?.includes(item.access)).map(({ label, icon, route }) => (
+            <Tooltip key={label} title={open ? '' : label} placement="right">
+              <ListItem button component={Link} to={route}>
+                <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
+                {open && (
+                  <ListItemText
+                    primary={<Typography sx={{ color: cornflowerBlue, fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>{label}</Typography>}
+                  />
+                )}
+              </ListItem>
+            </Tooltip>
+          ))}
+        </List>
 
-          {/* Divider */}
-          <Box>
-            <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 3 }} />
-          </Box>
-
-          {/* ✅ NEW: CRM Existence Search (access controlled) */}
-          {canUseExistenceSearch && (
-            <ExistenceSearch
-              backendUrl={EXISTENCE_SEARCH_BACKEND_URL}
-              open={open}
-            />
-          )}
+        {/* Spacer using Dividers */}
+        <Box>
+          {[...Array(1)].map((_, i) => (
+            <Divider key={`divider-${i}`} sx={{ my: 1 , borderColor: '#6495ED', borderBottomWidth: 3 }} />
+          ))}
         </Box>
 
-        {/* Logout Button pinned at bottom */}
+        {/* Logout Button */}
         <List>
           <Tooltip title="Logout" placement="right">
             <ListItem button onClick={logout}>
@@ -149,18 +105,7 @@ function DashboardLayout({ children }) {
               </ListItemIcon>
               {open && (
                 <ListItemText
-                  primary={
-                    <Typography
-                      sx={{
-                        color: 'red',
-                        fontWeight: 500,
-                        fontFamily: 'Montserrat, sans-serif',
-                        fontSize: 13
-                      }}
-                    >
-                      Logout
-                    </Typography>
-                  }
+                  primary={<Typography sx={{ color: 'red', fontWeight: 500, fontFamily: 'Montserrat, sans-serif', fontSize: 13 }}>Logout</Typography>}
                 />
               )}
             </ListItem>

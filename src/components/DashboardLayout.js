@@ -30,15 +30,13 @@ function DashboardLayout({ children }) {
   const toggleDrawer = () => setOpen(prev => !prev);
 
   const menuItems = [
+    // ✅ NEW PAGE (route added in App.js as "existence-check")
+    { label: 'Existence Check', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
     { label: 'Dashboard', icon: <Dashboard />, route: '/dashboard', access: 'Dashboard' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
-
-    // ✅ NEW PAGE (route added in App.js as "existence-check")
-    { label: 'Existence Check', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
-
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },

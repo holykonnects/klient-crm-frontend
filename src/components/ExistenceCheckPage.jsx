@@ -17,7 +17,7 @@ export default function ExistenceCheckPage() {
           fontFamily: "Montserrat, sans-serif"
         }}
       >
-        CRM Existence Check
+        Ownership Verification
       </Typography>
 
       <Paper

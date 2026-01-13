@@ -31,7 +31,7 @@ function DashboardLayout({ children }) {
 
   const menuItems = [
     // ✅ NEW PAGE (route added in App.js as "existence-check")
-    { label: 'Existence Check', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
+    { label: 'Check Owner', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
     { label: 'Dashboard', icon: <Dashboard />, route: '/dashboard', access: 'Dashboard' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
     { label: 'Leads', icon: <PersonAddAlt />, route: '/view-leads', access: 'Lead' },

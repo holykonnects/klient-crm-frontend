@@ -19,6 +19,7 @@ import QuotationBuilder from './components/QuotationBuilder';
 import ProjectTable from './components/ProjectTable';
 import EmailTemplatesTable from './components/email/EmailTemplatesTable';
 import EmailDashboard from './components/email/EmailDashboard';
+import ExistenceCheckPage from './components/ExistenceCheckPage';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -32,16 +33,26 @@ const AppRoutes = () => {
         <Route path="view-deals" element={<DealsTable />} />
         <Route path="view-orders" element={<OrdersTable />} />
         <Route path="add-lead" element={<LeadForm />} />
-        <Route path="/calendar" element={<CalendarView />} />
+        <Route path="calendar" element={<CalendarView />} />
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
         <Route path="email-templates" element={<EmailTemplatesTable />} />
         <Route path="email-dashboard" element={<EmailDashboard />} />
-        
+
+        {/* ✅ NEW: Existence Check page (controlled by CRM Login sheet Page Access) */}
+        <Route
+          path="existence-check"
+          element={
+            <ProtectedPage pageKey="Existence Check">
+              <ExistenceCheckPage />
+            </ProtectedPage>
+          }
+        />
+
         {/* ✅ Travel route with access control */}
         <Route
-          path="/view-travel"
+          path="view-travel"
           element={
             <ProtectedPage pageKey="Travel">
               <TravelTable />

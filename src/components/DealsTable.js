@@ -1,10 +1,32 @@
 import React, { useEffect, useState } from "react";
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell,
-  TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, DialogActions, Grid, Checkbox,
-  Button, Popover, Accordion, AccordionSummary, AccordionDetails,
-  FormGroup, FormControlLabel, Divider
+  Box,
+  Typography,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TextField,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Checkbox,
+  Button,
+  Popover,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  FormGroup,
+  FormControlLabel,
+  Divider,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -150,8 +172,16 @@ function DealsTable() {
   const filteredDeals = sortedDeals.filter((deal) => {
     try {
       return (
-        ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
-          (key) => (deal[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+        [
+          "First Name",
+          "Last Name",
+          "Deal Name",
+          "Company",
+          "Mobile Number",
+          "Stage",
+          "Account ID",
+        ].some((key) =>
+          (deal[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || deal["Stage"] === filterStage) &&
         (!filterType || deal["Type"] === filterType) &&
@@ -167,9 +197,7 @@ function DealsTable() {
 
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
-      const updated = prev.includes(col)
-        ? prev.filter((c) => c !== col)
-        : [...prev, col];
+      const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
       localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated));
       return updated;
     });
@@ -201,7 +229,6 @@ function DealsTable() {
 
   const handleSubmitDeal = async () => {
     try {
-      // NOTE: no-cors means response not readable
       await fetch(submitUrl, {
         method: "POST",
         mode: "no-cors",
@@ -240,7 +267,6 @@ function DealsTable() {
   // Add Order (one order per deal)
   // ----------------------------
   const openAddOrder = (deal) => {
-    // Guard: one deal -> one order
     if (deal?.["Order ID"]) {
       alert("⚠️ Order already exists for this deal. Please edit it from the Orders table.");
       return;
@@ -248,8 +274,14 @@ function DealsTable() {
 
     setOrderBaseRow(deal);
 
-    // Only the MISSING order-creation fields (not the ones already in Deals)
+    // ✅ Key order fields moved to Add Order section (editable, prefilled)
     setOrderForm({
+      "Order Amount": deal["Order Amount"] || "",
+      "Order Delivery Date": deal["Order Delivery Date"] || "",
+      "Order Delivery Details": deal["Order Delivery Details"] || "",
+      "Order Remarks": deal["Order Remarks"] || "",
+
+      // Remaining order creation fields
       "Order Payment Terms": "",
       "Order Onsite Contact Name": "",
       "Order Onsite Contact Number": "",
@@ -259,8 +291,6 @@ function DealsTable() {
       "Payment Amount": "",
       "Payment Details": "",
       "Notification Status": "",
-      // Order Delivery Date / Order Remarks already in Deals in your current structure,
-      // so we keep them read-only from deal row (can be changed via Edit Deal if needed).
     });
 
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
@@ -300,33 +330,26 @@ function DealsTable() {
 
     setCreatingOrder(true);
     try {
-      // Generate an Order ID (since one deal -> one order)
       const orderId = `ORD-${Date.now()}`;
 
-      // Convert files
       const poObj = await fileToBase64(orderFiles.purchaseOrder);
       const drawingObj = await fileToBase64(orderFiles.drawing);
       const boqObj = await fileToBase64(orderFiles.boq);
       const proformaObj = await fileToBase64(orderFiles.proforma);
 
-      // Build order row payload:
-      // Include existing order-related values FROM the deal row as read-only context,
-      // plus ONLY the missing fields from orderForm + file objects.
       const payloadRow = {
-        ...orderBaseRow, // includes: Deal + Customer context + existing order fields already stored in Deals
+        ...orderBaseRow,
         "Order ID": orderId,
 
-        // Missing fields entered in Order modal
+        // ✅ Includes edited key order fields + remaining order creation fields
         ...orderForm,
 
-        // File fields (App Script should upload + replace with URL)
         "Attach Purchase Order": poObj,
         "Attach Drawing": drawingObj,
         "Attach BOQ": boqObj,
         "Proforma Invoice": proformaObj,
       };
 
-      // Submit (no-cors friendly)
       await fetch(submitUrl, {
         method: "POST",
         mode: "no-cors",
@@ -334,7 +357,6 @@ function DealsTable() {
         body: JSON.stringify({
           action: "createOrder",
           data: payloadRow,
-          // optional: include a deal key so backend can also stamp Order ID back into Deals sheet
           dealKey: orderBaseRow["Deal Name"] || "",
           accountId: orderBaseRow["Account ID"] || "",
         }),
@@ -343,8 +365,6 @@ function DealsTable() {
       alert("✅ Order created successfully (edit from Orders table going forward).");
       setOrderOpen(false);
       setOrderBaseRow(null);
-
-      // Refresh deals (backend should stamp Order ID into Deals row, so Add Order disables next time)
       fetchDeals();
     } catch (e) {
       console.error("Create order error:", e);
@@ -460,12 +480,10 @@ function DealsTable() {
                   <TableCell key={i}>{deal[col]}</TableCell>
                 ))}
                 <TableCell>
-                  {/* Deal-only edit */}
                   <IconButton onClick={() => handleEditClick(deal)} title="Edit Deal">
                     <EditIcon />
                   </IconButton>
 
-                  {/* Add Order (one per deal) */}
                   <IconButton
                     onClick={() => openAddOrder(deal)}
                     title={deal?.["Order ID"] ? "Order already exists" : "Add Order"}
@@ -474,12 +492,10 @@ function DealsTable() {
                     <AddShoppingCartIcon />
                   </IconButton>
 
-                  {/* Logs */}
                   <IconButton onClick={() => handleViewLogs(deal)} title="Logs">
                     <HistoryIcon />
                   </IconButton>
 
-                  {/* Meeting */}
                   <IconButton onClick={() => handleOpenMeetingFromRow(deal, "Deal")} title="Schedule Meeting">
                     <EventIcon />
                   </IconButton>
@@ -520,8 +536,6 @@ function DealsTable() {
                   "Annual Revenue",
                   "Social Media",
                   "Description",
-                  // If your sheet includes Requirement, you can add it here too:
-                  // "Requirement",
                 ],
               },
               {
@@ -604,14 +618,13 @@ function DealsTable() {
           </DialogContent>
         </Dialog>
 
-        {/* -------------------- Add Order Modal (MISSING FIELDS ONLY) -------------------- */}
+        {/* -------------------- Add Order Modal -------------------- */}
         <Dialog open={orderOpen} onClose={() => setOrderOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Add Order
           </DialogTitle>
 
           <DialogContent dividers>
-            {/* Top: only missing fields */}
             <Accordion defaultExpanded>
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}
@@ -625,6 +638,13 @@ function DealsTable() {
               <AccordionDetails>
                 <Grid container spacing={2}>
                   {[
+                    // ✅ Key editable fields
+                    "Order Amount",
+                    "Order Delivery Date",
+                    "Order Delivery Details",
+                    "Order Remarks",
+
+                    // Remaining fields
                     "Order Payment Terms",
                     "Order Onsite Contact Name",
                     "Order Onsite Contact Number",
@@ -636,32 +656,16 @@ function DealsTable() {
                     "Notification Status",
                   ].map((field) => (
                     <Grid item xs={6} key={field}>
-                      {validationData[field] ? (
-                        <FormControl fullWidth size="small">
-                          <InputLabel>{field}</InputLabel>
-                          <Select
-                            name={field}
-                            value={orderForm[field] || ""}
-                            label={field}
-                            onChange={handleOrderFieldChange}
-                          >
-                            {validationData[field].map((opt, idx) => (
-                              <MenuItem key={idx} value={opt}>
-                                {opt}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      ) : (
-                        <TextField
-                          fullWidth
-                          size="small"
-                          name={field}
-                          label={field}
-                          value={orderForm[field] || ""}
-                          onChange={handleOrderFieldChange}
-                        />
-                      )}
+                      <TextField
+                        fullWidth
+                        size="small"
+                        name={field}
+                        label={field}
+                        value={orderForm[field] || ""}
+                        onChange={handleOrderFieldChange}
+                        type={field === "Order Delivery Date" ? "date" : "text"}
+                        InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
+                      />
                     </Grid>
                   ))}
 
@@ -703,7 +707,7 @@ function DealsTable() {
               </AccordionDetails>
             </Accordion>
 
-            {/* Below: Read-only context (already exists in Deals) */}
+            {/* Context (read-only) */}
             <Accordion>
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}
@@ -729,19 +733,9 @@ function DealsTable() {
                     "Stage",
                     "Product Required",
                     "Deal Amount",
-                    // Existing order-related fields already in Deals sheet:
-                    "Order Amount",
-                    "Order Delivery Date",
-                    "Order Remarks",
                   ].map((field) => (
                     <Grid item xs={6} key={field}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label={field}
-                        value={orderBaseRow?.[field] || ""}
-                        disabled
-                      />
+                      <TextField fullWidth size="small" label={field} value={orderBaseRow?.[field] || ""} disabled />
                     </Grid>
                   ))}
                 </Grid>

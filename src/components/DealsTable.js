@@ -55,31 +55,83 @@ const selectorStyle = {
 };
 
 /**
- * ✅ Robust parser for "dd-MM-yyyy HH:mm:ss"
- * (Your GAS writes Timestamp in this format)
+ * ✅ FIX #0:
+ * Flexible timestamp parser:
+ * Supports:
+ * - dd-MM-yyyy HH:mm:ss
+ * - dd/MM/yyyy HH:mm:ss
+ * - yyyy-MM-ddTHH:mm:ssZ (ISO)
+ * - Date objects
+ * - numeric epoch
  */
-const parseDDMMYYYY_HHMMSS = (ts) => {
+const parseTimestampFlexible = (ts) => {
   if (!ts) return 0;
+
+  // Date object
+  if (ts instanceof Date) {
+    const t = ts.getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  // epoch numeric
+  if (typeof ts === "number") {
+    return Number.isFinite(ts) ? ts : 0;
+  }
+
   const raw = String(ts).trim();
-  const [dPart, tPart] = raw.split(" ");
-  if (!dPart) return 0;
+  if (!raw) return 0;
 
-  const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
-  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
-    .split(":")
-    .map((x) => parseInt(x, 10));
+  // Try ISO / Date.parse first (works for many formats, including "2026-01-15T10:20:30Z")
+  const dp = Date.parse(raw);
+  if (Number.isFinite(dp)) return dp;
 
-  if (!dd || !mm || !yyyy) return 0;
-  const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
-  const t = dt.getTime();
-  return Number.isFinite(t) ? t : 0;
+  // Try dd-MM-yyyy or dd/MM/yyyy with optional time
+  // Examples:
+  // 15-01-2026 09:05:02
+  // 15/01/2026 9:5:2
+  const m = raw.match(
+    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/
+  );
+  if (m) {
+    const dd = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    const yyyy = parseInt(m[3], 10);
+    const HH = parseInt(m[4] ?? "0", 10);
+    const MM = parseInt(m[5] ?? "0", 10);
+    const SS = parseInt(m[6] ?? "0", 10);
+
+    if (dd && mm && yyyy) {
+      const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
+      const t = dt.getTime();
+      return Number.isFinite(t) ? t : 0;
+    }
+  }
+
+  // Last attempt: maybe it’s already "dd-MM-yyyy HH:mm:ss" with extra spaces
+  // (we already tried Date.parse + regex above)
+  return 0;
 };
 
 /**
- * ✅ Stable "deal key"
- * Use Deal Name + Account ID (prevents collisions where Deal Name repeats)
+ * ✅ FIX #1:
+ * Use a stable Deal Key for dedupe/logs.
+ * Prefer unique IDs if present in your sheet.
+ * Fallback: Deal Name + Account ID (least stable because Deal Name can change).
  */
-const dealKeyOf = (row) => `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
+const dealKeyOf = (row) => {
+  const id =
+    row?.["Deal ID"] ||
+    row?.["Deal Unique ID"] ||
+    row?.["Deal Unique Key"] ||
+    row?.["Deal UID"] ||
+    row?.["DealID"] ||
+    row?.["ID"];
+
+  if (id) return String(id).trim();
+
+  // fallback (your previous method)
+  return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`.trim();
+};
 
 function DealsTable() {
   const [deals, setDeals] = useState([]);
@@ -151,36 +203,65 @@ function DealsTable() {
       setAllDeals(filtered);
 
       /**
-       * ✅ FIX #1 (Your main issue):
-       * Always show latest row per Deal Key using robust timestamp parsing.
+       * ✅ FIX #2 (dedupe latest):
+       * - Compare using parseTimestampFlexible()
+       * - If timestamps are equal/invalid (0), keep the later row in the array (assume later = newer append)
        */
       const seen = new Map();
-      filtered.forEach((row) => {
+
+      filtered.forEach((row, idx) => {
         const key = dealKeyOf(row);
+        if (!key || key === "__") return;
+
         const existing = seen.get(key);
 
-        const tNew = parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
-        const tOld = parseDDMMYYYY_HHMMSS(existing?.["Timestamp"]);
+        const tNew = parseTimestampFlexible(row?.["Timestamp"]);
+        const tOld = parseTimestampFlexible(existing?.["Timestamp"]);
 
-        // If timestamp missing/invalid, keep existing; else compare normally
-        if (!existing || tNew > tOld) {
-          seen.set(key, row);
+        // Primary: timestamp comparison
+        if (!existing) {
+          seen.set(key, { ...row, __idx: idx });
+          return;
+        }
+
+        // If both invalid (0), prefer later row (higher idx)
+        if (tNew === 0 && tOld === 0) {
+          if ((idx ?? 0) > (existing.__idx ?? -1)) {
+            seen.set(key, { ...row, __idx: idx });
+          }
+          return;
+        }
+
+        // If only new has valid time, take it
+        if (tNew > tOld) {
+          seen.set(key, { ...row, __idx: idx });
+          return;
+        }
+
+        // If equal timestamp, prefer later row
+        if (tNew === tOld && (idx ?? 0) > (existing.__idx ?? -1)) {
+          seen.set(key, { ...row, __idx: idx });
         }
       });
 
-      const dedupedLatest = Array.from(seen.values()).sort(
-        (a, b) =>
-          parseDDMMYYYY_HHMMSS(b?.["Timestamp"]) -
-          parseDDMMYYYY_HHMMSS(a?.["Timestamp"])
-      );
+      const dedupedLatest = Array.from(seen.values())
+        .sort((a, b) => {
+          const tb = parseTimestampFlexible(b?.["Timestamp"]);
+          const ta = parseTimestampFlexible(a?.["Timestamp"]);
+          if (tb !== ta) return tb - ta;
+          // fallback: later appended row first
+          return (b.__idx ?? 0) - (a.__idx ?? 0);
+        })
+        .map(({ __idx, ...rest }) => rest);
 
       setDeals(dedupedLatest);
 
-      // keep stored columns; if none, default to all
       const stored =
         JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) || null;
 
-      setVisibleColumns(stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : []));
+      setVisibleColumns(
+        stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : [])
+      );
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -194,12 +275,11 @@ function DealsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
-    
   }, [username, role]);
 
   /**
-   * ✅ FIX #2: sorting should respect Timestamp properly when sorting by "Timestamp"
-   * (otherwise string sort can mislead in dd-MM-yyyy format)
+   * ✅ FIX #3:
+   * Sorting should treat Timestamp specially via parseTimestampFlexible.
    */
   const sortedDeals = useMemo(() => {
     const arr = [...deals];
@@ -208,10 +288,9 @@ function DealsTable() {
     const { key, direction } = sortConfig;
 
     arr.sort((a, b) => {
-      // special-case Timestamp
       if (key === "Timestamp") {
-        const ta = parseDDMMYYYY_HHMMSS(a?.["Timestamp"]);
-        const tb = parseDDMMYYYY_HHMMSS(b?.["Timestamp"]);
+        const ta = parseTimestampFlexible(a?.["Timestamp"]);
+        const tb = parseTimestampFlexible(b?.["Timestamp"]);
         return direction === "asc" ? ta - tb : tb - ta;
       }
 
@@ -304,13 +383,20 @@ function DealsTable() {
   const handleViewLogs = (dealRow) => {
     const key = dealKeyOf(dealRow);
     if (!key || key === "__") {
-      alert("No Deal Name / Account ID found for logs.");
+      alert("No stable Deal ID/Key found for logs. Add a Deal ID column for perfect logs.");
       return;
     }
 
     const logs = allDeals
       .filter((d) => dealKeyOf(d) === key)
-      .sort((a, b) => parseDDMMYYYY_HHMMSS(b?.["Timestamp"]) - parseDDMMYYYY_HHMMSS(a?.["Timestamp"]));
+      .map((r, idx) => ({ ...r, __idx: idx }))
+      .sort((a, b) => {
+        const tb = parseTimestampFlexible(b?.["Timestamp"]);
+        const ta = parseTimestampFlexible(a?.["Timestamp"]);
+        if (tb !== ta) return tb - ta;
+        return (b.__idx ?? 0) - (a.__idx ?? 0);
+      })
+      .map(({ __idx, ...rest }) => rest);
 
     setDealLogs(logs);
     setLogsOpen(true);
@@ -336,7 +422,6 @@ function DealsTable() {
 
     setOrderBaseRow(deal);
 
-    // Add Order section includes key order fields (editable / prefilled)
     setOrderForm({
       "Order Amount": deal?.["Order Amount"] || "",
       "Order Delivery Date": deal?.["Order Delivery Date"] || "",
@@ -401,10 +486,7 @@ function DealsTable() {
       const payloadRow = {
         ...orderBaseRow,
         "Order ID": orderId,
-
-        // only add the new / editable order creation fields
         ...orderForm,
-
         "Attach Purchase Order": poObj,
         "Attach Drawing": drawingObj,
         "Attach BOQ": boqObj,
@@ -430,9 +512,7 @@ function DealsTable() {
     }
   };
 
-  // Logs modal headers: show full row
   const allLogHeaders = dealLogs?.[0] ? Object.keys(dealLogs[0]) : [];
-  // Prefer the sheet headers (from logs) over visibleColumns — because logs should show full row.
   const logHeaders = allLogHeaders;
 
   return (

@@ -1,3 +1,4 @@
+// src/components/OrdersTable.js
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -51,6 +52,25 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+const parseDDMMYYYY_HHMMSS = (ts) => {
+  if (!ts) return 0;
+  const raw = String(ts).trim();
+  const [dPart, tPart] = raw.split(" ");
+  if (!dPart) return 0;
+
+  const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
+  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
+    .split(":")
+    .map((x) => parseInt(x, 10));
+
+  if (!dd || !mm || !yyyy) return 0;
+  const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
+  const t = dt.getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
+const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+
 function OrdersTable() {
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
@@ -90,22 +110,17 @@ function OrdersTable() {
   const username = user?.username;
   const role = user?.role;
 
-  // Orders read webapp (existing)
+  // Orders read webapp
   const dataUrl =
     "https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec";
 
-  // Submit webapp (same as deals submitUrl, now supports updateOrder)
+  // Submit webapp (same as deals submitUrl; supports updateOrder)
   const submitUrl =
     "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
 
-  // Validation webapp (same as deals)
+  // Validation webapp
   const validationUrl =
     "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
-
-  const safeTime = (x) => {
-    const t = new Date(x || 0).getTime();
-    return Number.isFinite(t) ? t : 0;
-  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -122,19 +137,20 @@ function OrdersTable() {
 
       setAllOrders(filtered);
 
-      // ✅ DEDUPE BY Order ID (latest row only)
+      // ✅ latest by Order ID
       const seen = new Map();
       filtered.forEach((row) => {
-        const key = row["Order ID"] || row["Deal Name"] || row["Account ID"] || JSON.stringify(row);
+        const key = row["Order ID"] || "";
+        if (!key) return;
+
         const existing = seen.get(key);
-        const tNew = safeTime(row["Timestamp"]);
-        const tOld = safeTime(existing?.["Timestamp"]);
+        const tNew = parseDDMMYYYY_HHMMSS(row["Timestamp"]);
+        const tOld = parseDDMMYYYY_HHMMSS(existing?.["Timestamp"]);
         if (!existing || tNew > tOld) seen.set(key, row);
       });
 
-      // ✅ Show latest rows sorted DESC by timestamp by default
       const deduped = Array.from(seen.values()).sort(
-        (a, b) => safeTime(b["Timestamp"]) - safeTime(a["Timestamp"])
+        (a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"])
       );
 
       setOrders(deduped);
@@ -210,6 +226,18 @@ function OrdersTable() {
     localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify([]));
   };
 
+  const renderCell = (col, value) => {
+    const fileCols = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
+    if (fileCols.includes(col) && isUrl(value)) {
+      return (
+        <a href={value} target="_blank" rel="noreferrer">
+          Open
+        </a>
+      );
+    }
+    return value || "";
+  };
+
   // open edit
   const handleEditClick = (row) => {
     setSelectedRow(row);
@@ -217,7 +245,7 @@ function OrdersTable() {
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
-  // logs
+  // logs (FULL ROW)
   const handleViewLogs = (row) => {
     const key = row["Order ID"];
     if (!key) {
@@ -226,7 +254,7 @@ function OrdersTable() {
     }
     const logs = allOrders
       .filter((r) => r["Order ID"] === key)
-      .sort((a, b) => safeTime(b["Timestamp"]) - safeTime(a["Timestamp"]));
+      .sort((a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"]));
     setOrderLogs(logs);
     setLogsOpen(true);
   };
@@ -296,7 +324,8 @@ function OrdersTable() {
     }
   };
 
-  const isLikelyUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+  const logHeaders = orderLogs?.[0] ? Object.keys(orderLogs[0]) : [];
+  const logCols = logHeaders.length ? logHeaders : [];
 
   if (loading) return <LoadingOverlay />;
 
@@ -356,6 +385,7 @@ function OrdersTable() {
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
+
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box p={2} sx={selectorStyle}>
               <Typography variant="subtitle2">Column Visibility</Typography>
@@ -401,7 +431,7 @@ function OrdersTable() {
             {filteredOrders.map((order, index) => (
               <TableRow key={index}>
                 {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{order[col]}</TableCell>
+                  <TableCell key={i}>{renderCell(col, order[col])}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => handleEditClick(order)} title="Edit / Update Order">
@@ -448,59 +478,6 @@ function OrdersTable() {
                 title: "Payment Details",
                 fields: ["Payment Status", "Payment Amount", "Payment Details", "Notification Status"],
               },
-              {
-                title: "Deal Details",
-                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Remarks", "Stage"],
-              },
-              {
-                title: "Customer Details",
-                fields: [
-                  "Account Owner",
-                  "First Name",
-                  "Last Name",
-                  "Company",
-                  "Mobile Number",
-                  "Email ID",
-                  "Fax",
-                  "Website",
-                  "Lead Source",
-                  "Lead Status",
-                  "Industry",
-                  "Number of Employees",
-                  "Requirement",
-                  "Social Media",
-                  "Description",
-                  "Account ID",
-                ],
-              },
-              {
-                title: "Address Details",
-                fields: [
-                  "Billing Street",
-                  "Billing City",
-                  "Billing State",
-                  "Billing Country",
-                  "Billing PinCode",
-                  "Billing Additional Description",
-                  "Shipping Street",
-                  "Shipping City",
-                  "Shipping State",
-                  "Shipping Country",
-                  "Shipping PinCode",
-                  "Shipping Additional Description",
-                ],
-              },
-              {
-                title: "Customer Banking Details",
-                fields: [
-                  "GST Number",
-                  "Bank Account Number",
-                  "IFSC Code",
-                  "Bank Name",
-                  "Bank Account Name",
-                  "Banking Remarks",
-                ],
-              },
             ].map((section) => (
               <Accordion key={section.title} defaultExpanded>
                 <AccordionSummary
@@ -516,15 +493,8 @@ function OrdersTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {/* Attachments are handled separately (URL display + upload replacement buttons) */}
                         {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(field) ? (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label={field}
-                            value={orderFormData[field] || ""}
-                            disabled
-                          />
+                          <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
                         ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
@@ -533,7 +503,7 @@ function OrdersTable() {
                               value={orderFormData[field] || ""}
                               label={field}
                               onChange={handleFieldChange}
-                              disabled={field === "Account Owner" || field === "Order ID"}
+                              disabled={field === "Order ID"}
                             >
                               {validationData[field].map((opt, idx) => (
                                 <MenuItem key={idx} value={opt}>
@@ -550,7 +520,7 @@ function OrdersTable() {
                             label={field}
                             value={orderFormData[field] || ""}
                             onChange={handleFieldChange}
-                            disabled={field === "Account Owner" || field === "Order ID" || field === "Timestamp"}
+                            disabled={field === "Order ID"}
                             type={field === "Order Delivery Date" ? "date" : "text"}
                             InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
                           />
@@ -582,52 +552,6 @@ function OrdersTable() {
                             </Button>
                           </Grid>
                         ))}
-
-                        <Grid item xs={12}>
-                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12, mt: 1 }}>
-                            <strong>Existing Attach Purchase Order:</strong>{" "}
-                            {isLikelyUrl(orderFormData["Attach Purchase Order"]) ? (
-                              <a href={orderFormData["Attach Purchase Order"]} target="_blank" rel="noreferrer">
-                                Open
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </Typography>
-
-                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
-                            <strong>Existing Attach Drawing:</strong>{" "}
-                            {isLikelyUrl(orderFormData["Attach Drawing"]) ? (
-                              <a href={orderFormData["Attach Drawing"]} target="_blank" rel="noreferrer">
-                                Open
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </Typography>
-
-                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
-                            <strong>Existing Attach BOQ:</strong>{" "}
-                            {isLikelyUrl(orderFormData["Attach BOQ"]) ? (
-                              <a href={orderFormData["Attach BOQ"]} target="_blank" rel="noreferrer">
-                                Open
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </Typography>
-
-                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
-                            <strong>Existing Proforma Invoice:</strong>{" "}
-                            {isLikelyUrl(orderFormData["Proforma Invoice"]) ? (
-                              <a href={orderFormData["Proforma Invoice"]} target="_blank" rel="noreferrer">
-                                Open
-                              </a>
-                            ) : (
-                              "—"
-                            )}
-                          </Typography>
-                        </Grid>
                       </Grid>
                     </>
                   )}
@@ -649,35 +573,40 @@ function OrdersTable() {
           </DialogActions>
         </Dialog>
 
-        {/* -------------------- LOGS MODAL -------------------- */}
-        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+        {/* -------------------- ORDER LOGS MODAL (FULL ROW) -------------------- */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="xl" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
-            Order Change Logs
+            Order Change Logs (Full Row)
           </DialogTitle>
           <DialogContent dividers>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Timestamp</TableCell>
-                  <TableCell>Order ID</TableCell>
-                  <TableCell>Company</TableCell>
-                  <TableCell>Stage</TableCell>
-                  <TableCell>Payment Status</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {orderLogs.map((log, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{log["Timestamp"]}</TableCell>
-                    <TableCell>{log["Order ID"]}</TableCell>
-                    <TableCell>{log["Company"]}</TableCell>
-                    <TableCell>{log["Stage"]}</TableCell>
-                    <TableCell>{log["Payment Status"]}</TableCell>
+            {orderLogs.length === 0 ? (
+              <Typography>No logs found.</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow style={{ backgroundColor: "#6495ED" }}>
+                    {logCols.map((h) => (
+                      <TableCell key={h} style={{ color: "white", fontWeight: 700 }}>
+                        {h}
+                      </TableCell>
+                    ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {orderLogs.map((log, idx) => (
+                    <TableRow key={idx}>
+                      {logCols.map((h) => (
+                        <TableCell key={h}>{renderCell(h, log[h])}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLogsOpen(false)}>Close</Button>
+          </DialogActions>
         </Dialog>
       </Box>
     </ThemeProvider>

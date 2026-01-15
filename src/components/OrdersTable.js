@@ -30,6 +30,7 @@ import {
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
+import HistoryIcon from "@mui/icons-material/History";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
@@ -73,6 +74,10 @@ function OrdersTable() {
   const [validationData, setValidationData] = useState({});
   const [saving, setSaving] = useState(false);
 
+  // logs modal
+  const [logsOpen, setLogsOpen] = useState(false);
+  const [orderLogs, setOrderLogs] = useState([]);
+
   // files (optional updates)
   const [orderFiles, setOrderFiles] = useState({
     purchaseOrder: null,
@@ -85,18 +90,22 @@ function OrdersTable() {
   const username = user?.username;
   const role = user?.role;
 
-  // GET orders (your existing Orders fetch webapp)
+  // Orders read webapp (existing)
   const dataUrl =
     "https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec";
 
-  // POST submit (use your updated submit webapp that now supports action routing)
-  // This should append to Orders sheet for updateOrder.
+  // Submit webapp (same as deals submitUrl, now supports updateOrder)
   const submitUrl =
     "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
 
-  // Validation webapp (same as Deals)
+  // Validation webapp (same as deals)
   const validationUrl =
     "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+
+  const safeTime = (x) => {
+    const t = new Date(x || 0).getTime();
+    return Number.isFinite(t) ? t : 0;
+  };
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -113,17 +122,21 @@ function OrdersTable() {
 
       setAllOrders(filtered);
 
-      // Dedupe latest by Order ID (since Order ID is the true key)
+      // ✅ DEDUPE BY Order ID (latest row only)
       const seen = new Map();
       filtered.forEach((row) => {
         const key = row["Order ID"] || row["Deal Name"] || row["Account ID"] || JSON.stringify(row);
         const existing = seen.get(key);
-        const tNew = new Date(row["Timestamp"] || row["timestamp"] || 0).getTime();
-        const tOld = new Date(existing?.["Timestamp"] || existing?.["timestamp"] || 0).getTime();
+        const tNew = safeTime(row["Timestamp"]);
+        const tOld = safeTime(existing?.["Timestamp"]);
         if (!existing || tNew > tOld) seen.set(key, row);
       });
 
-      const deduped = Array.from(seen.values());
+      // ✅ Show latest rows sorted DESC by timestamp by default
+      const deduped = Array.from(seen.values()).sort(
+        (a, b) => safeTime(b["Timestamp"]) - safeTime(a["Timestamp"])
+      );
+
       setOrders(deduped);
 
       setVisibleColumns(
@@ -204,6 +217,20 @@ function OrdersTable() {
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
+  // logs
+  const handleViewLogs = (row) => {
+    const key = row["Order ID"];
+    if (!key) {
+      alert("No Order ID found for logs.");
+      return;
+    }
+    const logs = allOrders
+      .filter((r) => r["Order ID"] === key)
+      .sort((a, b) => safeTime(b["Timestamp"]) - safeTime(a["Timestamp"]));
+    setOrderLogs(logs);
+    setLogsOpen(true);
+  };
+
   const handleFieldChange = (e) => {
     const { name, value } = e.target;
     setOrderFormData((prev) => ({ ...prev, [name]: value }));
@@ -240,20 +267,17 @@ function OrdersTable() {
 
     setSaving(true);
     try {
-      // If user uploaded new files, include as file objects; else keep existing URLs as-is.
       const poObj = await fileToBase64(orderFiles.purchaseOrder);
       const drawingObj = await fileToBase64(orderFiles.drawing);
       const boqObj = await fileToBase64(orderFiles.boq);
       const proformaObj = await fileToBase64(orderFiles.proforma);
 
       const payload = { ...orderFormData };
-
       if (poObj) payload["Attach Purchase Order"] = poObj;
       if (drawingObj) payload["Attach Drawing"] = drawingObj;
       if (boqObj) payload["Attach BOQ"] = boqObj;
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
 
-      // Append-only update to Orders sheet
       await fetch(submitUrl, {
         method: "POST",
         mode: "no-cors",
@@ -383,6 +407,9 @@ function OrdersTable() {
                   <IconButton onClick={() => handleEditClick(order)} title="Edit / Update Order">
                     <EditIcon />
                   </IconButton>
+                  <IconButton onClick={() => handleViewLogs(order)} title="View Logs">
+                    <HistoryIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
@@ -411,6 +438,10 @@ function OrdersTable() {
                   "Order Delivery Details",
                   "Order Remarks",
                   "Order Update",
+                  "Attach Purchase Order",
+                  "Attach Drawing",
+                  "Attach BOQ",
+                  "Proforma Invoice",
                 ],
               },
               {
@@ -485,7 +516,16 @@ function OrdersTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {validationData[field] ? (
+                        {/* Attachments are handled separately (URL display + upload replacement buttons) */}
+                        {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(field) ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label={field}
+                            value={orderFormData[field] || ""}
+                            disabled
+                          />
+                        ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
                             <Select
@@ -512,16 +552,14 @@ function OrdersTable() {
                             onChange={handleFieldChange}
                             disabled={field === "Account Owner" || field === "Order ID" || field === "Timestamp"}
                             type={field === "Order Delivery Date" ? "date" : "text"}
-                            InputLabelProps={
-                              field === "Order Delivery Date" ? { shrink: true } : undefined
-                            }
+                            InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
                           />
                         )}
                       </Grid>
                     ))}
                   </Grid>
 
-                  {/* Attachments block only in Order Details accordion */}
+                  {/* Attachments UI */}
                   {section.title === "Order Details" && (
                     <>
                       <Divider sx={{ my: 2 }} />
@@ -530,60 +568,65 @@ function OrdersTable() {
                       </Typography>
 
                       <Grid container spacing={2}>
-                        {/* Existing URLs (if present) */}
                         {[
-                          "Attach Purchase Order",
-                          "Attach Drawing",
-                          "Attach BOQ",
-                          "Proforma Invoice",
-                        ].map((k) => (
-                          <Grid item xs={12} key={k}>
-                            {isLikelyUrl(orderFormData?.[k]) ? (
-                              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
-                                <strong>{k}:</strong>{" "}
-                                <a href={orderFormData[k]} target="_blank" rel="noreferrer">
-                                  Open file
-                                </a>
-                              </Typography>
-                            ) : (
-                              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
-                                <strong>{k}:</strong> {orderFormData?.[k] ? String(orderFormData[k]) : "—"}
-                              </Typography>
-                            )}
+                          ["purchaseOrder", "Replace Purchase Order"],
+                          ["drawing", "Replace Drawing"],
+                          ["boq", "Replace BOQ"],
+                          ["proforma", "Replace Proforma Invoice"],
+                        ].map(([key, label]) => (
+                          <Grid item xs={6} key={key}>
+                            <Button variant="outlined" component="label" fullWidth>
+                              {label}
+                              {orderFiles[key] ? `: ${orderFiles[key].name}` : ""}
+                              <input hidden type="file" onChange={handleOrderFileChange(key)} />
+                            </Button>
                           </Grid>
                         ))}
 
-                        {/* Upload replacements */}
-                        <Grid item xs={6}>
-                          <Button variant="outlined" component="label" fullWidth>
-                            Replace Purchase Order
-                            {orderFiles.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
-                            <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
-                          </Button>
-                        </Grid>
+                        <Grid item xs={12}>
+                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12, mt: 1 }}>
+                            <strong>Existing Attach Purchase Order:</strong>{" "}
+                            {isLikelyUrl(orderFormData["Attach Purchase Order"]) ? (
+                              <a href={orderFormData["Attach Purchase Order"]} target="_blank" rel="noreferrer">
+                                Open
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </Typography>
 
-                        <Grid item xs={6}>
-                          <Button variant="outlined" component="label" fullWidth>
-                            Replace Drawing
-                            {orderFiles.drawing ? `: ${orderFiles.drawing.name}` : ""}
-                            <input hidden type="file" onChange={handleOrderFileChange("drawing")} />
-                          </Button>
-                        </Grid>
+                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
+                            <strong>Existing Attach Drawing:</strong>{" "}
+                            {isLikelyUrl(orderFormData["Attach Drawing"]) ? (
+                              <a href={orderFormData["Attach Drawing"]} target="_blank" rel="noreferrer">
+                                Open
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </Typography>
 
-                        <Grid item xs={6}>
-                          <Button variant="outlined" component="label" fullWidth>
-                            Replace BOQ
-                            {orderFiles.boq ? `: ${orderFiles.boq.name}` : ""}
-                            <input hidden type="file" onChange={handleOrderFileChange("boq")} />
-                          </Button>
-                        </Grid>
+                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
+                            <strong>Existing Attach BOQ:</strong>{" "}
+                            {isLikelyUrl(orderFormData["Attach BOQ"]) ? (
+                              <a href={orderFormData["Attach BOQ"]} target="_blank" rel="noreferrer">
+                                Open
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </Typography>
 
-                        <Grid item xs={6}>
-                          <Button variant="outlined" component="label" fullWidth>
-                            Replace Proforma Invoice
-                            {orderFiles.proforma ? `: ${orderFiles.proforma.name}` : ""}
-                            <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
-                          </Button>
+                          <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
+                            <strong>Existing Proforma Invoice:</strong>{" "}
+                            {isLikelyUrl(orderFormData["Proforma Invoice"]) ? (
+                              <a href={orderFormData["Proforma Invoice"]} target="_blank" rel="noreferrer">
+                                Open
+                              </a>
+                            ) : (
+                              "—"
+                            )}
+                          </Typography>
                         </Grid>
                       </Grid>
                     </>
@@ -604,6 +647,37 @@ function OrdersTable() {
               {saving ? "Updating..." : "Update Order"}
             </Button>
           </DialogActions>
+        </Dialog>
+
+        {/* -------------------- LOGS MODAL -------------------- */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
+            Order Change Logs
+          </DialogTitle>
+          <DialogContent dividers>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Timestamp</TableCell>
+                  <TableCell>Order ID</TableCell>
+                  <TableCell>Company</TableCell>
+                  <TableCell>Stage</TableCell>
+                  <TableCell>Payment Status</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {orderLogs.map((log, idx) => (
+                  <TableRow key={idx}>
+                    <TableCell>{log["Timestamp"]}</TableCell>
+                    <TableCell>{log["Order ID"]}</TableCell>
+                    <TableCell>{log["Company"]}</TableCell>
+                    <TableCell>{log["Stage"]}</TableCell>
+                    <TableCell>{log["Payment Status"]}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </DialogContent>
         </Dialog>
       </Box>
     </ThemeProvider>

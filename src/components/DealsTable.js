@@ -340,10 +340,7 @@ function DealsTable() {
       const payloadRow = {
         ...orderBaseRow,
         "Order ID": orderId,
-
-        // ✅ Includes edited key order fields + remaining order creation fields
         ...orderForm,
-
         "Attach Purchase Order": poObj,
         "Attach Drawing": drawingObj,
         "Attach BOQ": boqObj,
@@ -496,7 +493,10 @@ function DealsTable() {
                     <HistoryIcon />
                   </IconButton>
 
-                  <IconButton onClick={() => handleOpenMeetingFromRow(deal, "Deal")} title="Schedule Meeting">
+                  <IconButton
+                    onClick={() => handleOpenMeetingFromRow(deal, "Deal")}
+                    title="Schedule Meeting"
+                  >
                     <EventIcon />
                   </IconButton>
                 </TableCell>
@@ -515,7 +515,15 @@ function DealsTable() {
             {[
               {
                 title: "Deal Details",
-                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Product Required", "Remarks", "Stage"],
+                fields: [
+                  "Deal Name",
+                  "Type",
+                  "Deal Amount",
+                  "Next Step",
+                  "Product Required",
+                  "Remarks",
+                  "Stage",
+                ],
               },
               {
                 title: "Customer Details",
@@ -558,7 +566,14 @@ function DealsTable() {
               },
               {
                 title: "Customer Banking Details",
-                fields: ["GST Number", "Bank Account Number", "IFSC Code", "Bank Name", "Bank Account Name", "Banking Remarks"],
+                fields: [
+                  "GST Number",
+                  "Bank Account Number",
+                  "IFSC Code",
+                  "Bank Name",
+                  "Bank Account Name",
+                  "Banking Remarks",
+                ],
               },
             ].map((section) => (
               <Accordion key={section.title} defaultExpanded>
@@ -600,7 +615,11 @@ function DealsTable() {
                             label={field}
                             value={dealFormData[field] || ""}
                             onChange={handleFieldChange}
-                            disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
+                            disabled={
+                              field === "Account Owner" ||
+                              field === "Account ID" ||
+                              field === "Timestamp"
+                            }
                           />
                         )}
                       </Grid>
@@ -618,7 +637,7 @@ function DealsTable() {
           </DialogContent>
         </Dialog>
 
-        {/* -------------------- Add Order Modal -------------------- */}
+        {/* -------------------- Add Order Modal (VALIDATIONS RESTORED) -------------------- */}
         <Dialog open={orderOpen} onClose={() => setOrderOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Add Order
@@ -656,16 +675,36 @@ function DealsTable() {
                     "Notification Status",
                   ].map((field) => (
                     <Grid item xs={6} key={field}>
-                      <TextField
-                        fullWidth
-                        size="small"
-                        name={field}
-                        label={field}
-                        value={orderForm[field] || ""}
-                        onChange={handleOrderFieldChange}
-                        type={field === "Order Delivery Date" ? "date" : "text"}
-                        InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
-                      />
+                      {validationData[field] ? (
+                        <FormControl fullWidth size="small">
+                          <InputLabel>{field}</InputLabel>
+                          <Select
+                            name={field}
+                            value={orderForm[field] || ""}
+                            label={field}
+                            onChange={handleOrderFieldChange}
+                          >
+                            {validationData[field].map((opt, idx) => (
+                              <MenuItem key={idx} value={opt}>
+                                {opt}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      ) : (
+                        <TextField
+                          fullWidth
+                          size="small"
+                          name={field}
+                          label={field}
+                          value={orderForm[field] || ""}
+                          onChange={handleOrderFieldChange}
+                          type={field === "Order Delivery Date" ? "date" : "text"}
+                          InputLabelProps={
+                            field === "Order Delivery Date" ? { shrink: true } : undefined
+                          }
+                        />
+                      )}
                     </Grid>
                   ))}
 
@@ -707,7 +746,7 @@ function DealsTable() {
               </AccordionDetails>
             </Accordion>
 
-            {/* Context (read-only) */}
+            {/* Context (read-only) - order fields removed */}
             <Accordion>
               <AccordionSummary
                 expandIcon={<ExpandMoreIcon />}

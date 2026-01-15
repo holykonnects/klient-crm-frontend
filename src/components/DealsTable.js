@@ -521,7 +521,6 @@ function DealsTable() {
     setOrderForm({
       "Order Amount": deal?.["Order Amount"] || "",
       "Order Delivery Date": deal?.["Order Delivery Date"] || "",
-      "Order Delivery Details": deal?.["Order Delivery Details"] || "",
       "Order Remarks": deal?.["Order Remarks"] || "",
 
       "Order Payment Terms": "",
@@ -927,7 +926,6 @@ function DealsTable() {
                   {[
                     "Order Amount",
                     "Order Delivery Date",
-                    "Order Delivery Details",
                     "Order Remarks",
                     "Order Payment Terms",
                     "Order Onsite Contact Name",

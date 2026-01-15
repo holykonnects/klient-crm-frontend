@@ -354,7 +354,7 @@ function DealsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [username, role]);
 
   // ✅ Sorting respects Timestamp properly

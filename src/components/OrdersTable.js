@@ -1,90 +1,289 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from "react";
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell,
-  TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Checkbox,
-  FormGroup, FormControlLabel, Menu, Button
-} from '@mui/material';
-import VisibilityIcon from '@mui/icons-material/Visibility';
-import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
-import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+  Box,
+  Typography,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TextField,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Grid,
+  Checkbox,
+  Button,
+  Popover,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+  FormGroup,
+  FormControlLabel,
+  Divider,
+} from "@mui/material";
+
+import EditIcon from "@mui/icons-material/Edit";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import { createTheme, ThemeProvider } from "@mui/material/styles";
+import "@fontsource/montserrat";
+
+import LoadingOverlay from "./LoadingOverlay";
+import { useAuth } from "./AuthContext";
 
 const theme = createTheme({
   typography: {
-    fontFamily: 'Montserrat, sans-serif',
+    fontFamily: "Montserrat, sans-serif",
     fontSize: 9,
   },
 });
 
+const selectorStyle = {
+  fontFamily: "Montserrat, sans-serif",
+  fontSize: 8,
+};
+
 function OrdersTable() {
   const [orders, setOrders] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterStage, setFilterStage] = useState('');
-  const [filterType, setFilterType] = useState('');
-  const [filterSource, setFilterSource] = useState('');
-  const [filterOwner, setFilterOwner] = useState('');
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
-  const [visibleColumns, setVisibleColumns] = useState([]);
+
+  // filters
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterStage, setFilterStage] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [filterSource, setFilterSource] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
+
+  // column selector
   const [anchorEl, setAnchorEl] = useState(null);
+  const [visibleColumns, setVisibleColumns] = useState([]);
+
+  // edit modal
   const [selectedRow, setSelectedRow] = useState(null);
+  const [orderFormData, setOrderFormData] = useState({});
+  const [validationData, setValidationData] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  // files (optional updates)
+  const [orderFiles, setOrderFiles] = useState({
+    purchaseOrder: null,
+    drawing: null,
+    boq: null,
+    proforma: null,
+  });
+
+  const { user } = useAuth();
+  const username = user?.username;
+  const role = user?.role;
+
+  // GET orders (your existing Orders fetch webapp)
+  const dataUrl =
+    "https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec";
+
+  // POST submit (use your updated submit webapp that now supports action routing)
+  // This should append to Orders sheet for updateOrder.
+  const submitUrl =
+    "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
+
+  // Validation webapp (same as Deals)
+  const validationUrl =
+    "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+
+  const fetchOrders = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(dataUrl);
+      const data = await res.json();
+
+      const filtered =
+        role === "End User"
+          ? data.filter((d) =>
+              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username)
+            )
+          : data;
+
+      setAllOrders(filtered);
+
+      // Dedupe latest by Order ID (since Order ID is the true key)
+      const seen = new Map();
+      filtered.forEach((row) => {
+        const key = row["Order ID"] || row["Deal Name"] || row["Account ID"] || JSON.stringify(row);
+        const existing = seen.get(key);
+        const tNew = new Date(row["Timestamp"] || row["timestamp"] || 0).getTime();
+        const tOld = new Date(existing?.["Timestamp"] || existing?.["timestamp"] || 0).getTime();
+        if (!existing || tNew > tOld) seen.set(key, row);
+      });
+
+      const deduped = Array.from(seen.values());
+      setOrders(deduped);
+
+      setVisibleColumns(
+        JSON.parse(localStorage.getItem(`visibleColumns-${username}-orders`)) ||
+          (deduped.length ? Object.keys(deduped[0]) : [])
+      );
+    } catch (e) {
+      console.error("Orders fetch error:", e);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    fetch('https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec')
-      .then(res => res.json())
-      .then(data => {
-        setOrders(data);
-        setVisibleColumns(Object.keys(data[0] || {}));
-        setLoading(false);
-      });
-  }, []);
+    fetchOrders();
+    fetch(validationUrl)
+      .then((r) => r.json())
+      .then(setValidationData)
+      .catch((e) => console.error("Validation fetch error:", e));
+  }, [username, role]);
 
   const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
+    const direction =
+      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
     setSortConfig({ key, direction });
   };
 
   const sortedOrders = [...orders].sort((a, b) => {
     if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || '';
-    const bVal = b[sortConfig.key] || '';
-    return sortConfig.direction === 'asc'
+    const aVal = a[sortConfig.key] || "";
+    const bVal = b[sortConfig.key] || "";
+    return sortConfig.direction === "asc"
       ? String(aVal).localeCompare(String(bVal))
       : String(bVal).localeCompare(String(aVal));
   });
 
-  const filteredOrders = sortedOrders
-    .filter(order =>
-      ['Company', 'Order ID', 'Mobile Number'].some(key =>
-        (order[key] || '').toLowerCase().includes(searchTerm.toLowerCase())
-      ) &&
-      (!filterStage || order['Stage'] === filterStage) &&
-      (!filterType || order['Type'] === filterType) &&
-      (!filterSource || order['Lead Source'] === filterSource) &&
-      (!filterOwner || order['Lead Owner'] === filterOwner)
-    );
+  const filteredOrders = sortedOrders.filter((order) => {
+    try {
+      return (
+        ["Company", "Order ID", "Mobile Number", "Deal Name", "Account ID"].some((key) =>
+          (order[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+        ) &&
+        (!filterStage || order["Stage"] === filterStage) &&
+        (!filterType || order["Type"] === filterType) &&
+        (!filterSource || order["Lead Source"] === filterSource) &&
+        (!filterOwner || order["Account Owner"] === filterOwner)
+      );
+    } catch {
+      return false;
+    }
+  });
 
-  const uniqueStages = [...new Set(orders.map(d => d['Stage']).filter(Boolean))];
-  const uniqueTypes = [...new Set(orders.map(d => d['Type']).filter(Boolean))];
-  const uniqueSources = [...new Set(orders.map(d => d['Lead Source']).filter(Boolean))];
-  const uniqueOwners = [...new Set(orders.map(d => d['Lead Owner']).filter(Boolean))];
+  const unique = (key) => [...new Set(orders.map((d) => d[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
-    setVisibleColumns(prev => prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col]);
+    setVisibleColumns((prev) => {
+      const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
+      localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify(updated));
+      return updated;
+    });
   };
 
-  const handleSelectAll = () => setVisibleColumns(Object.keys(orders[0] || {}));
-  const handleDeselectAll = () => setVisibleColumns([]);
+  const handleSelectAll = () => {
+    const all = Object.keys(orders[0] || {});
+    setVisibleColumns(all);
+    localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify(all));
+  };
 
-if (loading) return <LoadingOverlay />;
+  const handleDeselectAll = () => {
+    setVisibleColumns([]);
+    localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify([]));
+  };
+
+  // open edit
+  const handleEditClick = (row) => {
+    setSelectedRow(row);
+    setOrderFormData({ ...(row || {}) });
+    setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+  };
+
+  const handleFieldChange = (e) => {
+    const { name, value } = e.target;
+    setOrderFormData((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleOrderFileChange = (key) => (e) => {
+    const file = e.target.files?.[0] || null;
+    setOrderFiles((prev) => ({ ...prev, [key]: file }));
+  };
+
+  const fileToBase64 = (file) => {
+    if (!file) return Promise.resolve(null);
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result || "");
+        const base64 = res.split("base64,")[1] || "";
+        resolve({
+          name: file.name,
+          type: file.type || "application/octet-stream",
+          base64,
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmitOrderUpdate = async () => {
+    if (!orderFormData?.["Order ID"]) {
+      alert("❌ Order ID missing. Cannot update.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      // If user uploaded new files, include as file objects; else keep existing URLs as-is.
+      const poObj = await fileToBase64(orderFiles.purchaseOrder);
+      const drawingObj = await fileToBase64(orderFiles.drawing);
+      const boqObj = await fileToBase64(orderFiles.boq);
+      const proformaObj = await fileToBase64(orderFiles.proforma);
+
+      const payload = { ...orderFormData };
+
+      if (poObj) payload["Attach Purchase Order"] = poObj;
+      if (drawingObj) payload["Attach Drawing"] = drawingObj;
+      if (boqObj) payload["Attach BOQ"] = boqObj;
+      if (proformaObj) payload["Proforma Invoice"] = proformaObj;
+
+      // Append-only update to Orders sheet
+      await fetch(submitUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({ action: "updateOrder", data: payload }),
+      });
+
+      alert("✅ Order updated successfully (log appended).");
+      setSelectedRow(null);
+      fetchOrders();
+    } catch (e) {
+      console.error("Update order error:", e);
+      alert("❌ Error updating order");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const isLikelyUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+
+  if (loading) return <LoadingOverlay />;
 
   return (
     <ThemeProvider theme={theme}>
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-          <Typography variant="h5" fontWeight="bold">Orders Records</Typography>
+          <Typography variant="h5" fontWeight="bold">
+            Orders Records
+          </Typography>
         </Box>
 
         {/* Filters */}
@@ -93,48 +292,53 @@ if (loading) return <LoadingOverlay />;
             label="Search"
             variant="outlined"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             size="small"
             sx={{ minWidth: 200 }}
           />
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Stage</InputLabel>
-            <Select value={filterStage} onChange={e => setFilterStage(e.target.value)} label="Stage">
-              <MenuItem value="">All</MenuItem>
-              {uniqueStages.map(stage => <MenuItem key={stage} value={stage}>{stage}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Type</InputLabel>
-            <Select value={filterType} onChange={e => setFilterType(e.target.value)} label="Type">
-              <MenuItem value="">All</MenuItem>
-              {uniqueTypes.map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Source</InputLabel>
-            <Select value={filterSource} onChange={e => setFilterSource(e.target.value)} label="Lead Source">
-              <MenuItem value="">All</MenuItem>
-              {uniqueSources.map(src => <MenuItem key={src} value={src}>{src}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <FormControl size="small" sx={{ minWidth: 200 }}>
-            <InputLabel>Lead Owner</InputLabel>
-            <Select value={filterOwner} onChange={e => setFilterOwner(e.target.value)} label="Lead Owner">
-              <MenuItem value="">All</MenuItem>
-              {uniqueOwners.map(owner => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
-            </Select>
-          </FormControl>
-          <IconButton onClick={e => setAnchorEl(e.currentTarget)}>
+
+          {["Stage", "Type", "Lead Source", "Account Owner"].map((label, index) => (
+            <FormControl size="small" sx={{ minWidth: 200 }} key={index}>
+              <InputLabel>{label}</InputLabel>
+              <Select
+                value={
+                  label === "Stage"
+                    ? filterStage
+                    : label === "Type"
+                    ? filterType
+                    : label === "Lead Source"
+                    ? filterSource
+                    : filterOwner
+                }
+                onChange={(e) => {
+                  if (label === "Stage") setFilterStage(e.target.value);
+                  else if (label === "Type") setFilterType(e.target.value);
+                  else if (label === "Lead Source") setFilterSource(e.target.value);
+                  else setFilterOwner(e.target.value);
+                }}
+                label={label}
+              >
+                <MenuItem value="">All</MenuItem>
+                {unique(label).map((option) => (
+                  <MenuItem key={option} value={option}>
+                    {option}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          ))}
+
+          {/* Column selector */}
+          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Menu open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
-            <Box p={2}>
+          <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+            <Box p={2} sx={selectorStyle}>
               <Typography variant="subtitle2">Column Visibility</Typography>
+              <Button onClick={handleSelectAll}>Select All</Button>
+              <Button onClick={handleDeselectAll}>Deselect All</Button>
               <FormGroup>
-                <Button onClick={handleSelectAll}>Select All</Button>
-                <Button onClick={handleDeselectAll}>Deselect All</Button>
-                {(orders[0] && Object.keys(orders[0])).map(col => (
+                {(orders[0] ? Object.keys(orders[0]) : []).map((col) => (
                   <FormControlLabel
                     key={col}
                     control={
@@ -148,25 +352,27 @@ if (loading) return <LoadingOverlay />;
                 ))}
               </FormGroup>
             </Box>
-          </Menu>
+          </Popover>
         </Box>
 
         {/* Table */}
         <Table>
           <TableHead>
-            <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {visibleColumns.map(header => (
+            <TableRow style={{ backgroundColor: "#6495ED" }}>
+              {visibleColumns.map((header) => (
                 <TableCell
                   key={header}
                   onClick={() => handleSort(header)}
-                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{ color: "white", cursor: "pointer", fontWeight: "bold" }}
                 >
-                  {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  {header}{" "}
+                  {sortConfig.key === header ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
                 </TableCell>
               ))}
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
+              <TableCell style={{ color: "white", fontWeight: "bold" }}>Actions</TableCell>
             </TableRow>
           </TableHead>
+
           <TableBody>
             {filteredOrders.map((order, index) => (
               <TableRow key={index}>
@@ -174,8 +380,8 @@ if (loading) return <LoadingOverlay />;
                   <TableCell key={i}>{order[col]}</TableCell>
                 ))}
                 <TableCell>
-                  <IconButton onClick={() => setSelectedRow(order)}>
-                    <VisibilityIcon />
+                  <IconButton onClick={() => handleEditClick(order)} title="Edit / Update Order">
+                    <EditIcon />
                   </IconButton>
                 </TableCell>
               </TableRow>
@@ -183,16 +389,221 @@ if (loading) return <LoadingOverlay />;
           </TableBody>
         </Table>
 
-        {/* Modal */}
+        {/* -------------------- EDIT / UPDATE ORDER MODAL -------------------- */}
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle>Order Details</DialogTitle>
+          <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
+            Edit / Update Order
+          </DialogTitle>
+
           <DialogContent dividers>
-            <Box display="grid" gridTemplateColumns="1fr 1fr" gap={2}>
-              {selectedRow && Object.entries(selectedRow).map(([key, value]) => (
-                <Typography key={key}><strong>{key}:</strong> {value}</Typography>
-              ))}
-            </Box>
+            {[
+              {
+                title: "Order Details",
+                fields: [
+                  "Order ID",
+                  "Product Required",
+                  "Order Amount",
+                  "Order Payment Terms",
+                  "Order Onsite Contact Name",
+                  "Order Onsite Contact Number",
+                  "Order Onsite Contact Role",
+                  "Order Delivery Date",
+                  "Order Delivery Details",
+                  "Order Remarks",
+                  "Order Update",
+                ],
+              },
+              {
+                title: "Payment Details",
+                fields: ["Payment Status", "Payment Amount", "Payment Details", "Notification Status"],
+              },
+              {
+                title: "Deal Details",
+                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Remarks", "Stage"],
+              },
+              {
+                title: "Customer Details",
+                fields: [
+                  "Account Owner",
+                  "First Name",
+                  "Last Name",
+                  "Company",
+                  "Mobile Number",
+                  "Email ID",
+                  "Fax",
+                  "Website",
+                  "Lead Source",
+                  "Lead Status",
+                  "Industry",
+                  "Number of Employees",
+                  "Requirement",
+                  "Social Media",
+                  "Description",
+                  "Account ID",
+                ],
+              },
+              {
+                title: "Address Details",
+                fields: [
+                  "Billing Street",
+                  "Billing City",
+                  "Billing State",
+                  "Billing Country",
+                  "Billing PinCode",
+                  "Billing Additional Description",
+                  "Shipping Street",
+                  "Shipping City",
+                  "Shipping State",
+                  "Shipping Country",
+                  "Shipping PinCode",
+                  "Shipping Additional Description",
+                ],
+              },
+              {
+                title: "Customer Banking Details",
+                fields: [
+                  "GST Number",
+                  "Bank Account Number",
+                  "IFSC Code",
+                  "Bank Name",
+                  "Bank Account Name",
+                  "Banking Remarks",
+                ],
+              },
+            ].map((section) => (
+              <Accordion key={section.title} defaultExpanded>
+                <AccordionSummary
+                  expandIcon={<ExpandMoreIcon />}
+                  sx={{ backgroundColor: "#f0f4ff", fontFamily: "Montserrat, sans-serif" }}
+                >
+                  <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
+                    {section.title}
+                  </Typography>
+                </AccordionSummary>
+
+                <AccordionDetails>
+                  <Grid container spacing={2}>
+                    {section.fields.map((field) => (
+                      <Grid item xs={6} key={field}>
+                        {validationData[field] ? (
+                          <FormControl fullWidth size="small">
+                            <InputLabel>{field}</InputLabel>
+                            <Select
+                              name={field}
+                              value={orderFormData[field] || ""}
+                              label={field}
+                              onChange={handleFieldChange}
+                              disabled={field === "Account Owner" || field === "Order ID"}
+                            >
+                              {validationData[field].map((opt, idx) => (
+                                <MenuItem key={idx} value={opt}>
+                                  {opt}
+                                </MenuItem>
+                              ))}
+                            </Select>
+                          </FormControl>
+                        ) : (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            name={field}
+                            label={field}
+                            value={orderFormData[field] || ""}
+                            onChange={handleFieldChange}
+                            disabled={field === "Account Owner" || field === "Order ID" || field === "Timestamp"}
+                            type={field === "Order Delivery Date" ? "date" : "text"}
+                            InputLabelProps={
+                              field === "Order Delivery Date" ? { shrink: true } : undefined
+                            }
+                          />
+                        )}
+                      </Grid>
+                    ))}
+                  </Grid>
+
+                  {/* Attachments block only in Order Details accordion */}
+                  {section.title === "Order Details" && (
+                    <>
+                      <Divider sx={{ my: 2 }} />
+                      <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
+                        Attachments (upload new only if you want to replace)
+                      </Typography>
+
+                      <Grid container spacing={2}>
+                        {/* Existing URLs (if present) */}
+                        {[
+                          "Attach Purchase Order",
+                          "Attach Drawing",
+                          "Attach BOQ",
+                          "Proforma Invoice",
+                        ].map((k) => (
+                          <Grid item xs={12} key={k}>
+                            {isLikelyUrl(orderFormData?.[k]) ? (
+                              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
+                                <strong>{k}:</strong>{" "}
+                                <a href={orderFormData[k]} target="_blank" rel="noreferrer">
+                                  Open file
+                                </a>
+                              </Typography>
+                            ) : (
+                              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 12 }}>
+                                <strong>{k}:</strong> {orderFormData?.[k] ? String(orderFormData[k]) : "—"}
+                              </Typography>
+                            )}
+                          </Grid>
+                        ))}
+
+                        {/* Upload replacements */}
+                        <Grid item xs={6}>
+                          <Button variant="outlined" component="label" fullWidth>
+                            Replace Purchase Order
+                            {orderFiles.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
+                            <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
+                          </Button>
+                        </Grid>
+
+                        <Grid item xs={6}>
+                          <Button variant="outlined" component="label" fullWidth>
+                            Replace Drawing
+                            {orderFiles.drawing ? `: ${orderFiles.drawing.name}` : ""}
+                            <input hidden type="file" onChange={handleOrderFileChange("drawing")} />
+                          </Button>
+                        </Grid>
+
+                        <Grid item xs={6}>
+                          <Button variant="outlined" component="label" fullWidth>
+                            Replace BOQ
+                            {orderFiles.boq ? `: ${orderFiles.boq.name}` : ""}
+                            <input hidden type="file" onChange={handleOrderFileChange("boq")} />
+                          </Button>
+                        </Grid>
+
+                        <Grid item xs={6}>
+                          <Button variant="outlined" component="label" fullWidth>
+                            Replace Proforma Invoice
+                            {orderFiles.proforma ? `: ${orderFiles.proforma.name}` : ""}
+                            <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
+                          </Button>
+                        </Grid>
+                      </Grid>
+                    </>
+                  )}
+                </AccordionDetails>
+              </Accordion>
+            ))}
           </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setSelectedRow(null)}>Cancel</Button>
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: "#6495ED" }}
+              onClick={handleSubmitOrderUpdate}
+              disabled={saving}
+            >
+              {saving ? "Updating..." : "Update Order"}
+            </Button>
+          </DialogActions>
         </Dialog>
       </Box>
     </ThemeProvider>
@@ -200,4 +611,3 @@ if (loading) return <LoadingOverlay />;
 }
 
 export default OrdersTable;
-

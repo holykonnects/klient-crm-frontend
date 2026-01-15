@@ -54,6 +54,10 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+// ✅ Drive Folder (your shared link folder)
+const UPLOAD_FOLDER_ID =
+  "1NxWIZserHmgDu3HpWS1tTy050qh9XW1bgOPrccHMVQ9Vve74t4NWuoUf-DQOT93IU5MyxZ1N";
+
 // ✅ MUST MATCH Orders sheet headers EXACTLY
 const ORDER_ATTACHMENT_FIELDS = [
   "Attach Purchase Order",
@@ -363,7 +367,6 @@ function DealsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
-    
   }, [username, role]);
 
   // ✅ Sorting respects Timestamp properly
@@ -549,7 +552,14 @@ function DealsTable() {
     setOrderFiles((prev) => ({ ...prev, [key]: file }));
   };
 
-  // ✅ safer base64 conversion + explicit "tooLarge" handling
+  /**
+   * ✅ MSBA-style payload:
+   * - Frontend sends base64 object (no-cors friendly)
+   * - Backend uploads to Drive + stores link in Orders sheet
+   *
+   * If file is too large, we send a readable marker string
+   * (so backend can skip and user understands why).
+   */
   const fileToBase64 = (file) => {
     if (!file) return Promise.resolve(null);
 
@@ -612,35 +622,69 @@ function DealsTable() {
       const boqObj = await fileToBase64(orderFiles.boq);
       const proformaObj = await fileToBase64(orderFiles.proforma);
 
+      // ✅ Send MSBA-style objects (backend uploads to Drive + writes LINK)
       payloadRow["Attach Purchase Order"] = poObj
         ? poObj.tooLarge
           ? `FILE_TOO_LARGE: ${poObj.name}`
-          : poObj
+          : {
+              ...poObj,
+              folderId: UPLOAD_FOLDER_ID,
+              module: "Orders",
+              recordId: orderId,
+              label: "Attach Purchase Order",
+            }
         : "";
 
       payloadRow["Attach Drawing"] = drawingObj
         ? drawingObj.tooLarge
           ? `FILE_TOO_LARGE: ${drawingObj.name}`
-          : drawingObj
+          : {
+              ...drawingObj,
+              folderId: UPLOAD_FOLDER_ID,
+              module: "Orders",
+              recordId: orderId,
+              label: "Attach Drawing",
+            }
         : "";
 
       payloadRow["Attach BOQ"] = boqObj
         ? boqObj.tooLarge
           ? `FILE_TOO_LARGE: ${boqObj.name}`
-          : boqObj
+          : {
+              ...boqObj,
+              folderId: UPLOAD_FOLDER_ID,
+              module: "Orders",
+              recordId: orderId,
+              label: "Attach BOQ",
+            }
         : "";
 
       payloadRow["Proforma Invoice"] = proformaObj
         ? proformaObj.tooLarge
           ? `FILE_TOO_LARGE: ${proformaObj.name}`
-          : proformaObj
+          : {
+              ...proformaObj,
+              folderId: UPLOAD_FOLDER_ID,
+              module: "Orders",
+              recordId: orderId,
+              label: "Proforma Invoice",
+            }
         : "";
 
       await fetch(submitUrl, {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({ action: "createOrder", data: payloadRow }),
+        body: JSON.stringify({
+          action: "createOrder",
+          data: payloadRow,
+          // ✅ extra metadata (backend can ignore if not needed)
+          meta: {
+            uploadFolderId: UPLOAD_FOLDER_ID,
+            module: "Orders",
+            recordId: orderId,
+          },
+        }),
       });
 
       setOrderMsg("Created ✅");
@@ -805,7 +849,15 @@ function DealsTable() {
             {[
               {
                 title: "Deal Details",
-                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Product Required", "Remarks", "Stage"],
+                fields: [
+                  "Deal Name",
+                  "Type",
+                  "Deal Amount",
+                  "Next Step",
+                  "Product Required",
+                  "Remarks",
+                  "Stage",
+                ],
               },
               {
                 title: "Customer Details",
@@ -955,7 +1007,10 @@ function DealsTable() {
                       Attachments
                     </Typography>
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
-                      Attachment column names are matched exactly to your Orders sheet headers.
+                      Files will be uploaded to Drive (Folder: {UPLOAD_FOLDER_ID}) and the Orders sheet will store the Drive link.
+                    </Typography>
+                    <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
+                      Keep files small (≈1.2MB max) to avoid Apps Script payload limits.
                     </Typography>
                   </Grid>
 
@@ -981,7 +1036,7 @@ function DealsTable() {
                           sx={{ justifyContent: "flex-start" }}
                         >
                           {label}
-                          <input hidden type="file" onChange={handleOrderFileChange(fileKey)} />
+                          <input hidden type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleOrderFileChange(fileKey)} />
                         </Button>
 
                         {file ? (

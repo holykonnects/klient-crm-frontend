@@ -1,5 +1,5 @@
 // src/components/DealsTable.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   Box,
   Typography,
@@ -54,7 +54,10 @@ const selectorStyle = {
   fontSize: 8,
 };
 
-// ✅ FIX: robust parse for "dd-MM-yyyy HH:mm:ss"
+/**
+ * ✅ Robust parser for "dd-MM-yyyy HH:mm:ss"
+ * (Your GAS writes Timestamp in this format)
+ */
 const parseDDMMYYYY_HHMMSS = (ts) => {
   if (!ts) return 0;
   const raw = String(ts).trim();
@@ -71,6 +74,12 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
   const t = dt.getTime();
   return Number.isFinite(t) ? t : 0;
 };
+
+/**
+ * ✅ Stable "deal key"
+ * Use Deal Name + Account ID (prevents collisions where Deal Name repeats)
+ */
+const dealKeyOf = (row) => `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
 
 function DealsTable() {
   const [deals, setDeals] = useState([]);
@@ -141,30 +150,37 @@ function DealsTable() {
 
       setAllDeals(filtered);
 
-      // ✅ FIX: Dedup strictly by Deal Name (one deal -> one order) + robust timestamp parsing
+      /**
+       * ✅ FIX #1 (Your main issue):
+       * Always show latest row per Deal Key using robust timestamp parsing.
+       */
       const seen = new Map();
       filtered.forEach((row) => {
-        const key = row["Deal Name"] || row["Account ID"] || row["Company"] || JSON.stringify(row);
+        const key = dealKeyOf(row);
         const existing = seen.get(key);
 
-        const tNew = parseDDMMYYYY_HHMMSS(row["Timestamp"]);
+        const tNew = parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
         const tOld = parseDDMMYYYY_HHMMSS(existing?.["Timestamp"]);
 
+        // If timestamp missing/invalid, keep existing; else compare normally
         if (!existing || tNew > tOld) {
           seen.set(key, row);
         }
       });
 
-      const deduplicated = Array.from(seen.values()).sort(
-        (a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"])
+      const dedupedLatest = Array.from(seen.values()).sort(
+        (a, b) =>
+          parseDDMMYYYY_HHMMSS(b?.["Timestamp"]) -
+          parseDDMMYYYY_HHMMSS(a?.["Timestamp"])
       );
 
-      setDeals(deduplicated);
+      setDeals(dedupedLatest);
 
-      setVisibleColumns(
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) ||
-          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
-      );
+      // keep stored columns; if none, default to all
+      const stored =
+        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) || null;
+
+      setVisibleColumns(stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : []));
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -178,7 +194,36 @@ function DealsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, role]);
+
+  /**
+   * ✅ FIX #2: sorting should respect Timestamp properly when sorting by "Timestamp"
+   * (otherwise string sort can mislead in dd-MM-yyyy format)
+   */
+  const sortedDeals = useMemo(() => {
+    const arr = [...deals];
+    if (!sortConfig.key) return arr;
+
+    const { key, direction } = sortConfig;
+
+    arr.sort((a, b) => {
+      // special-case Timestamp
+      if (key === "Timestamp") {
+        const ta = parseDDMMYYYY_HHMMSS(a?.["Timestamp"]);
+        const tb = parseDDMMYYYY_HHMMSS(b?.["Timestamp"]);
+        return direction === "asc" ? ta - tb : tb - ta;
+      }
+
+      const aVal = a?.[key] ?? "";
+      const bVal = b?.[key] ?? "";
+      return direction === "asc"
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    });
+
+    return arr;
+  }, [deals, sortConfig]);
 
   const handleSort = (key) => {
     const direction =
@@ -186,32 +231,23 @@ function DealsTable() {
     setSortConfig({ key, direction });
   };
 
-  const sortedDeals = [...deals].sort((a, b) => {
-    if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || "";
-    const bVal = b[sortConfig.key] || "";
-    return sortConfig.direction === "asc"
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
-  });
-
   const filteredDeals = sortedDeals.filter((deal) => {
     try {
       return (
         ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
-          (key) => (deal[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+          (key) => (deal?.[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
-        (!filterStage || deal["Stage"] === filterStage) &&
-        (!filterType || deal["Type"] === filterType) &&
-        (!filterSource || deal["Lead Source"] === filterSource) &&
-        (!filterOwner || deal["Account Owner"] === filterOwner)
+        (!filterStage || deal?.["Stage"] === filterStage) &&
+        (!filterType || deal?.["Type"] === filterType) &&
+        (!filterSource || deal?.["Lead Source"] === filterSource) &&
+        (!filterOwner || deal?.["Account Owner"] === filterOwner)
       );
     } catch {
       return false;
     }
   });
 
-  const unique = (key) => [...new Set(deals.map((d) => d[key]).filter(Boolean))];
+  const unique = (key) => [...new Set(deals.map((d) => d?.[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
@@ -266,14 +302,16 @@ function DealsTable() {
   // Logs (FULL ROW VIEW)
   // ----------------------------
   const handleViewLogs = (dealRow) => {
-    const key = dealRow["Deal Name"] || "";
-    if (!key) {
-      alert("No Deal Name found for logs.");
+    const key = dealKeyOf(dealRow);
+    if (!key || key === "__") {
+      alert("No Deal Name / Account ID found for logs.");
       return;
     }
+
     const logs = allDeals
-      .filter((d) => (d["Deal Name"] || "") === key)
-      .sort((a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"]));
+      .filter((d) => dealKeyOf(d) === key)
+      .sort((a, b) => parseDDMMYYYY_HHMMSS(b?.["Timestamp"]) - parseDDMMYYYY_HHMMSS(a?.["Timestamp"]));
+
     setDealLogs(logs);
     setLogsOpen(true);
   };
@@ -298,12 +336,12 @@ function DealsTable() {
 
     setOrderBaseRow(deal);
 
-    // Add Order section should include the key order fields (editable / prefilled)
+    // Add Order section includes key order fields (editable / prefilled)
     setOrderForm({
-      "Order Amount": deal["Order Amount"] || "",
-      "Order Delivery Date": deal["Order Delivery Date"] || "",
-      "Order Delivery Details": deal["Order Delivery Details"] || "",
-      "Order Remarks": deal["Order Remarks"] || "",
+      "Order Amount": deal?.["Order Amount"] || "",
+      "Order Delivery Date": deal?.["Order Delivery Date"] || "",
+      "Order Delivery Details": deal?.["Order Delivery Details"] || "",
+      "Order Remarks": deal?.["Order Remarks"] || "",
 
       "Order Payment Terms": "",
       "Order Onsite Contact Name": "",
@@ -392,8 +430,10 @@ function DealsTable() {
     }
   };
 
+  // Logs modal headers: show full row
   const allLogHeaders = dealLogs?.[0] ? Object.keys(dealLogs[0]) : [];
-  const safeLogHeaders = visibleColumns?.length ? visibleColumns : allLogHeaders;
+  // Prefer the sheet headers (from logs) over visibleColumns — because logs should show full row.
+  const logHeaders = allLogHeaders;
 
   return (
     <ThemeProvider theme={theme}>
@@ -498,7 +538,7 @@ function DealsTable() {
             {filteredDeals.map((deal, index) => (
               <TableRow key={index}>
                 {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{deal[col]}</TableCell>
+                  <TableCell key={i}>{deal?.[col] ?? ""}</TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => handleEditClick(deal)} title="Edit Deal">
@@ -607,12 +647,12 @@ function DealsTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {validationData[field] ? (
+                        {validationData?.[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
                             <Select
                               name={field}
-                              value={dealFormData[field] || ""}
+                              value={dealFormData?.[field] || ""}
                               label={field}
                               onChange={handleFieldChange}
                               disabled={field === "Account Owner"}
@@ -630,7 +670,7 @@ function DealsTable() {
                             size="small"
                             name={field}
                             label={field}
-                            value={dealFormData[field] || ""}
+                            value={dealFormData?.[field] || ""}
                             onChange={handleFieldChange}
                             disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
                           />
@@ -685,12 +725,12 @@ function DealsTable() {
                     "Notification Status",
                   ].map((field) => (
                     <Grid item xs={6} key={field}>
-                      {validationData[field] ? (
+                      {validationData?.[field] ? (
                         <FormControl fullWidth size="small">
                           <InputLabel>{field}</InputLabel>
                           <Select
                             name={field}
-                            value={orderForm[field] || ""}
+                            value={orderForm?.[field] || ""}
                             label={field}
                             onChange={handleOrderFieldChange}
                           >
@@ -707,7 +747,7 @@ function DealsTable() {
                           size="small"
                           name={field}
                           label={field}
-                          value={orderForm[field] || ""}
+                          value={orderForm?.[field] || ""}
                           onChange={handleOrderFieldChange}
                           type={field === "Order Delivery Date" ? "date" : "text"}
                           InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
@@ -725,28 +765,28 @@ function DealsTable() {
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Attach Purchase Order {orderFiles.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
+                      Attach Purchase Order {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Attach Drawing {orderFiles.drawing ? `: ${orderFiles.drawing.name}` : ""}
+                      Attach Drawing {orderFiles?.drawing ? `: ${orderFiles.drawing.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("drawing")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Attach BOQ {orderFiles.boq ? `: ${orderFiles.boq.name}` : ""}
+                      Attach BOQ {orderFiles?.boq ? `: ${orderFiles.boq.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("boq")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Proforma Invoice {orderFiles.proforma ? `: ${orderFiles.proforma.name}` : ""}
+                      Proforma Invoice {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
                     </Button>
                   </Grid>
@@ -783,7 +823,7 @@ function DealsTable() {
               <Table size="small">
                 <TableHead>
                   <TableRow style={{ backgroundColor: "#6495ED" }}>
-                    {safeLogHeaders.map((h) => (
+                    {logHeaders.map((h) => (
                       <TableCell key={h} style={{ color: "white", fontWeight: 700 }}>
                         {h}
                       </TableCell>
@@ -793,8 +833,8 @@ function DealsTable() {
                 <TableBody>
                   {dealLogs.map((log, idx) => (
                     <TableRow key={idx}>
-                      {safeLogHeaders.map((h) => (
-                        <TableCell key={h}>{log[h] ?? ""}</TableCell>
+                      {logHeaders.map((h) => (
+                        <TableCell key={h}>{log?.[h] ?? ""}</TableCell>
                       ))}
                     </TableRow>
                   ))}

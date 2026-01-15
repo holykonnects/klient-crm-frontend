@@ -1,5 +1,5 @@
 // src/components/DealsTable.js
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -54,6 +54,14 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+// ✅ MUST MATCH Orders sheet headers EXACTLY
+const ORDER_ATTACHMENT_FIELDS = [
+  "Attach Purchase Order",
+  "Attach Drawing",
+  "Attach BOQ",
+  "Proforma Invoice",
+];
+
 /**
  * ✅ Flexible timestamp parser
  * Supports dd-MM-yyyy HH:mm:ss, dd/MM/yyyy HH:mm:ss, ISO strings, Date, epoch
@@ -73,11 +81,9 @@ const parseTimestampFlexible = (ts) => {
   const raw = String(ts).trim();
   if (!raw) return 0;
 
-  // ISO / native parse first
   const dp = Date.parse(raw);
   if (Number.isFinite(dp)) return dp;
 
-  // dd-MM-yyyy or dd/MM/yyyy with optional time
   const m = raw.match(
     /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/
   );
@@ -101,8 +107,8 @@ const parseTimestampFlexible = (ts) => {
 
 /**
  * ✅ Deal key
- * - If "Order Distribution ID" exists (Closed Won), use it (stable).
- * - Else fallback to Deal Name + Account ID (pre-close)
+ * - If "Order Distribution ID" exists (Closed Won), use it (stable)
+ * - Else fallback to Deal Name + Account ID
  */
 const dealKeyOf = (row) => {
   const finalId = row?.["Order Distribution ID"];
@@ -111,7 +117,7 @@ const dealKeyOf = (row) => {
 };
 
 /**
- * ✅ Memoized field to reduce typing lag in big modals
+ * ✅ Memoized DealField to reduce typing lag in big modals
  * TextFields commit onBlur (smooth typing), Select commits onChange
  */
 const DealField = React.memo(function DealField({
@@ -166,6 +172,9 @@ const DealField = React.memo(function DealField({
   );
 });
 
+/**
+ * ✅ Memoized OrderField to reduce typing lag in Order modal
+ */
 const OrderField = React.memo(function OrderField({
   field,
   value,
@@ -433,10 +442,9 @@ function DealsTable() {
     setSaveMsg("");
   };
 
-  // ✅ commit function used by memoized DealField (reduces typing lag)
-  const commitDealField = (field, value) => {
+  const commitDealField = useCallback((field, value) => {
     setDealFormData((prev) => ({ ...prev, [field]: value }));
-  };
+  }, []);
 
   const handleSubmitDeal = async () => {
     if (savingDeal) return;
@@ -532,17 +540,32 @@ function DealsTable() {
     setOrderOpen(true);
   };
 
-  const commitOrderField = (field, value) => {
+  // ✅ useCallback = stable reference => less re-renders in memo fields
+  const commitOrderField = useCallback((field, value) => {
     setOrderForm((prev) => ({ ...prev, [field]: value }));
-  };
+  }, []);
 
   const handleOrderFileChange = (key) => (e) => {
     const file = e.target.files?.[0] || null;
     setOrderFiles((prev) => ({ ...prev, [key]: file }));
   };
 
+  // ✅ safer base64 conversion + explicit "tooLarge" handling
   const fileToBase64 = (file) => {
     if (!file) return Promise.resolve(null);
+
+    // hard guard: keep reasonable to avoid silent Apps Script failures
+    const MAX_FILE_BYTES = 1_200_000; // ~1.2MB raw
+    if (file.size > MAX_FILE_BYTES) {
+      return Promise.resolve({
+        name: file.name,
+        type: file.type || "application/octet-stream",
+        base64: "",
+        size: file.size,
+        tooLarge: true,
+      });
+    }
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = () => {
@@ -553,6 +576,7 @@ function DealsTable() {
           type: file.type || "application/octet-stream",
           base64,
           size: file.size || 0,
+          tooLarge: false,
         });
       };
       reader.onerror = reject;
@@ -560,15 +584,6 @@ function DealsTable() {
     });
   };
 
-  /**
-   * ✅ IMPORTANT:
-   * Base64 attachments can exceed Apps Script limits and silently fail (no-cors hides errors).
-   * So:
-   * 1) Always send a minimal payload that should append.
-   * 2) Only include attachments if total base64 isn't too large.
-   *
-   * If attachments are large, you should upload to Drive in a separate endpoint and store links.
-   */
   const handleCreateOrder = async () => {
     if (!orderBaseRow) return;
     if (creatingOrder) return;
@@ -579,51 +594,48 @@ function DealsTable() {
     try {
       const orderId = `ORD-${Date.now()}`;
 
-      // Build minimal row first (most reliable for appending)
+      // Minimal payload first (high chance to land)
       const payloadRow = {
-        // identifiers to link
         "Order ID": orderId,
+        "Order Distribution ID": orderBaseRow?.["Order Distribution ID"] || "",
         "Account ID": orderBaseRow?.["Account ID"] || "",
         "Deal Name": orderBaseRow?.["Deal Name"] || "",
         "Account Owner": orderBaseRow?.["Account Owner"] || "",
         "Company": orderBaseRow?.["Company"] || "",
         "Mobile Number": orderBaseRow?.["Mobile Number"] || "",
         "Email ID": orderBaseRow?.["Email ID"] || "",
-        "Order Distribution ID": orderBaseRow?.["Order Distribution ID"] || "",
-
-        // order fields
         ...orderForm,
       };
 
-      // Convert attachments (optional)
+      // Attachments (keys MUST match headers)
       const poObj = await fileToBase64(orderFiles.purchaseOrder);
       const drawingObj = await fileToBase64(orderFiles.drawing);
       const boqObj = await fileToBase64(orderFiles.boq);
       const proformaObj = await fileToBase64(orderFiles.proforma);
 
-      const totalSize =
-        (poObj?.base64?.length || 0) +
-        (drawingObj?.base64?.length || 0) +
-        (boqObj?.base64?.length || 0) +
-        (proformaObj?.base64?.length || 0);
+      payloadRow["Attach Purchase Order"] = poObj
+        ? poObj.tooLarge
+          ? `FILE_TOO_LARGE: ${poObj.name}`
+          : poObj
+        : "";
 
-      // rough safety threshold (base64 inflates size): keep it conservative
-      const SAFE_BASE64_LEN = 650_000; // ~650KB of base64 text total
+      payloadRow["Attach Drawing"] = drawingObj
+        ? drawingObj.tooLarge
+          ? `FILE_TOO_LARGE: ${drawingObj.name}`
+          : drawingObj
+        : "";
 
-      if (totalSize > SAFE_BASE64_LEN) {
-        // send without attachments so row definitely lands
-        payloadRow["Attach Purchase Order"] = "";
-        payloadRow["Attach Drawing"] = "";
-        payloadRow["Attach BOQ"] = "";
-        payloadRow["Proforma Invoice"] = "";
-        payloadRow["Attachment Note"] =
-          "Attachments skipped (too large). Please upload via Drive workflow / add links.";
-      } else {
-        payloadRow["Attach Purchase Order"] = poObj || "";
-        payloadRow["Attach Drawing"] = drawingObj || "";
-        payloadRow["Attach BOQ"] = boqObj || "";
-        payloadRow["Proforma Invoice"] = proformaObj || "";
-      }
+      payloadRow["Attach BOQ"] = boqObj
+        ? boqObj.tooLarge
+          ? `FILE_TOO_LARGE: ${boqObj.name}`
+          : boqObj
+        : "";
+
+      payloadRow["Proforma Invoice"] = proformaObj
+        ? proformaObj.tooLarge
+          ? `FILE_TOO_LARGE: ${proformaObj.name}`
+          : proformaObj
+        : "";
 
       await fetch(submitUrl, {
         method: "POST",
@@ -633,12 +645,8 @@ function DealsTable() {
       });
 
       setOrderMsg("Created ✅");
-
-      // UX: close + refresh
       setOrderOpen(false);
       setOrderBaseRow(null);
-
-      // Refresh deals list so Order ID shows (if backend also updates deal row)
       fetchDeals();
     } catch (e) {
       console.error("Create order error:", e);
@@ -949,37 +957,50 @@ function DealsTable() {
                       Attachments
                     </Typography>
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
-                      Note: Very large attachments may be skipped to ensure the Order row lands in the sheet.
+                      Attachment column names are matched exactly to your Orders sheet headers.
                     </Typography>
                   </Grid>
 
-                  <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
-                      Attach Purchase Order {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
-                      <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
-                    </Button>
-                  </Grid>
+                  {ORDER_ATTACHMENT_FIELDS.map((label) => {
+                    const fileKey =
+                      label === "Attach Purchase Order"
+                        ? "purchaseOrder"
+                        : label === "Attach Drawing"
+                        ? "drawing"
+                        : label === "Attach BOQ"
+                        ? "boq"
+                        : "proforma";
 
-                  <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
-                      Attach Drawing {orderFiles?.drawing ? `: ${orderFiles.drawing.name}` : ""}
-                      <input hidden type="file" onChange={handleOrderFileChange("drawing")} />
-                    </Button>
-                  </Grid>
+                    const file = orderFiles?.[fileKey];
 
-                  <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
-                      Attach BOQ {orderFiles?.boq ? `: ${orderFiles.boq.name}` : ""}
-                      <input hidden type="file" onChange={handleOrderFileChange("boq")} />
-                    </Button>
-                  </Grid>
+                    return (
+                      <Grid item xs={6} key={label}>
+                        <Button
+                          variant="outlined"
+                          component="label"
+                          fullWidth
+                          disabled={creatingOrder}
+                          sx={{ justifyContent: "flex-start" }}
+                        >
+                          {label}
+                          <input hidden type="file" onChange={handleOrderFileChange(fileKey)} />
+                        </Button>
 
-                  <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
-                      Proforma Invoice {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
-                      <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
-                    </Button>
-                  </Grid>
+                        {file ? (
+                          <Typography
+                            sx={{
+                              mt: 0.5,
+                              fontFamily: "Montserrat, sans-serif",
+                              fontSize: 11,
+                              opacity: 0.8,
+                            }}
+                          >
+                            Selected: {file.name}
+                          </Typography>
+                        ) : null}
+                      </Grid>
+                    );
+                  })}
                 </Grid>
               </AccordionDetails>
             </Accordion>

@@ -1,3 +1,4 @@
+// src/components/DealsTable.js
 import React, { useEffect, useState } from "react";
 import {
   Box,
@@ -53,6 +54,24 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+// ✅ FIX: robust parse for "dd-MM-yyyy HH:mm:ss"
+const parseDDMMYYYY_HHMMSS = (ts) => {
+  if (!ts) return 0;
+  const raw = String(ts).trim();
+  const [dPart, tPart] = raw.split(" ");
+  if (!dPart) return 0;
+
+  const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
+  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
+    .split(":")
+    .map((x) => parseInt(x, 10));
+
+  if (!dd || !mm || !yyyy) return 0;
+  const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
+  const t = dt.getTime();
+  return Number.isFinite(t) ? t : 0;
+};
+
 function DealsTable() {
   const [deals, setDeals] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
@@ -86,7 +105,7 @@ function DealsTable() {
 
   // add order modal
   const [orderOpen, setOrderOpen] = useState(false);
-  const [orderBaseRow, setOrderBaseRow] = useState(null); // deal row context
+  const [orderBaseRow, setOrderBaseRow] = useState(null);
   const [orderForm, setOrderForm] = useState({});
   const [orderFiles, setOrderFiles] = useState({
     purchaseOrder: null,
@@ -122,17 +141,24 @@ function DealsTable() {
 
       setAllDeals(filtered);
 
-      // dedupe: latest by Order ID (if exists) else Deal Name
+      // ✅ FIX: Dedup strictly by Deal Name (one deal -> one order) + robust timestamp parsing
       const seen = new Map();
       filtered.forEach((row) => {
-        const key = row["Order ID"] || row["Deal Name"];
+        const key = row["Deal Name"] || row["Account ID"] || row["Company"] || JSON.stringify(row);
         const existing = seen.get(key);
-        if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
+
+        const tNew = parseDDMMYYYY_HHMMSS(row["Timestamp"]);
+        const tOld = parseDDMMYYYY_HHMMSS(existing?.["Timestamp"]);
+
+        if (!existing || tNew > tOld) {
           seen.set(key, row);
         }
       });
 
-      const deduplicated = Array.from(seen.values());
+      const deduplicated = Array.from(seen.values()).sort(
+        (a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"])
+      );
+
       setDeals(deduplicated);
 
       setVisibleColumns(
@@ -172,16 +198,8 @@ function DealsTable() {
   const filteredDeals = sortedDeals.filter((deal) => {
     try {
       return (
-        [
-          "First Name",
-          "Last Name",
-          "Deal Name",
-          "Company",
-          "Mobile Number",
-          "Stage",
-          "Account ID",
-        ].some((key) =>
-          (deal[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+        ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
+          (key) => (deal[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || deal["Stage"] === filterStage) &&
         (!filterType || deal["Type"] === filterType) &&
@@ -224,7 +242,7 @@ function DealsTable() {
 
   const handleEditClick = (deal) => {
     setSelectedRow(deal);
-    setDealFormData(deal);
+    setDealFormData({ ...(deal || {}) });
   };
 
   const handleSubmitDeal = async () => {
@@ -245,11 +263,17 @@ function DealsTable() {
   };
 
   // ----------------------------
-  // Logs
+  // Logs (FULL ROW VIEW)
   // ----------------------------
   const handleViewLogs = (dealRow) => {
-    const key = dealRow["Order ID"] || dealRow["Deal Name"];
-    const logs = allDeals.filter((d) => (d["Order ID"] || d["Deal Name"]) === key);
+    const key = dealRow["Deal Name"] || "";
+    if (!key) {
+      alert("No Deal Name found for logs.");
+      return;
+    }
+    const logs = allDeals
+      .filter((d) => (d["Deal Name"] || "") === key)
+      .sort((a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"]));
     setDealLogs(logs);
     setLogsOpen(true);
   };
@@ -274,14 +298,13 @@ function DealsTable() {
 
     setOrderBaseRow(deal);
 
-    // ✅ Key order fields moved to Add Order section (editable, prefilled)
+    // Add Order section should include the key order fields (editable / prefilled)
     setOrderForm({
       "Order Amount": deal["Order Amount"] || "",
       "Order Delivery Date": deal["Order Delivery Date"] || "",
       "Order Delivery Details": deal["Order Delivery Details"] || "",
       "Order Remarks": deal["Order Remarks"] || "",
 
-      // Remaining order creation fields
       "Order Payment Terms": "",
       "Order Onsite Contact Name": "",
       "Order Onsite Contact Number": "",
@@ -340,7 +363,10 @@ function DealsTable() {
       const payloadRow = {
         ...orderBaseRow,
         "Order ID": orderId,
+
+        // only add the new / editable order creation fields
         ...orderForm,
+
         "Attach Purchase Order": poObj,
         "Attach Drawing": drawingObj,
         "Attach BOQ": boqObj,
@@ -351,12 +377,7 @@ function DealsTable() {
         method: "POST",
         mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
-        body: JSON.stringify({
-          action: "createOrder",
-          data: payloadRow,
-          dealKey: orderBaseRow["Deal Name"] || "",
-          accountId: orderBaseRow["Account ID"] || "",
-        }),
+        body: JSON.stringify({ action: "createOrder", data: payloadRow }),
       });
 
       alert("✅ Order created successfully (edit from Orders table going forward).");
@@ -370,6 +391,9 @@ function DealsTable() {
       setCreatingOrder(false);
     }
   };
+
+  const allLogHeaders = dealLogs?.[0] ? Object.keys(dealLogs[0]) : [];
+  const safeLogHeaders = visibleColumns?.length ? visibleColumns : allLogHeaders;
 
   return (
     <ThemeProvider theme={theme}>
@@ -435,7 +459,7 @@ function DealsTable() {
               <Button onClick={handleSelectAll}>Select All</Button>
               <Button onClick={handleDeselectAll}>Deselect All</Button>
               <FormGroup>
-                {Object.keys(deals[0] || {}).map((col) => (
+                {(deals[0] ? Object.keys(deals[0]) : []).map((col) => (
                   <FormControlLabel
                     key={col}
                     control={
@@ -515,15 +539,7 @@ function DealsTable() {
             {[
               {
                 title: "Deal Details",
-                fields: [
-                  "Deal Name",
-                  "Type",
-                  "Deal Amount",
-                  "Next Step",
-                  "Product Required",
-                  "Remarks",
-                  "Stage",
-                ],
+                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Product Required", "Remarks", "Stage"],
               },
               {
                 title: "Customer Details",
@@ -541,7 +557,7 @@ function DealsTable() {
                   "Lead Status",
                   "Industry",
                   "Number of Employees",
-                  "Annual Revenue",
+                  "Requirement",
                   "Social Media",
                   "Description",
                 ],
@@ -549,6 +565,7 @@ function DealsTable() {
               {
                 title: "Address Details",
                 fields: [
+                  "Go To Section",
                   "Billing Street",
                   "Billing City",
                   "Billing State",
@@ -615,11 +632,7 @@ function DealsTable() {
                             label={field}
                             value={dealFormData[field] || ""}
                             onChange={handleFieldChange}
-                            disabled={
-                              field === "Account Owner" ||
-                              field === "Account ID" ||
-                              field === "Timestamp"
-                            }
+                            disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
                           />
                         )}
                       </Grid>
@@ -637,7 +650,7 @@ function DealsTable() {
           </DialogContent>
         </Dialog>
 
-        {/* -------------------- Add Order Modal (VALIDATIONS RESTORED) -------------------- */}
+        {/* -------------------- Add Order Modal -------------------- */}
         <Dialog open={orderOpen} onClose={() => setOrderOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Add Order
@@ -657,13 +670,10 @@ function DealsTable() {
               <AccordionDetails>
                 <Grid container spacing={2}>
                   {[
-                    // ✅ Key editable fields
                     "Order Amount",
                     "Order Delivery Date",
                     "Order Delivery Details",
                     "Order Remarks",
-
-                    // Remaining fields
                     "Order Payment Terms",
                     "Order Onsite Contact Name",
                     "Order Onsite Contact Number",
@@ -700,9 +710,7 @@ function DealsTable() {
                           value={orderForm[field] || ""}
                           onChange={handleOrderFieldChange}
                           type={field === "Order Delivery Date" ? "date" : "text"}
-                          InputLabelProps={
-                            field === "Order Delivery Date" ? { shrink: true } : undefined
-                          }
+                          InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
                         />
                       )}
                     </Grid>
@@ -746,80 +754,57 @@ function DealsTable() {
               </AccordionDetails>
             </Accordion>
 
-            {/* Context (read-only) - order fields removed */}
-            <Accordion>
-              <AccordionSummary
-                expandIcon={<ExpandMoreIcon />}
-                sx={{ backgroundColor: "#fafafa", fontFamily: "Montserrat, sans-serif" }}
+            <Box mt={2} display="flex" justifyContent="flex-end">
+              <Button
+                variant="contained"
+                sx={{ backgroundColor: "#6495ED" }}
+                onClick={handleCreateOrder}
+                disabled={creatingOrder}
               >
-                <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
-                  Deal & Customer Context (Read-only)
-                </Typography>
-              </AccordionSummary>
-
-              <AccordionDetails>
-                <Grid container spacing={2}>
-                  {[
-                    "Account Owner",
-                    "Company",
-                    "First Name",
-                    "Last Name",
-                    "Mobile Number",
-                    "Email ID",
-                    "Account ID",
-                    "Deal Name",
-                    "Type",
-                    "Stage",
-                    "Product Required",
-                    "Deal Amount",
-                  ].map((field) => (
-                    <Grid item xs={6} key={field}>
-                      <TextField fullWidth size="small" label={field} value={orderBaseRow?.[field] || ""} disabled />
-                    </Grid>
-                  ))}
-                </Grid>
-              </AccordionDetails>
-            </Accordion>
+                {creatingOrder ? "Creating..." : "Create Order"}
+              </Button>
+            </Box>
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={() => setOrderOpen(false)}>Cancel</Button>
-            <Button
-              variant="contained"
-              sx={{ backgroundColor: "#6495ED" }}
-              onClick={handleCreateOrder}
-              disabled={creatingOrder}
-            >
-              {creatingOrder ? "Creating..." : "Create Order"}
-            </Button>
+            <Button onClick={() => setOrderOpen(false)}>Close</Button>
           </DialogActions>
         </Dialog>
 
-        {/* Logs Modal */}
-        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="md" fullWidth>
-          <DialogTitle>Deal Change Logs</DialogTitle>
-          <DialogContent>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Timestamp</TableCell>
-                  <TableCell>Deal Name</TableCell>
-                  <TableCell>Order ID</TableCell>
-                  <TableCell>Account Owner</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {dealLogs.map((log, idx) => (
-                  <TableRow key={idx}>
-                    <TableCell>{log.Timestamp}</TableCell>
-                    <TableCell>{log["Deal Name"]}</TableCell>
-                    <TableCell>{log["Order ID"]}</TableCell>
-                    <TableCell>{log["Account Owner"]}</TableCell>
+        {/* -------------------- DEAL LOGS MODAL (FULL ROW) -------------------- */}
+        <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="xl" fullWidth>
+          <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
+            Deal Change Logs (Full Row)
+          </DialogTitle>
+          <DialogContent dividers>
+            {dealLogs.length === 0 ? (
+              <Typography>No logs found.</Typography>
+            ) : (
+              <Table size="small">
+                <TableHead>
+                  <TableRow style={{ backgroundColor: "#6495ED" }}>
+                    {safeLogHeaders.map((h) => (
+                      <TableCell key={h} style={{ color: "white", fontWeight: 700 }}>
+                        {h}
+                      </TableCell>
+                    ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHead>
+                <TableBody>
+                  {dealLogs.map((log, idx) => (
+                    <TableRow key={idx}>
+                      {safeLogHeaders.map((h) => (
+                        <TableCell key={h}>{log[h] ?? ""}</TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </DialogContent>
+          <DialogActions>
+            <Button onClick={() => setLogsOpen(false)}>Close</Button>
+          </DialogActions>
         </Dialog>
 
         {/* Calendar Modal */}

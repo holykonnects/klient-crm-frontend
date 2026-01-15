@@ -100,16 +100,19 @@ const parseTimestampFlexible = (ts) => {
 };
 
 /**
- * ✅ Stable key for logs + dedupe
- * NOTE: If you have a better always-present deal id column, add it here.
+ * ✅ Deal key
+ * - If "Order Distribution ID" exists (Closed Won), use it (stable).
+ * - Else fallback to Deal Name + Account ID (pre-close)
  */
-const dealKeyOf = (row) =>
-  `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
+const dealKeyOf = (row) => {
+  const finalId = row?.["Order Distribution ID"];
+  if (finalId) return String(finalId).trim();
+  return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
+};
 
 /**
  * ✅ Memoized field to reduce typing lag in big modals
- * - TextFields: local state updates onChange, commit to dealFormData onBlur
- * - Select: commit immediately onChange
+ * TextFields commit onBlur (smooth typing), Select commits onChange
  */
 const DealField = React.memo(function DealField({
   field,
@@ -120,7 +123,58 @@ const DealField = React.memo(function DealField({
   type,
 }) {
   const isDropdown = Array.isArray(validationData?.[field]);
+  const [local, setLocal] = useState(value ?? "");
 
+  useEffect(() => {
+    setLocal(value ?? "");
+  }, [value]);
+
+  if (isDropdown) {
+    return (
+      <FormControl fullWidth size="small">
+        <InputLabel>{field}</InputLabel>
+        <Select
+          name={field}
+          value={value ?? ""}
+          label={field}
+          onChange={(e) => onCommit(field, e.target.value)}
+          disabled={disabled}
+        >
+          {validationData[field].map((opt, idx) => (
+            <MenuItem key={idx} value={opt}>
+              {opt}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  return (
+    <TextField
+      fullWidth
+      size="small"
+      name={field}
+      label={field}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => onCommit(field, local)}
+      disabled={disabled}
+      type={type || "text"}
+      InputLabelProps={type === "date" ? { shrink: true } : undefined}
+    />
+  );
+});
+
+const OrderField = React.memo(function OrderField({
+  field,
+  value,
+  validationData,
+  disabled,
+  onCommit,
+  type,
+}) {
+  const isDropdown = Array.isArray(validationData?.[field]);
   const [local, setLocal] = useState(value ?? "");
 
   useEffect(() => {
@@ -186,7 +240,7 @@ function DealsTable() {
   const [dealFormData, setDealFormData] = useState({});
   const [validationData, setValidationData] = useState({});
 
-  // ✅ saving UX for update button
+  // ✅ saving UX for deal update
   const [savingDeal, setSavingDeal] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
 
@@ -209,7 +263,10 @@ function DealsTable() {
     boq: null,
     proforma: null,
   });
+
+  // ✅ saving UX for order create
   const [creatingOrder, setCreatingOrder] = useState(false);
+  const [orderMsg, setOrderMsg] = useState("");
 
   const { user } = useAuth();
   const username = user?.username;
@@ -231,15 +288,13 @@ function DealsTable() {
       const filtered =
         role === "End User"
           ? data.filter((d) =>
-              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(
-                username
-              )
+              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username)
             )
           : data;
 
       setAllDeals(filtered);
 
-      // ✅ Always show latest row per Deal Key
+      // ✅ show latest row per Deal Key
       const seen = new Map();
       filtered.forEach((row, idx) => {
         const key = dealKeyOf(row);
@@ -283,13 +338,9 @@ function DealsTable() {
       setDeals(dedupedLatest);
 
       const stored =
-        JSON.parse(
-          localStorage.getItem(`visibleColumns-${username}-deals`)
-        ) || null;
+        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) || null;
 
-      setVisibleColumns(
-        stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : [])
-      );
+      setVisibleColumns(stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : []));
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -303,6 +354,7 @@ function DealsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, role]);
 
   // ✅ Sorting respects Timestamp properly
@@ -338,18 +390,8 @@ function DealsTable() {
   const filteredDeals = sortedDeals.filter((deal) => {
     try {
       return (
-        [
-          "First Name",
-          "Last Name",
-          "Deal Name",
-          "Company",
-          "Mobile Number",
-          "Stage",
-          "Account ID",
-        ].some((key) =>
-          (deal?.[key] || "")
-            .toLowerCase()
-            .includes(searchTerm.toLowerCase())
+        ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
+          (key) => (deal?.[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || deal?.["Stage"] === filterStage) &&
         (!filterType || deal?.["Type"] === filterType) &&
@@ -361,19 +403,12 @@ function DealsTable() {
     }
   });
 
-  const unique = (key) => [
-    ...new Set(deals.map((d) => d?.[key]).filter(Boolean)),
-  ];
+  const unique = (key) => [...new Set(deals.map((d) => d?.[key]).filter(Boolean))];
 
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
-      const updated = prev.includes(col)
-        ? prev.filter((c) => c !== col)
-        : [...prev, col];
-      localStorage.setItem(
-        `visibleColumns-${username}-deals`,
-        JSON.stringify(updated)
-      );
+      const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
+      localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -381,22 +416,16 @@ function DealsTable() {
   const handleSelectAll = () => {
     const all = Object.keys(deals[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(
-      `visibleColumns-${username}-deals`,
-      JSON.stringify(all)
-    );
+    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(
-      `visibleColumns-${username}-deals`,
-      JSON.stringify([])
-    );
+    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([]));
   };
 
   // ----------------------------
-  // Edit Deal (deal-only)
+  // Edit Deal
   // ----------------------------
   const handleEditClick = (deal) => {
     setSelectedRow(deal);
@@ -405,12 +434,12 @@ function DealsTable() {
   };
 
   // ✅ commit function used by memoized DealField (reduces typing lag)
-  const commitField = (field, value) => {
+  const commitDealField = (field, value) => {
     setDealFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmitDeal = async () => {
-    if (savingDeal) return; // ✅ block double-click
+    if (savingDeal) return;
 
     setSavingDeal(true);
     setSaveMsg("Updating...");
@@ -437,12 +466,12 @@ function DealsTable() {
   };
 
   // ----------------------------
-  // Logs (FULL ROW VIEW)
+  // Logs (FULL ROW)
   // ----------------------------
   const handleViewLogs = (dealRow) => {
     const key = dealKeyOf(dealRow);
     if (!key || key === "__") {
-      alert("No Deal Name / Account ID found for logs.");
+      alert("No Deal Key found for logs.");
       return;
     }
 
@@ -475,9 +504,7 @@ function DealsTable() {
   // ----------------------------
   const openAddOrder = (deal) => {
     if (deal?.["Order ID"]) {
-      alert(
-        "⚠️ Order already exists for this deal. Please edit it from the Orders table."
-      );
+      alert("⚠️ Order already exists for this deal. Please edit it from the Orders table.");
       return;
     }
 
@@ -500,18 +527,13 @@ function DealsTable() {
       "Notification Status": "",
     });
 
-    setOrderFiles({
-      purchaseOrder: null,
-      drawing: null,
-      boq: null,
-      proforma: null,
-    });
+    setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+    setOrderMsg("");
     setOrderOpen(true);
   };
 
-  const handleOrderFieldChange = (e) => {
-    const { name, value } = e.target;
-    setOrderForm((prev) => ({ ...prev, [name]: value }));
+  const commitOrderField = (field, value) => {
+    setOrderForm((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleOrderFileChange = (key) => (e) => {
@@ -530,6 +552,7 @@ function DealsTable() {
           name: file.name,
           type: file.type || "application/octet-stream",
           base64,
+          size: file.size || 0,
         });
       };
       reader.onerror = reject;
@@ -537,27 +560,70 @@ function DealsTable() {
     });
   };
 
+  /**
+   * ✅ IMPORTANT:
+   * Base64 attachments can exceed Apps Script limits and silently fail (no-cors hides errors).
+   * So:
+   * 1) Always send a minimal payload that should append.
+   * 2) Only include attachments if total base64 isn't too large.
+   *
+   * If attachments are large, you should upload to Drive in a separate endpoint and store links.
+   */
   const handleCreateOrder = async () => {
     if (!orderBaseRow) return;
+    if (creatingOrder) return;
 
     setCreatingOrder(true);
+    setOrderMsg("Creating...");
+
     try {
       const orderId = `ORD-${Date.now()}`;
 
+      // Build minimal row first (most reliable for appending)
+      const payloadRow = {
+        // identifiers to link
+        "Order ID": orderId,
+        "Account ID": orderBaseRow?.["Account ID"] || "",
+        "Deal Name": orderBaseRow?.["Deal Name"] || "",
+        "Account Owner": orderBaseRow?.["Account Owner"] || "",
+        "Company": orderBaseRow?.["Company"] || "",
+        "Mobile Number": orderBaseRow?.["Mobile Number"] || "",
+        "Email ID": orderBaseRow?.["Email ID"] || "",
+        "Order Distribution ID": orderBaseRow?.["Order Distribution ID"] || "",
+
+        // order fields
+        ...orderForm,
+      };
+
+      // Convert attachments (optional)
       const poObj = await fileToBase64(orderFiles.purchaseOrder);
       const drawingObj = await fileToBase64(orderFiles.drawing);
       const boqObj = await fileToBase64(orderFiles.boq);
       const proformaObj = await fileToBase64(orderFiles.proforma);
 
-      const payloadRow = {
-        ...orderBaseRow,
-        "Order ID": orderId,
-        ...orderForm,
-        "Attach Purchase Order": poObj,
-        "Attach Drawing": drawingObj,
-        "Attach BOQ": boqObj,
-        "Proforma Invoice": proformaObj,
-      };
+      const totalSize =
+        (poObj?.base64?.length || 0) +
+        (drawingObj?.base64?.length || 0) +
+        (boqObj?.base64?.length || 0) +
+        (proformaObj?.base64?.length || 0);
+
+      // rough safety threshold (base64 inflates size): keep it conservative
+      const SAFE_BASE64_LEN = 650_000; // ~650KB of base64 text total
+
+      if (totalSize > SAFE_BASE64_LEN) {
+        // send without attachments so row definitely lands
+        payloadRow["Attach Purchase Order"] = "";
+        payloadRow["Attach Drawing"] = "";
+        payloadRow["Attach BOQ"] = "";
+        payloadRow["Proforma Invoice"] = "";
+        payloadRow["Attachment Note"] =
+          "Attachments skipped (too large). Please upload via Drive workflow / add links.";
+      } else {
+        payloadRow["Attach Purchase Order"] = poObj || "";
+        payloadRow["Attach Drawing"] = drawingObj || "";
+        payloadRow["Attach BOQ"] = boqObj || "";
+        payloadRow["Proforma Invoice"] = proformaObj || "";
+      }
 
       await fetch(submitUrl, {
         method: "POST",
@@ -566,20 +632,25 @@ function DealsTable() {
         body: JSON.stringify({ action: "createOrder", data: payloadRow }),
       });
 
-      alert(
-        "✅ Order created successfully (edit from Orders table going forward)."
-      );
+      setOrderMsg("Created ✅");
+
+      // UX: close + refresh
       setOrderOpen(false);
       setOrderBaseRow(null);
+
+      // Refresh deals list so Order ID shows (if backend also updates deal row)
       fetchDeals();
     } catch (e) {
       console.error("Create order error:", e);
+      setOrderMsg("Create failed ❌");
       alert("❌ Error creating order");
     } finally {
+      setTimeout(() => setOrderMsg(""), 1200);
       setCreatingOrder(false);
     }
   };
 
+  // Logs modal headers
   const allLogHeaders = dealLogs?.[0] ? Object.keys(dealLogs[0]) : [];
   const logHeaders = allLogHeaders;
 
@@ -675,16 +746,10 @@ function DealsTable() {
                   style={{ color: "white", cursor: "pointer" }}
                 >
                   {header}{" "}
-                  {sortConfig.key === header
-                    ? sortConfig.direction === "asc"
-                      ? "↑"
-                      : "↓"
-                    : ""}
+                  {sortConfig.key === header ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
                 </TableCell>
               ))}
-              <TableCell style={{ color: "white", fontWeight: "bold" }}>
-                Actions
-              </TableCell>
+              <TableCell style={{ color: "white", fontWeight: "bold" }}>Actions</TableCell>
             </TableRow>
           </TableHead>
 
@@ -723,7 +788,7 @@ function DealsTable() {
           </TableBody>
         </Table>
 
-        {/* -------------------- Edit Deal Modal (DEAL-ONLY) -------------------- */}
+        {/* -------------------- Edit Deal Modal -------------------- */}
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
             Edit Deal
@@ -733,15 +798,7 @@ function DealsTable() {
             {[
               {
                 title: "Deal Details",
-                fields: [
-                  "Deal Name",
-                  "Type",
-                  "Deal Amount",
-                  "Next Step",
-                  "Product Required",
-                  "Remarks",
-                  "Stage",
-                ],
+                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Product Required", "Remarks", "Stage"],
               },
               {
                 title: "Customer Details",
@@ -795,16 +852,10 @@ function DealsTable() {
                 ],
               },
             ].map((section) => (
-              <Accordion
-                key={section.title}
-                defaultExpanded={section.title === "Deal Details"} // ✅ reduce lag: only first section expanded
-              >
+              <Accordion key={section.title} defaultExpanded={section.title === "Deal Details"}>
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{
-                    backgroundColor: "#f0f4ff",
-                    fontFamily: "Montserrat, sans-serif",
-                  }}
+                  sx={{ backgroundColor: "#f0f4ff", fontFamily: "Montserrat, sans-serif" }}
                 >
                   <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
                     {section.title}
@@ -819,12 +870,8 @@ function DealsTable() {
                           field={field}
                           value={dealFormData?.[field] || ""}
                           validationData={validationData}
-                          disabled={
-                            field === "Account Owner" ||
-                            field === "Account ID" ||
-                            field === "Timestamp"
-                          }
-                          onCommit={commitField}
+                          disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
+                          onCommit={commitDealField}
                         />
                       </Grid>
                     ))}
@@ -851,7 +898,7 @@ function DealsTable() {
         </Dialog>
 
         {/* -------------------- Add Order Modal -------------------- */}
-        <Dialog open={orderOpen} onClose={() => setOrderOpen(false)} maxWidth="md" fullWidth>
+        <Dialog open={orderOpen} onClose={() => !creatingOrder && setOrderOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Add Order
           </DialogTitle>
@@ -885,36 +932,14 @@ function DealsTable() {
                     "Notification Status",
                   ].map((field) => (
                     <Grid item xs={6} key={field}>
-                      {validationData?.[field] ? (
-                        <FormControl fullWidth size="small">
-                          <InputLabel>{field}</InputLabel>
-                          <Select
-                            name={field}
-                            value={orderForm?.[field] || ""}
-                            label={field}
-                            onChange={handleOrderFieldChange}
-                          >
-                            {validationData[field].map((opt, idx) => (
-                              <MenuItem key={idx} value={opt}>
-                                {opt}
-                              </MenuItem>
-                            ))}
-                          </Select>
-                        </FormControl>
-                      ) : (
-                        <TextField
-                          fullWidth
-                          size="small"
-                          name={field}
-                          label={field}
-                          value={orderForm?.[field] || ""}
-                          onChange={handleOrderFieldChange}
-                          type={field === "Order Delivery Date" ? "date" : "text"}
-                          InputLabelProps={
-                            field === "Order Delivery Date" ? { shrink: true } : undefined
-                          }
-                        />
-                      )}
+                      <OrderField
+                        field={field}
+                        value={orderForm?.[field] || ""}
+                        validationData={validationData}
+                        disabled={creatingOrder}
+                        onCommit={commitOrderField}
+                        type={field === "Order Delivery Date" ? "date" : "text"}
+                      />
                     </Grid>
                   ))}
 
@@ -923,34 +948,35 @@ function DealsTable() {
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
                       Attachments
                     </Typography>
+                    <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
+                      Note: Very large attachments may be skipped to ensure the Order row lands in the sheet.
+                    </Typography>
                   </Grid>
 
                   <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth>
-                      Attach Purchase Order{" "}
-                      {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
+                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
+                      Attach Purchase Order {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth>
+                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
                       Attach Drawing {orderFiles?.drawing ? `: ${orderFiles.drawing.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("drawing")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth>
+                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
                       Attach BOQ {orderFiles?.boq ? `: ${orderFiles.boq.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("boq")} />
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
-                    <Button variant="outlined" component="label" fullWidth>
-                      Proforma Invoice{" "}
-                      {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
+                    <Button variant="outlined" component="label" fullWidth disabled={creatingOrder}>
+                      Proforma Invoice {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
                     </Button>
                   </Grid>
@@ -958,7 +984,11 @@ function DealsTable() {
               </AccordionDetails>
             </Accordion>
 
-            <Box mt={2} display="flex" justifyContent="flex-end">
+            <Box mt={2} display="flex" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
+                {orderMsg || ""}
+              </Typography>
+
               <Button
                 variant="contained"
                 sx={{ backgroundColor: "#6495ED" }}
@@ -971,7 +1001,9 @@ function DealsTable() {
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={() => setOrderOpen(false)}>Close</Button>
+            <Button onClick={() => setOrderOpen(false)} disabled={creatingOrder}>
+              Close
+            </Button>
           </DialogActions>
         </Dialog>
 

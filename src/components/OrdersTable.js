@@ -465,7 +465,6 @@ function OrdersTable() {
                   "Order Onsite Contact Number",
                   "Order Onsite Contact Role",
                   "Order Delivery Date",
-                  "Order Delivery Details",
                   "Order Remarks",
                   "Order Update",
                   "Attach Purchase Order",

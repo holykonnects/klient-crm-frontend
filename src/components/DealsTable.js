@@ -55,25 +55,17 @@ const selectorStyle = {
 };
 
 /**
- * ✅ FIX #0:
- * Flexible timestamp parser:
- * Supports:
- * - dd-MM-yyyy HH:mm:ss
- * - dd/MM/yyyy HH:mm:ss
- * - yyyy-MM-ddTHH:mm:ssZ (ISO)
- * - Date objects
- * - numeric epoch
+ * ✅ Flexible timestamp parser
+ * Supports dd-MM-yyyy HH:mm:ss, dd/MM/yyyy HH:mm:ss, ISO strings, Date, epoch
  */
 const parseTimestampFlexible = (ts) => {
   if (!ts) return 0;
 
-  // Date object
   if (ts instanceof Date) {
     const t = ts.getTime();
     return Number.isFinite(t) ? t : 0;
   }
 
-  // epoch numeric
   if (typeof ts === "number") {
     return Number.isFinite(ts) ? ts : 0;
   }
@@ -81,14 +73,11 @@ const parseTimestampFlexible = (ts) => {
   const raw = String(ts).trim();
   if (!raw) return 0;
 
-  // Try ISO / Date.parse first (works for many formats, including "2026-01-15T10:20:30Z")
+  // ISO / native parse first
   const dp = Date.parse(raw);
   if (Number.isFinite(dp)) return dp;
 
-  // Try dd-MM-yyyy or dd/MM/yyyy with optional time
-  // Examples:
-  // 15-01-2026 09:05:02
-  // 15/01/2026 9:5:2
+  // dd-MM-yyyy or dd/MM/yyyy with optional time
   const m = raw.match(
     /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/
   );
@@ -107,31 +96,73 @@ const parseTimestampFlexible = (ts) => {
     }
   }
 
-  // Last attempt: maybe it’s already "dd-MM-yyyy HH:mm:ss" with extra spaces
-  // (we already tried Date.parse + regex above)
   return 0;
 };
 
 /**
- * ✅ FIX #1:
- * Use a stable Deal Key for dedupe/logs.
- * Prefer unique IDs if present in your sheet.
- * Fallback: Deal Name + Account ID (least stable because Deal Name can change).
+ * ✅ Stable key for logs + dedupe
+ * NOTE: If you have a better always-present deal id column, add it here.
  */
-const dealKeyOf = (row) => {
-  const id =
-    row?.["Deal ID"] ||
-    row?.["Deal Unique ID"] ||
-    row?.["Deal Unique Key"] ||
-    row?.["Deal UID"] ||
-    row?.["DealID"] ||
-    row?.["ID"];
+const dealKeyOf = (row) =>
+  `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
 
-  if (id) return String(id).trim();
+/**
+ * ✅ Memoized field to reduce typing lag in big modals
+ * - TextFields: local state updates onChange, commit to dealFormData onBlur
+ * - Select: commit immediately onChange
+ */
+const DealField = React.memo(function DealField({
+  field,
+  value,
+  validationData,
+  disabled,
+  onCommit,
+  type,
+}) {
+  const isDropdown = Array.isArray(validationData?.[field]);
 
-  // fallback (your previous method)
-  return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`.trim();
-};
+  const [local, setLocal] = useState(value ?? "");
+
+  useEffect(() => {
+    setLocal(value ?? "");
+  }, [value]);
+
+  if (isDropdown) {
+    return (
+      <FormControl fullWidth size="small">
+        <InputLabel>{field}</InputLabel>
+        <Select
+          name={field}
+          value={value ?? ""}
+          label={field}
+          onChange={(e) => onCommit(field, e.target.value)}
+          disabled={disabled}
+        >
+          {validationData[field].map((opt, idx) => (
+            <MenuItem key={idx} value={opt}>
+              {opt}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  return (
+    <TextField
+      fullWidth
+      size="small"
+      name={field}
+      label={field}
+      value={local}
+      onChange={(e) => setLocal(e.target.value)}
+      onBlur={() => onCommit(field, local)}
+      disabled={disabled}
+      type={type || "text"}
+      InputLabelProps={type === "date" ? { shrink: true } : undefined}
+    />
+  );
+});
 
 function DealsTable() {
   const [deals, setDeals] = useState([]);
@@ -154,6 +185,10 @@ function DealsTable() {
   const [selectedRow, setSelectedRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
   const [validationData, setValidationData] = useState({});
+
+  // ✅ saving UX for update button
+  const [savingDeal, setSavingDeal] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
 
   // logs
   const [logsOpen, setLogsOpen] = useState(false);
@@ -196,35 +231,29 @@ function DealsTable() {
       const filtered =
         role === "End User"
           ? data.filter((d) =>
-              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username)
+              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(
+                username
+              )
             )
           : data;
 
       setAllDeals(filtered);
 
-      /**
-       * ✅ FIX #2 (dedupe latest):
-       * - Compare using parseTimestampFlexible()
-       * - If timestamps are equal/invalid (0), keep the later row in the array (assume later = newer append)
-       */
+      // ✅ Always show latest row per Deal Key
       const seen = new Map();
-
       filtered.forEach((row, idx) => {
         const key = dealKeyOf(row);
-        if (!key || key === "__") return;
-
         const existing = seen.get(key);
 
         const tNew = parseTimestampFlexible(row?.["Timestamp"]);
         const tOld = parseTimestampFlexible(existing?.["Timestamp"]);
 
-        // Primary: timestamp comparison
         if (!existing) {
           seen.set(key, { ...row, __idx: idx });
           return;
         }
 
-        // If both invalid (0), prefer later row (higher idx)
+        // both invalid timestamps: prefer later row (append order)
         if (tNew === 0 && tOld === 0) {
           if ((idx ?? 0) > (existing.__idx ?? -1)) {
             seen.set(key, { ...row, __idx: idx });
@@ -232,13 +261,11 @@ function DealsTable() {
           return;
         }
 
-        // If only new has valid time, take it
         if (tNew > tOld) {
           seen.set(key, { ...row, __idx: idx });
           return;
         }
 
-        // If equal timestamp, prefer later row
         if (tNew === tOld && (idx ?? 0) > (existing.__idx ?? -1)) {
           seen.set(key, { ...row, __idx: idx });
         }
@@ -249,7 +276,6 @@ function DealsTable() {
           const tb = parseTimestampFlexible(b?.["Timestamp"]);
           const ta = parseTimestampFlexible(a?.["Timestamp"]);
           if (tb !== ta) return tb - ta;
-          // fallback: later appended row first
           return (b.__idx ?? 0) - (a.__idx ?? 0);
         })
         .map(({ __idx, ...rest }) => rest);
@@ -257,7 +283,9 @@ function DealsTable() {
       setDeals(dedupedLatest);
 
       const stored =
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) || null;
+        JSON.parse(
+          localStorage.getItem(`visibleColumns-${username}-deals`)
+        ) || null;
 
       setVisibleColumns(
         stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : [])
@@ -277,10 +305,7 @@ function DealsTable() {
       .catch((e) => console.error("Validation fetch error:", e));
   }, [username, role]);
 
-  /**
-   * ✅ FIX #3:
-   * Sorting should treat Timestamp specially via parseTimestampFlexible.
-   */
+  // ✅ Sorting respects Timestamp properly
   const sortedDeals = useMemo(() => {
     const arr = [...deals];
     if (!sortConfig.key) return arr;
@@ -313,8 +338,18 @@ function DealsTable() {
   const filteredDeals = sortedDeals.filter((deal) => {
     try {
       return (
-        ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
-          (key) => (deal?.[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+        [
+          "First Name",
+          "Last Name",
+          "Deal Name",
+          "Company",
+          "Mobile Number",
+          "Stage",
+          "Account ID",
+        ].some((key) =>
+          (deal?.[key] || "")
+            .toLowerCase()
+            .includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || deal?.["Stage"] === filterStage) &&
         (!filterType || deal?.["Type"] === filterType) &&
@@ -326,12 +361,19 @@ function DealsTable() {
     }
   });
 
-  const unique = (key) => [...new Set(deals.map((d) => d?.[key]).filter(Boolean))];
+  const unique = (key) => [
+    ...new Set(deals.map((d) => d?.[key]).filter(Boolean)),
+  ];
 
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
-      const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated));
+      const updated = prev.includes(col)
+        ? prev.filter((c) => c !== col)
+        : [...prev, col];
+      localStorage.setItem(
+        `visibleColumns-${username}-deals`,
+        JSON.stringify(updated)
+      );
       return updated;
     });
   };
@@ -339,28 +381,40 @@ function DealsTable() {
   const handleSelectAll = () => {
     const all = Object.keys(deals[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all));
+    localStorage.setItem(
+      `visibleColumns-${username}-deals`,
+      JSON.stringify(all)
+    );
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([]));
+    localStorage.setItem(
+      `visibleColumns-${username}-deals`,
+      JSON.stringify([])
+    );
   };
 
   // ----------------------------
   // Edit Deal (deal-only)
   // ----------------------------
-  const handleFieldChange = (e) => {
-    const { name, value } = e.target;
-    setDealFormData((prev) => ({ ...prev, [name]: value }));
-  };
-
   const handleEditClick = (deal) => {
     setSelectedRow(deal);
     setDealFormData({ ...(deal || {}) });
+    setSaveMsg("");
+  };
+
+  // ✅ commit function used by memoized DealField (reduces typing lag)
+  const commitField = (field, value) => {
+    setDealFormData((prev) => ({ ...prev, [field]: value }));
   };
 
   const handleSubmitDeal = async () => {
+    if (savingDeal) return; // ✅ block double-click
+
+    setSavingDeal(true);
+    setSaveMsg("Updating...");
+
     try {
       await fetch(submitUrl, {
         method: "POST",
@@ -368,12 +422,17 @@ function DealsTable() {
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "updateDeal", data: dealFormData }),
       });
-      alert("✅ Deal updated successfully");
+
+      setSaveMsg("Updated ✅");
       setSelectedRow(null);
       fetchDeals();
     } catch (e) {
       console.error(e);
+      setSaveMsg("Update failed ❌");
       alert("❌ Error updating deal");
+    } finally {
+      setTimeout(() => setSaveMsg(""), 1200);
+      setSavingDeal(false);
     }
   };
 
@@ -383,7 +442,7 @@ function DealsTable() {
   const handleViewLogs = (dealRow) => {
     const key = dealKeyOf(dealRow);
     if (!key || key === "__") {
-      alert("No stable Deal ID/Key found for logs. Add a Deal ID column for perfect logs.");
+      alert("No Deal Name / Account ID found for logs.");
       return;
     }
 
@@ -416,7 +475,9 @@ function DealsTable() {
   // ----------------------------
   const openAddOrder = (deal) => {
     if (deal?.["Order ID"]) {
-      alert("⚠️ Order already exists for this deal. Please edit it from the Orders table.");
+      alert(
+        "⚠️ Order already exists for this deal. Please edit it from the Orders table."
+      );
       return;
     }
 
@@ -439,7 +500,12 @@ function DealsTable() {
       "Notification Status": "",
     });
 
-    setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+    setOrderFiles({
+      purchaseOrder: null,
+      drawing: null,
+      boq: null,
+      proforma: null,
+    });
     setOrderOpen(true);
   };
 
@@ -500,7 +566,9 @@ function DealsTable() {
         body: JSON.stringify({ action: "createOrder", data: payloadRow }),
       });
 
-      alert("✅ Order created successfully (edit from Orders table going forward).");
+      alert(
+        "✅ Order created successfully (edit from Orders table going forward)."
+      );
       setOrderOpen(false);
       setOrderBaseRow(null);
       fetchDeals();
@@ -607,10 +675,16 @@ function DealsTable() {
                   style={{ color: "white", cursor: "pointer" }}
                 >
                   {header}{" "}
-                  {sortConfig.key === header ? (sortConfig.direction === "asc" ? "↑" : "↓") : ""}
+                  {sortConfig.key === header
+                    ? sortConfig.direction === "asc"
+                      ? "↑"
+                      : "↓"
+                    : ""}
                 </TableCell>
               ))}
-              <TableCell style={{ color: "white", fontWeight: "bold" }}>Actions</TableCell>
+              <TableCell style={{ color: "white", fontWeight: "bold" }}>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
 
@@ -659,7 +733,15 @@ function DealsTable() {
             {[
               {
                 title: "Deal Details",
-                fields: ["Deal Name", "Type", "Deal Amount", "Next Step", "Product Required", "Remarks", "Stage"],
+                fields: [
+                  "Deal Name",
+                  "Type",
+                  "Deal Amount",
+                  "Next Step",
+                  "Product Required",
+                  "Remarks",
+                  "Stage",
+                ],
               },
               {
                 title: "Customer Details",
@@ -713,10 +795,16 @@ function DealsTable() {
                 ],
               },
             ].map((section) => (
-              <Accordion key={section.title} defaultExpanded>
+              <Accordion
+                key={section.title}
+                defaultExpanded={section.title === "Deal Details"} // ✅ reduce lag: only first section expanded
+              >
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ backgroundColor: "#f0f4ff", fontFamily: "Montserrat, sans-serif" }}
+                  sx={{
+                    backgroundColor: "#f0f4ff",
+                    fontFamily: "Montserrat, sans-serif",
+                  }}
                 >
                   <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
                     {section.title}
@@ -727,34 +815,17 @@ function DealsTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {validationData?.[field] ? (
-                          <FormControl fullWidth size="small">
-                            <InputLabel>{field}</InputLabel>
-                            <Select
-                              name={field}
-                              value={dealFormData?.[field] || ""}
-                              label={field}
-                              onChange={handleFieldChange}
-                              disabled={field === "Account Owner"}
-                            >
-                              {validationData[field].map((opt, idx) => (
-                                <MenuItem key={idx} value={opt}>
-                                  {opt}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        ) : (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            name={field}
-                            label={field}
-                            value={dealFormData?.[field] || ""}
-                            onChange={handleFieldChange}
-                            disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
-                          />
-                        )}
+                        <DealField
+                          field={field}
+                          value={dealFormData?.[field] || ""}
+                          validationData={validationData}
+                          disabled={
+                            field === "Account Owner" ||
+                            field === "Account ID" ||
+                            field === "Timestamp"
+                          }
+                          onCommit={commitField}
+                        />
                       </Grid>
                     ))}
                   </Grid>
@@ -762,9 +833,18 @@ function DealsTable() {
               </Accordion>
             ))}
 
-            <Box mt={2} display="flex" justifyContent="flex-end">
-              <Button variant="contained" sx={{ backgroundColor: "#6495ED" }} onClick={handleSubmitDeal}>
-                Update Deal
+            <Box mt={2} display="flex" justifyContent="space-between" alignItems="center">
+              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
+                {saveMsg || ""}
+              </Typography>
+
+              <Button
+                variant="contained"
+                sx={{ backgroundColor: "#6495ED" }}
+                onClick={handleSubmitDeal}
+                disabled={savingDeal}
+              >
+                {savingDeal ? "Updating..." : "Update Deal"}
               </Button>
             </Box>
           </DialogContent>
@@ -830,7 +910,9 @@ function DealsTable() {
                           value={orderForm?.[field] || ""}
                           onChange={handleOrderFieldChange}
                           type={field === "Order Delivery Date" ? "date" : "text"}
-                          InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
+                          InputLabelProps={
+                            field === "Order Delivery Date" ? { shrink: true } : undefined
+                          }
                         />
                       )}
                     </Grid>
@@ -845,7 +927,8 @@ function DealsTable() {
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Attach Purchase Order {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
+                      Attach Purchase Order{" "}
+                      {orderFiles?.purchaseOrder ? `: ${orderFiles.purchaseOrder.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("purchaseOrder")} />
                     </Button>
                   </Grid>
@@ -866,7 +949,8 @@ function DealsTable() {
 
                   <Grid item xs={6}>
                     <Button variant="outlined" component="label" fullWidth>
-                      Proforma Invoice {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
+                      Proforma Invoice{" "}
+                      {orderFiles?.proforma ? `: ${orderFiles.proforma.name}` : ""}
                       <input hidden type="file" onChange={handleOrderFileChange("proforma")} />
                     </Button>
                   </Grid>

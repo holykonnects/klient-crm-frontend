@@ -59,9 +59,7 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
   if (!dPart) return 0;
 
   const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
-  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
-    .split(":")
-    .map((x) => parseInt(x, 10));
+  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0").split(":").map((x) => parseInt(x, 10));
 
   if (!dd || !mm || !yyyy) return 0;
   const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
@@ -70,6 +68,18 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
 };
 
 const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+
+/**
+ * Read response safely (JSON or text) so UI can show real backend errors.
+ */
+async function safeReadResponse(res) {
+  const txt = await res.text();
+  try {
+    return { okParse: true, json: JSON.parse(txt), raw: txt };
+  } catch {
+    return { okParse: false, json: null, raw: txt };
+  }
+}
 
 function OrdersTable() {
   const [orders, setOrders] = useState([]);
@@ -130,9 +140,7 @@ function OrdersTable() {
 
       const filtered =
         role === "End User"
-          ? data.filter((d) =>
-              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username)
-            )
+          ? data.filter((d) => [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username))
           : data;
 
       setAllOrders(filtered);
@@ -172,11 +180,11 @@ function OrdersTable() {
       .then((r) => r.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, role]);
 
   const handleSort = (key) => {
-    const direction =
-      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    const direction = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
     setSortConfig({ key, direction });
   };
 
@@ -193,7 +201,7 @@ function OrdersTable() {
     try {
       return (
         ["Company", "Order ID", "Mobile Number", "Deal Name", "Account ID"].some((key) =>
-          (order[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
+          String(order[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
         ) &&
         (!filterStage || order["Stage"] === filterStage) &&
         (!filterType || order["Type"] === filterType) &&
@@ -269,7 +277,10 @@ function OrdersTable() {
     setOrderFiles((prev) => ({ ...prev, [key]: file }));
   };
 
-  const fileToBase64 = (file) => {
+  /**
+   * Convert browser File -> backend fileObj (adds size + label for better backend logging & naming)
+   */
+  const fileToBase64 = (file, label) => {
     if (!file) return Promise.resolve(null);
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
@@ -279,6 +290,8 @@ function OrdersTable() {
         resolve({
           name: file.name,
           type: file.type || "application/octet-stream",
+          size: file.size || 0,
+          label: label || "",
           base64,
         });
       };
@@ -295,10 +308,10 @@ function OrdersTable() {
 
     setSaving(true);
     try {
-      const poObj = await fileToBase64(orderFiles.purchaseOrder);
-      const drawingObj = await fileToBase64(orderFiles.drawing);
-      const boqObj = await fileToBase64(orderFiles.boq);
-      const proformaObj = await fileToBase64(orderFiles.proforma);
+      const poObj = await fileToBase64(orderFiles.purchaseOrder, "Attach Purchase Order");
+      const drawingObj = await fileToBase64(orderFiles.drawing, "Attach Drawing");
+      const boqObj = await fileToBase64(orderFiles.boq, "Attach BOQ");
+      const proformaObj = await fileToBase64(orderFiles.proforma, "Proforma Invoice");
 
       const payload = { ...orderFormData };
       if (poObj) payload["Attach Purchase Order"] = poObj;
@@ -306,19 +319,34 @@ function OrdersTable() {
       if (boqObj) payload["Attach BOQ"] = boqObj;
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
 
-      await fetch(submitUrl, {
+      // IMPORTANT:
+      // - keep Content-Type text/plain to avoid OPTIONS preflight.
+      // - do NOT use mode:no-cors if you want real success/error feedback.
+      const res = await fetch(submitUrl, {
         method: "POST",
-        mode: "no-cors",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
         body: JSON.stringify({ action: "updateOrder", data: payload }),
       });
+
+      const parsed = await safeReadResponse(res);
+
+      // Expect backend to return JSON: { ok: true } or { ok:false, error:"..." }
+      const ok = parsed.okParse && parsed.json && parsed.json.ok === true;
+
+      if (!ok) {
+        const msg =
+          (parsed.okParse && parsed.json && (parsed.json.error || parsed.json.message)) ||
+          parsed.raw ||
+          "Unknown error";
+        throw new Error(msg);
+      }
 
       alert("✅ Order updated successfully (log appended).");
       setSelectedRow(null);
       fetchOrders();
     } catch (e) {
       console.error("Update order error:", e);
-      alert("❌ Error updating order");
+      alert(`❌ Error updating order:\n${e?.message || e}`);
     } finally {
       setSaving(false);
     }
@@ -492,8 +520,16 @@ function OrdersTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(field) ? (
-                          <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
+                        {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(
+                          field
+                        ) ? (
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label={field}
+                            value={orderFormData[field] || ""}
+                            disabled
+                          />
                         ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
@@ -532,7 +568,9 @@ function OrdersTable() {
                   {section.title === "Order Details" && (
                     <>
                       <Divider sx={{ my: 2 }} />
-                      <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
+                      <Typography
+                        sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}
+                      >
                         Attachments (upload new only if you want to replace)
                       </Typography>
 

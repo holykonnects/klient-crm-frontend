@@ -52,39 +52,55 @@ const selectorStyle = {
   fontSize: 8,
 };
 
-// ✅ strict parser for "dd-MM-yyyy HH:mm:ss"
-const parseDDMMYYYY_HHMMSS = (ts) => {
-  if (!ts) return 0;
-  const raw = String(ts).trim();
-  const [dPart, tPart] = raw.split(" ");
-  if (!dPart) return 0;
-
-  const dBits = dPart.split("-");
-  if (dBits.length !== 3) return 0;
-
-  const dd = parseInt(dBits[0], 10);
-  const mm = parseInt(dBits[1], 10);
-  const yyyy = parseInt(dBits[2], 10);
-
-  if (!dd || !mm || !yyyy) return 0;
-
-  const tBits = String(tPart || "").split(":");
-  const HH = parseInt(tBits[0] || "0", 10);
-  const MM = parseInt(tBits[1] || "0", 10);
-  const SS = parseInt(tBits[2] || "0", 10);
-
-  const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
-  const t = dt.getTime();
-  return Number.isFinite(t) ? t : 0;
-};
-
 const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
 
-// ✅ IMPORTANT: For Orders, ONLY treat "Timestamp" as source of truth.
-// If Timestamp is missing/invalid, that row should NOT win dedupe.
-const getOrderRowTime = (row) => {
-  return parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
+/**
+ * ✅ DealsTable-style robust timestamp parser.
+ * Supports:
+ *  - "16-01-2026 10:30:10"  (dd-MM-yyyy HH:mm:ss)
+ *  - "10/07/2025 14:34:54"  (dd/MM/yyyy HH:mm:ss)
+ *  - ISO strings
+ *  - Date objects / numeric ms (if backend ever returns them)
+ */
+const parseTimestampToMs = (ts) => {
+  if (!ts) return 0;
+
+  if (ts instanceof Date) {
+    const t = ts.getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+  if (typeof ts === "number") return Number.isFinite(ts) ? ts : 0;
+
+  const raw = String(ts).trim();
+  if (!raw) return 0;
+
+  // Try ISO / RFC
+  const iso = Date.parse(raw);
+  if (Number.isFinite(iso)) return iso;
+
+  // dd-MM-yyyy HH:mm:ss OR dd/MM/yyyy HH:mm:ss (also HH:mm or date-only)
+  const m = raw.match(
+    /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/
+  );
+  if (m) {
+    const dd = parseInt(m[1], 10);
+    const mm = parseInt(m[2], 10);
+    const yyyy = parseInt(m[3], 10);
+    const HH = parseInt(m[4] || "0", 10);
+    const MM = parseInt(m[5] || "0", 10);
+    const SS = parseInt(m[6] || "0", 10);
+
+    if (!dd || !mm || !yyyy) return 0;
+    const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
+    const t = dt.getTime();
+    return Number.isFinite(t) ? t : 0;
+  }
+
+  return 0;
 };
+
+// ✅ Orders "latest" is defined ONLY by this field
+const getOrderRowTime = (row) => parseTimestampToMs(row?.["Timestamp"]);
 
 async function safeReadResponse(res) {
   const txt = await res.text();
@@ -96,8 +112,8 @@ async function safeReadResponse(res) {
 }
 
 function OrdersTable() {
-  const [orders, setOrders] = useState([]);       // ✅ front list (deduped latest)
-  const [allOrders, setAllOrders] = useState([]); // ✅ full logs
+  const [orders, setOrders] = useState([]);
+  const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(true);
 
   // filters
@@ -107,7 +123,7 @@ function OrdersTable() {
   const [filterSource, setFilterSource] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
 
-  // ✅ default sort is Timestamp DESC (latest at top)
+  // ✅ default sort: Timestamp desc (latest on top)
   const [sortConfig, setSortConfig] = useState({ key: "Timestamp", direction: "desc" });
 
   // column selector
@@ -163,31 +179,43 @@ function OrdersTable() {
 
       setAllOrders(filtered);
 
-      // ✅ DEDUPE RULE:
-      // winner = row with highest valid Timestamp for that Order ID
+      /**
+       * ✅ DEDUPE (same as DealsTable approach)
+       * Winner = row with highest valid Timestamp for the Order ID.
+       */
       const seen = new Map();
 
       filtered.forEach((row) => {
         const key = String(row["Order ID"] || "").trim();
         if (!key) return;
 
-        const tNew = getOrderRowTime(row);
         const existing = seen.get(key);
+
+        const tNew = getOrderRowTime(row);
         const tOld = existing ? getOrderRowTime(existing) : 0;
 
-        // If new timestamp is invalid (0), it must NEVER override a valid one
+        // Prefer valid timestamps; newest wins
         if (!existing) {
           seen.set(key, row);
           return;
         }
 
-        // Prefer valid timestamps, and then newest
-        if (tNew > tOld) {
+        // If existing has no valid time but new has, take new
+        if (!tOld && tNew) {
           seen.set(key, row);
+          return;
         }
+
+        // If both valid, newest wins
+        if (tNew && tNew > tOld) {
+          seen.set(key, row);
+          return;
+        }
+
+        // Otherwise keep existing
       });
 
-      // ✅ default order: Timestamp DESC
+      // ✅ front list: latest first
       const deduped = Array.from(seen.values()).sort(
         (a, b) => getOrderRowTime(b) - getOrderRowTime(a)
       );
@@ -220,18 +248,19 @@ function OrdersTable() {
     setSortConfig({ key, direction });
   };
 
-  // ✅ sorting that correctly handles Timestamp + numeric + string
+  /**
+   * ✅ Correct sorting:
+   * - Timestamp: numeric epoch
+   * - Numeric-looking: numeric (₹, commas)
+   * - Else string compare
+   */
   const sortedOrders = useMemo(() => {
     const arr = [...orders];
-    const { key, direction } = sortConfig || {};
+    const key = sortConfig?.key || "";
+    const dir = sortConfig?.direction === "asc" ? 1 : -1;
     if (!key) return arr;
 
-    const dir = direction === "asc" ? 1 : -1;
-
     return arr.sort((a, b) => {
-      const aVal = a?.[key];
-      const bVal = b?.[key];
-
       // Timestamp sort
       if (key === "Timestamp") {
         const ta = getOrderRowTime(a);
@@ -239,12 +268,14 @@ function OrdersTable() {
         return (ta - tb) * dir;
       }
 
-      // numeric-ish sort (₹, commas)
+      const aVal = a?.[key];
+      const bVal = b?.[key];
+
+      // numeric-ish sort
       const aNum = Number(String(aVal ?? "").replace(/[₹,]/g, "").trim());
       const bNum = Number(String(bVal ?? "").replace(/[₹,]/g, "").trim());
       const aIsNum = Number.isFinite(aNum) && String(aVal ?? "").trim() !== "";
       const bIsNum = Number.isFinite(bNum) && String(bVal ?? "").trim() !== "";
-
       if (aIsNum && bIsNum) return (aNum - bNum) * dir;
 
       // string sort
@@ -303,12 +334,14 @@ function OrdersTable() {
     return value || "";
   };
 
+  // open edit
   const handleEditClick = (row) => {
     setSelectedRow(row);
     setOrderFormData({ ...(row || {}) });
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
+  // logs
   const handleViewLogs = (row) => {
     const key = String(row["Order ID"] || "").trim();
     if (!key) {
@@ -570,13 +603,7 @@ function OrdersTable() {
                         {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(
                           field
                         ) ? (
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label={field}
-                            value={orderFormData[field] || ""}
-                            disabled
-                          />
+                          <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
                         ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>

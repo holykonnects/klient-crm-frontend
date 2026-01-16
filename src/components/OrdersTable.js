@@ -1,5 +1,5 @@
 // src/components/OrdersTable.js
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -52,18 +52,27 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+// ✅ strict parser for "dd-MM-yyyy HH:mm:ss"
 const parseDDMMYYYY_HHMMSS = (ts) => {
   if (!ts) return 0;
   const raw = String(ts).trim();
   const [dPart, tPart] = raw.split(" ");
   if (!dPart) return 0;
 
-  const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
-  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
-    .split(":")
-    .map((x) => parseInt(x, 10));
+  const dBits = dPart.split("-");
+  if (dBits.length !== 3) return 0;
+
+  const dd = parseInt(dBits[0], 10);
+  const mm = parseInt(dBits[1], 10);
+  const yyyy = parseInt(dBits[2], 10);
 
   if (!dd || !mm || !yyyy) return 0;
+
+  const tBits = String(tPart || "").split(":");
+  const HH = parseInt(tBits[0] || "0", 10);
+  const MM = parseInt(tBits[1] || "0", 10);
+  const SS = parseInt(tBits[2] || "0", 10);
+
   const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
   const t = dt.getTime();
   return Number.isFinite(t) ? t : 0;
@@ -71,29 +80,12 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
 
 const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
 
-/**
- * Robust row time: use Timestamp first, then fallbacks.
- */
-const getRowTime = (row) => {
-  const t1 = parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
-  if (t1) return t1;
-
-  const t2 = parseDDMMYYYY_HHMMSS(row?.["Distribution Timestamp"]);
-  if (t2) return t2;
-
-  const any =
-    row?.["Timestamp"] ||
-    row?.["Created At"] ||
-    row?.["Last Updated"] ||
-    row?.["Created"] ||
-    "";
-  const t3 = Date.parse(any);
-  return Number.isFinite(t3) ? t3 : 0;
+// ✅ IMPORTANT: For Orders, ONLY treat "Timestamp" as source of truth.
+// If Timestamp is missing/invalid, that row should NOT win dedupe.
+const getOrderRowTime = (row) => {
+  return parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
 };
 
-/**
- * Read response safely (JSON or text) so UI can show backend errors.
- */
 async function safeReadResponse(res) {
   const txt = await res.text();
   try {
@@ -104,8 +96,8 @@ async function safeReadResponse(res) {
 }
 
 function OrdersTable() {
-  const [orders, setOrders] = useState([]);
-  const [allOrders, setAllOrders] = useState([]);
+  const [orders, setOrders] = useState([]);       // ✅ front list (deduped latest)
+  const [allOrders, setAllOrders] = useState([]); // ✅ full logs
   const [loading, setLoading] = useState(true);
 
   // filters
@@ -114,7 +106,9 @@ function OrdersTable() {
   const [filterType, setFilterType] = useState("");
   const [filterSource, setFilterSource] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
-  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
+
+  // ✅ default sort is Timestamp DESC (latest at top)
+  const [sortConfig, setSortConfig] = useState({ key: "Timestamp", direction: "desc" });
 
   // column selector
   const [anchorEl, setAnchorEl] = useState(null);
@@ -169,21 +163,33 @@ function OrdersTable() {
 
       setAllOrders(filtered);
 
-      // ✅ latest by Order ID (ROBUST)
+      // ✅ DEDUPE RULE:
+      // winner = row with highest valid Timestamp for that Order ID
       const seen = new Map();
+
       filtered.forEach((row) => {
         const key = String(row["Order ID"] || "").trim();
         if (!key) return;
 
+        const tNew = getOrderRowTime(row);
         const existing = seen.get(key);
-        const tNew = getRowTime(row);
-        const tOld = existing ? getRowTime(existing) : 0;
+        const tOld = existing ? getOrderRowTime(existing) : 0;
 
-        if (!existing || tNew > tOld) seen.set(key, row);
+        // If new timestamp is invalid (0), it must NEVER override a valid one
+        if (!existing) {
+          seen.set(key, row);
+          return;
+        }
+
+        // Prefer valid timestamps, and then newest
+        if (tNew > tOld) {
+          seen.set(key, row);
+        }
       });
 
+      // ✅ default order: Timestamp DESC
       const deduped = Array.from(seen.values()).sort(
-        (a, b) => getRowTime(b) - getRowTime(a)
+        (a, b) => getOrderRowTime(b) - getOrderRowTime(a)
       );
 
       setOrders(deduped);
@@ -205,7 +211,7 @@ function OrdersTable() {
       .then((r) => r.json())
       .then(setValidationData)
       .catch((e) => console.error("Validation fetch error:", e));
-    
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [username, role]);
 
   const handleSort = (key) => {
@@ -214,38 +220,39 @@ function OrdersTable() {
     setSortConfig({ key, direction });
   };
 
-  // ✅ improved sorting: timestamp + numeric + string
-  const sortedOrders = [...orders].sort((a, b) => {
-    if (!sortConfig.key) return 0;
+  // ✅ sorting that correctly handles Timestamp + numeric + string
+  const sortedOrders = useMemo(() => {
+    const arr = [...orders];
+    const { key, direction } = sortConfig || {};
+    if (!key) return arr;
 
-    const key = sortConfig.key;
-    const aVal = a?.[key];
-    const bVal = b?.[key];
+    const dir = direction === "asc" ? 1 : -1;
 
-    // Timestamp sorting
-    if (key === "Timestamp" || key === "Distribution Timestamp") {
-      const diff = getRowTime(a) - getRowTime(b);
-      return sortConfig.direction === "asc" ? diff : -diff;
-    }
+    return arr.sort((a, b) => {
+      const aVal = a?.[key];
+      const bVal = b?.[key];
 
-    // Numeric-ish sorting
-    const aNum = Number(String(aVal ?? "").replace(/[₹,]/g, "").trim());
-    const bNum = Number(String(bVal ?? "").replace(/[₹,]/g, "").trim());
-    const aIsNum = Number.isFinite(aNum) && String(aVal ?? "").trim() !== "";
-    const bIsNum = Number.isFinite(bNum) && String(bVal ?? "").trim() !== "";
+      // Timestamp sort
+      if (key === "Timestamp") {
+        const ta = getOrderRowTime(a);
+        const tb = getOrderRowTime(b);
+        return (ta - tb) * dir;
+      }
 
-    if (aIsNum && bIsNum) {
-      const diff = aNum - bNum;
-      return sortConfig.direction === "asc" ? diff : -diff;
-    }
+      // numeric-ish sort (₹, commas)
+      const aNum = Number(String(aVal ?? "").replace(/[₹,]/g, "").trim());
+      const bNum = Number(String(bVal ?? "").replace(/[₹,]/g, "").trim());
+      const aIsNum = Number.isFinite(aNum) && String(aVal ?? "").trim() !== "";
+      const bIsNum = Number.isFinite(bNum) && String(bVal ?? "").trim() !== "";
 
-    // Default string sort
-    const sA = String(aVal ?? "");
-    const sB = String(bVal ?? "");
-    return sortConfig.direction === "asc"
-      ? sA.localeCompare(sB)
-      : sB.localeCompare(sA);
-  });
+      if (aIsNum && bIsNum) return (aNum - bNum) * dir;
+
+      // string sort
+      const sA = String(aVal ?? "");
+      const sB = String(bVal ?? "");
+      return sA.localeCompare(sB) * dir;
+    });
+  }, [orders, sortConfig]);
 
   const filteredOrders = sortedOrders.filter((order) => {
     try {
@@ -296,23 +303,21 @@ function OrdersTable() {
     return value || "";
   };
 
-  // open edit
   const handleEditClick = (row) => {
     setSelectedRow(row);
     setOrderFormData({ ...(row || {}) });
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
-  // logs (FULL ROW)
   const handleViewLogs = (row) => {
-    const key = row["Order ID"];
+    const key = String(row["Order ID"] || "").trim();
     if (!key) {
       alert("No Order ID found for logs.");
       return;
     }
     const logs = allOrders
-      .filter((r) => r["Order ID"] === key)
-      .sort((a, b) => getRowTime(b) - getRowTime(a));
+      .filter((r) => String(r["Order ID"] || "").trim() === key)
+      .sort((a, b) => getOrderRowTime(b) - getOrderRowTime(a)); // ✅ newest first
     setOrderLogs(logs);
     setLogsOpen(true);
   };
@@ -327,9 +332,6 @@ function OrdersTable() {
     setOrderFiles((prev) => ({ ...prev, [key]: file }));
   };
 
-  /**
-   * Convert browser File -> backend fileObj (adds size + label for backend logging & naming)
-   */
   const fileToBase64 = (file, label) => {
     if (!file) return Promise.resolve(null);
     return new Promise((resolve, reject) => {
@@ -369,9 +371,6 @@ function OrdersTable() {
       if (boqObj) payload["Attach BOQ"] = boqObj;
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
 
-      // IMPORTANT:
-      // - keep Content-Type text/plain to avoid OPTIONS preflight
-      // - remove no-cors so we can read server response
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -379,8 +378,6 @@ function OrdersTable() {
       });
 
       const parsed = await safeReadResponse(res);
-
-      // Expect backend: { ok:true } OR { ok:false, error:"..." }
       const ok = parsed.okParse && parsed.json && parsed.json.ok === true;
 
       if (!ok) {
@@ -618,9 +615,7 @@ function OrdersTable() {
                   {section.title === "Order Details" && (
                     <>
                       <Divider sx={{ my: 2 }} />
-                      <Typography
-                        sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}
-                      >
+                      <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
                         Attachments (upload new only if you want to replace)
                       </Typography>
 

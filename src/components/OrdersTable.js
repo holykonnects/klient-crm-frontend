@@ -59,7 +59,9 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
   if (!dPart) return 0;
 
   const [dd, mm, yyyy] = dPart.split("-").map((x) => parseInt(x, 10));
-  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0").split(":").map((x) => parseInt(x, 10));
+  const [HH = 0, MM = 0, SS = 0] = (tPart || "0:0:0")
+    .split(":")
+    .map((x) => parseInt(x, 10));
 
   if (!dd || !mm || !yyyy) return 0;
   const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
@@ -70,7 +72,27 @@ const parseDDMMYYYY_HHMMSS = (ts) => {
 const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
 
 /**
- * Read response safely (JSON or text) so UI can show real backend errors.
+ * Robust row time: use Timestamp first, then fallbacks.
+ */
+const getRowTime = (row) => {
+  const t1 = parseDDMMYYYY_HHMMSS(row?.["Timestamp"]);
+  if (t1) return t1;
+
+  const t2 = parseDDMMYYYY_HHMMSS(row?.["Distribution Timestamp"]);
+  if (t2) return t2;
+
+  const any =
+    row?.["Timestamp"] ||
+    row?.["Created At"] ||
+    row?.["Last Updated"] ||
+    row?.["Created"] ||
+    "";
+  const t3 = Date.parse(any);
+  return Number.isFinite(t3) ? t3 : 0;
+};
+
+/**
+ * Read response safely (JSON or text) so UI can show backend errors.
  */
 async function safeReadResponse(res) {
   const txt = await res.text();
@@ -124,7 +146,7 @@ function OrdersTable() {
   const dataUrl =
     "https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec";
 
-  // Submit webapp (same as deals submitUrl; supports updateOrder)
+  // Submit webapp (supports updateOrder)
   const submitUrl =
     "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
 
@@ -140,25 +162,28 @@ function OrdersTable() {
 
       const filtered =
         role === "End User"
-          ? data.filter((d) => [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username))
+          ? data.filter((d) =>
+              [d["Account Owner"], d["Lead Owner"], d["Owner"]].includes(username)
+            )
           : data;
 
       setAllOrders(filtered);
 
-      // ✅ latest by Order ID
+      // ✅ latest by Order ID (ROBUST)
       const seen = new Map();
       filtered.forEach((row) => {
-        const key = row["Order ID"] || "";
+        const key = String(row["Order ID"] || "").trim();
         if (!key) return;
 
         const existing = seen.get(key);
-        const tNew = parseDDMMYYYY_HHMMSS(row["Timestamp"]);
-        const tOld = parseDDMMYYYY_HHMMSS(existing?.["Timestamp"]);
+        const tNew = getRowTime(row);
+        const tOld = existing ? getRowTime(existing) : 0;
+
         if (!existing || tNew > tOld) seen.set(key, row);
       });
 
       const deduped = Array.from(seen.values()).sort(
-        (a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"])
+        (a, b) => getRowTime(b) - getRowTime(a)
       );
 
       setOrders(deduped);
@@ -184,17 +209,42 @@ function OrdersTable() {
   }, [username, role]);
 
   const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+    const direction =
+      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
     setSortConfig({ key, direction });
   };
 
+  // ✅ improved sorting: timestamp + numeric + string
   const sortedOrders = [...orders].sort((a, b) => {
     if (!sortConfig.key) return 0;
-    const aVal = a[sortConfig.key] || "";
-    const bVal = b[sortConfig.key] || "";
+
+    const key = sortConfig.key;
+    const aVal = a?.[key];
+    const bVal = b?.[key];
+
+    // Timestamp sorting
+    if (key === "Timestamp" || key === "Distribution Timestamp") {
+      const diff = getRowTime(a) - getRowTime(b);
+      return sortConfig.direction === "asc" ? diff : -diff;
+    }
+
+    // Numeric-ish sorting
+    const aNum = Number(String(aVal ?? "").replace(/[₹,]/g, "").trim());
+    const bNum = Number(String(bVal ?? "").replace(/[₹,]/g, "").trim());
+    const aIsNum = Number.isFinite(aNum) && String(aVal ?? "").trim() !== "";
+    const bIsNum = Number.isFinite(bNum) && String(bVal ?? "").trim() !== "";
+
+    if (aIsNum && bIsNum) {
+      const diff = aNum - bNum;
+      return sortConfig.direction === "asc" ? diff : -diff;
+    }
+
+    // Default string sort
+    const sA = String(aVal ?? "");
+    const sB = String(bVal ?? "");
     return sortConfig.direction === "asc"
-      ? String(aVal).localeCompare(String(bVal))
-      : String(bVal).localeCompare(String(aVal));
+      ? sA.localeCompare(sB)
+      : sB.localeCompare(sA);
   });
 
   const filteredOrders = sortedOrders.filter((order) => {
@@ -262,7 +312,7 @@ function OrdersTable() {
     }
     const logs = allOrders
       .filter((r) => r["Order ID"] === key)
-      .sort((a, b) => parseDDMMYYYY_HHMMSS(b["Timestamp"]) - parseDDMMYYYY_HHMMSS(a["Timestamp"]));
+      .sort((a, b) => getRowTime(b) - getRowTime(a));
     setOrderLogs(logs);
     setLogsOpen(true);
   };
@@ -278,7 +328,7 @@ function OrdersTable() {
   };
 
   /**
-   * Convert browser File -> backend fileObj (adds size + label for better backend logging & naming)
+   * Convert browser File -> backend fileObj (adds size + label for backend logging & naming)
    */
   const fileToBase64 = (file, label) => {
     if (!file) return Promise.resolve(null);
@@ -320,8 +370,8 @@ function OrdersTable() {
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
 
       // IMPORTANT:
-      // - keep Content-Type text/plain to avoid OPTIONS preflight.
-      // - do NOT use mode:no-cors if you want real success/error feedback.
+      // - keep Content-Type text/plain to avoid OPTIONS preflight
+      // - remove no-cors so we can read server response
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "text/plain;charset=utf-8" },
@@ -330,7 +380,7 @@ function OrdersTable() {
 
       const parsed = await safeReadResponse(res);
 
-      // Expect backend to return JSON: { ok: true } or { ok:false, error:"..." }
+      // Expect backend: { ok:true } OR { ok:false, error:"..." }
       const ok = parsed.okParse && parsed.json && parsed.json.ok === true;
 
       if (!ok) {

@@ -1,15 +1,36 @@
 // DashboardLayout.js
 import React, { useState, useEffect } from 'react';
 import {
-  Box, Drawer, List, ListItem, ListItemIcon, ListItemText,
-  IconButton, Tooltip, Typography, Divider
+  Box,
+  Drawer,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  IconButton,
+  Tooltip,
+  Typography,
+  Divider
 } from '@mui/material';
 import {
-  ChevronLeft, ChevronRight,
-  PersonAddAlt, Dashboard, AccountCircle, MonetizationOn,
-  AssignmentTurnedIn, Assignment, Groups, EditCalendar,
-  AddCircle, Logout as LogoutIcon, FlightTakeoff, CurrencyRupee,
-  BusinessCenter, Construction, Email, ManageSearch
+  ChevronLeft,
+  ChevronRight,
+  PersonAddAlt,
+  Dashboard,
+  AccountCircle,
+  MonetizationOn,
+  AssignmentTurnedIn,
+  Assignment,
+  Groups,
+  EditCalendar,
+  AddCircle,
+  Logout as LogoutIcon,
+  FlightTakeoff,
+  CurrencyRupee,
+  BusinessCenter,
+  Construction,
+  Email,
+  ManageSearch
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -30,7 +51,6 @@ function DashboardLayout({ children }) {
   const toggleDrawer = () => setOpen(prev => !prev);
 
   const menuItems = [
-    // ✅ NEW PAGE (route added in App.js as "existence-check")
     { label: 'Check Owner', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
     { label: 'Dashboard', icon: <Dashboard />, route: '/dashboard', access: 'Dashboard' },
     { label: 'Add Lead', icon: <AddCircle />, route: '/add-lead', access: 'Add Lead' },
@@ -64,11 +84,7 @@ function DashboardLayout({ children }) {
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: 'relative',
             zIndex: 1200,
-            fontFamily: 'Montserrat, sans-serif',
-
-            // ✅ keeps logout at bottom if menu grows
-            display: 'flex',
-            flexDirection: 'column'
+            fontFamily: 'Montserrat, sans-serif'
           }
         }}
       >
@@ -79,44 +95,41 @@ function DashboardLayout({ children }) {
           </IconButton>
         </Box>
 
-        {/* ✅ Scrollable area for menu */}
-        <Box sx={{ flex: 1, overflowY: 'auto' }}>
-          <List>
-            {menuItems
-              .filter(item => user?.pageAccess?.includes(item.access))
-              .map(({ label, icon, route }) => (
-                <Tooltip key={label} title={open ? '' : label} placement="right">
-                  <ListItem button component={Link} to={route}>
-                    <ListItemIcon sx={{ color: cornflowerBlue }}>{icon}</ListItemIcon>
-                    {open && (
-                      <ListItemText
-                        primary={
-                          <Typography
-                            sx={{
-                              color: cornflowerBlue,
-                              fontWeight: 500,
-                              fontFamily: 'Montserrat, sans-serif',
-                              fontSize: 13
-                            }}
-                          >
-                            {label}
-                          </Typography>
-                        }
-                      />
-                    )}
-                  </ListItem>
-                </Tooltip>
-              ))}
-          </List>
-
-          {/* Divider */}
-          <Box>
-            <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 3 }} />
-          </Box>
-        </Box>
-
-        {/* Logout Button (Pinned at bottom) */}
+        {/* Menu + Logout (INLINE) */}
         <List>
+          {menuItems
+            .filter(item => user?.pageAccess?.includes(item.access))
+            .map(({ label, icon, route }) => (
+              <Tooltip key={label} title={open ? '' : label} placement="right">
+                <ListItem button component={Link} to={route}>
+                  <ListItemIcon sx={{ color: cornflowerBlue }}>
+                    {icon}
+                  </ListItemIcon>
+                  {open && (
+                    <ListItemText
+                      primary={
+                        <Typography
+                          sx={{
+                            color: cornflowerBlue,
+                            fontWeight: 500,
+                            fontFamily: 'Montserrat, sans-serif',
+                            fontSize: 13
+                          }}
+                        >
+                          {label}
+                        </Typography>
+                      }
+                    />
+                  )}
+                </ListItem>
+              </Tooltip>
+            ))}
+
+          {/* TWO DIVIDERS BELOW LAST MENU ITEM */}
+          <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 2 }} />
+          <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 2 }} />
+
+          {/* LOGOUT INLINE */}
           <Tooltip title="Logout" placement="right">
             <ListItem button onClick={logout}>
               <ListItemIcon sx={{ color: 'red' }}>

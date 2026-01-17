@@ -1,93 +1,138 @@
-import React, { useEffect, useState } from 'react';
+// src/components/AccountsTable.js
+import React, { useEffect, useState, useMemo, useCallback } from "react";
 import {
-  Box, Typography, Table, TableHead, TableRow, TableCell,
-  TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
-  IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox,
-  Button, Popover, Accordion, AccordionSummary, AccordionDetails
-} from '@mui/material';
-import EditIcon from '@mui/icons-material/Edit';
-import ViewColumnIcon from '@mui/icons-material/ViewColumn';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import { createTheme, ThemeProvider } from '@mui/material/styles';
-import { useAuth } from './AuthContext'; // adjust path if needed
-import '@fontsource/montserrat';
-import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
-import EventIcon from '@mui/icons-material/Event'; 
-import CalendarView from './CalendarView'; // adjust path if needed
+  Box,
+  Typography,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TextField,
+  Select,
+  MenuItem,
+  InputLabel,
+  FormControl,
+  IconButton,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  Grid,
+  Checkbox,
+  Button,
+  Popover,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails,
+} from "@mui/material";
+
+import EditIcon from "@mui/icons-material/Edit";
+import ViewColumnIcon from "@mui/icons-material/ViewColumn";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import EventIcon from "@mui/icons-material/Event";
+
+import { createTheme, ThemeProvider } from "@mui/material/styles";
+import { useAuth } from "./AuthContext"; // adjust path if needed
+import "@fontsource/montserrat";
+import LoadingOverlay from "./LoadingOverlay"; // Adjust path if needed
+import CalendarView from "./CalendarView"; // adjust path if needed
 
 const theme = createTheme({
   typography: {
-    fontFamily: 'Montserrat, sans-serif',
-    fontSize: 10.5
-  }
+    fontFamily: "Montserrat, sans-serif",
+    fontSize: 10.5,
+  },
 });
 
 const selectorStyle = {
-  fontFamily: 'Montserrat, sans-serif',
-  fontSize: 8
+  fontFamily: "Montserrat, sans-serif",
+  fontSize: 8,
 };
 
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [filterSource, setFilterSource] = useState('');
-  const [filterOwner, setFilterOwner] = useState('');
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [filterSource, setFilterSource] = useState("");
+  const [filterOwner, setFilterOwner] = useState("");
+
   const [validationData, setValidationData] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: '', direction: 'asc' });
+  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
+
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
+
   const [createDealRow, setCreateDealRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
+
+  // ✅ Prevent double submit + show "Creating Deal..."
+  const [submittingDeal, setSubmittingDeal] = useState(false);
+
   const [selectedEntryRow, setSelectedEntryRow] = useState(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
-  const [entryType, setEntryType] = useState('');
-  
+  const [entryType, setEntryType] = useState("");
+
   const { user } = useAuth();
   const username = user?.username;
   const role = user?.role;
 
+  const dataUrl =
+    "https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec";
+  const validationUrl =
+    "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+  const submitUrl =
+    "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
 
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec';
-  const validationUrl = 'https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec';
-  const submitUrl = 'https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec';
-
-   useEffect(() => {
+  useEffect(() => {
     fetch(dataUrl)
-      .then(res => res.json())
-      .then(data => {
+      .then((res) => res.json())
+      .then((data) => {
         let filteredAccounts = data;
 
-        if (role === 'End User') {
-          filteredAccounts = data.filter(acc =>
-            acc['Account Owner'] === username || acc['Lead Owner'] === username || acc['Owner'] === username
+        // ✅ Role-based filter
+        if (role === "End User") {
+          filteredAccounts = data.filter(
+            (acc) =>
+              acc["Account Owner"] === username ||
+              acc["Lead Owner"] === username ||
+              acc["Owner"] === username
           );
         }
 
         setAccounts(filteredAccounts);
+
+        // ✅ Load visible columns from storage
         setVisibleColumns(
           JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
-          (filteredAccounts.length ? Object.keys(filteredAccounts[0]) : [])
+            (filteredAccounts.length ? Object.keys(filteredAccounts[0]) : [])
         );
+
         setLoading(false);
-      });
+      })
+      .catch(() => setLoading(false));
 
     fetch(validationUrl)
-      .then(res => res.json())
-      .then(setValidationData);
+      .then((res) => res.json())
+      .then(setValidationData)
+      .catch(() => {});
   }, [username, role]);
 
   const handleSort = (key) => {
-    const direction = sortConfig.key === key && sortConfig.direction === 'asc' ? 'desc' : 'asc';
+    const direction =
+      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
     setSortConfig({ key, direction });
   };
 
   const handleColumnToggle = (col) => {
-    setVisibleColumns(prev => {
+    setVisibleColumns((prev) => {
       const updated = prev.includes(col)
-        ? prev.filter(c => c !== col)
+        ? prev.filter((c) => c !== col)
         : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify(updated));
+      localStorage.setItem(
+        `visibleColumns-${username}-accounts`,
+        JSON.stringify(updated)
+      );
       return updated;
     });
   };
@@ -103,120 +148,147 @@ function AccountsTable() {
     localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify([]));
   };
 
-  const filteredAccounts = [...accounts]
-    .sort((a, b) => {
-      if (!sortConfig.key) return 0;
-      const aVal = a[sortConfig.key] || '';
-      const bVal = b[sortConfig.key] || '';
-      return sortConfig.direction === 'asc'
-        ? String(aVal).localeCompare(String(bVal))
-        : String(bVal).localeCompare(String(aVal));
-    })
-    .filter(acc => {
-      try {
-        return (
-          ['First Name', 'Last Name', 'Company', 'Mobile Number'].some(field =>
-            (acc[field] || '').toLowerCase().includes(searchTerm.toLowerCase())
-          ) &&
-          (!filterSource || acc['Lead Source'] === filterSource) &&
-          (!filterOwner || acc['Lead Owner'] === filterOwner)
-        );
-      } catch (error) {
-        return false;
-      }
-    });
+  // ✅ Memoized sorting/filtering so modal typing doesn’t lag
+  const filteredAccounts = useMemo(() => {
+    return [...accounts]
+      .sort((a, b) => {
+        if (!sortConfig.key) return 0;
+        const aVal = a[sortConfig.key] || "";
+        const bVal = b[sortConfig.key] || "";
+        return sortConfig.direction === "asc"
+          ? String(aVal).localeCompare(String(bVal))
+          : String(bVal).localeCompare(String(aVal));
+      })
+      .filter((acc) => {
+        try {
+          return (
+            ["First Name", "Last Name", "Company", "Mobile Number"].some((field) =>
+              (acc[field] || "").toLowerCase().includes(searchTerm.toLowerCase())
+            ) &&
+            (!filterSource || acc["Lead Source"] === filterSource) &&
+            (!filterOwner || acc["Lead Owner"] === filterOwner)
+          );
+        } catch {
+          return false;
+        }
+      });
+  }, [accounts, sortConfig, searchTerm, filterSource, filterOwner]);
 
-  const handleFieldChange = (e) => {
+  const handleFieldChange = useCallback((e) => {
     const { name, value } = e.target;
-    setDealFormData(prev => ({ ...prev, [name]: value }));
-  };
+    setDealFormData((prev) => ({ ...prev, [name]: value }));
+  }, []);
 
-    const openDealModal = (acc) => {
+  const openDealModal = (acc) => {
     const now = new Date();
-    const pad = n => String(n).padStart(2, '0');
-    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(now.getFullYear()).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}`;
-    const accountOwner = acc['Lead Owner'] || acc['Account Owner'] || '';
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(
+      now.getFullYear()
+    ).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
+      now.getSeconds()
+    )}`;
+
+    const accountOwner = acc["Lead Owner"] || acc["Account Owner"] || "";
 
     setCreateDealRow(acc);
     setDealFormData({
       ...acc,
-      'Account Owner': accountOwner,
-      'Timestamp': timestamp
+      "Account Owner": accountOwner,
+      Timestamp: timestamp,
     });
   };
 
   const handleSubmitDeal = async () => {
+    if (submittingDeal) return; // ✅ block double submit
+    setSubmittingDeal(true);
+
     const payload = {
       ...dealFormData,
-      'Account Owner': dealFormData['Account Owner'] || dealFormData['Lead Owner'] || '',
-      'Lead Owner': dealFormData['Lead Owner'] || dealFormData['Account Owner'] || '',
-      'Timestamp': dealFormData['Timestamp']
+      "Account Owner":
+        dealFormData["Account Owner"] || dealFormData["Lead Owner"] || "",
+      "Lead Owner":
+        dealFormData["Lead Owner"] || dealFormData["Account Owner"] || "",
+      Timestamp: dealFormData["Timestamp"],
     };
-
 
     try {
       await fetch(submitUrl, {
-        method: 'POST',
-        mode: 'no-cors',
+        method: "POST",
+        mode: "no-cors",
         headers: {
-          'Content-Type': 'application/json'
+          "Content-Type": "application/json",
         },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(payload),
       });
-      alert('✅ Deal submitted successfully');
-    } catch (err) {
-      alert('❌ Error submitting deal');
-    }
 
-    setCreateDealRow(null);
+      alert("✅ Deal submitted successfully");
+      setCreateDealRow(null);
+    } catch (err) {
+      alert("❌ Error submitting deal");
+    } finally {
+      setSubmittingDeal(false);
+    }
   };
 
-    const handleOpenMeetingFromRow = (row, type) => {
-      setSelectedEntryRow(row);
-      setEntryType(type); // 'Lead', 'Account', 'Deal'
-      setShowCalendarModal(true);
-    };
+  const handleOpenMeetingFromRow = (row, type) => {
+    setSelectedEntryRow(row);
+    setEntryType(type); // 'Lead', 'Account', 'Deal'
+    setShowCalendarModal(true);
+  };
 
   return (
     <ThemeProvider theme={theme}>
-    {loading && <LoadingOverlay />}
+      {loading && <LoadingOverlay />}
+
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-          <Typography variant="h5" fontWeight="bold">Accounts Records</Typography>
+          <img
+            src="/assets/kk-logo.png"
+            alt="Klient Konnect"
+            style={{ height: 100 }}
+          />
+          <Typography variant="h5" fontWeight="bold">
+            Accounts Records
+          </Typography>
         </Box>
-                      
+
         <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
             value={searchTerm}
-            onChange={e => setSearchTerm(e.target.value)}
+            onChange={(e) => setSearchTerm(e.target.value)}
             size="small"
             sx={{ minWidth: 200 }}
           />
+
           <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Lead Source</InputLabel>
             <Select
               value={filterSource}
               label="Lead Source"
-              onChange={e => setFilterSource(e.target.value)}
+              onChange={(e) => setFilterSource(e.target.value)}
             >
               <MenuItem value="">All</MenuItem>
-              {(validationData['Lead Source'] || []).map(opt => (
-                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+              {(validationData["Lead Source"] || []).map((opt) => (
+                <MenuItem key={opt} value={opt}>
+                  {opt}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
+
           <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Account Owner</InputLabel>
             <Select
               value={filterOwner}
               label="Account Owner"
-              onChange={e => setFilterOwner(e.target.value)}
+              onChange={(e) => setFilterOwner(e.target.value)}
             >
               <MenuItem value="">All</MenuItem>
-              {(validationData['Account Owner'] || []).map(opt => (
-                <MenuItem key={opt} value={opt}>{opt}</MenuItem>
+              {(validationData["Account Owner"] || []).map((opt) => (
+                <MenuItem key={opt} value={opt}>
+                  {opt}
+                </MenuItem>
               ))}
             </Select>
           </FormControl>
@@ -224,17 +296,28 @@ function AccountsTable() {
           <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
             <ViewColumnIcon />
           </IconButton>
-          <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
+
+          <Popover
+            open={Boolean(anchorEl)}
+            anchorEl={anchorEl}
+            onClose={() => setAnchorEl(null)}
+          >
             <Box p={2} sx={selectorStyle}>
-              <Button size="small" onClick={handleSelectAll}>Select All</Button>
-              <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-              {Object.keys(accounts[0] || {}).map(col => (
+              <Button size="small" onClick={handleSelectAll}>
+                Select All
+              </Button>
+              <Button size="small" onClick={handleDeselectAll}>
+                Deselect All
+              </Button>
+
+              {Object.keys(accounts[0] || {}).map((col) => (
                 <Box key={col}>
                   <Checkbox
                     size="small"
                     checked={visibleColumns.includes(col)}
                     onChange={() => handleColumnToggle(col)}
-                  /> {col}
+                  />{" "}
+                  {col}
                 </Box>
               ))}
             </Box>
@@ -243,73 +326,148 @@ function AccountsTable() {
 
         <Table>
           <TableHead>
-            <TableRow style={{ backgroundColor: '#6495ED' }}>
-              {visibleColumns.map(header => (
+            <TableRow style={{ backgroundColor: "#6495ED" }}>
+              {visibleColumns.map((header) => (
                 <TableCell
                   key={header}
                   onClick={() => handleSort(header)}
-                  style={{ color: 'white', cursor: 'pointer', fontWeight: 'bold' }}
+                  style={{
+                    color: "white",
+                    cursor: "pointer",
+                    fontWeight: "bold",
+                  }}
                 >
-                  {header} {sortConfig.key === header ? (sortConfig.direction === 'asc' ? '↑' : '↓') : ''}
+                  {header}{" "}
+                  {sortConfig.key === header
+                    ? sortConfig.direction === "asc"
+                      ? "↑"
+                      : "↓"
+                    : ""}
                 </TableCell>
               ))}
-              <TableCell style={{ color: 'white', fontWeight: 'bold' }}>Actions</TableCell>
+              <TableCell style={{ color: "white", fontWeight: "bold" }}>
+                Actions
+              </TableCell>
             </TableRow>
           </TableHead>
+
           <TableBody>
             {filteredAccounts.map((acc, index) => (
               <TableRow key={index}>
                 {visibleColumns.map((col, i) => (
                   <TableCell key={i}>{acc[col]}</TableCell>
                 ))}
+
                 <TableCell>
-                  <IconButton onClick={() => openDealModal(acc)}><EditIcon /></IconButton>
-                  <IconButton onClick={() => handleOpenMeetingFromRow(acc, 'Account')}><EventIcon /></IconButton>
+                  <IconButton onClick={() => openDealModal(acc)}>
+                    <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => handleOpenMeetingFromRow(acc, "Account")}>
+                    <EventIcon />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
           </TableBody>
         </Table>
 
-        <Dialog open={!!createDealRow} onClose={() => setCreateDealRow(null)} maxWidth="md" fullWidth>
-          <DialogTitle sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+        <Dialog
+          open={!!createDealRow}
+          onClose={() => (submittingDeal ? null : setCreateDealRow(null))}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
             Create Deal
           </DialogTitle>
+
           <DialogContent dividers>
-            {[{
-              title: 'Deal Details',
-              fields: ['Deal Name', 'Type', 'Deal Amount', 'Next Step', 'Product Required', 'Remarks', 'Stage']
-            }, {
-              title: 'Customer Details',
-              fields: ['Timestamp', 'Account Owner', 'First Name', 'Last Name', 'Company', 'Mobile Number',
-                'Email ID', 'Fax', 'Website', 'Lead Source', 'Lead Status', 'Industry',
-                'Number of Employees', 'Annual Revenue', 'Social Media', 'Description']
-            }, {
-              title: 'Address Details',
-              fields: ['Street', 'City', 'State', 'Country', 'PinCode', 'Additional Description', 'Account ID']
-            }, {
-              title: 'Customer Banking Details',
-              fields: ['GST Number', 'Bank Account Number', 'IFSC Code', 'Bank Name', 'Bank Account Name', 'Banking Remarks']
-            }].map(section => (
+            {[
+              {
+                title: "Deal Details",
+                fields: [
+                  "Deal Name",
+                  "Type",
+                  "Deal Amount",
+                  "Next Step",
+                  "Product Required",
+                  "Remarks",
+                  "Stage",
+                ],
+              },
+              {
+                title: "Customer Details",
+                fields: [
+                  "Timestamp",
+                  "Account Owner",
+                  "First Name",
+                  "Last Name",
+                  "Company",
+                  "Mobile Number",
+                  "Email ID",
+                  "Fax",
+                  "Website",
+                  "Lead Source",
+                  "Lead Status",
+                  "Industry",
+                  "Number of Employees",
+                  "Annual Revenue",
+                  "Social Media",
+                  "Description",
+                ],
+              },
+              {
+                title: "Address Details",
+                fields: [
+                  "Street",
+                  "City",
+                  "State",
+                  "Country",
+                  "PinCode",
+                  "Additional Description",
+                  "Account ID",
+                ],
+              },
+              {
+                title: "Customer Banking Details",
+                fields: [
+                  "GST Number",
+                  "Bank Account Number",
+                  "IFSC Code",
+                  "Bank Name",
+                  "Bank Account Name",
+                  "Banking Remarks",
+                ],
+              },
+            ].map((section) => (
               <Accordion key={section.title} defaultExpanded>
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ backgroundColor: '#f0f4ff', fontFamily: 'Montserrat, sans-serif', fontWeight: 'bold' }}
+                  sx={{
+                    backgroundColor: "#f0f4ff",
+                    fontFamily: "Montserrat, sans-serif",
+                    fontWeight: "bold",
+                  }}
                 >
-                  <Typography sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600 }}>
+                  <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
                     {section.title}
                   </Typography>
                 </AccordionSummary>
+
                 <AccordionDetails>
                   <Grid container spacing={2}>
-                    {section.fields.map(field => (
+                    {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        {field === 'Account Owner' ? (
+                        {field === "Account Owner" ? (
                           <TextField
                             fullWidth
                             label={field}
                             name={field}
-                            value={dealFormData['Account Owner'] || dealFormData['Lead Owner'] || ''}
+                            value={
+                              dealFormData["Account Owner"] ||
+                              dealFormData["Lead Owner"] ||
+                              ""
+                            }
                             InputProps={{ readOnly: true }}
                             size="small"
                           />
@@ -319,11 +477,13 @@ function AccountsTable() {
                             <Select
                               label={field}
                               name={field}
-                              value={dealFormData[field] || ''}
+                              value={dealFormData[field] || ""}
                               onChange={handleFieldChange}
                             >
                               {validationData[field].map((opt, idx) => (
-                                <MenuItem key={idx} value={opt}>{opt}</MenuItem>
+                                <MenuItem key={idx} value={opt}>
+                                  {opt}
+                                </MenuItem>
                               ))}
                             </Select>
                           </FormControl>
@@ -332,7 +492,7 @@ function AccountsTable() {
                             fullWidth
                             label={field}
                             name={field}
-                            value={dealFormData[field] || ''}
+                            value={dealFormData[field] || ""}
                             onChange={handleFieldChange}
                             size="small"
                           />
@@ -344,14 +504,28 @@ function AccountsTable() {
               </Accordion>
             ))}
 
-            <Box mt={2} display="flex" justifyContent="flex-end">
-              <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmitDeal}>
-                Submit Deal
+            <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
+              <Button
+                variant="outlined"
+                onClick={() => setCreateDealRow(null)}
+                disabled={submittingDeal}
+              >
+                Cancel
+              </Button>
+
+              <Button
+                variant="contained"
+                sx={{ backgroundColor: "#6495ED" }}
+                onClick={handleSubmitDeal}
+                disabled={submittingDeal}
+              >
+                {submittingDeal ? "Creating Deal..." : "Submit Deal"}
               </Button>
             </Box>
           </DialogContent>
         </Dialog>
-         {showCalendarModal && (
+
+        {showCalendarModal && (
           <CalendarView
             open={showCalendarModal}
             onClose={() => setShowCalendarModal(false)}

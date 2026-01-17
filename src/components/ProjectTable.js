@@ -25,7 +25,8 @@ import {
   InputAdornment,
   Chip,
   Paper,
-  ListItemText
+  ListItemText,
+  CircularProgress
 } from '@mui/material';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
 import AddIcon from '@mui/icons-material/Add';
@@ -132,6 +133,9 @@ export default function ProjectTable() {
 
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
+
+  // ✅ prevents multiple submits + provides button state
+  const [submitting, setSubmitting] = useState(false);
 
   const isControlHeader = (h) => norm(h) === norm(MULTI_KEY);
 
@@ -347,7 +351,11 @@ export default function ProjectTable() {
     return out;
   };
 
+  // ✅ submit guard + "Saving..." button state (prevents multiple submits)
   const handleSubmit = async () => {
+    if (submitting) return; // hard guard
+    setSubmitting(true);
+
     try {
       const payload = { action: 'addOrUpdateProject', data: serializeRow(editingRow || {}) };
       await fetch(WEB_APP_BASE, {
@@ -356,12 +364,15 @@ export default function ProjectTable() {
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
         body: JSON.stringify(payload)
       });
+
       setModalOpen(false);
       setEditingRow(null);
       await fetchProjects();
     } catch (err) {
       console.error(err);
       alert('Failed to submit. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -454,9 +465,11 @@ export default function ProjectTable() {
     'Account Owner'
   ].filter((h) => headers.includes(h));
 
+  const canCloseModal = !submitting;
+
   return (
     <ThemeProvider theme={theme}>
-      {loading && <LoadingOverlay />}
+      {(loading || submitting) && <LoadingOverlay />}
       <Box padding={4}>
         {/* Brand */}
         <Paper
@@ -527,13 +540,13 @@ export default function ProjectTable() {
               </FormControl>
             ))}
 
-            <IconButton onClick={handleOpenColumns} title="Columns">
+            <IconButton onClick={handleOpenColumns} title="Columns" disabled={loading}>
               <ViewColumnIcon />
             </IconButton>
-            <IconButton onClick={fetchProjects} title="Refresh">
+            <IconButton onClick={fetchProjects} title="Refresh" disabled={loading || submitting}>
               <RefreshIcon />
             </IconButton>
-            <IconButton onClick={onAdd} color="primary" title="Add Project">
+            <IconButton onClick={onAdd} color="primary" title="Add Project" disabled={loading || submitting}>
               <AddIcon />
             </IconButton>
           </Box>
@@ -604,13 +617,14 @@ export default function ProjectTable() {
                       <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
                     ))}
                     <TableCell width={160}>
-                      <IconButton size="small" onClick={() => onEdit(row)} title="Edit">
+                      <IconButton size="small" onClick={() => onEdit(row)} title="Edit" disabled={submitting}>
                         <EditIcon fontSize="small" />
                       </IconButton>
                       <IconButton
                         size="small"
                         onClick={() => openLogs(row['Project ID (unique, auto-generated)'])}
                         title="Logs"
+                        disabled={submitting}
                       >
                         <HistoryIcon fontSize="small" />
                       </IconButton>
@@ -664,7 +678,9 @@ export default function ProjectTable() {
         {/* Add/Edit Modal */}
         <Dialog
           open={modalOpen}
+          // ✅ block outside close while submitting
           onClose={() => {
+            if (!canCloseModal) return;
             setModalOpen(false);
             setEditingRow(null);
           }}
@@ -708,7 +724,7 @@ export default function ProjectTable() {
 
                   return (
                     <Grid item xs={12} sm={6} key={h}>
-                      <FormControl fullWidth size="small" disabled={isReadonly}>
+                      <FormControl fullWidth size="small" disabled={isReadonly || submitting}>
                         <InputLabel>{h}</InputLabel>
                         <Select
                           label={h}
@@ -741,14 +757,12 @@ export default function ProjectTable() {
                 if (hasOptions) {
                   return (
                     <Grid item xs={12} sm={6} key={h}>
-                      <FormControl fullWidth size="small" disabled={isReadonly}>
+                      <FormControl fullWidth size="small" disabled={isReadonly || submitting}>
                         <InputLabel>{h}</InputLabel>
                         <Select
                           label={h}
                           value={editingRow?.[h] || ''}
-                          onChange={(e) =>
-                            setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))
-                          }
+                          onChange={(e) => setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))}
                         >
                           {validation[h].map((opt) => (
                             <MenuItem key={opt} value={opt}>
@@ -775,7 +789,7 @@ export default function ProjectTable() {
                       onChange={(e) => setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))}
                       multiline={isMultilineHeader(h)}
                       minRows={isMultilineHeader(h) ? 3 : 1}
-                      disabled={isReadonly}
+                      disabled={isReadonly || submitting}
                     />
                   </Grid>
                 );
@@ -785,14 +799,24 @@ export default function ProjectTable() {
           <DialogActions>
             <Button
               onClick={() => {
+                if (!canCloseModal) return;
                 setModalOpen(false);
                 setEditingRow(null);
               }}
+              disabled={submitting}
             >
               Cancel
             </Button>
-            <Button variant="contained" sx={{ backgroundColor: '#6495ED' }} onClick={handleSubmit}>
-              Save
+
+            {/* ✅ Submit button fix: disabled + shows spinner + label changes */}
+            <Button
+              variant="contained"
+              sx={{ backgroundColor: '#6495ED' }}
+              onClick={handleSubmit}
+              disabled={submitting}
+              startIcon={submitting ? <CircularProgress size={16} color="inherit" /> : null}
+            >
+              {submitting ? 'Saving…' : 'Save'}
             </Button>
           </DialogActions>
         </Dialog>

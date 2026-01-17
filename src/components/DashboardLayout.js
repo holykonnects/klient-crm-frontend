@@ -126,8 +126,8 @@ function DashboardLayout({ children }) {
             ))}
 
           {/* TWO DIVIDERS BELOW LAST MENU ITEM */}
-          <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 2 }} />
-          <Divider sx={{ my: 1, borderColor: '#6495ED', borderBottomWidth: 2 }} />
+          <Divider sx={{ my: 1, borderColor: '#FFFFFF', borderBottomWidth: 2 }} />
+          <Divider sx={{ my: 1, borderColor: '#FFFFFF', borderBottomWidth: 2 }} />
 
           {/* LOGOUT INLINE */}
           <Tooltip title="Logout" placement="right">

@@ -49,6 +49,256 @@ const selectorStyle = {
   fontSize: 8,
 };
 
+/**
+ * ✅ Memoized table grid so it doesn't re-render while typing in modal
+ */
+const AccountsGrid = React.memo(function AccountsGrid({
+  rows,
+  visibleColumns,
+  sortConfig,
+  onSort,
+  onOpenDeal,
+  onOpenMeeting,
+}) {
+  return (
+    <Table>
+      <TableHead>
+        <TableRow style={{ backgroundColor: "#6495ED" }}>
+          {visibleColumns.map((header) => (
+            <TableCell
+              key={header}
+              onClick={() => onSort(header)}
+              style={{ color: "white", cursor: "pointer", fontWeight: "bold" }}
+            >
+              {header}{" "}
+              {sortConfig.key === header
+                ? sortConfig.direction === "asc"
+                  ? "↑"
+                  : "↓"
+                : ""}
+            </TableCell>
+          ))}
+          <TableCell style={{ color: "white", fontWeight: "bold" }}>
+            Actions
+          </TableCell>
+        </TableRow>
+      </TableHead>
+
+      <TableBody>
+        {rows.map((acc, index) => (
+          <TableRow key={index}>
+            {visibleColumns.map((col, i) => (
+              <TableCell key={i}>{acc[col]}</TableCell>
+            ))}
+
+            <TableCell>
+              <IconButton onClick={() => onOpenDeal(acc)}>
+                <EditIcon />
+              </IconButton>
+              <IconButton onClick={() => onOpenMeeting(acc, "Account")}>
+                <EventIcon />
+              </IconButton>
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+});
+
+/**
+ * ✅ Deal modal with LOCAL state → typing won't re-render the table
+ */
+const DealModal = React.memo(function DealModal({
+  open,
+  row,
+  validationData,
+  onClose,
+  onSubmit,
+  submittingDeal,
+}) {
+  const [form, setForm] = React.useState({});
+
+  // init form whenever a new row opens the modal
+  React.useEffect(() => {
+    if (!row) return;
+
+    const now = new Date();
+    const pad = (n) => String(n).padStart(2, "0");
+    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(
+      now.getFullYear()
+    ).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
+      now.getSeconds()
+    )}`;
+
+    const accountOwner = row["Lead Owner"] || row["Account Owner"] || "";
+
+    setForm({
+      ...row,
+      "Account Owner": accountOwner,
+      Timestamp: timestamp,
+    });
+  }, [row]);
+
+  const handleFieldChange = (e) => {
+    const { name, value } = e.target;
+    setForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const sections = React.useMemo(
+    () => [
+      {
+        title: "Deal Details",
+        fields: [
+          "Deal Name",
+          "Type",
+          "Deal Amount",
+          "Next Step",
+          "Product Required",
+          "Remarks",
+          "Stage",
+        ],
+      },
+      {
+        title: "Customer Details",
+        fields: [
+          "Timestamp",
+          "Account Owner",
+          "First Name",
+          "Last Name",
+          "Company",
+          "Mobile Number",
+          "Email ID",
+          "Fax",
+          "Website",
+          "Lead Source",
+          "Lead Status",
+          "Industry",
+          "Number of Employees",
+          "Annual Revenue",
+          "Social Media",
+          "Description",
+        ],
+      },
+      {
+        title: "Address Details",
+        fields: [
+          "Street",
+          "City",
+          "State",
+          "Country",
+          "PinCode",
+          "Additional Description",
+          "Account ID",
+        ],
+      },
+      {
+        title: "Customer Banking Details",
+        fields: [
+          "GST Number",
+          "Bank Account Number",
+          "IFSC Code",
+          "Bank Name",
+          "Bank Account Name",
+          "Banking Remarks",
+        ],
+      },
+    ],
+    []
+  );
+
+  return (
+    <Dialog
+      open={open}
+      onClose={submittingDeal ? null : onClose}
+      maxWidth="md"
+      fullWidth
+    >
+      <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
+        Create Deal
+      </DialogTitle>
+
+      <DialogContent dividers>
+        {sections.map((section) => (
+          <Accordion key={section.title} defaultExpanded>
+            <AccordionSummary
+              expandIcon={<ExpandMoreIcon />}
+              sx={{
+                backgroundColor: "#f0f4ff",
+                fontFamily: "Montserrat, sans-serif",
+                fontWeight: "bold",
+              }}
+            >
+              <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
+                {section.title}
+              </Typography>
+            </AccordionSummary>
+
+            <AccordionDetails>
+              <Grid container spacing={2}>
+                {section.fields.map((field) => (
+                  <Grid item xs={6} key={field}>
+                    {field === "Account Owner" ? (
+                      <TextField
+                        fullWidth
+                        label={field}
+                        name={field}
+                        value={form["Account Owner"] || form["Lead Owner"] || ""}
+                        InputProps={{ readOnly: true }}
+                        size="small"
+                      />
+                    ) : validationData[field] ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel>{field}</InputLabel>
+                        <Select
+                          label={field}
+                          name={field}
+                          value={form[field] || ""}
+                          onChange={handleFieldChange}
+                        >
+                          {validationData[field].map((opt, idx) => (
+                            <MenuItem key={idx} value={opt}>
+                              {opt}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        label={field}
+                        name={field}
+                        value={form[field] || ""}
+                        onChange={handleFieldChange}
+                        size="small"
+                      />
+                    )}
+                  </Grid>
+                ))}
+              </Grid>
+            </AccordionDetails>
+          </Accordion>
+        ))}
+
+        <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
+          <Button variant="outlined" onClick={onClose} disabled={submittingDeal}>
+            Cancel
+          </Button>
+
+          <Button
+            variant="contained"
+            sx={{ backgroundColor: "#6495ED" }}
+            onClick={() => onSubmit(form)}
+            disabled={submittingDeal}
+          >
+            {submittingDeal ? "Submitting..." : "Submit Deal"}
+          </Button>
+        </Box>
+      </DialogContent>
+    </Dialog>
+  );
+});
+
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,9 +314,6 @@ function AccountsTable() {
   const [visibleColumns, setVisibleColumns] = useState([]);
 
   const [createDealRow, setCreateDealRow] = useState(null);
-  const [dealFormData, setDealFormData] = useState({});
-
-  // ✅ Prevent double submit + show "Creating Deal..."
   const [submittingDeal, setSubmittingDeal] = useState(false);
 
   const [selectedEntryRow, setSelectedEntryRow] = useState(null);
@@ -88,11 +335,10 @@ function AccountsTable() {
     fetch(dataUrl)
       .then((res) => res.json())
       .then((data) => {
-        let filteredAccounts = data;
+        let filtered = data;
 
-        // ✅ Role-based filter
         if (role === "End User") {
-          filteredAccounts = data.filter(
+          filtered = data.filter(
             (acc) =>
               acc["Account Owner"] === username ||
               acc["Lead Owner"] === username ||
@@ -100,12 +346,11 @@ function AccountsTable() {
           );
         }
 
-        setAccounts(filteredAccounts);
+        setAccounts(filtered);
 
-        // ✅ Load visible columns from storage
         setVisibleColumns(
           JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
-            (filteredAccounts.length ? Object.keys(filteredAccounts[0]) : [])
+            (filtered.length ? Object.keys(filtered[0]) : [])
         );
 
         setLoading(false);
@@ -118,11 +363,14 @@ function AccountsTable() {
       .catch(() => {});
   }, [username, role]);
 
-  const handleSort = (key) => {
-    const direction =
-      sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
-    setSortConfig({ key, direction });
-  };
+  const handleSort = useCallback(
+    (key) => {
+      const direction =
+        sortConfig.key === key && sortConfig.direction === "asc" ? "desc" : "asc";
+      setSortConfig({ key, direction });
+    },
+    [sortConfig]
+  );
 
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
@@ -148,7 +396,6 @@ function AccountsTable() {
     localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify([]));
   };
 
-  // ✅ Memoized sorting/filtering so modal typing doesn’t lag
   const filteredAccounts = useMemo(() => {
     return [...accounts]
       .sort((a, b) => {
@@ -174,67 +421,46 @@ function AccountsTable() {
       });
   }, [accounts, sortConfig, searchTerm, filterSource, filterOwner]);
 
-  const handleFieldChange = useCallback((e) => {
-    const { name, value } = e.target;
-    setDealFormData((prev) => ({ ...prev, [name]: value }));
+  const openDealModal = useCallback((acc) => {
+    setCreateDealRow(acc);
   }, []);
 
-  const openDealModal = (acc) => {
-    const now = new Date();
-    const pad = (n) => String(n).padStart(2, "0");
-    const timestamp = `${pad(now.getDate())}/${pad(now.getMonth() + 1)}/${String(
-      now.getFullYear()
-    ).slice(-2)} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(
-      now.getSeconds()
-    )}`;
+  const handleSubmitDeal = useCallback(
+    async (form) => {
+      if (submittingDeal) return;
+      setSubmittingDeal(true);
 
-    const accountOwner = acc["Lead Owner"] || acc["Account Owner"] || "";
+      const payload = {
+        ...form,
+        "Account Owner": form["Account Owner"] || form["Lead Owner"] || "",
+        "Lead Owner": form["Lead Owner"] || form["Account Owner"] || "",
+        Timestamp: form["Timestamp"],
+      };
 
-    setCreateDealRow(acc);
-    setDealFormData({
-      ...acc,
-      "Account Owner": accountOwner,
-      Timestamp: timestamp,
-    });
-  };
+      try {
+        await fetch(submitUrl, {
+          method: "POST",
+          mode: "no-cors",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
 
-  const handleSubmitDeal = async () => {
-    if (submittingDeal) return; // ✅ block double submit
-    setSubmittingDeal(true);
+        alert("✅ Deal submitted successfully");
+        setCreateDealRow(null);
+      } catch (err) {
+        alert("❌ Error submitting deal");
+      } finally {
+        setSubmittingDeal(false);
+      }
+    },
+    [submittingDeal, submitUrl]
+  );
 
-    const payload = {
-      ...dealFormData,
-      "Account Owner":
-        dealFormData["Account Owner"] || dealFormData["Lead Owner"] || "",
-      "Lead Owner":
-        dealFormData["Lead Owner"] || dealFormData["Account Owner"] || "",
-      Timestamp: dealFormData["Timestamp"],
-    };
-
-    try {
-      await fetch(submitUrl, {
-        method: "POST",
-        mode: "no-cors",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(payload),
-      });
-
-      alert("✅ Deal submitted successfully");
-      setCreateDealRow(null);
-    } catch (err) {
-      alert("❌ Error submitting deal");
-    } finally {
-      setSubmittingDeal(false);
-    }
-  };
-
-  const handleOpenMeetingFromRow = (row, type) => {
+  const handleOpenMeetingFromRow = useCallback((row, type) => {
     setSelectedEntryRow(row);
-    setEntryType(type); // 'Lead', 'Account', 'Deal'
+    setEntryType(type);
     setShowCalendarModal(true);
-  };
+  }, []);
 
   return (
     <ThemeProvider theme={theme}>
@@ -242,11 +468,7 @@ function AccountsTable() {
 
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img
-            src="/assets/kk-logo.png"
-            alt="Klient Konnect"
-            style={{ height: 100 }}
-          />
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">
             Accounts Records
           </Typography>
@@ -324,206 +546,23 @@ function AccountsTable() {
           </Popover>
         </Box>
 
-        <Table>
-          <TableHead>
-            <TableRow style={{ backgroundColor: "#6495ED" }}>
-              {visibleColumns.map((header) => (
-                <TableCell
-                  key={header}
-                  onClick={() => handleSort(header)}
-                  style={{
-                    color: "white",
-                    cursor: "pointer",
-                    fontWeight: "bold",
-                  }}
-                >
-                  {header}{" "}
-                  {sortConfig.key === header
-                    ? sortConfig.direction === "asc"
-                      ? "↑"
-                      : "↓"
-                    : ""}
-                </TableCell>
-              ))}
-              <TableCell style={{ color: "white", fontWeight: "bold" }}>
-                Actions
-              </TableCell>
-            </TableRow>
-          </TableHead>
+        <AccountsGrid
+          rows={filteredAccounts}
+          visibleColumns={visibleColumns}
+          sortConfig={sortConfig}
+          onSort={handleSort}
+          onOpenDeal={openDealModal}
+          onOpenMeeting={handleOpenMeetingFromRow}
+        />
 
-          <TableBody>
-            {filteredAccounts.map((acc, index) => (
-              <TableRow key={index}>
-                {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{acc[col]}</TableCell>
-                ))}
-
-                <TableCell>
-                  <IconButton onClick={() => openDealModal(acc)}>
-                    <EditIcon />
-                  </IconButton>
-                  <IconButton onClick={() => handleOpenMeetingFromRow(acc, "Account")}>
-                    <EventIcon />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-
-        <Dialog
+        <DealModal
           open={!!createDealRow}
-          onClose={() => (submittingDeal ? null : setCreateDealRow(null))}
-          maxWidth="md"
-          fullWidth
-        >
-          <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
-            Create Deal
-          </DialogTitle>
-
-          <DialogContent dividers>
-            {[
-              {
-                title: "Deal Details",
-                fields: [
-                  "Deal Name",
-                  "Type",
-                  "Deal Amount",
-                  "Next Step",
-                  "Product Required",
-                  "Remarks",
-                  "Stage",
-                ],
-              },
-              {
-                title: "Customer Details",
-                fields: [
-                  "Timestamp",
-                  "Account Owner",
-                  "First Name",
-                  "Last Name",
-                  "Company",
-                  "Mobile Number",
-                  "Email ID",
-                  "Fax",
-                  "Website",
-                  "Lead Source",
-                  "Lead Status",
-                  "Industry",
-                  "Number of Employees",
-                  "Annual Revenue",
-                  "Social Media",
-                  "Description",
-                ],
-              },
-              {
-                title: "Address Details",
-                fields: [
-                  "Street",
-                  "City",
-                  "State",
-                  "Country",
-                  "PinCode",
-                  "Additional Description",
-                  "Account ID",
-                ],
-              },
-              {
-                title: "Customer Banking Details",
-                fields: [
-                  "GST Number",
-                  "Bank Account Number",
-                  "IFSC Code",
-                  "Bank Name",
-                  "Bank Account Name",
-                  "Banking Remarks",
-                ],
-              },
-            ].map((section) => (
-              <Accordion key={section.title} defaultExpanded>
-                <AccordionSummary
-                  expandIcon={<ExpandMoreIcon />}
-                  sx={{
-                    backgroundColor: "#f0f4ff",
-                    fontFamily: "Montserrat, sans-serif",
-                    fontWeight: "bold",
-                  }}
-                >
-                  <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 600 }}>
-                    {section.title}
-                  </Typography>
-                </AccordionSummary>
-
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    {section.fields.map((field) => (
-                      <Grid item xs={6} key={field}>
-                        {field === "Account Owner" ? (
-                          <TextField
-                            fullWidth
-                            label={field}
-                            name={field}
-                            value={
-                              dealFormData["Account Owner"] ||
-                              dealFormData["Lead Owner"] ||
-                              ""
-                            }
-                            InputProps={{ readOnly: true }}
-                            size="small"
-                          />
-                        ) : validationData[field] ? (
-                          <FormControl fullWidth size="small">
-                            <InputLabel>{field}</InputLabel>
-                            <Select
-                              label={field}
-                              name={field}
-                              value={dealFormData[field] || ""}
-                              onChange={handleFieldChange}
-                            >
-                              {validationData[field].map((opt, idx) => (
-                                <MenuItem key={idx} value={opt}>
-                                  {opt}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        ) : (
-                          <TextField
-                            fullWidth
-                            label={field}
-                            name={field}
-                            value={dealFormData[field] || ""}
-                            onChange={handleFieldChange}
-                            size="small"
-                          />
-                        )}
-                      </Grid>
-                    ))}
-                  </Grid>
-                </AccordionDetails>
-              </Accordion>
-            ))}
-
-            <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
-              <Button
-                variant="outlined"
-                onClick={() => setCreateDealRow(null)}
-                disabled={submittingDeal}
-              >
-                Cancel
-              </Button>
-
-              <Button
-                variant="contained"
-                sx={{ backgroundColor: "#6495ED" }}
-                onClick={handleSubmitDeal}
-                disabled={submittingDeal}
-              >
-                {submittingDeal ? "Submitting..." : "Submit Deal"}
-              </Button>
-            </Box>
-          </DialogContent>
-        </Dialog>
+          row={createDealRow}
+          validationData={validationData}
+          onClose={() => setCreateDealRow(null)}
+          onSubmit={handleSubmitDeal}
+          submittingDeal={submittingDeal}
+        />
 
         {showCalendarModal && (
           <CalendarView

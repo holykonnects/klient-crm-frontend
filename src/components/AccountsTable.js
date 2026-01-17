@@ -519,7 +519,7 @@ function AccountsTable() {
                 onClick={handleSubmitDeal}
                 disabled={submittingDeal}
               >
-                {submittingDeal ? "Creating Deal..." : "Submit Deal"}
+                {submittingDeal ? "Submitting..." : "Submit Deal"}
               </Button>
             </Box>
           </DialogContent>

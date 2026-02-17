@@ -65,6 +65,7 @@ function DashboardLayout({ children }) {
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
+    { label: 'Costing', icon: <CurrencyRupee />, route: '/costing', access: 'Costing' },  
     { label: 'Client Comms', icon: <Email />, route: '/email-dashboard', access: 'Email' }
   ];
 

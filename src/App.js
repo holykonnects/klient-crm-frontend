@@ -20,6 +20,7 @@ import ProjectTable from './components/ProjectTable';
 import EmailTemplatesTable from './components/email/EmailTemplatesTable';
 import EmailDashboard from './components/email/EmailDashboard';
 import ExistenceCheckPage from './components/ExistenceCheckPage';
+import CostingTable from './components/CostingTable';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -37,6 +38,15 @@ const AppRoutes = () => {
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
+        <Route
+          path="costing"
+          element={
+            <ProtectedPage pageKey="Costing">
+              <CostingTable />
+            </ProtectedPage>
+          }
+        />
+
         <Route path="email-templates" element={<EmailTemplatesTable />} />
         <Route path="email-dashboard" element={<EmailDashboard />} />
 

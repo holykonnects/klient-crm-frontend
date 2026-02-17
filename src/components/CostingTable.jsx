@@ -117,14 +117,16 @@ export default function CostingTable() {
     return json;
   }
 
+  // ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
   async function apiPost(payload) {
-    const res = await fetch(BACKEND, {
+    await fetch(BACKEND, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      mode: "no-cors",
       body: JSON.stringify(payload),
     });
-    const json = await res.json();
-    return json;
+
+    // No-cors does not allow reading response
+    return { success: true };
   }
 
   async function loadAll() {
@@ -149,7 +151,7 @@ export default function CostingTable() {
       }
     } catch (e) {
       console.error("COSTING_LOAD_ERROR", e);
-      alert("Failed to load costing data. Check backend deployment + access.");
+      alert("Failed to load costing data. If GET is blocked, we will switch to JSONP.");
     } finally {
       setLoading(false);
     }
@@ -157,7 +159,6 @@ export default function CostingTable() {
 
   useEffect(() => {
     loadAll();
-  
   }, []);
 
   const filtered = useMemo(() => {
@@ -202,11 +203,16 @@ export default function CostingTable() {
   async function createCostSheet() {
     setLoading(true);
     try {
-      const resp = await apiPost({ action: "createCostSheet", data: { ...createForm } });
-      if (!resp?.success) throw new Error("Create failed");
+      await apiPost({ action: "createCostSheet", data: { ...createForm } });
+
       setOpenCreate(false);
-      await loadAll();
-      alert(`Cost Sheet created: ${resp.costSheetId}`);
+
+      // ✅ refresh after a short delay (no-cors can't read response)
+      setTimeout(async () => {
+        await loadAll();
+      }, 800);
+
+      alert("Cost Sheet created. Refreshing list…");
     } catch (e) {
       console.error("CREATE_COST_SHEET_ERROR", e);
       alert("Failed to create cost sheet.");
@@ -329,15 +335,17 @@ export default function CostingTable() {
 
     setLoading(true);
     try {
-      const resp = await apiPost({ action: "addLineItem", data: row });
-      if (!resp?.success) throw new Error("Add failed");
+      await apiPost({ action: "addLineItem", data: row });
 
-      const items = await apiGet(
-        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-      );
-      const arr = Array.isArray(items) ? items : [];
-      const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
-      setLineItems(activeOnly);
+      // refresh items after short delay
+      setTimeout(async () => {
+        const items = await apiGet(
+          `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+        );
+        const arr = Array.isArray(items) ? items : [];
+        const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
+        setLineItems(activeOnly);
+      }, 800);
 
       // reset inputs for this head
       setNewRowByHead((p) => ({
@@ -380,15 +388,22 @@ export default function CostingTable() {
 
     setLoading(true);
     try {
-      // backend currently expects { costSheetId, particular }
-      const resp = await apiPost({
+      await apiPost({
         action: "softDeleteLineItem",
         data: { costSheetId, particular },
       });
-      if (!resp?.success) throw new Error("Delete failed");
 
-      // update local
+      // Optimistic UI (and we also refresh after a bit)
       setLineItems((p) => p.filter((x) => String(x["Particular"] || "").trim() !== particular));
+
+      setTimeout(async () => {
+        const items = await apiGet(
+          `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+        );
+        const arr = Array.isArray(items) ? items : [];
+        const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
+        setLineItems(activeOnly);
+      }, 800);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
       alert("Failed to delete line item. If two rows share same Particular, delete may be ambiguous.");
@@ -897,7 +912,7 @@ export default function CostingTable() {
                       <TableHead>
                         <TableRow sx={{ background: "#f6f9ff" }}>
                           {lineItemHeaders
-                            .filter((h) => h !== "Active") // we hide it; it’s system field
+                            .filter((h) => h !== "Active")
                             .map((h) => (
                               <TableCell key={h} sx={{ fontWeight: 800, fontSize: 11 }}>
                                 {h}

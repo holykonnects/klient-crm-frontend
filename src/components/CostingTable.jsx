@@ -722,10 +722,15 @@ export default function CostingTable() {
               >
                 Costing
               </Typography>
-            {loading ? (
-              <Typography sx={{ fontSize: 12, opacity: 0.7 }}>Loading…</Typography>
-            ) : null}
+    
+              {loading ? (
+                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
+                  Loading…
+                </Typography>
+              ) : null}
+            </Box>
           </Box>
+        </Box>
 
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button

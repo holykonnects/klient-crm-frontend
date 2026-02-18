@@ -708,12 +708,20 @@ export default function CostingTable() {
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ p: 2 }}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-          <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
-            <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
-            <Typography sx={{ fontWeight: 800, fontSize: 18 }}>
-              Costing
-            </Typography>
+        {/* ✅ HEADER (Logo Left, Title Right) */}
+        <Box padding={4}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+    
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                sx={{ fontFamily: "Montserrat, sans-serif" }}
+              >
+                Costing
+              </Typography>
             {loading ? (
               <Typography sx={{ fontSize: 12, opacity: 0.7 }}>Loading…</Typography>
             ) : null}

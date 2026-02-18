@@ -1071,6 +1071,7 @@ export default function CostingTable() {
           </DialogActions>
         </Dialog>
       </Box>
+    </Box>
     </ThemeProvider>
   );
 }

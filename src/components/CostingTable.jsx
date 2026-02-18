@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from "react";
+// src/components/CostingTable.jsx
+import React, { useEffect, useMemo, useRef, useState, memo } from "react";
 import {
   Box,
   Typography,
@@ -54,8 +55,10 @@ const cornflowerBlue = "#6495ED";
 const BACKEND =
   "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
 
+/* ===================== helpers ===================== */
+
 function safeNum(v) {
-  const n = Number(String(v || "").replace(/,/g, ""));
+  const n = Number(String(v ?? "").replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -67,9 +70,283 @@ function fmtINR(n) {
   }
 }
 
+/**
+ * ✅ JSONP GET (no-cors friendly)
+ * Backend supports: ?action=...&callback=cb
+ */
+function jsonpGet(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+    const cleanup = (script) => {
+      try {
+        delete window[cbName];
+      } catch {}
+      if (script && script.parentNode) script.parentNode.removeChild(script);
+    };
+
+    window[cbName] = (data) => {
+      cleanup(script);
+      resolve(data);
+    };
+
+    const script = document.createElement("script");
+    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
+    script.async = true;
+
+    script.onerror = () => {
+      cleanup(script);
+      reject(new Error("JSONP load failed"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
+
+// ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
+async function apiPost(payload) {
+  await fetch(BACKEND, {
+    method: "POST",
+    mode: "no-cors",
+    body: JSON.stringify(payload),
+  });
+  return { success: true };
+}
+
+function computeRowTotals(row) {
+  const qty = safeNum(row["QTY"]);
+  const rate = safeNum(row["Rate"]);
+  const amount = row["Amount"] !== "" ? safeNum(row["Amount"]) : qty * rate;
+
+  const gstPct = safeNum(row["GST %"]);
+  const gstAmount = row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
+
+  const total = row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
+
+  return {
+    ...row,
+    Amount: amount ? amount : "",
+    "GST Amount": gstAmount ? gstAmount : "",
+    "Total Amount": total ? total : "",
+  };
+}
+
+/* ===================== Memoized Head Section (fixes text lag) ===================== */
+/**
+ * Text lag fix:
+ * - Do NOT store every keystroke into parent state (newRowByHead) because it re-renders all accordions.
+ * - Keep draft input state local to each accordion (memoized).
+ * - Parent only updates when Add Expense is clicked.
+ */
+const HeadSection = memo(function HeadSection({
+  head,
+  headItems,
+  headTotal,
+  subcats,
+  payList,
+  loggedInName,
+  loading,
+  onAddLineItem,
+  onSoftDeleteLineItem,
+  lineItemHeaders,
+}) {
+  const [draft, setDraft] = useState(() => ({
+    "Head Name": head,
+    Subcategory: "",
+    "Expense Date": new Date().toISOString().slice(0, 10),
+    "Entered By": loggedInName,
+    "Entry Tag": "",
+    Particular: "",
+    Details: "",
+    QTY: "",
+    Rate: "",
+    Amount: "",
+    "GST %": "",
+    "GST Amount": "",
+    "Total Amount": "",
+    "Attachment Link": "",
+    "Voucher/Invoice No": "",
+    "Payment Status": "",
+  }));
+
+  // keep entered by updated if user changes (but don’t spam renders elsewhere)
+  useEffect(() => {
+    setDraft((p) => ({ ...p, "Entered By": loggedInName || p["Entered By"] || "" }));
+  }, [loggedInName]);
+
+  const setField = (key, value) => setDraft((p) => ({ ...p, [key]: value }));
+
+  const handleAdd = () => onAddLineItem(head, draft, setDraft);
+
+  return (
+    <Accordion defaultExpanded={false}>
+      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
+        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
+          <Typography sx={{ fontWeight: 800, fontSize: 13 }}>{head}</Typography>
+          <Typography sx={{ fontSize: 12, opacity: 0.85 }}>Total: ₹ {fmtINR(headTotal)}</Typography>
+        </Box>
+      </AccordionSummary>
+
+      <AccordionDetails>
+        {/* Add row */}
+        <Paper sx={{ p: 1.2, mb: 1.2, borderRadius: 2, border: "1px dashed #d9e4ff" }}>
+          <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
+            Add Expense
+          </Typography>
+
+          <Grid container spacing={1}>
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Subcategory</InputLabel>
+                <Select label="Subcategory" value={draft.Subcategory || ""} onChange={(e) => setField("Subcategory", e.target.value)}>
+                  {subcats.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Expense Date"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={draft["Expense Date"] || ""}
+                onChange={(e) => setField("Expense Date", e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <TextField fullWidth size="small" label="Entry Tag" value={draft["Entry Tag"] || ""} onChange={(e) => setField("Entry Tag", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Payment Status</InputLabel>
+                <Select label="Payment Status" value={draft["Payment Status"] || ""} onChange={(e) => setField("Payment Status", e.target.value)}>
+                  {payList.map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <TextField fullWidth size="small" label="Particular" value={draft.Particular || ""} onChange={(e) => setField("Particular", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={8}>
+              <TextField fullWidth size="small" label="Details" value={draft.Details || ""} onChange={(e) => setField("Details", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField fullWidth size="small" label="QTY" value={draft["QTY"] || ""} onChange={(e) => setField("QTY", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField fullWidth size="small" label="Rate" value={draft["Rate"] || ""} onChange={(e) => setField("Rate", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField fullWidth size="small" label="Amount" value={draft["Amount"] || ""} onChange={(e) => setField("Amount", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={2}>
+              <TextField fullWidth size="small" label="GST %" value={draft["GST %"] || ""} onChange={(e) => setField("GST %", e.target.value)} />
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Attachment Link"
+                value={draft["Attachment Link"] || ""}
+                onChange={(e) => setField("Attachment Link", e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Voucher/Invoice No"
+                value={draft["Voucher/Invoice No"] || ""}
+                onChange={(e) => setField("Voucher/Invoice No", e.target.value)}
+              />
+            </Grid>
+
+            <Grid item xs={12} md={4} sx={{ display: "flex", alignItems: "center" }}>
+              <Button
+                variant="contained"
+                onClick={handleAdd}
+                disabled={loading}
+                sx={{ bgcolor: cornflowerBlue, width: "100%" }}
+              >
+                {loading ? "Adding…" : "Add Expense"}
+              </Button>
+            </Grid>
+          </Grid>
+        </Paper>
+
+        {/* Existing rows */}
+        <Table size="small">
+          <TableHead>
+            <TableRow sx={{ background: "#f6f9ff" }}>
+              {lineItemHeaders
+                .filter((h) => h !== "Active")
+                .map((h) => (
+                  <TableCell key={h} sx={{ fontWeight: 800, fontSize: 11 }}>
+                    {h}
+                  </TableCell>
+                ))}
+              <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Action</TableCell>
+            </TableRow>
+          </TableHead>
+
+          <TableBody>
+            {headItems.map((it, i) => (
+              <TableRow key={i} hover>
+                {lineItemHeaders
+                  .filter((h) => h !== "Active")
+                  .map((h) => (
+                    <TableCell key={h} sx={{ fontSize: 11 }}>
+                      {String(it[h] ?? "")}
+                    </TableCell>
+                  ))}
+                <TableCell>
+                  <IconButton onClick={() => onSoftDeleteLineItem(it)}>
+                    <DeleteOutlineIcon sx={{ color: "#c62828" }} />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+
+            {!headItems.length ? (
+              <TableRow>
+                <TableCell colSpan={lineItemHeaders.length + 1} sx={{ fontSize: 11, opacity: 0.7 }}>
+                  No items under {head}.
+                </TableCell>
+              </TableRow>
+            ) : null}
+          </TableBody>
+        </Table>
+      </AccordionDetails>
+    </Accordion>
+  );
+});
+
+/* ===================== Component ===================== */
+
 export default function CostingTable() {
   const { user } = useAuth();
   const loggedInName = user?.username || user?.name || user?.email || "";
+  const role = user?.role || "";
 
   const [loading, setLoading] = useState(false);
 
@@ -96,50 +373,42 @@ export default function CostingTable() {
   const [lineItems, setLineItems] = useState([]);
   const [lineItemHeaders, setLineItemHeaders] = useState([]);
 
+  // ✅ Entity dropdown options for CREATE modal (no assumptions)
+  const [entityOptions, setEntityOptions] = useState([]);
+  const [entityLoading, setEntityLoading] = useState(false);
+
   // Create cost sheet form
   const [createForm, setCreateForm] = useState({
     Owner: "",
     "Linked Entity Type": "",
     "Linked Entity ID": "",
-    "Linked Entity Name": "",
+    "Linked Entity Name": "", // store the display string: Name | Company | Mobile | Owner
     "Client Name": "",
     "Project Type": "",
     Status: "Draft",
     Notes: "",
   });
 
-  // New line item row per head (local input state)
-  const [newRowByHead, setNewRowByHead] = useState({});
-
-  async function apiGet(url) {
-    const res = await fetch(url, { method: "GET" });
-    const json = await res.json();
-    return json;
-  }
-
-  // ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
-  async function apiPost(payload) {
-    await fetch(BACKEND, {
-      method: "POST",
-      mode: "no-cors",
-      body: JSON.stringify(payload),
-    });
-
-    // No-cors does not allow reading response
-    return { success: true };
-  }
+  // used to prevent stale async setState
+  const loadSeq = useRef(0);
 
   async function loadAll() {
+    const seq = ++loadSeq.current;
     setLoading(true);
     try {
-      const v = await apiGet(`${BACKEND}?action=getValidation`);
+      // ✅ JSONP GET (no-cors friendly)
+      const v = await jsonpGet(`${BACKEND}?action=getValidation`);
+      if (seq !== loadSeq.current) return;
+
       setValidation({
-        heads: Array.isArray(v.heads) ? v.heads : [],
-        subcategories: v.subcategories || {},
-        paymentStatus: Array.isArray(v.paymentStatus) ? v.paymentStatus : [],
+        heads: Array.isArray(v?.heads) ? v.heads : [],
+        subcategories: v?.subcategories || {},
+        paymentStatus: Array.isArray(v?.paymentStatus) ? v.paymentStatus : [],
       });
 
-      const sheets = await apiGet(`${BACKEND}?action=getCostSheets`);
+      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
+      if (seq !== loadSeq.current) return;
+
       const arr = Array.isArray(sheets) ? sheets : [];
       setCostSheets(arr);
 
@@ -151,14 +420,15 @@ export default function CostingTable() {
       }
     } catch (e) {
       console.error("COSTING_LOAD_ERROR", e);
-      alert("Failed to load costing data. If GET is blocked, we will switch to JSONP.");
+      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
     } finally {
-      setLoading(false);
+      if (seq === loadSeq.current) setLoading(false);
     }
   }
 
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -166,8 +436,7 @@ export default function CostingTable() {
 
     return costSheets.filter((r) => {
       const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
-      const entityOk =
-        !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+      const entityOk = !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
       const hay = Object.values(r)
         .map((x) => String(x || ""))
@@ -192,12 +461,48 @@ export default function CostingTable() {
   }
 
   function openCreateModal() {
+    setEntityOptions([]);
     setCreateForm((p) => ({
       ...p,
       Owner: loggedInName || p.Owner,
       Status: "Draft",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
     }));
     setOpenCreate(true);
+  }
+
+  // ✅ Load entity dropdown when Linked Entity Type changes
+  async function loadEntitiesForType(type) {
+    const t = String(type || "").trim();
+    if (!t) {
+      setEntityOptions([]);
+      return;
+    }
+
+    setEntityLoading(true);
+    try {
+      const res = await jsonpGet(
+        `${BACKEND}?action=getEntities&type=${encodeURIComponent(t)}&owner=${encodeURIComponent(
+          loggedInName || ""
+        )}&role=${encodeURIComponent(role || "")}`
+      );
+
+      if (res?.success && Array.isArray(res.entities)) {
+        setEntityOptions(res.entities);
+      } else {
+        console.error("GET_ENTITIES_ERROR", res);
+        setEntityOptions([]);
+        alert("Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response).");
+      }
+    } catch (e) {
+      console.error("GET_ENTITIES_FETCH_ERROR", e);
+      setEntityOptions([]);
+      alert("Entities could not be loaded (JSONP). Check deployment access.");
+    } finally {
+      setEntityLoading(false);
+    }
   }
 
   async function createCostSheet() {
@@ -207,7 +512,7 @@ export default function CostingTable() {
 
       setOpenCreate(false);
 
-      // ✅ refresh after a short delay (no-cors can't read response)
+      // refresh after a short delay (no-cors can't read response)
       setTimeout(async () => {
         await loadAll();
       }, 800);
@@ -228,7 +533,7 @@ export default function CostingTable() {
 
     try {
       const id = row["Cost Sheet ID"];
-      const items = await apiGet(
+      const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
       );
       const arr = Array.isArray(items) ? items : [];
@@ -258,33 +563,13 @@ export default function CostingTable() {
               "Voucher/Invoice No",
               "Payment Status",
               "Active",
+              "Owner",
+              "Linked Entity Type",
+              "Linked Entity ID",
+              "Linked Entity Name",
             ];
 
       setLineItemHeaders(headers);
-
-      // init input defaults per head
-      const init = {};
-      (validation.heads || []).forEach((h) => {
-        init[h] = {
-          "Head Name": h,
-          Subcategory: "",
-          "Expense Date": new Date().toISOString().slice(0, 10),
-          "Entered By": loggedInName,
-          "Entry Tag": "",
-          Particular: "",
-          Details: "",
-          QTY: "",
-          Rate: "",
-          Amount: "",
-          "GST %": "",
-          "GST Amount": "",
-          "Total Amount": "",
-          "Attachment Link": "",
-          "Voucher/Invoice No": "",
-          "Payment Status": "",
-        };
-      });
-      setNewRowByHead(init);
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert("Failed to open cost sheet details.");
@@ -293,34 +578,22 @@ export default function CostingTable() {
     }
   }
 
-  function computeRowTotals(row) {
-    const qty = safeNum(row["QTY"]);
-    const rate = safeNum(row["Rate"]);
-    const amount = row["Amount"] !== "" ? safeNum(row["Amount"]) : qty * rate;
-
-    const gstPct = safeNum(row["GST %"]);
-    const gstAmount =
-      row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
-
-    const total =
-      row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
-
-    return {
-      ...row,
-      Amount: amount ? amount : "",
-      "GST Amount": gstAmount ? gstAmount : "",
-      "Total Amount": total ? total : "",
-    };
-  }
-
-  async function addLineItem(headName) {
+  async function addLineItem(headName, draft, resetDraft) {
     if (!activeSheet) return;
     const costSheetId = activeSheet["Cost Sheet ID"];
 
-    let row = { ...(newRowByHead[headName] || {}) };
+    // build row using draft (local), then enrich with required keys
+    let row = { ...(draft || {}) };
     row["Cost Sheet ID"] = costSheetId;
     row["Head Name"] = headName;
     row["Entered By"] = loggedInName || row["Entered By"] || "";
+
+    // ✅ also stamp linkage fields into line items so end users see entity linkage per row
+    row["Owner"] = activeSheet?.["Owner"] || row["Owner"] || loggedInName || "";
+    row["Linked Entity Type"] = activeSheet?.["Linked Entity Type"] || row["Linked Entity Type"] || "";
+    row["Linked Entity ID"] = activeSheet?.["Linked Entity ID"] || row["Linked Entity ID"] || "";
+    row["Linked Entity Name"] = activeSheet?.["Linked Entity Name"] || row["Linked Entity Name"] || "";
+
     row = computeRowTotals(row);
 
     const hasSome =
@@ -339,7 +612,7 @@ export default function CostingTable() {
 
       // refresh items after short delay
       setTimeout(async () => {
-        const items = await apiGet(
+        const items = await jsonpGet(
           `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
         );
         const arr = Array.isArray(items) ? items : [];
@@ -347,13 +620,13 @@ export default function CostingTable() {
         setLineItems(activeOnly);
       }, 800);
 
-      // reset inputs for this head
-      setNewRowByHead((p) => ({
-        ...p,
-        [headName]: {
-          ...(p[headName] || {}),
+      // reset local draft
+      if (typeof resetDraft === "function") {
+        resetDraft({
+          "Head Name": headName,
           Subcategory: "",
           "Expense Date": new Date().toISOString().slice(0, 10),
+          "Entered By": loggedInName,
           "Entry Tag": "",
           Particular: "",
           Details: "",
@@ -366,8 +639,8 @@ export default function CostingTable() {
           "Attachment Link": "",
           "Voucher/Invoice No": "",
           "Payment Status": "",
-        },
-      }));
+        });
+      }
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
       alert("Failed to add line item.");
@@ -393,11 +666,11 @@ export default function CostingTable() {
         data: { costSheetId, particular },
       });
 
-      // Optimistic UI (and we also refresh after a bit)
+      // Optimistic UI (and refresh after a bit)
       setLineItems((p) => p.filter((x) => String(x["Particular"] || "").trim() !== particular));
 
       setTimeout(async () => {
-        const items = await apiGet(
+        const items = await jsonpGet(
           `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
         );
         const arr = Array.isArray(items) ? items : [];
@@ -586,58 +859,140 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {[
-                { k: "Owner", label: "Owner" },
-                { k: "Linked Entity Type", label: "Linked Entity Type" },
-                { k: "Linked Entity ID", label: "Linked Entity ID" },
-                { k: "Linked Entity Name", label: "Linked Entity Name" },
-                { k: "Client Name", label: "Client Name" },
-                { k: "Project Type", label: "Project Type" },
-                { k: "Status", label: "Status" },
-                { k: "Notes", label: "Notes" },
-              ].map(({ k, label }) => (
-                <Grid item xs={12} md={k === "Notes" ? 12 : 6} key={k}>
-                  {k === "Linked Entity Type" ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{label}</InputLabel>
-                      <Select
-                        label={label}
-                        value={createForm[k] || ""}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, [k]: e.target.value }))}
-                      >
-                        {["Account", "Deal", "Project", "Order"].map((t) => (
-                          <MenuItem key={t} value={t}>{t}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : k === "Status" ? (
-                    <FormControl fullWidth size="small">
-                      <InputLabel>{label}</InputLabel>
-                      <Select
-                        label={label}
-                        value={createForm[k] || "Draft"}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, [k]: e.target.value }))}
-                      >
-                        {["Draft", "Final", "Archived"].map((s) => (
-                          <MenuItem key={s} value={s}>{s}</MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label={label}
-                      value={createForm[k] || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, [k]: e.target.value }))}
-                      multiline={k === "Notes"}
-                      minRows={k === "Notes" ? 3 : 1}
-                    />
-                  )}
-                </Grid>
-              ))}
+              {/* Owner */}
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Owner"
+                  value={createForm["Owner"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, Owner: e.target.value }))}
+                />
+              </Grid>
+
+              {/* Linked Entity Type */}
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Linked Entity Type</InputLabel>
+                  <Select
+                    label="Linked Entity Type"
+                    value={createForm["Linked Entity Type"] || ""}
+                    onChange={async (e) => {
+                      const type = e.target.value;
+                      setCreateForm((p) => ({
+                        ...p,
+                        "Linked Entity Type": type,
+                        "Linked Entity ID": "",
+                        "Linked Entity Name": "",
+                      }));
+                      setEntityOptions([]);
+                      await loadEntitiesForType(type);
+                    }}
+                  >
+                    {["Account", "Deal", "Project", "Order"].map((t) => (
+                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Linked Entity Name (dropdown) */}
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
+                  <InputLabel>Linked Entity Name</InputLabel>
+                  <Select
+                    label="Linked Entity Name"
+                    value={createForm["Linked Entity ID"] || ""}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const picked = (entityOptions || []).find((x) => String(x.id) === String(id));
+                      setCreateForm((p) => ({
+                        ...p,
+                        "Linked Entity ID": id,
+                        // Store display in "Linked Entity Name" as requested:
+                        // Account/Project/Deal/Order Name | Company | Mobile Number | Owner
+                        "Linked Entity Name": picked?.display || "",
+                      }));
+                    }}
+                  >
+                    {(entityOptions || []).map((opt) => (
+                      <MenuItem key={opt.id} value={opt.id}>
+                        {opt.display}
+                      </MenuItem>
+                    ))}
+                    {!entityOptions.length ? (
+                      <MenuItem value="" disabled>
+                        {entityLoading ? "Loading…" : "No entities found"}
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Linked Entity ID (read-only from dropdown) */}
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Linked Entity ID"
+                  value={createForm["Linked Entity ID"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              {/* Client Name */}
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Client Name"
+                  value={createForm["Client Name"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
+                />
+              </Grid>
+
+              {/* Project Type */}
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Project Type"
+                  value={createForm["Project Type"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
+                />
+              </Grid>
+
+              {/* Status */}
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    label="Status"
+                    value={createForm.Status || "Draft"}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
+                  >
+                    {["Draft", "Final", "Archived"].map((s) => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {/* Notes */}
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Notes"
+                  value={createForm.Notes || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
+                  multiline
+                  minRows={3}
+                />
+              </Grid>
             </Grid>
           </DialogContent>
+
           <DialogActions>
             <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
             <Button
@@ -663,6 +1018,9 @@ export default function CostingTable() {
                 Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
               </Typography>
               <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                Linked Entity Name: {activeSheet?.["Linked Entity Name"] || ""}
+              </Typography>
+              <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
                 Owner: {activeSheet?.["Owner"] || ""} | Status: {activeSheet?.["Status"] || ""}
               </Typography>
             </Box>
@@ -677,280 +1035,20 @@ export default function CostingTable() {
               const headItems = lineItems.filter((x) => String(x["Head Name"] || "").trim() === head);
               const headTotal = safeNum(totalsByHead[head]);
 
-              const draft = newRowByHead[head] || {};
-              const subcats = subcatsForHead(head);
-              const payList = validation.paymentStatus || [];
-
               return (
-                <Accordion key={head} defaultExpanded={false}>
-                  <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                      <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
-                        {head}
-                      </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.85 }}>
-                        Total: ₹ {fmtINR(headTotal)}
-                      </Typography>
-                    </Box>
-                  </AccordionSummary>
-
-                  <AccordionDetails>
-                    {/* Add row */}
-                    <Paper sx={{ p: 1.2, mb: 1.2, borderRadius: 2, border: "1px dashed #d9e4ff" }}>
-                      <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
-                        Add Expense
-                      </Typography>
-
-                      <Grid container spacing={1}>
-                        <Grid item xs={12} md={3}>
-                          <FormControl fullWidth size="small">
-                            <InputLabel>Subcategory</InputLabel>
-                            <Select
-                              label="Subcategory"
-                              value={draft.Subcategory || ""}
-                              onChange={(e) =>
-                                setNewRowByHead((p) => ({
-                                  ...p,
-                                  [head]: { ...(p[head] || {}), Subcategory: e.target.value },
-                                }))
-                              }
-                            >
-                              {subcats.map((s) => (
-                                <MenuItem key={s} value={s}>{s}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Expense Date"
-                            type="date"
-                            InputLabelProps={{ shrink: true }}
-                            value={draft["Expense Date"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), "Expense Date": e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={3}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Entry Tag"
-                            value={draft["Entry Tag"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), "Entry Tag": e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={3}>
-                          <FormControl fullWidth size="small">
-                            <InputLabel>Payment Status</InputLabel>
-                            <Select
-                              label="Payment Status"
-                              value={draft["Payment Status"] || ""}
-                              onChange={(e) =>
-                                setNewRowByHead((p) => ({
-                                  ...p,
-                                  [head]: { ...(p[head] || {}), "Payment Status": e.target.value },
-                                }))
-                              }
-                            >
-                              {payList.map((s) => (
-                                <MenuItem key={s} value={s}>{s}</MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-
-                        <Grid item xs={12} md={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Particular"
-                            value={draft.Particular || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), Particular: e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={8}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Details"
-                            value={draft.Details || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), Details: e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={2}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="QTY"
-                            value={draft["QTY"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), QTY: e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={2}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Rate"
-                            value={draft["Rate"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), Rate: e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={2}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Amount"
-                            value={draft["Amount"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), Amount: e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={2}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="GST %"
-                            value={draft["GST %"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), "GST %": e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Attachment Link"
-                            value={draft["Attachment Link"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), "Attachment Link": e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Voucher/Invoice No"
-                            value={draft["Voucher/Invoice No"] || ""}
-                            onChange={(e) =>
-                              setNewRowByHead((p) => ({
-                                ...p,
-                                [head]: { ...(p[head] || {}), "Voucher/Invoice No": e.target.value },
-                              }))
-                            }
-                          />
-                        </Grid>
-
-                        <Grid item xs={12} md={4} sx={{ display: "flex", alignItems: "center" }}>
-                          <Button
-                            variant="contained"
-                            onClick={() => addLineItem(head)}
-                            disabled={loading}
-                            sx={{ bgcolor: cornflowerBlue, width: "100%" }}
-                          >
-                            {loading ? "Adding…" : "Add Expense"}
-                          </Button>
-                        </Grid>
-                      </Grid>
-                    </Paper>
-
-                    {/* Existing rows */}
-                    <Table size="small">
-                      <TableHead>
-                        <TableRow sx={{ background: "#f6f9ff" }}>
-                          {lineItemHeaders
-                            .filter((h) => h !== "Active")
-                            .map((h) => (
-                              <TableCell key={h} sx={{ fontWeight: 800, fontSize: 11 }}>
-                                {h}
-                              </TableCell>
-                            ))}
-                          <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Action</TableCell>
-                        </TableRow>
-                      </TableHead>
-
-                      <TableBody>
-                        {headItems.map((it, i) => (
-                          <TableRow key={i} hover>
-                            {lineItemHeaders
-                              .filter((h) => h !== "Active")
-                              .map((h) => (
-                                <TableCell key={h} sx={{ fontSize: 11 }}>
-                                  {String(it[h] ?? "")}
-                                </TableCell>
-                              ))}
-                            <TableCell>
-                              <IconButton onClick={() => softDeleteLineItem(it)}>
-                                <DeleteOutlineIcon sx={{ color: "#c62828" }} />
-                              </IconButton>
-                            </TableCell>
-                          </TableRow>
-                        ))}
-
-                        {!headItems.length ? (
-                          <TableRow>
-                            <TableCell colSpan={lineItemHeaders.length + 1} sx={{ fontSize: 11, opacity: 0.7 }}>
-                              No items under {head}.
-                            </TableCell>
-                          </TableRow>
-                        ) : null}
-                      </TableBody>
-                    </Table>
-                  </AccordionDetails>
-                </Accordion>
+                <HeadSection
+                  key={head}
+                  head={head}
+                  headItems={headItems}
+                  headTotal={headTotal}
+                  subcats={subcatsForHead(head)}
+                  payList={validation.paymentStatus || []}
+                  loggedInName={loggedInName}
+                  loading={loading}
+                  onAddLineItem={addLineItem}
+                  onSoftDeleteLineItem={softDeleteLineItem}
+                  lineItemHeaders={lineItemHeaders}
+                />
               );
             })}
           </DialogContent>

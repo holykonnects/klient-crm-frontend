@@ -730,7 +730,6 @@ export default function CostingTable() {
               ) : null}
             </Box>
           </Box>
-        </Box>
 
           <Box sx={{ display: "flex", gap: 1 }}>
             <Button
@@ -1071,7 +1070,6 @@ export default function CostingTable() {
           </DialogActions>
         </Dialog>
       </Box>
-    </Box>
     </ThemeProvider>
   );
 }

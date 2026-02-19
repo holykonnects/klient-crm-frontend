@@ -138,14 +138,10 @@ function recomputeDraftLive(next) {
   const hasQtyRate = qty > 0 && rate > 0;
 
   const auto = Boolean(next.__autoAmount);
-  const userHasManualAmount =
-    String(next["Amount"] ?? "").trim() !== "" && !auto;
+  const userHasManualAmount = String(next["Amount"] ?? "").trim() !== "" && !auto;
 
   let amount = next["Amount"];
-
-  if (hasQtyRate && !userHasManualAmount) {
-    amount = qty * rate;
-  }
+  if (hasQtyRate && !userHasManualAmount) amount = qty * rate;
 
   const gstPct = safeNum(next["GST %"]);
   const hasAmount = String(amount ?? "").trim() !== "";
@@ -236,6 +232,22 @@ export default function CostingTable() {
   // ✅ Entity dropdown options for CREATE modal (no assumptions)
   const [entityOptions, setEntityOptions] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
+
+  // ✅ Drawer menu containment ref (FIX for dropdown hidden behind drawer)
+  const drawerPaperRef = useRef(null);
+
+  // ✅ MenuProps to force Select menus to render INSIDE the Drawer (no portal stacking issues)
+  const drawerMenuProps = useMemo(() => {
+    return {
+      disablePortal: true,
+      container: drawerPaperRef.current,
+      PaperProps: {
+        sx: {
+          zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 80,
+        },
+      },
+    };
+  }, [openEdit]); // ensures ref is available when edit modal (and drawer) are mounted
 
   // Create cost sheet form
   const [createForm, setCreateForm] = useState({
@@ -611,7 +623,6 @@ export default function CostingTable() {
   }, [loggedInName]);
 
   async function openDrawerAdd(headPreset) {
-    // ✅ ensure validation exists before opening drawer
     await ensureValidationLoaded();
 
     setDrawerMode("add");
@@ -621,14 +632,12 @@ export default function CostingTable() {
   }
 
   async function openDrawerEdit(item) {
-    // ✅ ensure validation exists before opening drawer
     await ensureValidationLoaded();
 
     const headName = String(item?.["Head Name"] || "").trim();
     setDrawerMode("edit");
     setDrawerOriginal(item || null);
 
-    // Prefill from selected item
     const pre = recomputeDraftLive({
       "Head Name": headName,
       Subcategory: item?.Subcategory ?? "",
@@ -664,9 +673,7 @@ export default function CostingTable() {
         return recomputeDraftLive(next);
       }
       const next = { ...p, [key]: value };
-      if (key === "Head Name") {
-        next.Subcategory = "";
-      }
+      if (key === "Head Name") next.Subcategory = "";
       return recomputeDraftLive(next);
     });
   }
@@ -674,7 +681,6 @@ export default function CostingTable() {
   async function saveDrawer() {
     if (!activeSheet) return;
 
-    // For "edit": keep log model and delete behavior as-is.
     if (drawerMode === "edit" && drawerOriginal) {
       const oldParticular = String(drawerOriginal["Particular"] || "").trim();
       if (!oldParticular) {
@@ -750,24 +756,9 @@ export default function CostingTable() {
     const available = new Set(lineItemHeaders);
     const picked = defaultLineItemCols.filter((c) => available.has(c));
 
-    if (!picked.length) {
-      return lineItemHeaders.filter((h) => h !== "Active");
-    }
+    if (!picked.length) return lineItemHeaders.filter((h) => h !== "Active");
     return picked;
   }, [lineItemHeaders]);
-
-  /* ===================== Drawer MenuProps zIndex fix ===================== */
-  // ✅ This is the exact fix for "dropdown hidden behind drawer"
-  const drawerMenuProps = useMemo(() => {
-    return {
-      disablePortal: false, // keep default portal behavior
-      PaperProps: {
-        sx: {
-          zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 60, // above Drawer (+21) and Dialog
-        },
-      },
-    };
-  }, []);
 
   /* ===================== Render ===================== */
 
@@ -937,7 +928,6 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {/* Owner */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -948,7 +938,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Linked Entity Type */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Linked Entity Type</InputLabel>
@@ -976,13 +965,8 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* Linked Entity Name (dropdown) */}
               <Grid item xs={12} md={6}>
-                <FormControl
-                  fullWidth
-                  size="small"
-                  disabled={!createForm["Linked Entity Type"] || entityLoading}
-                >
+                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
@@ -1011,7 +995,6 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* Linked Entity ID (read-only from dropdown) */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1022,7 +1005,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Client Name */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1033,7 +1015,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Project Type */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -1044,7 +1025,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Status */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
@@ -1062,7 +1042,6 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* Notes */}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -1092,7 +1071,6 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
-          {/* ✅ Header includes Linked Entity Name at top */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -1129,7 +1107,6 @@ export default function CostingTable() {
           </DialogTitle>
 
           <DialogContent dividers sx={{ position: "relative" }}>
-            {/* Sticky total */}
             <Paper
               sx={{
                 p: 1.2,
@@ -1142,15 +1119,7 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 1,
-                  flexWrap: "wrap",
-                }}
-              >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -1167,23 +1136,17 @@ export default function CostingTable() {
               </Box>
             </Paper>
 
-            {/* Table */}
             <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
               <TableContainer sx={{ maxHeight: 520 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
                       {lineItemCols.map((c) => (
-                        <TableCell
-                          key={c}
-                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
-                        >
+                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
-                        Actions
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1217,10 +1180,7 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={lineItemCols.length + 1}
-                          sx={{ fontSize: 12, opacity: 0.7 }}
-                        >
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -1235,14 +1195,12 @@ export default function CostingTable() {
               anchor="right"
               open={drawerOpen}
               onClose={closeDrawer}
-              // ✅ zIndex fix: Drawer above Dialog/Table (prevents "not editable behind table")
               sx={{
                 zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20,
               }}
-              ModalProps={{
-                keepMounted: true,
-              }}
+              ModalProps={{ keepMounted: true }}
               PaperProps={{
+                ref: drawerPaperRef,
                 sx: {
                   width: { xs: "100%", sm: 420 },
                   p: 2,
@@ -1263,14 +1221,12 @@ export default function CostingTable() {
               <Divider sx={{ mb: 1.5 }} />
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                {/* Head */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Head Name</InputLabel>
                   <Select
                     label="Head Name"
                     value={drawerDraft["Head Name"] || ""}
                     onChange={(e) => setDrawerField("Head Name", e.target.value)}
-                    // ✅ MenuProps zIndex fix (dropdown above drawer)
                     MenuProps={drawerMenuProps}
                   >
                     {(validation.heads || []).map((h) => (
@@ -1286,14 +1242,12 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
 
-                {/* Subcategory */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Subcategory</InputLabel>
                   <Select
                     label="Subcategory"
                     value={drawerDraft.Subcategory || ""}
                     onChange={(e) => setDrawerField("Subcategory", e.target.value)}
-                    // ✅ MenuProps zIndex fix (dropdown above drawer)
                     MenuProps={drawerMenuProps}
                   >
                     {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
@@ -1309,7 +1263,6 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
 
-                {/* Expense Date */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1320,7 +1273,6 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Expense Date", e.target.value)}
                 />
 
-                {/* Entry Tag */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1329,14 +1281,12 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
                 />
 
-                {/* Payment Status */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Payment Status</InputLabel>
                   <Select
                     label="Payment Status"
                     value={drawerDraft["Payment Status"] || ""}
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
-                    // ✅ MenuProps zIndex fix (dropdown above drawer)
                     MenuProps={drawerMenuProps}
                   >
                     {(validation.paymentStatus || []).map((s) => (
@@ -1352,7 +1302,6 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
 
-                {/* Particular */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1361,7 +1310,6 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Particular", e.target.value)}
                 />
 
-                {/* Details */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1372,7 +1320,6 @@ export default function CostingTable() {
                   minRows={2}
                 />
 
-                {/* Numbers */}
                 <Grid container spacing={1}>
                   <Grid item xs={4}>
                     <TextField
@@ -1434,7 +1381,6 @@ export default function CostingTable() {
                   </Grid>
                 </Grid>
 
-                {/* Proof */}
                 <TextField
                   fullWidth
                   size="small"

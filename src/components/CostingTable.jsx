@@ -167,6 +167,8 @@ const HeadSection = memo(function HeadSection({
     "Attachment Link": "",
     "Voucher/Invoice No": "",
     "Payment Status": "",
+    // ✅ internal flag for auto amount mode
+    __autoAmount: false,
   }));
 
   // keep entered by updated if user changes (but don’t spam renders elsewhere)
@@ -174,7 +176,51 @@ const HeadSection = memo(function HeadSection({
     setDraft((p) => ({ ...p, "Entered By": loggedInName || p["Entered By"] || "" }));
   }, [loggedInName]);
 
-  const setField = (key, value) => setDraft((p) => ({ ...p, [key]: value }));
+  // ✅ recompute draft live (QTY*Rate => Amount), then GST/Total
+  const recomputeDraft = (next) => {
+    const qty = safeNum(next["QTY"]);
+    const rate = safeNum(next["Rate"]);
+    const hasQtyRate = qty > 0 && rate > 0;
+
+    const auto = Boolean(next.__autoAmount);
+
+    // If user typed amount manually, stop auto unless they clear it
+    const userHasManualAmount =
+      String(next["Amount"] ?? "").trim() !== "" && !auto;
+
+    let amount = next["Amount"];
+
+    if (hasQtyRate && !userHasManualAmount) {
+      amount = qty * rate;
+    }
+
+    // GST calc (same logic pattern as computeRowTotals, but live)
+    const gstPct = safeNum(next["GST %"]);
+    const hasAmount = String(amount ?? "").trim() !== "";
+    const gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
+    const total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
+
+    return {
+      ...next,
+      Amount: amount === 0 ? "" : amount,
+      "GST Amount": gstAmount === 0 ? "" : gstAmount,
+      "Total Amount": total === 0 ? "" : total,
+      __autoAmount: hasQtyRate && !userHasManualAmount,
+    };
+  };
+
+  // ✅ setField with live recompute
+  const setField = (key, value) => {
+    setDraft((p) => {
+      // If user edits Amount manually, disable auto unless they clear it
+      if (key === "Amount") {
+        const next = { ...p, Amount: value, __autoAmount: false };
+        return recomputeDraft(next);
+      }
+      const next = { ...p, [key]: value };
+      return recomputeDraft(next);
+    });
+  };
 
   const handleAdd = () => onAddLineItem(head, draft, setDraft);
 
@@ -198,7 +244,11 @@ const HeadSection = memo(function HeadSection({
             <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Subcategory</InputLabel>
-                <Select label="Subcategory" value={draft.Subcategory || ""} onChange={(e) => setField("Subcategory", e.target.value)}>
+                <Select
+                  label="Subcategory"
+                  value={draft.Subcategory || ""}
+                  onChange={(e) => setField("Subcategory", e.target.value)}
+                >
                   {subcats.map((s) => (
                     <MenuItem key={s} value={s}>
                       {s}
@@ -221,13 +271,23 @@ const HeadSection = memo(function HeadSection({
             </Grid>
 
             <Grid item xs={12} md={3}>
-              <TextField fullWidth size="small" label="Entry Tag" value={draft["Entry Tag"] || ""} onChange={(e) => setField("Entry Tag", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="Entry Tag"
+                value={draft["Entry Tag"] || ""}
+                onChange={(e) => setField("Entry Tag", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={3}>
               <FormControl fullWidth size="small">
                 <InputLabel>Payment Status</InputLabel>
-                <Select label="Payment Status" value={draft["Payment Status"] || ""} onChange={(e) => setField("Payment Status", e.target.value)}>
+                <Select
+                  label="Payment Status"
+                  value={draft["Payment Status"] || ""}
+                  onChange={(e) => setField("Payment Status", e.target.value)}
+                >
                   {payList.map((s) => (
                     <MenuItem key={s} value={s}>
                       {s}
@@ -238,27 +298,65 @@ const HeadSection = memo(function HeadSection({
             </Grid>
 
             <Grid item xs={12} md={4}>
-              <TextField fullWidth size="small" label="Particular" value={draft.Particular || ""} onChange={(e) => setField("Particular", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="Particular"
+                value={draft.Particular || ""}
+                onChange={(e) => setField("Particular", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={8}>
-              <TextField fullWidth size="small" label="Details" value={draft.Details || ""} onChange={(e) => setField("Details", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="Details"
+                value={draft.Details || ""}
+                onChange={(e) => setField("Details", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={2}>
-              <TextField fullWidth size="small" label="QTY" value={draft["QTY"] || ""} onChange={(e) => setField("QTY", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="QTY"
+                value={draft["QTY"] || ""}
+                onChange={(e) => setField("QTY", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={2}>
-              <TextField fullWidth size="small" label="Rate" value={draft["Rate"] || ""} onChange={(e) => setField("Rate", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="Rate"
+                value={draft["Rate"] || ""}
+                onChange={(e) => setField("Rate", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={2}>
-              <TextField fullWidth size="small" label="Amount" value={draft["Amount"] || ""} onChange={(e) => setField("Amount", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="Amount"
+                value={draft["Amount"] || ""}
+                onChange={(e) => setField("Amount", e.target.value)}
+                InputProps={{ readOnly: Boolean(draft.__autoAmount) }}
+                helperText={draft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+              />
             </Grid>
 
             <Grid item xs={12} md={2}>
-              <TextField fullWidth size="small" label="GST %" value={draft["GST %"] || ""} onChange={(e) => setField("GST %", e.target.value)} />
+              <TextField
+                fullWidth
+                size="small"
+                label="GST %"
+                value={draft["GST %"] || ""}
+                onChange={(e) => setField("GST %", e.target.value)}
+              />
             </Grid>
 
             <Grid item xs={12} md={4}>
@@ -428,7 +526,6 @@ export default function CostingTable() {
 
   useEffect(() => {
     loadAll();
-    
   }, []);
 
   const filtered = useMemo(() => {
@@ -584,6 +681,9 @@ export default function CostingTable() {
 
     // build row using draft (local), then enrich with required keys
     let row = { ...(draft || {}) };
+    // remove internal flag
+    if ("__autoAmount" in row) delete row.__autoAmount;
+
     row["Cost Sheet ID"] = costSheetId;
     row["Head Name"] = headName;
     row["Entered By"] = loggedInName || row["Entered By"] || "";
@@ -639,6 +739,7 @@ export default function CostingTable() {
           "Attachment Link": "",
           "Voucher/Invoice No": "",
           "Payment Status": "",
+          __autoAmount: false,
         });
       }
     } catch (e) {
@@ -712,7 +813,7 @@ export default function CostingTable() {
         <Box padding={4}>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
-    
+
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
               <Typography
@@ -722,7 +823,7 @@ export default function CostingTable() {
               >
                 Costing
               </Typography>
-    
+
               {loading ? (
                 <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
                   Loading…
@@ -921,8 +1022,6 @@ export default function CostingTable() {
                       setCreateForm((p) => ({
                         ...p,
                         "Linked Entity ID": id,
-                        // Store display in "Linked Entity Name" as requested:
-                        // Account/Project/Deal/Order Name | Company | Mobile Number | Owner
                         "Linked Entity Name": picked?.display || "",
                       }));
                     }}
@@ -1020,8 +1119,40 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (LINE ITEMS) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
+          {/* ✅ Updated header: show Linked Entity Name at top */}
           <DialogTitle sx={{ fontWeight: 800 }}>
-            Cost Sheet — {activeSheet?.["Cost Sheet ID"] || ""}
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                <Typography sx={{ fontWeight: 900 }}>
+                  Cost Sheet — {activeSheet?.["Cost Sheet ID"] || ""}
+                </Typography>
+
+                {activeSheet?.["Status"] ? (
+                  <Typography
+                    sx={{
+                      fontSize: 11,
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 1,
+                      bgcolor: "#eef4ff",
+                      border: "1px solid #d9e4ff",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {String(activeSheet["Status"])}
+                  </Typography>
+                ) : null}
+              </Box>
+
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: "#1f2a44" }}>
+                {activeSheet?.["Linked Entity Name"] || "—"}
+              </Typography>
+
+              <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
+                {"  "} | Owner: {activeSheet?.["Owner"] || ""}
+              </Typography>
+            </Box>
           </DialogTitle>
 
           <DialogContent dividers>

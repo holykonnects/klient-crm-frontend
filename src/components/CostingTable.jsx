@@ -138,8 +138,7 @@ function recomputeDraftLive(next) {
   const hasQtyRate = qty > 0 && rate > 0;
 
   const auto = Boolean(next.__autoAmount);
-  const userHasManualAmount =
-    String(next["Amount"] ?? "").trim() !== "" && !auto;
+  const userHasManualAmount = String(next["Amount"] ?? "").trim() !== "" && !auto;
 
   let amount = next["Amount"];
 
@@ -419,8 +418,7 @@ export default function CostingTable() {
     payloadRow["Cost Sheet ID"] = costSheetId;
 
     // stamp linkage fields into line items
-    payloadRow["Owner"] =
-      activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+    payloadRow["Owner"] = activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
     payloadRow["Linked Entity Type"] =
       activeSheet?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
     payloadRow["Linked Entity ID"] =
@@ -477,18 +475,14 @@ export default function CostingTable() {
       });
 
       // Optimistic UI
-      setLineItems((p) =>
-        p.filter((x) => String(x["Particular"] || "").trim() !== particular)
-      );
+      setLineItems((p) => p.filter((x) => String(x["Particular"] || "").trim() !== particular));
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
       }, 800);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
-      alert(
-        "Failed to delete line item. If two rows share same Particular, delete may be ambiguous."
-      );
+      alert("Failed to delete line item. If two rows share same Particular, delete may be ambiguous.");
     } finally {
       setLoading(false);
     }
@@ -629,9 +623,7 @@ export default function CostingTable() {
         setDrawerOpen(false);
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
-        alert(
-          "Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous."
-        );
+        alert("Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous.");
       } finally {
         setLoading(false);
       }
@@ -691,7 +683,7 @@ export default function CostingTable() {
 
     const picked = defaultLineItemCols.filter((c) => available.has(c));
 
-    // If nothing matched, use all headers except "Active" and internal link columns
+    // If nothing matched, use all headers except "Active"
     if (!picked.length) {
       return lineItemHeaders.filter((h) => h !== "Active");
     }
@@ -710,18 +702,12 @@ export default function CostingTable() {
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
-              <Typography
-                variant="h5"
-                fontWeight="bold"
-                sx={{ fontFamily: "Montserrat, sans-serif" }}
-              >
+              <Typography variant="h5" fontWeight="bold" sx={{ fontFamily: "Montserrat, sans-serif" }}>
                 Costing
               </Typography>
 
               {loading ? (
-                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
-                  Loading…
-                </Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>Loading…</Typography>
               ) : null}
             </Box>
           </Box>
@@ -762,9 +748,7 @@ export default function CostingTable() {
               <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {s}
-                  </MenuItem>
+                  <MenuItem key={s} value={s}>{s}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -778,9 +762,7 @@ export default function CostingTable() {
               >
                 <MenuItem value="">All</MenuItem>
                 {["Account", "Deal", "Project", "Order"].map((t) => (
-                  <MenuItem key={t} value={t}>
-                    {t}
-                  </MenuItem>
+                  <MenuItem key={t} value={t}>{t}</MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -796,9 +778,7 @@ export default function CostingTable() {
               anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
             >
               <Box sx={{ p: 1.5 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
-                  Columns
-                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>Columns</Typography>
                 <FormGroup>
                   {costSheetColumns.map((c) => (
                     <FormControlLabel
@@ -901,9 +881,7 @@ export default function CostingTable() {
                     }}
                   >
                     {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>
-                        {t}
-                      </MenuItem>
+                      <MenuItem key={t} value={t}>{t}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -911,11 +889,7 @@ export default function CostingTable() {
 
               {/* Linked Entity Name (dropdown) */}
               <Grid item xs={12} md={6}>
-                <FormControl
-                  fullWidth
-                  size="small"
-                  disabled={!createForm["Linked Entity Type"] || entityLoading}
-                >
+                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
@@ -987,9 +961,7 @@ export default function CostingTable() {
                     onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                   >
                     {["Draft", "Final", "Archived"].map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1012,12 +984,7 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={createCostSheet}
-              sx={{ bgcolor: cornflowerBlue }}
-              disabled={loading}
-            >
+            <Button variant="contained" onClick={createCostSheet} sx={{ bgcolor: cornflowerBlue }} disabled={loading}>
               {loading ? "Creating…" : "Create"}
             </Button>
           </DialogActions>
@@ -1055,7 +1022,8 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
+                {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
               </Typography>
             </Box>
@@ -1075,7 +1043,15 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -1144,255 +1120,254 @@ export default function CostingTable() {
                 </Table>
               </TableContainer>
             </Paper>
+            {/* ✅ Drawer MOVED OUT of DialogContent to fix layering */}
+          </DialogContent>
 
-            {/* RIGHT DRAWER */}
-            <Drawer
-              anchor="right"
-              open={drawerOpen}
-              onClose={closeDrawer}
-              PaperProps={{
-                sx: {
-                  width: { xs: "100%", sm: 420 },
-                  p: 2,
-                },
-              }}
-            >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
-                  {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
-                </Typography>
+          {/* ================= RIGHT DRAWER (MOVED HERE + Z-INDEX ADDED) ================= */}
+          <Drawer
+            anchor="right"
+            open={drawerOpen}
+            onClose={closeDrawer}
+            // ✅ ensure drawer sits above dialog/table layers
+            sx={{ zIndex: (t) => t.zIndex.modal + 20 }}
+            PaperProps={{
+              sx: {
+                width: { xs: "100%", sm: 420 },
+                p: 2,
+                zIndex: (t) => t.zIndex.modal + 21,
+              },
+            }}
+          >
+            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+              <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
+                {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
+              </Typography>
 
-                <IconButton onClick={closeDrawer}>
-                  <CloseIcon />
-                </IconButton>
-              </Box>
+              <IconButton onClick={closeDrawer}>
+                <CloseIcon />
+              </IconButton>
+            </Box>
 
-              <Divider sx={{ mb: 1.5 }} />
+            <Divider sx={{ mb: 1.5 }} />
 
-              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                {/* Head */}
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Head Name</InputLabel>
-                  <Select
-                    label="Head Name"
-                    value={drawerDraft["Head Name"] || ""}
-                    onChange={(e) => setDrawerField("Head Name", e.target.value)}
-                  >
-                    {(validation.heads || []).map((h) => (
-                      <MenuItem key={h} value={h}>
-                        {h}
-                      </MenuItem>
-                    ))}
-                    {!validation.heads?.length ? (
-                      <MenuItem value="" disabled>
-                        No heads found
-                      </MenuItem>
-                    ) : null}
-                  </Select>
-                </FormControl>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+              {/* Head */}
+              <FormControl size="small" fullWidth>
+                <InputLabel>Head Name</InputLabel>
+                <Select
+                  label="Head Name"
+                  value={drawerDraft["Head Name"] || ""}
+                  onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                >
+                  {(validation.heads || []).map((h) => (
+                    <MenuItem key={h} value={h}>
+                      {h}
+                    </MenuItem>
+                  ))}
+                  {!validation.heads?.length ? (
+                    <MenuItem value="" disabled>
+                      No heads found
+                    </MenuItem>
+                  ) : null}
+                </Select>
+              </FormControl>
 
-                {/* Subcategory */}
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Subcategory</InputLabel>
-                  <Select
-                    label="Subcategory"
-                    value={drawerDraft.Subcategory || ""}
-                    onChange={(e) => setDrawerField("Subcategory", e.target.value)}
-                  >
-                    {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    ))}
-                    {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
-                      <MenuItem value="" disabled>
-                        No subcategories
-                      </MenuItem>
-                    ) : null}
-                  </Select>
-                </FormControl>
+              {/* Subcategory */}
+              <FormControl size="small" fullWidth>
+                <InputLabel>Subcategory</InputLabel>
+                <Select
+                  label="Subcategory"
+                  value={drawerDraft.Subcategory || ""}
+                  onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                >
+                  {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
+                  {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
+                    <MenuItem value="" disabled>
+                      No subcategories
+                    </MenuItem>
+                  ) : null}
+                </Select>
+              </FormControl>
 
-                {/* Expense Date */}
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Expense Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={drawerDraft["Expense Date"] || ""}
-                  onChange={(e) => setDrawerField("Expense Date", e.target.value)}
-                />
+              {/* Expense Date */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Expense Date"
+                type="date"
+                InputLabelProps={{ shrink: true }}
+                value={drawerDraft["Expense Date"] || ""}
+                onChange={(e) => setDrawerField("Expense Date", e.target.value)}
+              />
 
-                {/* Entry Tag */}
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Entry Tag"
-                  value={drawerDraft["Entry Tag"] || ""}
-                  onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
-                />
+              {/* Entry Tag */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Entry Tag"
+                value={drawerDraft["Entry Tag"] || ""}
+                onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
+              />
 
-                {/* Payment Status */}
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Payment Status</InputLabel>
-                  <Select
-                    label="Payment Status"
-                    value={drawerDraft["Payment Status"] || ""}
-                    onChange={(e) => setDrawerField("Payment Status", e.target.value)}
-                  >
-                    {(validation.paymentStatus || []).map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    ))}
-                    {!validation.paymentStatus?.length ? (
-                      <MenuItem value="" disabled>
-                        No payment statuses
-                      </MenuItem>
-                    ) : null}
-                  </Select>
-                </FormControl>
+              {/* Payment Status */}
+              <FormControl size="small" fullWidth>
+                <InputLabel>Payment Status</InputLabel>
+                <Select
+                  label="Payment Status"
+                  value={drawerDraft["Payment Status"] || ""}
+                  onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                >
+                  {(validation.paymentStatus || []).map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
+                  {!validation.paymentStatus?.length ? (
+                    <MenuItem value="" disabled>
+                      No payment statuses
+                    </MenuItem>
+                  ) : null}
+                </Select>
+              </FormControl>
 
-                {/* Particular */}
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Particular"
-                  value={drawerDraft.Particular || ""}
-                  onChange={(e) => setDrawerField("Particular", e.target.value)}
-                />
+              {/* Particular */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Particular"
+                value={drawerDraft.Particular || ""}
+                onChange={(e) => setDrawerField("Particular", e.target.value)}
+              />
 
-                {/* Details */}
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Details"
-                  value={drawerDraft.Details || ""}
-                  onChange={(e) => setDrawerField("Details", e.target.value)}
-                  multiline
-                  minRows={2}
-                />
+              {/* Details */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Details"
+                value={drawerDraft.Details || ""}
+                onChange={(e) => setDrawerField("Details", e.target.value)}
+                multiline
+                minRows={2}
+              />
 
-                {/* Numbers */}
-                <Grid container spacing={1}>
-                  <Grid item xs={4}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="QTY"
-                      value={drawerDraft["QTY"] || ""}
-                      onChange={(e) => setDrawerField("QTY", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Rate"
-                      value={drawerDraft["Rate"] || ""}
-                      onChange={(e) => setDrawerField("Rate", e.target.value)}
-                    />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="GST %"
-                      value={drawerDraft["GST %"] || ""}
-                      onChange={(e) => setDrawerField("GST %", e.target.value)}
-                    />
-                  </Grid>
-
-                  <Grid item xs={12}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Amount"
-                      value={drawerDraft["Amount"] || ""}
-                      onChange={(e) => setDrawerField("Amount", e.target.value)}
-                      InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
-                      helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
-                    />
-                  </Grid>
-
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="GST Amount"
-                      value={drawerDraft["GST Amount"] || ""}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
-                  <Grid item xs={6}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label="Total Amount"
-                      value={drawerDraft["Total Amount"] || ""}
-                      InputProps={{ readOnly: true }}
-                    />
-                  </Grid>
+              {/* Numbers */}
+              <Grid container spacing={1}>
+                <Grid item xs={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="QTY"
+                    value={drawerDraft["QTY"] || ""}
+                    onChange={(e) => setDrawerField("QTY", e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Rate"
+                    value={drawerDraft["Rate"] || ""}
+                    onChange={(e) => setDrawerField("Rate", e.target.value)}
+                  />
+                </Grid>
+                <Grid item xs={4}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="GST %"
+                    value={drawerDraft["GST %"] || ""}
+                    onChange={(e) => setDrawerField("GST %", e.target.value)}
+                  />
                 </Grid>
 
-                {/* Proof */}
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Attachment Link"
-                  value={drawerDraft["Attachment Link"] || ""}
-                  onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
-                />
-
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Voucher/Invoice No"
-                  value={drawerDraft["Voucher/Invoice No"] || ""}
-                  onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
-                />
-
-                <Divider sx={{ my: 0.5 }} />
-
-                <Box sx={{ display: "flex", gap: 1 }}>
-                  <Button
-                    variant="outlined"
+                <Grid item xs={12}>
+                  <TextField
                     fullWidth
-                    onClick={closeDrawer}
-                    disabled={loading}
-                  >
-                    Cancel
-                  </Button>
+                    size="small"
+                    label="Amount"
+                    value={drawerDraft["Amount"] || ""}
+                    onChange={(e) => setDrawerField("Amount", e.target.value)}
+                    InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
+                    helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+                  />
+                </Grid>
 
-                  <Button
-                    variant="contained"
+                <Grid item xs={6}>
+                  <TextField
                     fullWidth
-                    sx={{ bgcolor: cornflowerBlue }}
-                    onClick={saveDrawer}
-                    disabled={loading}
-                  >
-                    {loading ? "Saving…" : "Save"}
-                  </Button>
-                </Box>
+                    size="small"
+                    label="GST Amount"
+                    value={drawerDraft["GST Amount"] || ""}
+                    InputProps={{ readOnly: true }}
+                  />
+                </Grid>
+                <Grid item xs={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Total Amount"
+                    value={drawerDraft["Total Amount"] || ""}
+                    InputProps={{ readOnly: true }}
+                  />
+                </Grid>
+              </Grid>
+
+              {/* Proof */}
+              <TextField
+                fullWidth
+                size="small"
+                label="Attachment Link"
+                value={drawerDraft["Attachment Link"] || ""}
+                onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
+              />
+
+              <TextField
+                fullWidth
+                size="small"
+                label="Voucher/Invoice No"
+                value={drawerDraft["Voucher/Invoice No"] || ""}
+                onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
+              />
+
+              <Divider sx={{ my: 0.5 }} />
+
+              <Box sx={{ display: "flex", gap: 1 }}>
+                <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
+                  Cancel
+                </Button>
 
                 <Button
                   variant="contained"
                   fullWidth
-                  sx={{ bgcolor: "#1f2a44" }}
-                  onClick={saveDrawerAndNew}
+                  sx={{ bgcolor: cornflowerBlue }}
+                  onClick={saveDrawer}
                   disabled={loading}
                 >
-                  {loading ? "Saving…" : "Save & New"}
+                  {loading ? "Saving…" : "Save"}
                 </Button>
-
-                {drawerMode === "edit" ? (
-                  <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
-                  </Typography>
-                ) : null}
               </Box>
-            </Drawer>
-          </DialogContent>
+
+              <Button
+                variant="contained"
+                fullWidth
+                sx={{ bgcolor: "#1f2a44" }}
+                onClick={saveDrawerAndNew}
+                disabled={loading}
+              >
+                {loading ? "Saving…" : "Save & New"}
+              </Button>
+
+              {drawerMode === "edit" ? (
+                <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                  Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                </Typography>
+              ) : null}
+            </Box>
+          </Drawer>
 
           <DialogActions>
             <Button onClick={() => setOpenEdit(false)}>Close</Button>

@@ -37,6 +37,7 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
 import CloseIcon from "@mui/icons-material/Close";
+import DownloadIcon from "@mui/icons-material/Download";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -89,9 +90,7 @@ function jsonpGet(url) {
     };
 
     const script = document.createElement("script");
-    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(
-      cbName
-    )}`;
+    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
     script.async = true;
 
     script.onerror = () => {
@@ -161,46 +160,36 @@ function recomputeDraftLive(next) {
 
 /**
  * ✅ Non-breaking validation normalizer
- * - If backend returns heads/subcategories/paymentStatus -> use as-is
- * - Otherwise fallback to common sheet-style keys
- * - If Payment Status missing, fallback to your canonical list:
- *   pending, partially paid, paid, hold/disputed
+ * - If backend returns heads/subcategories/paymentStatus (your old working format) -> use as-is
+ * - Otherwise fallback to common sheet-style keys (Cost Heads / Payment Status)
  */
-const DEFAULT_PAYMENT_STATUSES = ["pending", "partially paid", "paid", "hold/disputed"];
-
 function normalizeValidationResponse(raw) {
   const v = raw?.data ? raw.data : raw;
 
+  // ✅ Prefer your original expected keys (this preserves old behavior)
   const headsDirect = Array.isArray(v?.heads) ? v.heads : null;
   const subcatsDirect =
     v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
   const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
 
   if (headsDirect || subcatsDirect || payDirect) {
-    const pay = (payDirect && payDirect.length ? payDirect : DEFAULT_PAYMENT_STATUSES).map(
-      (x) => String(x).trim()
-    );
     return {
       heads: headsDirect || [],
       subcategories: subcatsDirect || {},
-      paymentStatus: pay,
+      paymentStatus: payDirect || [],
     };
   }
 
+  // fallback (only if original keys not present)
   const heads =
     (Array.isArray(v?.costHeads) && v.costHeads) ||
     (Array.isArray(v?.["Cost Heads"]) && v["Cost Heads"]) ||
     [];
 
-  const paymentStatusRaw =
+  const paymentStatus =
     (Array.isArray(v?.["Payment Status"]) && v["Payment Status"]) ||
     (Array.isArray(v?.payment_status) && v.payment_status) ||
     [];
-
-  const paymentStatus =
-    paymentStatusRaw && paymentStatusRaw.length
-      ? paymentStatusRaw.map((x) => String(x).trim())
-      : DEFAULT_PAYMENT_STATUSES;
 
   const subcategories =
     (v?.subcategoryMap && typeof v.subcategoryMap === "object" && v.subcategoryMap) ||
@@ -221,7 +210,7 @@ export default function CostingTable() {
   const [validation, setValidation] = useState({
     heads: [],
     subcategories: {},
-    paymentStatus: DEFAULT_PAYMENT_STATUSES,
+    paymentStatus: [],
   });
 
   const [costSheets, setCostSheets] = useState([]);
@@ -260,34 +249,6 @@ export default function CostingTable() {
       },
     };
   }, [openEdit]); // ensures ref is available when edit modal (and drawer) are mounted
-
-  // ===== Extraction =====
-  const [openExtract, setOpenExtract] = useState(false);
-  const [extractForm, setExtractForm] = useState({
-    entityType: "",
-    linkedEntityId: "",
-    particular: "",
-    paymentStatus: "",
-    from: "",
-    to: "",
-    format: "csv",
-  });
-
-  function triggerExtraction() {
-    const params = new URLSearchParams({
-      action: "exportCosting",
-      ...Object.fromEntries(
-        Object.entries(extractForm).filter(([_, v]) => String(v || "").trim())
-      ),
-    });
-
-    const url = `${BACKEND}?${params.toString()}`;
-
-    // Direct download / new tab
-    window.open(url, "_blank");
-
-    setOpenExtract(false);
-  }
 
   // Create cost sheet form
   const [createForm, setCreateForm] = useState({
@@ -503,6 +464,13 @@ export default function CostingTable() {
             ];
 
       setLineItemHeaders(headers);
+
+      // ✅ initialize export column selection (no assumptions: default = all headers)
+      if (headers?.length) {
+        const init = {};
+        headers.forEach((h) => (init[h] = true));
+        setExportCols(init);
+      }
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert("Failed to open cost sheet details.");
@@ -800,6 +768,93 @@ export default function CostingTable() {
     return picked;
   }, [lineItemHeaders]);
 
+  /* ===================== EXTRACTION (Export) ===================== */
+
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState("csv"); // csv | xlsx | pdf
+  const [exportParticular, setExportParticular] = useState("");
+  const [exportPaymentStatus, setExportPaymentStatus] = useState("");
+  const [exportFrom, setExportFrom] = useState(""); // YYYY-MM-DD
+  const [exportTo, setExportTo] = useState(""); // YYYY-MM-DD
+
+  // column selector for export (no assumptions: driven from lineItemHeaders)
+  const [exportCols, setExportCols] = useState({});
+
+  const exportHeadersAvailable = useMemo(() => {
+    if (lineItemHeaders?.length) return lineItemHeaders;
+    // fallback: if headers not loaded, allow default set (existing behavior)
+    return defaultLineItemCols;
+  }, [lineItemHeaders]);
+
+  const exportSelectedFields = useMemo(() => {
+    const out = [];
+    exportHeadersAvailable.forEach((h) => {
+      if (exportCols[h]) out.push(h);
+    });
+    return out;
+  }, [exportCols, exportHeadersAvailable]);
+
+  function openExportDialog() {
+    // Ensure some header visibility map exists
+    if (!Object.keys(exportCols || {}).length && exportHeadersAvailable?.length) {
+      const init = {};
+      exportHeadersAvailable.forEach((h) => (init[h] = true));
+      setExportCols(init);
+    }
+    setExportOpen(true);
+  }
+
+  function closeExportDialog() {
+    setExportOpen(false);
+  }
+
+  function buildExportUrl() {
+    const params = new URLSearchParams();
+
+    params.set("action", "exportCosting");
+    params.set("format", exportFormat || "csv");
+
+    // filters (no assumptions: only include if user provided / exists in UI)
+    if (activeSheet?.["Linked Entity Type"]) params.set("entityType", String(activeSheet["Linked Entity Type"]));
+    if (activeSheet?.["Linked Entity ID"]) params.set("linkedEntityId", String(activeSheet["Linked Entity ID"]));
+
+    if (exportParticular.trim()) params.set("particular", exportParticular.trim());
+    if (exportPaymentStatus.trim()) params.set("paymentStatus", exportPaymentStatus.trim());
+    if (exportFrom) params.set("from", exportFrom);
+    if (exportTo) params.set("to", exportTo);
+
+    // fields selection (only if not "all")
+    const allSelected =
+      exportHeadersAvailable.length > 0 &&
+      exportSelectedFields.length === exportHeadersAvailable.length;
+
+    if (!allSelected && exportSelectedFields.length) {
+      // Backend accepts comma-separated OR JSON array string.
+      params.set("fields", JSON.stringify(exportSelectedFields));
+    }
+
+    return `${BACKEND}?${params.toString()}`;
+  }
+
+  function startExportDownload() {
+    if (!activeSheet) {
+      alert("Open a Cost Sheet first (Edit) to extract its line items.");
+      return;
+    }
+
+    // If user unchecks everything, don’t assume: block
+    if (!exportSelectedFields.length) {
+      alert("Please select at least one field to extract.");
+      return;
+    }
+
+    const url = buildExportUrl();
+
+    // Trigger download by opening the export URL (CSV returns auto-download HTML; XLSX/PDF redirects)
+    window.open(url, "_blank", "noopener,noreferrer");
+    setExportOpen(false);
+  }
+
   /* ===================== Render ===================== */
 
   return (
@@ -812,11 +867,7 @@ export default function CostingTable() {
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
-              <Typography
-                variant="h5"
-                fontWeight="bold"
-                sx={{ fontFamily: "Montserrat, sans-serif" }}
-              >
+              <Typography variant="h5" fontWeight="bold" sx={{ fontFamily: "Montserrat, sans-serif" }}>
                 Costing
               </Typography>
 
@@ -828,7 +879,7 @@ export default function CostingTable() {
             </Box>
           </Box>
 
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
@@ -836,14 +887,6 @@ export default function CostingTable() {
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Refresh
-            </Button>
-
-            <Button
-              variant="outlined"
-              onClick={() => setOpenExtract(true)}
-              sx={{ fontFamily: "Montserrat, sans-serif" }}
-            >
-              Extract
             </Button>
 
             <Button
@@ -869,11 +912,7 @@ export default function CostingTable() {
 
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Status</InputLabel>
-              <Select
-                value={statusFilter}
-                label="Status"
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
+              <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
                   <MenuItem key={s} value={s}>
@@ -921,9 +960,7 @@ export default function CostingTable() {
                         <Checkbox
                           size="small"
                           checked={visibleCols[c] !== false}
-                          onChange={(e) =>
-                            setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))
-                          }
+                          onChange={(e) => setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))}
                         />
                       }
                       label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
@@ -971,10 +1008,7 @@ export default function CostingTable() {
 
                 {!filtered.length ? (
                   <TableRow>
-                    <TableCell
-                      colSpan={costSheetColumns.length + 1}
-                      sx={{ fontSize: 12, opacity: 0.7 }}
-                    >
+                    <TableCell colSpan={costSheetColumns.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                       No cost sheets found.
                     </TableCell>
                   </TableRow>
@@ -983,130 +1017,6 @@ export default function CostingTable() {
             </Table>
           </TableContainer>
         </Paper>
-
-        {/* ================= EXTRACT MODAL ================= */}
-        <Dialog open={openExtract} onClose={() => setOpenExtract(false)} maxWidth="sm" fullWidth>
-          <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
-          <DialogContent dividers>
-            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              <Grid item xs={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Linked Entity Type</InputLabel>
-                  <Select
-                    label="Linked Entity Type"
-                    value={extractForm.entityType}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, entityType: e.target.value }))
-                    }
-                  >
-                    <MenuItem value="">All</MenuItem>
-                    {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>
-                        {t}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Linked Entity ID"
-                  value={extractForm.linkedEntityId}
-                  onChange={(e) =>
-                    setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
-                  }
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Particular"
-                  value={extractForm.particular}
-                  onChange={(e) =>
-                    setExtractForm((p) => ({ ...p, particular: e.target.value }))
-                  }
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Payment Status</InputLabel>
-                  <Select
-                    label="Payment Status"
-                    value={extractForm.paymentStatus}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, paymentStatus: e.target.value }))
-                    }
-                  >
-                    <MenuItem value="">All</MenuItem>
-                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="From Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={extractForm.from}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
-                />
-              </Grid>
-
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="To Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={extractForm.to}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, to: e.target.value }))}
-                />
-              </Grid>
-
-              <Grid item xs={12}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Format</InputLabel>
-                  <Select
-                    label="Format"
-                    value={extractForm.format}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, format: e.target.value }))
-                    }
-                  >
-                    <MenuItem value="csv">CSV</MenuItem>
-                    <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
-                    <MenuItem value="pdf">PDF</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-            </Grid>
-          </DialogContent>
-
-          <DialogActions>
-            <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={triggerExtraction}
-              sx={{ bgcolor: cornflowerBlue }}
-            >
-              Download
-            </Button>
-          </DialogActions>
-        </Dialog>
 
         {/* ================= CREATE COST SHEET MODAL ================= */}
         <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>
@@ -1151,20 +1061,14 @@ export default function CostingTable() {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl
-                  fullWidth
-                  size="small"
-                  disabled={!createForm["Linked Entity Type"] || entityLoading}
-                >
+                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
                     value={createForm["Linked Entity ID"] || ""}
                     onChange={(e) => {
                       const id = e.target.value;
-                      const picked = (entityOptions || []).find(
-                        (x) => String(x.id) === String(id)
-                      );
+                      const picked = (entityOptions || []).find((x) => String(x.id) === String(id));
                       setCreateForm((p) => ({
                         ...p,
                         "Linked Entity ID": id,
@@ -1202,9 +1106,7 @@ export default function CostingTable() {
                   size="small"
                   label="Client Name"
                   value={createForm["Client Name"] || ""}
-                  onChange={(e) =>
-                    setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
-                  }
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
                 />
               </Grid>
 
@@ -1214,9 +1116,7 @@ export default function CostingTable() {
                   size="small"
                   label="Project Type"
                   value={createForm["Project Type"] || ""}
-                  onChange={(e) =>
-                    setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
-                  }
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
                 />
               </Grid>
 
@@ -1295,8 +1195,7 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
-                {activeSheet?.["Linked Entity ID"] || ""}
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
               </Typography>
             </Box>
@@ -1328,15 +1227,27 @@ export default function CostingTable() {
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
 
-                <Button
-                  variant="contained"
-                  startIcon={<AddIcon />}
-                  sx={{ bgcolor: cornflowerBlue }}
-                  disabled={loading}
-                  onClick={() => openDrawerAdd("")}
-                >
-                  Add Line Item
-                </Button>
+                <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                  {/* ✅ EXTRACTION BUTTON */}
+                  <Button
+                    variant="outlined"
+                    startIcon={<DownloadIcon />}
+                    onClick={openExportDialog}
+                    disabled={loading}
+                  >
+                    Extract
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    startIcon={<AddIcon />}
+                    sx={{ bgcolor: cornflowerBlue }}
+                    disabled={loading}
+                    onClick={() => openDrawerAdd("")}
+                  >
+                    Add Line Item
+                  </Button>
+                </Box>
               </Box>
             </Paper>
 
@@ -1346,16 +1257,11 @@ export default function CostingTable() {
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
                       {lineItemCols.map((c) => (
-                        <TableCell
-                          key={c}
-                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
-                        >
+                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
-                        Actions
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1376,11 +1282,7 @@ export default function CostingTable() {
                             <EditIcon sx={{ color: cornflowerBlue }} />
                           </IconButton>
 
-                          <IconButton
-                            onClick={() => softDeleteLineItem(it)}
-                            disabled={loading}
-                            title="Delete"
-                          >
+                          <IconButton onClick={() => softDeleteLineItem(it)} disabled={loading} title="Delete">
                             <DeleteOutlineIcon sx={{ color: "#c62828" }} />
                           </IconButton>
                         </TableCell>
@@ -1389,10 +1291,7 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={lineItemCols.length + 1}
-                          sx={{ fontSize: 12, opacity: 0.7 }}
-                        >
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -1501,7 +1400,7 @@ export default function CostingTable() {
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
                     MenuProps={drawerMenuProps}
                   >
-                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                    {(validation.paymentStatus || []).map((s) => (
                       <MenuItem key={s} value={s}>
                         {s}
                       </MenuItem>
@@ -1639,12 +1538,163 @@ export default function CostingTable() {
 
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and
-                    appending the updated row.
+                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
                   </Typography>
                 ) : null}
               </Box>
             </Drawer>
+
+            {/* ================= EXTRACTION DIALOG ================= */}
+            <Dialog open={exportOpen} onClose={closeExportDialog} maxWidth="md" fullWidth>
+              <DialogTitle sx={{ fontWeight: 900 }}>Extract Line Items</DialogTitle>
+              <DialogContent dividers>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                  <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                    Source: {activeSheet?.["Cost Sheet ID"] || ""} — {activeSheet?.["Linked Entity Name"] || "—"}
+                  </Typography>
+
+                  <Grid container spacing={1.5}>
+                    <Grid item xs={12} md={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Format</InputLabel>
+                        <Select
+                          label="Format"
+                          value={exportFormat}
+                          onChange={(e) => setExportFormat(e.target.value)}
+                        >
+                          <MenuItem value="csv">CSV</MenuItem>
+                          <MenuItem value="xlsx">XLSX</MenuItem>
+                          <MenuItem value="pdf">PDF</MenuItem>
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    <Grid item xs={12} md={4}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Particular contains"
+                        value={exportParticular}
+                        onChange={(e) => setExportParticular(e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} md={4}>
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Payment Status</InputLabel>
+                        <Select
+                          label="Payment Status"
+                          value={exportPaymentStatus}
+                          onChange={(e) => setExportPaymentStatus(e.target.value)}
+                        >
+                          <MenuItem value="">All</MenuItem>
+                          {(validation.paymentStatus || []).map((s) => (
+                            <MenuItem key={s} value={s}>
+                              {s}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="From (Expense Date)"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        value={exportFrom}
+                        onChange={(e) => setExportFrom(e.target.value)}
+                      />
+                    </Grid>
+
+                    <Grid item xs={12} md={6}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="To (Expense Date)"
+                        type="date"
+                        InputLabelProps={{ shrink: true }}
+                        value={exportTo}
+                        onChange={(e) => setExportTo(e.target.value)}
+                      />
+                    </Grid>
+                  </Grid>
+
+                  <Divider />
+
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                    Select Fields to Extract
+                  </Typography>
+
+                  <Paper sx={{ p: 1, borderRadius: 2, border: "1px solid #eee", maxHeight: 260, overflow: "auto" }}>
+                    <FormGroup>
+                      {exportHeadersAvailable.map((h) => (
+                        <FormControlLabel
+                          key={h}
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={Boolean(exportCols[h])}
+                              onChange={(e) =>
+                                setExportCols((p) => ({
+                                  ...p,
+                                  [h]: e.target.checked,
+                                }))
+                              }
+                            />
+                          }
+                          label={<Typography sx={{ fontSize: 12 }}>{h}</Typography>}
+                        />
+                      ))}
+                    </FormGroup>
+                  </Paper>
+
+                  <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        // select all
+                        const next = {};
+                        exportHeadersAvailable.forEach((h) => (next[h] = true));
+                        setExportCols(next);
+                      }}
+                    >
+                      Select All
+                    </Button>
+
+                    <Button
+                      variant="outlined"
+                      onClick={() => {
+                        // clear all
+                        const next = {};
+                        exportHeadersAvailable.forEach((h) => (next[h] = false));
+                        setExportCols(next);
+                      }}
+                    >
+                      Clear
+                    </Button>
+                  </Box>
+
+                  <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                    Note: Extraction uses backend filters (Active-only by default) and exports only the selected fields.
+                  </Typography>
+                </Box>
+              </DialogContent>
+
+              <DialogActions>
+                <Button onClick={closeExportDialog}>Cancel</Button>
+                <Button
+                  variant="contained"
+                  startIcon={<DownloadIcon />}
+                  onClick={startExportDownload}
+                  sx={{ bgcolor: cornflowerBlue }}
+                >
+                  Download
+                </Button>
+              </DialogActions>
+            </Dialog>
           </DialogContent>
 
           <DialogActions>

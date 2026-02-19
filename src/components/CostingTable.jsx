@@ -244,8 +244,33 @@ export default function CostingTable() {
     }
   }
 
+  // ✅ Ensure validation exists (for Edit modal dropdowns)
+  async function ensureValidationLoaded() {
+    const hasHeads = Array.isArray(validation?.heads) && validation.heads.length > 0;
+    const hasPay = Array.isArray(validation?.paymentStatus) && validation.paymentStatus.length > 0;
+    const hasSubcats =
+      validation?.subcategories && typeof validation.subcategories === "object"
+        ? Object.keys(validation.subcategories).length > 0
+        : false;
+
+    if (hasHeads || hasPay || hasSubcats) return;
+
+    try {
+      const v = await jsonpGet(`${BACKEND}?action=getValidation`);
+      setValidation({
+        heads: Array.isArray(v?.heads) ? v.heads : [],
+        subcategories: v?.subcategories || {},
+        paymentStatus: Array.isArray(v?.paymentStatus) ? v.paymentStatus : [],
+      });
+    } catch (e) {
+      console.error("ENSURE_VALIDATION_ERROR", e);
+      // no alert here (avoid noisy), drawer will show "No heads found"
+    }
+  }
+
   useEffect(() => {
     loadAll();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtered = useMemo(() => {
@@ -254,8 +279,7 @@ export default function CostingTable() {
     return costSheets.filter((r) => {
       const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
       const entityOk =
-        !entityTypeFilter ||
-        String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+        !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
       const hay = Object.values(r)
         .map((x) => String(x || ""))
@@ -353,6 +377,9 @@ export default function CostingTable() {
     setLoading(true);
 
     try {
+      // ✅ Ensure validations exist for drawer dropdowns (Head/Subcategory/Payment Status)
+      await ensureValidationLoaded();
+
       const id = row["Cost Sheet ID"];
       const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
@@ -482,7 +509,9 @@ export default function CostingTable() {
       }, 800);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
-      alert("Failed to delete line item. If two rows share same Particular, delete may be ambiguous.");
+      alert(
+        "Failed to delete line item. If two rows share same Particular, delete may be ambiguous."
+      );
     } finally {
       setLoading(false);
     }
@@ -539,7 +568,10 @@ export default function CostingTable() {
 
   // keep entered by updated if user changes while drawer open
   useEffect(() => {
-    setDrawerDraft((p) => ({ ...p, "Entered By": loggedInName || p["Entered By"] || "" }));
+    setDrawerDraft((p) => ({
+      ...p,
+      "Entered By": loggedInName || p["Entered By"] || "",
+    }));
   }, [loggedInName]);
 
   function openDrawerAdd(headPreset) {
@@ -554,7 +586,6 @@ export default function CostingTable() {
     setDrawerMode("edit");
     setDrawerOriginal(item || null);
 
-    // Prefill from selected item
     const pre = recomputeDraftLive({
       "Head Name": headName,
       Subcategory: item?.Subcategory ?? "",
@@ -590,7 +621,6 @@ export default function CostingTable() {
         return recomputeDraftLive(next);
       }
       const next = { ...p, [key]: value };
-      // If head changed, reset subcategory if it doesn't belong
       if (key === "Head Name") {
         next.Subcategory = "";
       }
@@ -601,9 +631,6 @@ export default function CostingTable() {
   async function saveDrawer() {
     if (!activeSheet) return;
 
-    // For "edit": keep your log model and delete behavior as-is.
-    // We "edit" by: soft delete old row (by its old Particular), then add a new row.
-    // This avoids assuming any new backend update action exists.
     if (drawerMode === "edit" && drawerOriginal) {
       const oldParticular = String(drawerOriginal["Particular"] || "").trim();
       if (!oldParticular) {
@@ -619,18 +646,18 @@ export default function CostingTable() {
 
         await addLineItemRow(drawerDraft);
 
-        // Close drawer after save
         setDrawerOpen(false);
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
-        alert("Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous.");
+        alert(
+          "Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous."
+        );
       } finally {
         setLoading(false);
       }
       return;
     }
 
-    // "add"
     await addLineItemRow(drawerDraft);
     setDrawerOpen(false);
   }
@@ -638,12 +665,10 @@ export default function CostingTable() {
   async function saveDrawerAndNew() {
     if (!activeSheet) return;
 
-    // Same behavior as save, but keep drawer open with fresh draft (head preserved)
     const headKeep = String(drawerDraft?.["Head Name"] || "").trim();
 
     if (drawerMode === "edit") {
       await saveDrawer();
-      // if save closed drawer, reopen with new draft
       setTimeout(() => {
         openDrawerAdd(headKeep);
       }, 0);
@@ -676,14 +701,11 @@ export default function CostingTable() {
   ];
 
   const lineItemCols = useMemo(() => {
-    // Prefer known important columns if available, else fall back to whatever headers exist.
     if (!lineItemHeaders?.length) return defaultLineItemCols;
 
     const available = new Set(lineItemHeaders);
-
     const picked = defaultLineItemCols.filter((c) => available.has(c));
 
-    // If nothing matched, use all headers except "Active"
     if (!picked.length) {
       return lineItemHeaders.filter((h) => h !== "Active");
     }
@@ -807,9 +829,7 @@ export default function CostingTable() {
                   {costSheetColumns
                     .filter((c) => visibleCols[c] !== false)
                     .map((c) => (
-                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
-                        {c}
-                      </TableCell>
+                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>{c}</TableCell>
                     ))}
                   <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
                 </TableRow>
@@ -821,9 +841,7 @@ export default function CostingTable() {
                     {costSheetColumns
                       .filter((c) => visibleCols[c] !== false)
                       .map((c) => (
-                        <TableCell key={c} sx={{ fontSize: 12 }}>
-                          {String(r[c] ?? "")}
-                        </TableCell>
+                        <TableCell key={c} sx={{ fontSize: 12 }}>{String(r[c] ?? "")}</TableCell>
                       ))}
                     <TableCell>
                       <IconButton onClick={() => openEditModal(r)}>
@@ -850,7 +868,6 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {/* Owner */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -861,7 +878,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Linked Entity Type */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Linked Entity Type</InputLabel>
@@ -887,7 +903,6 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* Linked Entity Name (dropdown) */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
                   <InputLabel>Linked Entity Name</InputLabel>
@@ -905,20 +920,15 @@ export default function CostingTable() {
                     }}
                   >
                     {(entityOptions || []).map((opt) => (
-                      <MenuItem key={opt.id} value={opt.id}>
-                        {opt.display}
-                      </MenuItem>
+                      <MenuItem key={opt.id} value={opt.id}>{opt.display}</MenuItem>
                     ))}
                     {!entityOptions.length ? (
-                      <MenuItem value="" disabled>
-                        {entityLoading ? "Loading…" : "No entities found"}
-                      </MenuItem>
+                      <MenuItem value="" disabled>{entityLoading ? "Loading…" : "No entities found"}</MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
               </Grid>
 
-              {/* Linked Entity ID (read-only from dropdown) */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -929,7 +939,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Client Name */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -940,7 +949,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Project Type */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -951,7 +959,6 @@ export default function CostingTable() {
                 />
               </Grid>
 
-              {/* Status */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
@@ -967,7 +974,6 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* Notes */}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -992,7 +998,6 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
-          {/* ✅ Header includes Linked Entity Name at top */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -1022,15 +1027,13 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
-                {activeSheet?.["Linked Entity ID"] || ""}
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
               </Typography>
             </Box>
           </DialogTitle>
 
           <DialogContent dividers sx={{ position: "relative" }}>
-            {/* Sticky total */}
             <Paper
               sx={{
                 p: 1.2,
@@ -1043,15 +1046,7 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  gap: 1,
-                  flexWrap: "wrap",
-                }}
-              >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -1068,7 +1063,6 @@ export default function CostingTable() {
               </Box>
             </Paper>
 
-            {/* Table */}
             <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
               <TableContainer sx={{ maxHeight: 520 }}>
                 <Table size="small" stickyHeader>
@@ -1079,9 +1073,7 @@ export default function CostingTable() {
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
-                        Actions
-                      </TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1120,254 +1112,231 @@ export default function CostingTable() {
                 </Table>
               </TableContainer>
             </Paper>
-            {/* ✅ Drawer MOVED OUT of DialogContent to fix layering */}
-          </DialogContent>
 
-          {/* ================= RIGHT DRAWER (MOVED HERE + Z-INDEX ADDED) ================= */}
-          <Drawer
-            anchor="right"
-            open={drawerOpen}
-            onClose={closeDrawer}
-            // ✅ ensure drawer sits above dialog/table layers
-            sx={{ zIndex: (t) => t.zIndex.modal + 20 }}
-            PaperProps={{
-              sx: {
-                width: { xs: "100%", sm: 420 },
-                p: 2,
-                zIndex: (t) => t.zIndex.modal + 21,
-              },
-            }}
-          >
-            <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-              <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
-                {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
-              </Typography>
+            {/* RIGHT DRAWER — zIndex ensured above dialog content */}
+            <Drawer
+              anchor="right"
+              open={drawerOpen}
+              onClose={closeDrawer}
+              sx={{ zIndex: (t) => t.zIndex.modal + 20 }}
+              PaperProps={{
+                sx: {
+                  width: { xs: "100%", sm: 420 },
+                  p: 2,
+                  zIndex: (t) => t.zIndex.modal + 21,
+                },
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
+                  {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
+                </Typography>
 
-              <IconButton onClick={closeDrawer}>
-                <CloseIcon />
-              </IconButton>
-            </Box>
+                <IconButton onClick={closeDrawer}>
+                  <CloseIcon />
+                </IconButton>
+              </Box>
 
-            <Divider sx={{ mb: 1.5 }} />
+              <Divider sx={{ mb: 1.5 }} />
 
-            <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-              {/* Head */}
-              <FormControl size="small" fullWidth>
-                <InputLabel>Head Name</InputLabel>
-                <Select
-                  label="Head Name"
-                  value={drawerDraft["Head Name"] || ""}
-                  onChange={(e) => setDrawerField("Head Name", e.target.value)}
-                >
-                  {(validation.heads || []).map((h) => (
-                    <MenuItem key={h} value={h}>
-                      {h}
-                    </MenuItem>
-                  ))}
-                  {!validation.heads?.length ? (
-                    <MenuItem value="" disabled>
-                      No heads found
-                    </MenuItem>
-                  ) : null}
-                </Select>
-              </FormControl>
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Head Name</InputLabel>
+                  <Select
+                    label="Head Name"
+                    value={drawerDraft["Head Name"] || ""}
+                    onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                  >
+                    {(validation.heads || []).map((h) => (
+                      <MenuItem key={h} value={h}>{h}</MenuItem>
+                    ))}
+                    {!validation.heads?.length ? (
+                      <MenuItem value="" disabled>No heads found</MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
 
-              {/* Subcategory */}
-              <FormControl size="small" fullWidth>
-                <InputLabel>Subcategory</InputLabel>
-                <Select
-                  label="Subcategory"
-                  value={drawerDraft.Subcategory || ""}
-                  onChange={(e) => setDrawerField("Subcategory", e.target.value)}
-                >
-                  {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {s}
-                    </MenuItem>
-                  ))}
-                  {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
-                    <MenuItem value="" disabled>
-                      No subcategories
-                    </MenuItem>
-                  ) : null}
-                </Select>
-              </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Subcategory</InputLabel>
+                  <Select
+                    label="Subcategory"
+                    value={drawerDraft.Subcategory || ""}
+                    onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                  >
+                    {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                    {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
+                      <MenuItem value="" disabled>No subcategories</MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
 
-              {/* Expense Date */}
-              <TextField
-                fullWidth
-                size="small"
-                label="Expense Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={drawerDraft["Expense Date"] || ""}
-                onChange={(e) => setDrawerField("Expense Date", e.target.value)}
-              />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Expense Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={drawerDraft["Expense Date"] || ""}
+                  onChange={(e) => setDrawerField("Expense Date", e.target.value)}
+                />
 
-              {/* Entry Tag */}
-              <TextField
-                fullWidth
-                size="small"
-                label="Entry Tag"
-                value={drawerDraft["Entry Tag"] || ""}
-                onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
-              />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Entry Tag"
+                  value={drawerDraft["Entry Tag"] || ""}
+                  onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
+                />
 
-              {/* Payment Status */}
-              <FormControl size="small" fullWidth>
-                <InputLabel>Payment Status</InputLabel>
-                <Select
-                  label="Payment Status"
-                  value={drawerDraft["Payment Status"] || ""}
-                  onChange={(e) => setDrawerField("Payment Status", e.target.value)}
-                >
-                  {(validation.paymentStatus || []).map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {s}
-                    </MenuItem>
-                  ))}
-                  {!validation.paymentStatus?.length ? (
-                    <MenuItem value="" disabled>
-                      No payment statuses
-                    </MenuItem>
-                  ) : null}
-                </Select>
-              </FormControl>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={drawerDraft["Payment Status"] || ""}
+                    onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                  >
+                    {(validation.paymentStatus || []).map((s) => (
+                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                    ))}
+                    {!validation.paymentStatus?.length ? (
+                      <MenuItem value="" disabled>No payment statuses</MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
 
-              {/* Particular */}
-              <TextField
-                fullWidth
-                size="small"
-                label="Particular"
-                value={drawerDraft.Particular || ""}
-                onChange={(e) => setDrawerField("Particular", e.target.value)}
-              />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={drawerDraft.Particular || ""}
+                  onChange={(e) => setDrawerField("Particular", e.target.value)}
+                />
 
-              {/* Details */}
-              <TextField
-                fullWidth
-                size="small"
-                label="Details"
-                value={drawerDraft.Details || ""}
-                onChange={(e) => setDrawerField("Details", e.target.value)}
-                multiline
-                minRows={2}
-              />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Details"
+                  value={drawerDraft.Details || ""}
+                  onChange={(e) => setDrawerField("Details", e.target.value)}
+                  multiline
+                  minRows={2}
+                />
 
-              {/* Numbers */}
-              <Grid container spacing={1}>
-                <Grid item xs={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="QTY"
-                    value={drawerDraft["QTY"] || ""}
-                    onChange={(e) => setDrawerField("QTY", e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Rate"
-                    value={drawerDraft["Rate"] || ""}
-                    onChange={(e) => setDrawerField("Rate", e.target.value)}
-                  />
-                </Grid>
-                <Grid item xs={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="GST %"
-                    value={drawerDraft["GST %"] || ""}
-                    onChange={(e) => setDrawerField("GST %", e.target.value)}
-                  />
-                </Grid>
+                <Grid container spacing={1}>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="QTY"
+                      value={drawerDraft["QTY"] || ""}
+                      onChange={(e) => setDrawerField("QTY", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Rate"
+                      value={drawerDraft["Rate"] || ""}
+                      onChange={(e) => setDrawerField("Rate", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST %"
+                      value={drawerDraft["GST %"] || ""}
+                      onChange={(e) => setDrawerField("GST %", e.target.value)}
+                    />
+                  </Grid>
 
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Amount"
-                    value={drawerDraft["Amount"] || ""}
-                    onChange={(e) => setDrawerField("Amount", e.target.value)}
-                    InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
-                    helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
-                  />
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Amount"
+                      value={drawerDraft["Amount"] || ""}
+                      onChange={(e) => setDrawerField("Amount", e.target.value)}
+                      InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
+                      helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+                    />
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST Amount"
+                      value={drawerDraft["GST Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Total Amount"
+                      value={drawerDraft["Total Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
                 </Grid>
 
-                <Grid item xs={6}>
-                  <TextField
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Attachment Link"
+                  value={drawerDraft["Attachment Link"] || ""}
+                  onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Voucher/Invoice No"
+                  value={drawerDraft["Voucher/Invoice No"] || ""}
+                  onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
+                />
+
+                <Divider sx={{ my: 0.5 }} />
+
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
+                    Cancel
+                  </Button>
+
+                  <Button
+                    variant="contained"
                     fullWidth
-                    size="small"
-                    label="GST Amount"
-                    value={drawerDraft["GST Amount"] || ""}
-                    InputProps={{ readOnly: true }}
-                  />
-                </Grid>
-                <Grid item xs={6}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Total Amount"
-                    value={drawerDraft["Total Amount"] || ""}
-                    InputProps={{ readOnly: true }}
-                  />
-                </Grid>
-              </Grid>
-
-              {/* Proof */}
-              <TextField
-                fullWidth
-                size="small"
-                label="Attachment Link"
-                value={drawerDraft["Attachment Link"] || ""}
-                onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
-              />
-
-              <TextField
-                fullWidth
-                size="small"
-                label="Voucher/Invoice No"
-                value={drawerDraft["Voucher/Invoice No"] || ""}
-                onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
-              />
-
-              <Divider sx={{ my: 0.5 }} />
-
-              <Box sx={{ display: "flex", gap: 1 }}>
-                <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
-                  Cancel
-                </Button>
+                    sx={{ bgcolor: cornflowerBlue }}
+                    onClick={saveDrawer}
+                    disabled={loading}
+                  >
+                    {loading ? "Saving…" : "Save"}
+                  </Button>
+                </Box>
 
                 <Button
                   variant="contained"
                   fullWidth
-                  sx={{ bgcolor: cornflowerBlue }}
-                  onClick={saveDrawer}
+                  sx={{ bgcolor: "#1f2a44" }}
+                  onClick={saveDrawerAndNew}
                   disabled={loading}
                 >
-                  {loading ? "Saving…" : "Save"}
+                  {loading ? "Saving…" : "Save & New"}
                 </Button>
+
+                {drawerMode === "edit" ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                  </Typography>
+                ) : null}
               </Box>
-
-              <Button
-                variant="contained"
-                fullWidth
-                sx={{ bgcolor: "#1f2a44" }}
-                onClick={saveDrawerAndNew}
-                disabled={loading}
-              >
-                {loading ? "Saving…" : "Save & New"}
-              </Button>
-
-              {drawerMode === "edit" ? (
-                <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                  Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
-                </Typography>
-              ) : null}
-            </Box>
-          </Drawer>
+            </Drawer>
+          </DialogContent>
 
           <DialogActions>
             <Button onClick={() => setOpenEdit(false)}>Close</Button>

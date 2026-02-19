@@ -330,7 +330,7 @@ export default function CostingTable() {
     if (!extractColsTouched) {
       // keep as-is; user can now modify
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [openExtract, extractAllColumns]);
 
   function openExtractColumns(e) {

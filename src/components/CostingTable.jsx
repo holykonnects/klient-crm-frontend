@@ -53,12 +53,6 @@ const cornflowerBlue = "#6495ED";
 const BACKEND =
   "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
 
-/**
- * ✅ Payment Status values (as you clarified)
- * Used ONLY as a fallback when validation table returns none.
- */
-const DEFAULT_PAYMENT_STATUSES = ["Pending", "Partially Paid", "Paid", "Hold/Disputed"];
-
 /* ===================== helpers ===================== */
 
 function safeNum(v) {
@@ -95,7 +89,9 @@ function jsonpGet(url) {
     };
 
     const script = document.createElement("script");
-    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
+    script.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(
+      cbName
+    )}`;
     script.async = true;
 
     script.onerror = () => {
@@ -165,50 +161,52 @@ function recomputeDraftLive(next) {
 
 /**
  * ✅ Non-breaking validation normalizer
- * - If backend returns heads/subcategories/paymentStatus (your old working format) -> use as-is
- * - Otherwise fallback to common sheet-style keys (Cost Heads / Payment Status)
- * - ✅ UPDATE: if paymentStatus is empty, fallback to DEFAULT_PAYMENT_STATUSES (as you clarified)
+ * - If backend returns heads/subcategories/paymentStatus -> use as-is
+ * - Otherwise fallback to common sheet-style keys
+ * - If Payment Status missing, fallback to your canonical list:
+ *   pending, partially paid, paid, hold/disputed
  */
+const DEFAULT_PAYMENT_STATUSES = ["pending", "partially paid", "paid", "hold/disputed"];
+
 function normalizeValidationResponse(raw) {
   const v = raw?.data ? raw.data : raw;
 
-  // ✅ Prefer your original expected keys (this preserves old behavior)
   const headsDirect = Array.isArray(v?.heads) ? v.heads : null;
   const subcatsDirect =
     v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
   const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
 
   if (headsDirect || subcatsDirect || payDirect) {
-    const cleanedPay = (payDirect || []).filter((x) => String(x || "").trim());
+    const pay = (payDirect && payDirect.length ? payDirect : DEFAULT_PAYMENT_STATUSES).map(
+      (x) => String(x).trim()
+    );
     return {
       heads: headsDirect || [],
       subcategories: subcatsDirect || {},
-      paymentStatus: cleanedPay.length ? cleanedPay : DEFAULT_PAYMENT_STATUSES,
+      paymentStatus: pay,
     };
   }
 
-  // fallback (only if original keys not present)
   const heads =
     (Array.isArray(v?.costHeads) && v.costHeads) ||
     (Array.isArray(v?.["Cost Heads"]) && v["Cost Heads"]) ||
     [];
 
-  const paymentStatus =
+  const paymentStatusRaw =
     (Array.isArray(v?.["Payment Status"]) && v["Payment Status"]) ||
     (Array.isArray(v?.payment_status) && v.payment_status) ||
     [];
+
+  const paymentStatus =
+    paymentStatusRaw && paymentStatusRaw.length
+      ? paymentStatusRaw.map((x) => String(x).trim())
+      : DEFAULT_PAYMENT_STATUSES;
 
   const subcategories =
     (v?.subcategoryMap && typeof v.subcategoryMap === "object" && v.subcategoryMap) ||
     {};
 
-  const cleanedPay = (paymentStatus || []).filter((x) => String(x || "").trim());
-
-  return {
-    heads,
-    subcategories,
-    paymentStatus: cleanedPay.length ? cleanedPay : DEFAULT_PAYMENT_STATUSES,
-  };
+  return { heads, subcategories, paymentStatus };
 }
 
 /* ===================== Component ===================== */
@@ -223,7 +221,7 @@ export default function CostingTable() {
   const [validation, setValidation] = useState({
     heads: [],
     subcategories: {},
-    paymentStatus: DEFAULT_PAYMENT_STATUSES, // ✅ default-safe (no assumption beyond your clarified enum)
+    paymentStatus: DEFAULT_PAYMENT_STATUSES,
   });
 
   const [costSheets, setCostSheets] = useState([]);
@@ -262,6 +260,34 @@ export default function CostingTable() {
       },
     };
   }, [openEdit]); // ensures ref is available when edit modal (and drawer) are mounted
+
+  // ===== Extraction =====
+  const [openExtract, setOpenExtract] = useState(false);
+  const [extractForm, setExtractForm] = useState({
+    entityType: "",
+    linkedEntityId: "",
+    particular: "",
+    paymentStatus: "",
+    from: "",
+    to: "",
+    format: "csv",
+  });
+
+  function triggerExtraction() {
+    const params = new URLSearchParams({
+      action: "exportCosting",
+      ...Object.fromEntries(
+        Object.entries(extractForm).filter(([_, v]) => String(v || "").trim())
+      ),
+    });
+
+    const url = `${BACKEND}?${params.toString()}`;
+
+    // Direct download / new tab
+    window.open(url, "_blank");
+
+    setOpenExtract(false);
+  }
 
   // Create cost sheet form
   const [createForm, setCreateForm] = useState({
@@ -786,7 +812,11 @@ export default function CostingTable() {
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
-              <Typography variant="h5" fontWeight="bold" sx={{ fontFamily: "Montserrat, sans-serif" }}>
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                sx={{ fontFamily: "Montserrat, sans-serif" }}
+              >
                 Costing
               </Typography>
 
@@ -806,6 +836,14 @@ export default function CostingTable() {
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Refresh
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={() => setOpenExtract(true)}
+              sx={{ fontFamily: "Montserrat, sans-serif" }}
+            >
+              Extract
             </Button>
 
             <Button
@@ -831,7 +869,11 @@ export default function CostingTable() {
 
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Status</InputLabel>
-              <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
                   <MenuItem key={s} value={s}>
@@ -879,7 +921,9 @@ export default function CostingTable() {
                         <Checkbox
                           size="small"
                           checked={visibleCols[c] !== false}
-                          onChange={(e) => setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))}
+                          onChange={(e) =>
+                            setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))
+                          }
                         />
                       }
                       label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
@@ -927,7 +971,10 @@ export default function CostingTable() {
 
                 {!filtered.length ? (
                   <TableRow>
-                    <TableCell colSpan={costSheetColumns.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                    <TableCell
+                      colSpan={costSheetColumns.length + 1}
+                      sx={{ fontSize: 12, opacity: 0.7 }}
+                    >
                       No cost sheets found.
                     </TableCell>
                   </TableRow>
@@ -936,6 +983,130 @@ export default function CostingTable() {
             </Table>
           </TableContainer>
         </Paper>
+
+        {/* ================= EXTRACT MODAL ================= */}
+        <Dialog open={openExtract} onClose={() => setOpenExtract(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Linked Entity Type</InputLabel>
+                  <Select
+                    label="Linked Entity Type"
+                    value={extractForm.entityType}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, entityType: e.target.value }))
+                    }
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {["Account", "Deal", "Project", "Order"].map((t) => (
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Linked Entity ID"
+                  value={extractForm.linkedEntityId}
+                  onChange={(e) =>
+                    setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
+                  }
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={extractForm.particular}
+                  onChange={(e) =>
+                    setExtractForm((p) => ({ ...p, particular: e.target.value }))
+                  }
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={extractForm.paymentStatus}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, paymentStatus: e.target.value }))
+                    }
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="From Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={extractForm.from}
+                  onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
+                />
+              </Grid>
+
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="To Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={extractForm.to}
+                  onChange={(e) => setExtractForm((p) => ({ ...p, to: e.target.value }))}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Format</InputLabel>
+                  <Select
+                    label="Format"
+                    value={extractForm.format}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, format: e.target.value }))
+                    }
+                  >
+                    <MenuItem value="csv">CSV</MenuItem>
+                    <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
+                    <MenuItem value="pdf">PDF</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={triggerExtraction}
+              sx={{ bgcolor: cornflowerBlue }}
+            >
+              Download
+            </Button>
+          </DialogActions>
+        </Dialog>
 
         {/* ================= CREATE COST SHEET MODAL ================= */}
         <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>
@@ -980,14 +1151,20 @@ export default function CostingTable() {
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
+                <FormControl
+                  fullWidth
+                  size="small"
+                  disabled={!createForm["Linked Entity Type"] || entityLoading}
+                >
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
                     value={createForm["Linked Entity ID"] || ""}
                     onChange={(e) => {
                       const id = e.target.value;
-                      const picked = (entityOptions || []).find((x) => String(x.id) === String(id));
+                      const picked = (entityOptions || []).find(
+                        (x) => String(x.id) === String(id)
+                      );
                       setCreateForm((p) => ({
                         ...p,
                         "Linked Entity ID": id,
@@ -1025,7 +1202,9 @@ export default function CostingTable() {
                   size="small"
                   label="Client Name"
                   value={createForm["Client Name"] || ""}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
+                  }
                 />
               </Grid>
 
@@ -1035,7 +1214,9 @@ export default function CostingTable() {
                   size="small"
                   label="Project Type"
                   value={createForm["Project Type"] || ""}
-                  onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                  }
                 />
               </Grid>
 
@@ -1114,7 +1295,8 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
+                {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
               </Typography>
             </Box>
@@ -1133,7 +1315,15 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -1156,11 +1346,16 @@ export default function CostingTable() {
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
                       {lineItemCols.map((c) => (
-                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        <TableCell
+                          key={c}
+                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
+                        >
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1194,7 +1389,10 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell
+                          colSpan={lineItemCols.length + 1}
+                          sx={{ fontSize: 12, opacity: 0.7 }}
+                        >
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -1308,7 +1506,7 @@ export default function CostingTable() {
                         {s}
                       </MenuItem>
                     ))}
-                    {!(validation.paymentStatus || []).length ? (
+                    {!validation.paymentStatus?.length ? (
                       <MenuItem value="" disabled>
                         No payment statuses
                       </MenuItem>
@@ -1441,7 +1639,8 @@ export default function CostingTable() {
 
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                    Note: Edit works by marking the old row inactive (delete by Particular) and
+                    appending the updated row.
                   </Typography>
                 ) : null}
               </Box>

@@ -171,7 +171,8 @@ function normalizeValidationResponse(raw) {
 
   // ✅ Prefer your original expected keys (this preserves old behavior)
   const headsDirect = Array.isArray(v?.heads) ? v.heads : null;
-  const subcatsDirect = v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
+  const subcatsDirect =
+    v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
   const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
 
   if (headsDirect || subcatsDirect || payDirect) {
@@ -755,6 +756,19 @@ export default function CostingTable() {
     return picked;
   }, [lineItemHeaders]);
 
+  /* ===================== Drawer MenuProps zIndex fix ===================== */
+  // ✅ This is the exact fix for "dropdown hidden behind drawer"
+  const drawerMenuProps = useMemo(() => {
+    return {
+      disablePortal: false, // keep default portal behavior
+      PaperProps: {
+        sx: {
+          zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 60, // above Drawer (+21) and Dialog
+        },
+      },
+    };
+  }, []);
+
   /* ===================== Render ===================== */
 
   return (
@@ -1256,6 +1270,8 @@ export default function CostingTable() {
                     label="Head Name"
                     value={drawerDraft["Head Name"] || ""}
                     onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                    // ✅ MenuProps zIndex fix (dropdown above drawer)
+                    MenuProps={drawerMenuProps}
                   >
                     {(validation.heads || []).map((h) => (
                       <MenuItem key={h} value={h}>
@@ -1277,6 +1293,8 @@ export default function CostingTable() {
                     label="Subcategory"
                     value={drawerDraft.Subcategory || ""}
                     onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                    // ✅ MenuProps zIndex fix (dropdown above drawer)
+                    MenuProps={drawerMenuProps}
                   >
                     {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
                       <MenuItem key={s} value={s}>
@@ -1318,6 +1336,8 @@ export default function CostingTable() {
                     label="Payment Status"
                     value={drawerDraft["Payment Status"] || ""}
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                    // ✅ MenuProps zIndex fix (dropdown above drawer)
+                    MenuProps={drawerMenuProps}
                   >
                     {(validation.paymentStatus || []).map((s) => (
                       <MenuItem key={s} value={s}>

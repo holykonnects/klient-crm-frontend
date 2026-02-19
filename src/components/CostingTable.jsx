@@ -53,6 +53,12 @@ const cornflowerBlue = "#6495ED";
 const BACKEND =
   "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
 
+/**
+ * ✅ Payment Status values (as you clarified)
+ * Used ONLY as a fallback when validation table returns none.
+ */
+const DEFAULT_PAYMENT_STATUSES = ["Pending", "Partially Paid", "Paid", "Hold/Disputed"];
+
 /* ===================== helpers ===================== */
 
 function safeNum(v) {
@@ -161,6 +167,7 @@ function recomputeDraftLive(next) {
  * ✅ Non-breaking validation normalizer
  * - If backend returns heads/subcategories/paymentStatus (your old working format) -> use as-is
  * - Otherwise fallback to common sheet-style keys (Cost Heads / Payment Status)
+ * - ✅ UPDATE: if paymentStatus is empty, fallback to DEFAULT_PAYMENT_STATUSES (as you clarified)
  */
 function normalizeValidationResponse(raw) {
   const v = raw?.data ? raw.data : raw;
@@ -172,10 +179,11 @@ function normalizeValidationResponse(raw) {
   const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
 
   if (headsDirect || subcatsDirect || payDirect) {
+    const cleanedPay = (payDirect || []).filter((x) => String(x || "").trim());
     return {
       heads: headsDirect || [],
       subcategories: subcatsDirect || {},
-      paymentStatus: payDirect || [],
+      paymentStatus: cleanedPay.length ? cleanedPay : DEFAULT_PAYMENT_STATUSES,
     };
   }
 
@@ -194,7 +202,13 @@ function normalizeValidationResponse(raw) {
     (v?.subcategoryMap && typeof v.subcategoryMap === "object" && v.subcategoryMap) ||
     {};
 
-  return { heads, subcategories, paymentStatus };
+  const cleanedPay = (paymentStatus || []).filter((x) => String(x || "").trim());
+
+  return {
+    heads,
+    subcategories,
+    paymentStatus: cleanedPay.length ? cleanedPay : DEFAULT_PAYMENT_STATUSES,
+  };
 }
 
 /* ===================== Component ===================== */
@@ -209,7 +223,7 @@ export default function CostingTable() {
   const [validation, setValidation] = useState({
     heads: [],
     subcategories: {},
-    paymentStatus: [],
+    paymentStatus: DEFAULT_PAYMENT_STATUSES, // ✅ default-safe (no assumption beyond your clarified enum)
   });
 
   const [costSheets, setCostSheets] = useState([]);
@@ -1289,12 +1303,12 @@ export default function CostingTable() {
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
                     MenuProps={drawerMenuProps}
                   >
-                    {(validation.paymentStatus || []).map((s) => (
+                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
                       <MenuItem key={s} value={s}>
                         {s}
                       </MenuItem>
                     ))}
-                    {!validation.paymentStatus?.length ? (
+                    {!(validation.paymentStatus || []).length ? (
                       <MenuItem value="" disabled>
                         No payment statuses
                       </MenuItem>

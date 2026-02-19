@@ -1,5 +1,5 @@
 // src/components/CostingTable.jsx
-import React, { useEffect, useMemo, useRef, useState, memo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
   Typography,
@@ -23,22 +23,20 @@ import {
   FormGroup,
   FormControlLabel,
   Checkbox,
-  Accordion,
-  AccordionSummary,
-  AccordionDetails,
   Divider,
   Grid,
   TableContainer,
   Paper,
+  Drawer,
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
+import CloseIcon from "@mui/icons-material/Close";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -119,9 +117,11 @@ function computeRowTotals(row) {
   const amount = row["Amount"] !== "" ? safeNum(row["Amount"]) : qty * rate;
 
   const gstPct = safeNum(row["GST %"]);
-  const gstAmount = row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
+  const gstAmount =
+    row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
 
-  const total = row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
+  const total =
+    row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
 
   return {
     ...row,
@@ -131,313 +131,35 @@ function computeRowTotals(row) {
   };
 }
 
-/* ===================== Memoized Head Section (fixes text lag) ===================== */
-/**
- * Text lag fix:
- * - Do NOT store every keystroke into parent state (newRowByHead) because it re-renders all accordions.
- * - Keep draft input state local to each accordion (memoized).
- * - Parent only updates when Add Expense is clicked.
- */
-const HeadSection = memo(function HeadSection({
-  head,
-  headItems,
-  headTotal,
-  subcats,
-  payList,
-  loggedInName,
-  loading,
-  onAddLineItem,
-  onSoftDeleteLineItem,
-  lineItemHeaders,
-}) {
-  const [draft, setDraft] = useState(() => ({
-    "Head Name": head,
-    Subcategory: "",
-    "Expense Date": new Date().toISOString().slice(0, 10),
-    "Entered By": loggedInName,
-    "Entry Tag": "",
-    Particular: "",
-    Details: "",
-    QTY: "",
-    Rate: "",
-    Amount: "",
-    "GST %": "",
-    "GST Amount": "",
-    "Total Amount": "",
-    "Attachment Link": "",
-    "Voucher/Invoice No": "",
-    "Payment Status": "",
-    // ✅ internal flag for auto amount mode
-    __autoAmount: false,
-  }));
+// Live totals in drawer (same idea, but always recompute from QTY/Rate + GST%)
+function recomputeDraftLive(next) {
+  const qty = safeNum(next["QTY"]);
+  const rate = safeNum(next["Rate"]);
+  const hasQtyRate = qty > 0 && rate > 0;
 
-  // keep entered by updated if user changes (but don’t spam renders elsewhere)
-  useEffect(() => {
-    setDraft((p) => ({ ...p, "Entered By": loggedInName || p["Entered By"] || "" }));
-  }, [loggedInName]);
+  const auto = Boolean(next.__autoAmount);
+  const userHasManualAmount =
+    String(next["Amount"] ?? "").trim() !== "" && !auto;
 
-  // ✅ recompute draft live (QTY*Rate => Amount), then GST/Total
-  const recomputeDraft = (next) => {
-    const qty = safeNum(next["QTY"]);
-    const rate = safeNum(next["Rate"]);
-    const hasQtyRate = qty > 0 && rate > 0;
+  let amount = next["Amount"];
 
-    const auto = Boolean(next.__autoAmount);
+  if (hasQtyRate && !userHasManualAmount) {
+    amount = qty * rate;
+  }
 
-    // If user typed amount manually, stop auto unless they clear it
-    const userHasManualAmount =
-      String(next["Amount"] ?? "").trim() !== "" && !auto;
+  const gstPct = safeNum(next["GST %"]);
+  const hasAmount = String(amount ?? "").trim() !== "";
+  const gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
+  const total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
 
-    let amount = next["Amount"];
-
-    if (hasQtyRate && !userHasManualAmount) {
-      amount = qty * rate;
-    }
-
-    // GST calc (same logic pattern as computeRowTotals, but live)
-    const gstPct = safeNum(next["GST %"]);
-    const hasAmount = String(amount ?? "").trim() !== "";
-    const gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
-    const total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
-
-    return {
-      ...next,
-      Amount: amount === 0 ? "" : amount,
-      "GST Amount": gstAmount === 0 ? "" : gstAmount,
-      "Total Amount": total === 0 ? "" : total,
-      __autoAmount: hasQtyRate && !userHasManualAmount,
-    };
+  return {
+    ...next,
+    Amount: amount === 0 ? "" : amount,
+    "GST Amount": gstAmount === 0 ? "" : gstAmount,
+    "Total Amount": total === 0 ? "" : total,
+    __autoAmount: hasQtyRate && !userHasManualAmount,
   };
-
-  // ✅ setField with live recompute
-  const setField = (key, value) => {
-    setDraft((p) => {
-      // If user edits Amount manually, disable auto unless they clear it
-      if (key === "Amount") {
-        const next = { ...p, Amount: value, __autoAmount: false };
-        return recomputeDraft(next);
-      }
-      const next = { ...p, [key]: value };
-      return recomputeDraft(next);
-    });
-  };
-
-  const handleAdd = () => onAddLineItem(head, draft, setDraft);
-
-  return (
-    <Accordion defaultExpanded={false}>
-      <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-        <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-          <Typography sx={{ fontWeight: 800, fontSize: 13 }}>{head}</Typography>
-          <Typography sx={{ fontSize: 12, opacity: 0.85 }}>Total: ₹ {fmtINR(headTotal)}</Typography>
-        </Box>
-      </AccordionSummary>
-
-      <AccordionDetails>
-        {/* Add row */}
-        <Paper sx={{ p: 1.2, mb: 1.2, borderRadius: 2, border: "1px dashed #d9e4ff" }}>
-          <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
-            Add Expense
-          </Typography>
-
-          <Grid container spacing={1}>
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Subcategory</InputLabel>
-                <Select
-                  label="Subcategory"
-                  value={draft.Subcategory || ""}
-                  onChange={(e) => setField("Subcategory", e.target.value)}
-                >
-                  {subcats.map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {s}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Expense Date"
-                type="date"
-                InputLabelProps={{ shrink: true }}
-                value={draft["Expense Date"] || ""}
-                onChange={(e) => setField("Expense Date", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Entry Tag"
-                value={draft["Entry Tag"] || ""}
-                onChange={(e) => setField("Entry Tag", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={3}>
-              <FormControl fullWidth size="small">
-                <InputLabel>Payment Status</InputLabel>
-                <Select
-                  label="Payment Status"
-                  value={draft["Payment Status"] || ""}
-                  onChange={(e) => setField("Payment Status", e.target.value)}
-                >
-                  {payList.map((s) => (
-                    <MenuItem key={s} value={s}>
-                      {s}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Particular"
-                value={draft.Particular || ""}
-                onChange={(e) => setField("Particular", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={8}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Details"
-                value={draft.Details || ""}
-                onChange={(e) => setField("Details", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="QTY"
-                value={draft["QTY"] || ""}
-                onChange={(e) => setField("QTY", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Rate"
-                value={draft["Rate"] || ""}
-                onChange={(e) => setField("Rate", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Amount"
-                value={draft["Amount"] || ""}
-                onChange={(e) => setField("Amount", e.target.value)}
-                InputProps={{ readOnly: Boolean(draft.__autoAmount) }}
-                helperText={draft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={2}>
-              <TextField
-                fullWidth
-                size="small"
-                label="GST %"
-                value={draft["GST %"] || ""}
-                onChange={(e) => setField("GST %", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Attachment Link"
-                value={draft["Attachment Link"] || ""}
-                onChange={(e) => setField("Attachment Link", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={4}>
-              <TextField
-                fullWidth
-                size="small"
-                label="Voucher/Invoice No"
-                value={draft["Voucher/Invoice No"] || ""}
-                onChange={(e) => setField("Voucher/Invoice No", e.target.value)}
-              />
-            </Grid>
-
-            <Grid item xs={12} md={4} sx={{ display: "flex", alignItems: "center" }}>
-              <Button
-                variant="contained"
-                onClick={handleAdd}
-                disabled={loading}
-                sx={{ bgcolor: cornflowerBlue, width: "100%" }}
-              >
-                {loading ? "Adding…" : "Add Expense"}
-              </Button>
-            </Grid>
-          </Grid>
-        </Paper>
-
-        {/* Existing rows */}
-        <Table size="small">
-          <TableHead>
-            <TableRow sx={{ background: "#f6f9ff" }}>
-              {lineItemHeaders
-                .filter((h) => h !== "Active")
-                .map((h) => (
-                  <TableCell key={h} sx={{ fontWeight: 800, fontSize: 11 }}>
-                    {h}
-                  </TableCell>
-                ))}
-              <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Action</TableCell>
-            </TableRow>
-          </TableHead>
-
-          <TableBody>
-            {headItems.map((it, i) => (
-              <TableRow key={i} hover>
-                {lineItemHeaders
-                  .filter((h) => h !== "Active")
-                  .map((h) => (
-                    <TableCell key={h} sx={{ fontSize: 11 }}>
-                      {String(it[h] ?? "")}
-                    </TableCell>
-                  ))}
-                <TableCell>
-                  <IconButton onClick={() => onSoftDeleteLineItem(it)}>
-                    <DeleteOutlineIcon sx={{ color: "#c62828" }} />
-                  </IconButton>
-                </TableCell>
-              </TableRow>
-            ))}
-
-            {!headItems.length ? (
-              <TableRow>
-                <TableCell colSpan={lineItemHeaders.length + 1} sx={{ fontSize: 11, opacity: 0.7 }}>
-                  No items under {head}.
-                </TableCell>
-              </TableRow>
-            ) : null}
-          </TableBody>
-        </Table>
-      </AccordionDetails>
-    </Accordion>
-  );
-});
+}
 
 /* ===================== Component ===================== */
 
@@ -480,7 +202,7 @@ export default function CostingTable() {
     Owner: "",
     "Linked Entity Type": "",
     "Linked Entity ID": "",
-    "Linked Entity Name": "", // store the display string: Name | Company | Mobile | Owner
+    "Linked Entity Name": "", // store the display string
     "Client Name": "",
     "Project Type": "",
     Status: "Draft",
@@ -494,7 +216,6 @@ export default function CostingTable() {
     const seq = ++loadSeq.current;
     setLoading(true);
     try {
-      // ✅ JSONP GET (no-cors friendly)
       const v = await jsonpGet(`${BACKEND}?action=getValidation`);
       if (seq !== loadSeq.current) return;
 
@@ -533,7 +254,9 @@ export default function CostingTable() {
 
     return costSheets.filter((r) => {
       const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
-      const entityOk = !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+      const entityOk =
+        !entityTypeFilter ||
+        String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
       const hay = Object.values(r)
         .map((x) => String(x || ""))
@@ -591,7 +314,9 @@ export default function CostingTable() {
       } else {
         console.error("GET_ENTITIES_ERROR", res);
         setEntityOptions([]);
-        alert("Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response).");
+        alert(
+          "Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response)."
+        );
       }
     } catch (e) {
       console.error("GET_ENTITIES_FETCH_ERROR", e);
@@ -675,31 +400,44 @@ export default function CostingTable() {
     }
   }
 
-  async function addLineItem(headName, draft, resetDraft) {
+  async function refreshLineItemsForActiveSheet(costSheetId) {
+    const items = await jsonpGet(
+      `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+    );
+    const arr = Array.isArray(items) ? items : [];
+    const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
+    setLineItems(activeOnly);
+  }
+
+  async function addLineItemRow(row) {
     if (!activeSheet) return;
     const costSheetId = activeSheet["Cost Sheet ID"];
 
-    // build row using draft (local), then enrich with required keys
-    let row = { ...(draft || {}) };
-    // remove internal flag
-    if ("__autoAmount" in row) delete row.__autoAmount;
+    let payloadRow = { ...(row || {}) };
+    if ("__autoAmount" in payloadRow) delete payloadRow.__autoAmount;
 
-    row["Cost Sheet ID"] = costSheetId;
-    row["Head Name"] = headName;
-    row["Entered By"] = loggedInName || row["Entered By"] || "";
+    payloadRow["Cost Sheet ID"] = costSheetId;
 
-    // ✅ also stamp linkage fields into line items so end users see entity linkage per row
-    row["Owner"] = activeSheet?.["Owner"] || row["Owner"] || loggedInName || "";
-    row["Linked Entity Type"] = activeSheet?.["Linked Entity Type"] || row["Linked Entity Type"] || "";
-    row["Linked Entity ID"] = activeSheet?.["Linked Entity ID"] || row["Linked Entity ID"] || "";
-    row["Linked Entity Name"] = activeSheet?.["Linked Entity Name"] || row["Linked Entity Name"] || "";
+    // stamp linkage fields into line items
+    payloadRow["Owner"] =
+      activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+    payloadRow["Linked Entity Type"] =
+      activeSheet?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
+    payloadRow["Linked Entity ID"] =
+      activeSheet?.["Linked Entity ID"] || payloadRow["Linked Entity ID"] || "";
+    payloadRow["Linked Entity Name"] =
+      activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
 
-    row = computeRowTotals(row);
+    // ensure entered by
+    payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
+
+    // compute totals (final)
+    payloadRow = computeRowTotals(payloadRow);
 
     const hasSome =
-      String(row.Particular || "").trim() ||
-      String(row.Details || "").trim() ||
-      String(row.Amount || "").trim();
+      String(payloadRow.Particular || "").trim() ||
+      String(payloadRow.Details || "").trim() ||
+      String(payloadRow.Amount || "").trim();
 
     if (!hasSome) {
       alert("Please enter at least Particular / Details / Amount.");
@@ -708,40 +446,11 @@ export default function CostingTable() {
 
     setLoading(true);
     try {
-      await apiPost({ action: "addLineItem", data: row });
+      await apiPost({ action: "addLineItem", data: payloadRow });
 
-      // refresh items after short delay
       setTimeout(async () => {
-        const items = await jsonpGet(
-          `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-        );
-        const arr = Array.isArray(items) ? items : [];
-        const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
-        setLineItems(activeOnly);
+        await refreshLineItemsForActiveSheet(costSheetId);
       }, 800);
-
-      // reset local draft
-      if (typeof resetDraft === "function") {
-        resetDraft({
-          "Head Name": headName,
-          Subcategory: "",
-          "Expense Date": new Date().toISOString().slice(0, 10),
-          "Entered By": loggedInName,
-          "Entry Tag": "",
-          Particular: "",
-          Details: "",
-          QTY: "",
-          Rate: "",
-          Amount: "",
-          "GST %": "",
-          "GST Amount": "",
-          "Total Amount": "",
-          "Attachment Link": "",
-          "Voucher/Invoice No": "",
-          "Payment Status": "",
-          __autoAmount: false,
-        });
-      }
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
       alert("Failed to add line item.");
@@ -767,20 +476,19 @@ export default function CostingTable() {
         data: { costSheetId, particular },
       });
 
-      // Optimistic UI (and refresh after a bit)
-      setLineItems((p) => p.filter((x) => String(x["Particular"] || "").trim() !== particular));
+      // Optimistic UI
+      setLineItems((p) =>
+        p.filter((x) => String(x["Particular"] || "").trim() !== particular)
+      );
 
       setTimeout(async () => {
-        const items = await jsonpGet(
-          `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-        );
-        const arr = Array.isArray(items) ? items : [];
-        const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
-        setLineItems(activeOnly);
+        await refreshLineItemsForActiveSheet(costSheetId);
       }, 800);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
-      alert("Failed to delete line item. If two rows share same Particular, delete may be ambiguous.");
+      alert(
+        "Failed to delete line item. If two rows share same Particular, delete may be ambiguous."
+      );
     } finally {
       setLoading(false);
     }
@@ -805,6 +513,192 @@ export default function CostingTable() {
     const m = validation.subcategories || {};
     return Array.isArray(m[head]) ? m[head] : [];
   };
+
+  /* ===================== Drawer Editor State ===================== */
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState("add"); // "add" | "edit"
+  const [drawerOriginal, setDrawerOriginal] = useState(null);
+
+  const blankDraft = (headPreset) =>
+    recomputeDraftLive({
+      "Head Name": headPreset || "",
+      Subcategory: "",
+      "Expense Date": new Date().toISOString().slice(0, 10),
+      "Entered By": loggedInName,
+      "Entry Tag": "",
+      Particular: "",
+      Details: "",
+      QTY: "",
+      Rate: "",
+      Amount: "",
+      "GST %": "",
+      "GST Amount": "",
+      "Total Amount": "",
+      "Attachment Link": "",
+      "Voucher/Invoice No": "",
+      "Payment Status": "",
+      __autoAmount: false,
+    });
+
+  const [drawerDraft, setDrawerDraft] = useState(() => blankDraft(""));
+
+  // keep entered by updated if user changes while drawer open
+  useEffect(() => {
+    setDrawerDraft((p) => ({ ...p, "Entered By": loggedInName || p["Entered By"] || "" }));
+  }, [loggedInName]);
+
+  function openDrawerAdd(headPreset) {
+    setDrawerMode("add");
+    setDrawerOriginal(null);
+    setDrawerDraft(blankDraft(headPreset));
+    setDrawerOpen(true);
+  }
+
+  function openDrawerEdit(item) {
+    const headName = String(item?.["Head Name"] || "").trim();
+    setDrawerMode("edit");
+    setDrawerOriginal(item || null);
+
+    // Prefill from selected item
+    const pre = recomputeDraftLive({
+      "Head Name": headName,
+      Subcategory: item?.Subcategory ?? "",
+      "Expense Date": item?.["Expense Date"] ?? new Date().toISOString().slice(0, 10),
+      "Entered By": loggedInName,
+      "Entry Tag": item?.["Entry Tag"] ?? "",
+      Particular: item?.Particular ?? "",
+      Details: item?.Details ?? "",
+      QTY: item?.["QTY"] ?? "",
+      Rate: item?.["Rate"] ?? "",
+      Amount: item?.["Amount"] ?? "",
+      "GST %": item?.["GST %"] ?? "",
+      "GST Amount": item?.["GST Amount"] ?? "",
+      "Total Amount": item?.["Total Amount"] ?? "",
+      "Attachment Link": item?.["Attachment Link"] ?? "",
+      "Voucher/Invoice No": item?.["Voucher/Invoice No"] ?? "",
+      "Payment Status": item?.["Payment Status"] ?? "",
+      __autoAmount: false,
+    });
+
+    setDrawerDraft(pre);
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+  }
+
+  function setDrawerField(key, value) {
+    setDrawerDraft((p) => {
+      if (key === "Amount") {
+        const next = { ...p, Amount: value, __autoAmount: false };
+        return recomputeDraftLive(next);
+      }
+      const next = { ...p, [key]: value };
+      // If head changed, reset subcategory if it doesn't belong
+      if (key === "Head Name") {
+        next.Subcategory = "";
+      }
+      return recomputeDraftLive(next);
+    });
+  }
+
+  async function saveDrawer() {
+    if (!activeSheet) return;
+
+    // For "edit": keep your log model and delete behavior as-is.
+    // We "edit" by: soft delete old row (by its old Particular), then add a new row.
+    // This avoids assuming any new backend update action exists.
+    if (drawerMode === "edit" && drawerOriginal) {
+      const oldParticular = String(drawerOriginal["Particular"] || "").trim();
+      if (!oldParticular) {
+        alert("Cannot edit: Original row Particular is empty, delete would be ambiguous.");
+        return;
+      }
+      setLoading(true);
+      try {
+        await apiPost({
+          action: "softDeleteLineItem",
+          data: { costSheetId: activeSheet["Cost Sheet ID"], particular: oldParticular },
+        });
+
+        await addLineItemRow(drawerDraft);
+
+        // Close drawer after save
+        setDrawerOpen(false);
+      } catch (e) {
+        console.error("EDIT_SAVE_ERROR", e);
+        alert(
+          "Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous."
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    // "add"
+    await addLineItemRow(drawerDraft);
+    setDrawerOpen(false);
+  }
+
+  async function saveDrawerAndNew() {
+    if (!activeSheet) return;
+
+    // Same behavior as save, but keep drawer open with fresh draft (head preserved)
+    const headKeep = String(drawerDraft?.["Head Name"] || "").trim();
+
+    if (drawerMode === "edit") {
+      await saveDrawer();
+      // if save closed drawer, reopen with new draft
+      setTimeout(() => {
+        openDrawerAdd(headKeep);
+      }, 0);
+      return;
+    }
+
+    await addLineItemRow(drawerDraft);
+    setDrawerDraft(blankDraft(headKeep));
+  }
+
+  /* ===================== Table columns for line items ===================== */
+
+  const defaultLineItemCols = [
+    "Head Name",
+    "Subcategory",
+    "Expense Date",
+    "Particular",
+    "QTY",
+    "Rate",
+    "Amount",
+    "GST %",
+    "GST Amount",
+    "Total Amount",
+    "Payment Status",
+    "Attachment Link",
+    "Voucher/Invoice No",
+    "Entered By",
+    "Entry Tag",
+    "Details",
+  ];
+
+  const lineItemCols = useMemo(() => {
+    // Prefer known important columns if available, else fall back to whatever headers exist.
+    if (!lineItemHeaders?.length) return defaultLineItemCols;
+
+    const available = new Set(lineItemHeaders);
+
+    const picked = defaultLineItemCols.filter((c) => available.has(c));
+
+    // If nothing matched, use all headers except "Active" and internal link columns
+    if (!picked.length) {
+      return lineItemHeaders.filter((h) => h !== "Active");
+    }
+    return picked;
+  }, [lineItemHeaders]);
+
+  /* ===================== Render ===================== */
 
   return (
     <ThemeProvider theme={theme}>
@@ -868,7 +762,9 @@ export default function CostingTable() {
               <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
-                  <MenuItem key={s} value={s}>{s}</MenuItem>
+                  <MenuItem key={s} value={s}>
+                    {s}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -882,7 +778,9 @@ export default function CostingTable() {
               >
                 <MenuItem value="">All</MenuItem>
                 {["Account", "Deal", "Project", "Order"].map((t) => (
-                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1003,7 +901,9 @@ export default function CostingTable() {
                     }}
                   >
                     {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1011,7 +911,11 @@ export default function CostingTable() {
 
               {/* Linked Entity Name (dropdown) */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
+                <FormControl
+                  fullWidth
+                  size="small"
+                  disabled={!createForm["Linked Entity Type"] || entityLoading}
+                >
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
@@ -1083,7 +987,9 @@ export default function CostingTable() {
                     onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                   >
                     {["Draft", "Final", "Archived"].map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1117,9 +1023,9 @@ export default function CostingTable() {
           </DialogActions>
         </Dialog>
 
-        {/* ================= EDIT COST SHEET (LINE ITEMS) ================= */}
+        {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
-          {/* ✅ Updated header: show Linked Entity Name at top */}
+          {/* ✅ Header includes Linked Entity Name at top */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -1155,45 +1061,337 @@ export default function CostingTable() {
             </Box>
           </DialogTitle>
 
-          <DialogContent dividers>
-            <Box sx={{ mb: 1 }}>
-              <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
-              </Typography>
-              <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
-                Linked Entity Name: {activeSheet?.["Linked Entity Name"] || ""}
-              </Typography>
-              <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
-                Owner: {activeSheet?.["Owner"] || ""} | Status: {activeSheet?.["Status"] || ""}
-              </Typography>
-            </Box>
+          <DialogContent dividers sx={{ position: "relative" }}>
+            {/* Sticky total */}
+            <Paper
+              sx={{
+                p: 1.2,
+                mb: 1.2,
+                borderRadius: 2,
+                border: "1px solid #eee",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "#fff",
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+                <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                  Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
+                </Typography>
 
-            <Paper sx={{ p: 1.2, mb: 1.2, borderRadius: 2, border: "1px solid #eee" }}>
-              <Typography sx={{ fontWeight: 800, fontSize: 12 }}>
-                Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
-              </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  sx={{ bgcolor: cornflowerBlue }}
+                  disabled={loading}
+                  onClick={() => openDrawerAdd("")}
+                >
+                  Add Line Item
+                </Button>
+              </Box>
             </Paper>
 
-            {(validation.heads || []).map((head) => {
-              const headItems = lineItems.filter((x) => String(x["Head Name"] || "").trim() === head);
-              const headTotal = safeNum(totalsByHead[head]);
+            {/* Table */}
+            <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
+              <TableContainer sx={{ maxHeight: 520 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow sx={{ background: "#f6f9ff" }}>
+                      {lineItemCols.map((c) => (
+                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                          {c}
+                        </TableCell>
+                      ))}
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
 
-              return (
-                <HeadSection
-                  key={head}
-                  head={head}
-                  headItems={headItems}
-                  headTotal={headTotal}
-                  subcats={subcatsForHead(head)}
-                  payList={validation.paymentStatus || []}
-                  loggedInName={loggedInName}
-                  loading={loading}
-                  onAddLineItem={addLineItem}
-                  onSoftDeleteLineItem={softDeleteLineItem}
-                  lineItemHeaders={lineItemHeaders}
+                  <TableBody>
+                    {lineItems.map((it, idx) => (
+                      <TableRow key={idx} hover>
+                        {lineItemCols.map((c) => (
+                          <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
+                            {String(it[c] ?? "")}
+                          </TableCell>
+                        ))}
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>
+                          <IconButton
+                            title="Edit (will soft-delete old row and append updated row)"
+                            onClick={() => openDrawerEdit(it)}
+                            disabled={loading}
+                          >
+                            <EditIcon sx={{ color: cornflowerBlue }} />
+                          </IconButton>
+
+                          <IconButton onClick={() => softDeleteLineItem(it)} disabled={loading} title="Delete">
+                            <DeleteOutlineIcon sx={{ color: "#c62828" }} />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                    {!lineItems.length ? (
+                      <TableRow>
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                          No line items found for this cost sheet.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+
+            {/* RIGHT DRAWER */}
+            <Drawer
+              anchor="right"
+              open={drawerOpen}
+              onClose={closeDrawer}
+              PaperProps={{
+                sx: {
+                  width: { xs: "100%", sm: 420 },
+                  p: 2,
+                },
+              }}
+            >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
+                  {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
+                </Typography>
+
+                <IconButton onClick={closeDrawer}>
+                  <CloseIcon />
+                </IconButton>
+              </Box>
+
+              <Divider sx={{ mb: 1.5 }} />
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                {/* Head */}
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Head Name</InputLabel>
+                  <Select
+                    label="Head Name"
+                    value={drawerDraft["Head Name"] || ""}
+                    onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                  >
+                    {(validation.heads || []).map((h) => (
+                      <MenuItem key={h} value={h}>
+                        {h}
+                      </MenuItem>
+                    ))}
+                    {!validation.heads?.length ? (
+                      <MenuItem value="" disabled>
+                        No heads found
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+
+                {/* Subcategory */}
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Subcategory</InputLabel>
+                  <Select
+                    label="Subcategory"
+                    value={drawerDraft.Subcategory || ""}
+                    onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                  >
+                    {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                    {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
+                      <MenuItem value="" disabled>
+                        No subcategories
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+
+                {/* Expense Date */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Expense Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={drawerDraft["Expense Date"] || ""}
+                  onChange={(e) => setDrawerField("Expense Date", e.target.value)}
                 />
-              );
-            })}
+
+                {/* Entry Tag */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Entry Tag"
+                  value={drawerDraft["Entry Tag"] || ""}
+                  onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
+                />
+
+                {/* Payment Status */}
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={drawerDraft["Payment Status"] || ""}
+                    onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                  >
+                    {(validation.paymentStatus || []).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                    {!validation.paymentStatus?.length ? (
+                      <MenuItem value="" disabled>
+                        No payment statuses
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+
+                {/* Particular */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={drawerDraft.Particular || ""}
+                  onChange={(e) => setDrawerField("Particular", e.target.value)}
+                />
+
+                {/* Details */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Details"
+                  value={drawerDraft.Details || ""}
+                  onChange={(e) => setDrawerField("Details", e.target.value)}
+                  multiline
+                  minRows={2}
+                />
+
+                {/* Numbers */}
+                <Grid container spacing={1}>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="QTY"
+                      value={drawerDraft["QTY"] || ""}
+                      onChange={(e) => setDrawerField("QTY", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Rate"
+                      value={drawerDraft["Rate"] || ""}
+                      onChange={(e) => setDrawerField("Rate", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST %"
+                      value={drawerDraft["GST %"] || ""}
+                      onChange={(e) => setDrawerField("GST %", e.target.value)}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Amount"
+                      value={drawerDraft["Amount"] || ""}
+                      onChange={(e) => setDrawerField("Amount", e.target.value)}
+                      InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
+                      helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+                    />
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST Amount"
+                      value={drawerDraft["GST Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Total Amount"
+                      value={drawerDraft["Total Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+                </Grid>
+
+                {/* Proof */}
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Attachment Link"
+                  value={drawerDraft["Attachment Link"] || ""}
+                  onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Voucher/Invoice No"
+                  value={drawerDraft["Voucher/Invoice No"] || ""}
+                  onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
+                />
+
+                <Divider sx={{ my: 0.5 }} />
+
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button
+                    variant="outlined"
+                    fullWidth
+                    onClick={closeDrawer}
+                    disabled={loading}
+                  >
+                    Cancel
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    sx={{ bgcolor: cornflowerBlue }}
+                    onClick={saveDrawer}
+                    disabled={loading}
+                  >
+                    {loading ? "Saving…" : "Save"}
+                  </Button>
+                </Box>
+
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ bgcolor: "#1f2a44" }}
+                  onClick={saveDrawerAndNew}
+                  disabled={loading}
+                >
+                  {loading ? "Saving…" : "Save & New"}
+                </Button>
+
+                {drawerMode === "edit" ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                  </Typography>
+                ) : null}
+              </Box>
+            </Drawer>
           </DialogContent>
 
           <DialogActions>

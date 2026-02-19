@@ -138,7 +138,8 @@ function recomputeDraftLive(next) {
   const hasQtyRate = qty > 0 && rate > 0;
 
   const auto = Boolean(next.__autoAmount);
-  const userHasManualAmount = String(next["Amount"] ?? "").trim() !== "" && !auto;
+  const userHasManualAmount =
+    String(next["Amount"] ?? "").trim() !== "" && !auto;
 
   let amount = next["Amount"];
 
@@ -158,6 +159,45 @@ function recomputeDraftLive(next) {
     "Total Amount": total === 0 ? "" : total,
     __autoAmount: hasQtyRate && !userHasManualAmount,
   };
+}
+
+/**
+ * ✅ Non-breaking validation normalizer
+ * - If backend returns heads/subcategories/paymentStatus (your old working format) -> use as-is
+ * - Otherwise fallback to common sheet-style keys (Cost Heads / Payment Status)
+ */
+function normalizeValidationResponse(raw) {
+  const v = raw?.data ? raw.data : raw;
+
+  // ✅ Prefer your original expected keys (this preserves old behavior)
+  const headsDirect = Array.isArray(v?.heads) ? v.heads : null;
+  const subcatsDirect = v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
+  const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
+
+  if (headsDirect || subcatsDirect || payDirect) {
+    return {
+      heads: headsDirect || [],
+      subcategories: subcatsDirect || {},
+      paymentStatus: payDirect || [],
+    };
+  }
+
+  // fallback (only if original keys not present)
+  const heads =
+    (Array.isArray(v?.costHeads) && v.costHeads) ||
+    (Array.isArray(v?.["Cost Heads"]) && v["Cost Heads"]) ||
+    [];
+
+  const paymentStatus =
+    (Array.isArray(v?.["Payment Status"]) && v["Payment Status"]) ||
+    (Array.isArray(v?.payment_status) && v.payment_status) ||
+    [];
+
+  const subcategories =
+    (v?.subcategoryMap && typeof v.subcategoryMap === "object" && v.subcategoryMap) ||
+    {};
+
+  return { heads, subcategories, paymentStatus };
 }
 
 /* ===================== Component ===================== */
@@ -215,14 +255,11 @@ export default function CostingTable() {
     const seq = ++loadSeq.current;
     setLoading(true);
     try {
-      const v = await jsonpGet(`${BACKEND}?action=getValidation`);
+      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
       if (seq !== loadSeq.current) return;
 
-      setValidation({
-        heads: Array.isArray(v?.heads) ? v.heads : [],
-        subcategories: v?.subcategories || {},
-        paymentStatus: Array.isArray(v?.paymentStatus) ? v.paymentStatus : [],
-      });
+      const parsed = normalizeValidationResponse(rawV);
+      setValidation(parsed);
 
       const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
       if (seq !== loadSeq.current) return;
@@ -244,34 +281,28 @@ export default function CostingTable() {
     }
   }
 
-  // ✅ Ensure validation exists (for Edit modal dropdowns)
-  async function ensureValidationLoaded() {
-    const hasHeads = Array.isArray(validation?.heads) && validation.heads.length > 0;
-    const hasPay = Array.isArray(validation?.paymentStatus) && validation.paymentStatus.length > 0;
-    const hasSubcats =
-      validation?.subcategories && typeof validation.subcategories === "object"
-        ? Object.keys(validation.subcategories).length > 0
-        : false;
-
-    if (hasHeads || hasPay || hasSubcats) return;
-
-    try {
-      const v = await jsonpGet(`${BACKEND}?action=getValidation`);
-      setValidation({
-        heads: Array.isArray(v?.heads) ? v.heads : [],
-        subcategories: v?.subcategories || {},
-        paymentStatus: Array.isArray(v?.paymentStatus) ? v.paymentStatus : [],
-      });
-    } catch (e) {
-      console.error("ENSURE_VALIDATION_ERROR", e);
-      // no alert here (avoid noisy), drawer will show "No heads found"
-    }
-  }
-
   useEffect(() => {
     loadAll();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ✅ ensures validation exists before opening edit/drawer (prevents empty dropdowns)
+  async function ensureValidationLoaded() {
+    const hasAny =
+      (validation.heads && validation.heads.length) ||
+      (validation.paymentStatus && validation.paymentStatus.length) ||
+      (validation.subcategories && Object.keys(validation.subcategories).length);
+
+    if (hasAny) return;
+
+    try {
+      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+      const parsed = normalizeValidationResponse(rawV);
+      setValidation(parsed);
+    } catch (e) {
+      console.error("ENSURE_VALIDATION_ERROR", e);
+      // keep silent: table can still work, dropdowns just won't
+    }
+  }
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -279,7 +310,8 @@ export default function CostingTable() {
     return costSheets.filter((r) => {
       const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
       const entityOk =
-        !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+        !entityTypeFilter ||
+        String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
       const hay = Object.values(r)
         .map((x) => String(x || ""))
@@ -372,14 +404,14 @@ export default function CostingTable() {
   }
 
   async function openEditModal(row) {
+    // ✅ make sure validation is present so drawer dropdowns are not empty
+    await ensureValidationLoaded();
+
     setActiveSheet(row);
     setOpenEdit(true);
     setLoading(true);
 
     try {
-      // ✅ Ensure validations exist for drawer dropdowns (Head/Subcategory/Payment Status)
-      await ensureValidationLoaded();
-
       const id = row["Cost Sheet ID"];
       const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
@@ -445,7 +477,8 @@ export default function CostingTable() {
     payloadRow["Cost Sheet ID"] = costSheetId;
 
     // stamp linkage fields into line items
-    payloadRow["Owner"] = activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+    payloadRow["Owner"] =
+      activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
     payloadRow["Linked Entity Type"] =
       activeSheet?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
     payloadRow["Linked Entity ID"] =
@@ -502,7 +535,9 @@ export default function CostingTable() {
       });
 
       // Optimistic UI
-      setLineItems((p) => p.filter((x) => String(x["Particular"] || "").trim() !== particular));
+      setLineItems((p) =>
+        p.filter((x) => String(x["Particular"] || "").trim() !== particular)
+      );
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
@@ -574,18 +609,25 @@ export default function CostingTable() {
     }));
   }, [loggedInName]);
 
-  function openDrawerAdd(headPreset) {
+  async function openDrawerAdd(headPreset) {
+    // ✅ ensure validation exists before opening drawer
+    await ensureValidationLoaded();
+
     setDrawerMode("add");
     setDrawerOriginal(null);
     setDrawerDraft(blankDraft(headPreset));
     setDrawerOpen(true);
   }
 
-  function openDrawerEdit(item) {
+  async function openDrawerEdit(item) {
+    // ✅ ensure validation exists before opening drawer
+    await ensureValidationLoaded();
+
     const headName = String(item?.["Head Name"] || "").trim();
     setDrawerMode("edit");
     setDrawerOriginal(item || null);
 
+    // Prefill from selected item
     const pre = recomputeDraftLive({
       "Head Name": headName,
       Subcategory: item?.Subcategory ?? "",
@@ -631,6 +673,7 @@ export default function CostingTable() {
   async function saveDrawer() {
     if (!activeSheet) return;
 
+    // For "edit": keep log model and delete behavior as-is.
     if (drawerMode === "edit" && drawerOriginal) {
       const oldParticular = String(drawerOriginal["Particular"] || "").trim();
       if (!oldParticular) {
@@ -729,7 +772,9 @@ export default function CostingTable() {
               </Typography>
 
               {loading ? (
-                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>Loading…</Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
+                  Loading…
+                </Typography>
               ) : null}
             </Box>
           </Box>
@@ -770,7 +815,9 @@ export default function CostingTable() {
               <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
-                  <MenuItem key={s} value={s}>{s}</MenuItem>
+                  <MenuItem key={s} value={s}>
+                    {s}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -784,7 +831,9 @@ export default function CostingTable() {
               >
                 <MenuItem value="">All</MenuItem>
                 {["Account", "Deal", "Project", "Order"].map((t) => (
-                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -800,7 +849,9 @@ export default function CostingTable() {
               anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
             >
               <Box sx={{ p: 1.5 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>Columns</Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
+                  Columns
+                </Typography>
                 <FormGroup>
                   {costSheetColumns.map((c) => (
                     <FormControlLabel
@@ -829,7 +880,9 @@ export default function CostingTable() {
                   {costSheetColumns
                     .filter((c) => visibleCols[c] !== false)
                     .map((c) => (
-                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>{c}</TableCell>
+                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
+                        {c}
+                      </TableCell>
                     ))}
                   <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
                 </TableRow>
@@ -841,7 +894,9 @@ export default function CostingTable() {
                     {costSheetColumns
                       .filter((c) => visibleCols[c] !== false)
                       .map((c) => (
-                        <TableCell key={c} sx={{ fontSize: 12 }}>{String(r[c] ?? "")}</TableCell>
+                        <TableCell key={c} sx={{ fontSize: 12 }}>
+                          {String(r[c] ?? "")}
+                        </TableCell>
                       ))}
                     <TableCell>
                       <IconButton onClick={() => openEditModal(r)}>
@@ -868,6 +923,7 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              {/* Owner */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -878,6 +934,7 @@ export default function CostingTable() {
                 />
               </Grid>
 
+              {/* Linked Entity Type */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Linked Entity Type</InputLabel>
@@ -897,14 +954,21 @@ export default function CostingTable() {
                     }}
                   >
                     {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
 
+              {/* Linked Entity Name (dropdown) */}
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" disabled={!createForm["Linked Entity Type"] || entityLoading}>
+                <FormControl
+                  fullWidth
+                  size="small"
+                  disabled={!createForm["Linked Entity Type"] || entityLoading}
+                >
                   <InputLabel>Linked Entity Name</InputLabel>
                   <Select
                     label="Linked Entity Name"
@@ -920,15 +984,20 @@ export default function CostingTable() {
                     }}
                   >
                     {(entityOptions || []).map((opt) => (
-                      <MenuItem key={opt.id} value={opt.id}>{opt.display}</MenuItem>
+                      <MenuItem key={opt.id} value={opt.id}>
+                        {opt.display}
+                      </MenuItem>
                     ))}
                     {!entityOptions.length ? (
-                      <MenuItem value="" disabled>{entityLoading ? "Loading…" : "No entities found"}</MenuItem>
+                      <MenuItem value="" disabled>
+                        {entityLoading ? "Loading…" : "No entities found"}
+                      </MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
               </Grid>
 
+              {/* Linked Entity ID (read-only from dropdown) */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -939,6 +1008,7 @@ export default function CostingTable() {
                 />
               </Grid>
 
+              {/* Client Name */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -949,6 +1019,7 @@ export default function CostingTable() {
                 />
               </Grid>
 
+              {/* Project Type */}
               <Grid item xs={12} md={6}>
                 <TextField
                   fullWidth
@@ -959,6 +1030,7 @@ export default function CostingTable() {
                 />
               </Grid>
 
+              {/* Status */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Status</InputLabel>
@@ -968,12 +1040,15 @@ export default function CostingTable() {
                     onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                   >
                     {["Draft", "Final", "Archived"].map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
 
+              {/* Notes */}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -990,7 +1065,12 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
-            <Button variant="contained" onClick={createCostSheet} sx={{ bgcolor: cornflowerBlue }} disabled={loading}>
+            <Button
+              variant="contained"
+              onClick={createCostSheet}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
               {loading ? "Creating…" : "Create"}
             </Button>
           </DialogActions>
@@ -998,6 +1078,7 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
+          {/* ✅ Header includes Linked Entity Name at top */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -1034,6 +1115,7 @@ export default function CostingTable() {
           </DialogTitle>
 
           <DialogContent dividers sx={{ position: "relative" }}>
+            {/* Sticky total */}
             <Paper
               sx={{
                 p: 1.2,
@@ -1046,7 +1128,15 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -1063,17 +1153,23 @@ export default function CostingTable() {
               </Box>
             </Paper>
 
+            {/* Table */}
             <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
               <TableContainer sx={{ maxHeight: 520 }}>
                 <Table size="small" stickyHeader>
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
                       {lineItemCols.map((c) => (
-                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        <TableCell
+                          key={c}
+                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
+                        >
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1094,7 +1190,11 @@ export default function CostingTable() {
                             <EditIcon sx={{ color: cornflowerBlue }} />
                           </IconButton>
 
-                          <IconButton onClick={() => softDeleteLineItem(it)} disabled={loading} title="Delete">
+                          <IconButton
+                            onClick={() => softDeleteLineItem(it)}
+                            disabled={loading}
+                            title="Delete"
+                          >
                             <DeleteOutlineIcon sx={{ color: "#c62828" }} />
                           </IconButton>
                         </TableCell>
@@ -1103,7 +1203,10 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell
+                          colSpan={lineItemCols.length + 1}
+                          sx={{ fontSize: 12, opacity: 0.7 }}
+                        >
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -1113,17 +1216,23 @@ export default function CostingTable() {
               </TableContainer>
             </Paper>
 
-            {/* RIGHT DRAWER — zIndex ensured above dialog content */}
+            {/* RIGHT DRAWER */}
             <Drawer
               anchor="right"
               open={drawerOpen}
               onClose={closeDrawer}
-              sx={{ zIndex: (t) => t.zIndex.modal + 20 }}
+              // ✅ zIndex fix: Drawer above Dialog/Table (prevents "not editable behind table")
+              sx={{
+                zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20,
+              }}
+              ModalProps={{
+                keepMounted: true,
+              }}
               PaperProps={{
                 sx: {
                   width: { xs: "100%", sm: 420 },
                   p: 2,
-                  zIndex: (t) => t.zIndex.modal + 21,
+                  zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 21,
                 },
               }}
             >
@@ -1140,6 +1249,7 @@ export default function CostingTable() {
               <Divider sx={{ mb: 1.5 }} />
 
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                {/* Head */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Head Name</InputLabel>
                   <Select
@@ -1148,14 +1258,19 @@ export default function CostingTable() {
                     onChange={(e) => setDrawerField("Head Name", e.target.value)}
                   >
                     {(validation.heads || []).map((h) => (
-                      <MenuItem key={h} value={h}>{h}</MenuItem>
+                      <MenuItem key={h} value={h}>
+                        {h}
+                      </MenuItem>
                     ))}
                     {!validation.heads?.length ? (
-                      <MenuItem value="" disabled>No heads found</MenuItem>
+                      <MenuItem value="" disabled>
+                        No heads found
+                      </MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
 
+                {/* Subcategory */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Subcategory</InputLabel>
                   <Select
@@ -1164,14 +1279,19 @@ export default function CostingTable() {
                     onChange={(e) => setDrawerField("Subcategory", e.target.value)}
                   >
                     {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                     {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
-                      <MenuItem value="" disabled>No subcategories</MenuItem>
+                      <MenuItem value="" disabled>
+                        No subcategories
+                      </MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
 
+                {/* Expense Date */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1182,6 +1302,7 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Expense Date", e.target.value)}
                 />
 
+                {/* Entry Tag */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1190,6 +1311,7 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
                 />
 
+                {/* Payment Status */}
                 <FormControl size="small" fullWidth>
                   <InputLabel>Payment Status</InputLabel>
                   <Select
@@ -1198,14 +1320,19 @@ export default function CostingTable() {
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
                   >
                     {(validation.paymentStatus || []).map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                     {!validation.paymentStatus?.length ? (
-                      <MenuItem value="" disabled>No payment statuses</MenuItem>
+                      <MenuItem value="" disabled>
+                        No payment statuses
+                      </MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
 
+                {/* Particular */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1214,6 +1341,7 @@ export default function CostingTable() {
                   onChange={(e) => setDrawerField("Particular", e.target.value)}
                 />
 
+                {/* Details */}
                 <TextField
                   fullWidth
                   size="small"
@@ -1224,6 +1352,7 @@ export default function CostingTable() {
                   minRows={2}
                 />
 
+                {/* Numbers */}
                 <Grid container spacing={1}>
                   <Grid item xs={4}>
                     <TextField
@@ -1285,6 +1414,7 @@ export default function CostingTable() {
                   </Grid>
                 </Grid>
 
+                {/* Proof */}
                 <TextField
                   fullWidth
                   size="small"

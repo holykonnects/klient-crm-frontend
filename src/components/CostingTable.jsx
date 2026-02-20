@@ -330,8 +330,7 @@ export default function CostingTable() {
     if (!extractColsTouched) {
       // keep as-is; user can now modify
     }
-    
-  }, [openExtract, extractAllColumns]);
+  }, [openExtract, extractAllColumns, extractColsTouched]);
 
   function openExtractColumns(e) {
     setExtractColumnsAnchor(e.currentTarget);
@@ -386,6 +385,28 @@ export default function CostingTable() {
     Status: "Draft",
     Notes: "",
   });
+
+  /* ===================== ✅ NEW: ADD EXPENSE (Existing OR New Cost Sheet) ===================== */
+  const [openAddExpense, setOpenAddExpense] = useState(false);
+  const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
+  const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
+
+  function openAddExpenseModal() {
+    setAddExpenseMode("existing");
+    setSelectedExistingSheetId("");
+    setEntityOptions([]);
+    setCreateForm((p) => ({
+      ...p,
+      Owner: loggedInName || p.Owner,
+      Status: "Draft",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+    }));
+    // prepare a fresh line item draft
+    setDrawerDraft(blankDraft(""));
+    setOpenAddExpense(true);
+  }
 
   // used to prevent stale async setState
   const loadSeq = useRef(0);
@@ -855,6 +876,105 @@ export default function CostingTable() {
     setDrawerDraft(blankDraft(headKeep));
   }
 
+  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE (Existing OR New) ===================== */
+
+  async function submitAddExpense() {
+    // Ensure validation is present so dropdowns aren’t empty
+    await ensureValidationLoaded();
+
+    // Build line item row from current draft
+    let payloadRow = { ...(drawerDraft || {}) };
+    if ("__autoAmount" in payloadRow) delete payloadRow.__autoAmount;
+
+    payloadRow = computeRowTotals(payloadRow);
+
+    const hasSome =
+      String(payloadRow.Particular || "").trim() ||
+      String(payloadRow.Details || "").trim() ||
+      String(payloadRow.Amount || "").trim();
+
+    if (!hasSome) {
+      alert("Please enter at least Particular / Details / Amount.");
+      return;
+    }
+
+    payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
+
+    setLoading(true);
+    try {
+      if (addExpenseMode === "existing") {
+        if (!selectedExistingSheetId) {
+          alert("Please select an existing Cost Sheet.");
+          return;
+        }
+
+        const sheetRow = (costSheets || []).find(
+          (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
+        );
+
+        payloadRow["Cost Sheet ID"] = selectedExistingSheetId;
+
+        // stamp linkage fields from the chosen cost sheet row
+        payloadRow["Owner"] = sheetRow?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+        payloadRow["Linked Entity Type"] =
+          sheetRow?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
+        payloadRow["Linked Entity ID"] =
+          sheetRow?.["Linked Entity ID"] || payloadRow["Linked Entity ID"] || "";
+        payloadRow["Linked Entity Name"] =
+          sheetRow?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
+
+        await apiPost({ action: "addLineItem", data: payloadRow });
+
+        setOpenAddExpense(false);
+
+        setTimeout(async () => {
+          await loadAll();
+        }, 800);
+
+        alert("Line item added to existing Cost Sheet.");
+        return;
+      }
+
+      // addExpenseMode === "new"
+      if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
+        alert("Please select Linked Entity Type and Linked Entity Name for the new Cost Sheet.");
+        return;
+      }
+
+      const costSheetData = {
+        ...createForm,
+        Owner: createForm.Owner || loggedInName || "",
+      };
+
+      await apiPost({
+        action: "createCostSheetAndAddLineItem",
+        data: {
+          costSheetData,
+          lineItemData: {
+            ...payloadRow,
+            Owner: costSheetData.Owner,
+            "Linked Entity Type": costSheetData["Linked Entity Type"],
+            "Linked Entity ID": costSheetData["Linked Entity ID"],
+            "Linked Entity Name": costSheetData["Linked Entity Name"],
+          },
+        },
+      });
+
+      setOpenAddExpense(false);
+
+      setTimeout(async () => {
+        await loadAll();
+      }, 800);
+
+      alert("New Cost Sheet created and first line item added.");
+    } catch (e) {
+      console.error("ADD_EXPENSE_ERROR", e);
+      alert("Failed to submit expense.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   /* ===================== Table columns for line items ===================== */
 
   const defaultLineItemCols = [
@@ -914,7 +1034,7 @@ export default function CostingTable() {
             </Box>
           </Box>
 
-          <Box sx={{ display: "flex", gap: 1 }}>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
@@ -934,6 +1054,16 @@ export default function CostingTable() {
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Extract
+            </Button>
+
+            {/* ✅ NEW: Add Expense (Existing Cost Sheet OR New Cost Sheet + First Line Item) */}
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openAddExpenseModal}
+              sx={{ bgcolor: "#1f2a44", fontFamily: "Montserrat, sans-serif" }}
+            >
+              Add Expense
             </Button>
 
             <Button
@@ -1085,7 +1215,14 @@ export default function CostingTable() {
                   variant="outlined"
                   sx={{ p: 1.2, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}
                 >
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                    }}
+                  >
                     <Box>
                       <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                         Columns to Export
@@ -1116,7 +1253,14 @@ export default function CostingTable() {
                     anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                   >
                     <Box sx={{ p: 1.5, maxWidth: 420 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          mb: 1,
+                        }}
+                      >
                         <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                           Export Columns
                         </Typography>
@@ -1294,6 +1438,363 @@ export default function CostingTable() {
               sx={{ bgcolor: cornflowerBlue }}
             >
               Download
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ================= ✅ NEW: ADD EXPENSE MODAL (Existing OR New Cost Sheet + First Line Item) ================= */}
+        <Dialog
+          open={openAddExpense}
+          onClose={() => setOpenAddExpense(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Mode</InputLabel>
+                  <Select
+                    label="Mode"
+                    value={addExpenseMode}
+                    onChange={(e) => setAddExpenseMode(e.target.value)}
+                  >
+                    <MenuItem value="existing">Add to Existing Cost Sheet</MenuItem>
+                    <MenuItem value="new">Create New Cost Sheet</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {addExpenseMode === "existing" ? (
+                <Grid item xs={12} md={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Existing Cost Sheet</InputLabel>
+                    <Select
+                      label="Existing Cost Sheet"
+                      value={selectedExistingSheetId}
+                      onChange={(e) => setSelectedExistingSheetId(e.target.value)}
+                    >
+                      {(costSheets || []).map((cs) => {
+                        const id = cs["Cost Sheet ID"];
+                        const label = [
+                          cs["Cost Sheet ID"],
+                          cs["Linked Entity Name"],
+                          cs["Owner"],
+                          cs["Status"],
+                        ]
+                          .filter(Boolean)
+                          .join(" — ");
+                        return (
+                          <MenuItem key={id} value={id}>
+                            {label}
+                          </MenuItem>
+                        );
+                      })}
+                      {!costSheets?.length ? (
+                        <MenuItem value="" disabled>
+                          No cost sheets found
+                        </MenuItem>
+                      ) : null}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              ) : (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Owner"
+                      value={createForm["Owner"] || ""}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, Owner: e.target.value }))}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Linked Entity Type</InputLabel>
+                      <Select
+                        label="Linked Entity Type"
+                        value={createForm["Linked Entity Type"] || ""}
+                        onChange={async (e) => {
+                          const type = e.target.value;
+                          setCreateForm((p) => ({
+                            ...p,
+                            "Linked Entity Type": type,
+                            "Linked Entity ID": "",
+                            "Linked Entity Name": "",
+                          }));
+                          setEntityOptions([]);
+                          await loadEntitiesForType(type);
+                        }}
+                      >
+                        {["Account", "Deal", "Project", "Order"].map((t) => (
+                          <MenuItem key={t} value={t}>
+                            {t}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <FormControl
+                      fullWidth
+                      size="small"
+                      disabled={!createForm["Linked Entity Type"] || entityLoading}
+                    >
+                      <InputLabel>Linked Entity Name</InputLabel>
+                      <Select
+                        label="Linked Entity Name"
+                        value={createForm["Linked Entity ID"] || ""}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const picked = (entityOptions || []).find(
+                            (x) => String(x.id) === String(id)
+                          );
+                          setCreateForm((p) => ({
+                            ...p,
+                            "Linked Entity ID": id,
+                            "Linked Entity Name": picked?.display || "",
+                          }));
+                        }}
+                      >
+                        {(entityOptions || []).map((opt) => (
+                          <MenuItem key={opt.id} value={opt.id}>
+                            {opt.display}
+                          </MenuItem>
+                        ))}
+                        {!entityOptions.length ? (
+                          <MenuItem value="" disabled>
+                            {entityLoading ? "Loading…" : "No entities found"}
+                          </MenuItem>
+                        ) : null}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        label="Status"
+                        value={createForm.Status || "Draft"}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({ ...p, Status: e.target.value }))
+                        }
+                      >
+                        {["Draft", "Final", "Archived"].map((s) => (
+                          <MenuItem key={s} value={s}>
+                            {s}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Notes"
+                      value={createForm.Notes || ""}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, Notes: e.target.value }))
+                      }
+                      multiline
+                      minRows={2}
+                    />
+                  </Grid>
+                </>
+              )}
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography sx={{ fontWeight: 900, fontSize: 12, mb: 1 }}>
+                  Line Item
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Head Name</InputLabel>
+                  <Select
+                    label="Head Name"
+                    value={drawerDraft["Head Name"] || ""}
+                    onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                  >
+                    {(validation.heads || []).map((h) => (
+                      <MenuItem key={h} value={h}>
+                        {h}
+                      </MenuItem>
+                    ))}
+                    {!validation.heads?.length ? (
+                      <MenuItem value="" disabled>
+                        No heads found
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Subcategory</InputLabel>
+                  <Select
+                    label="Subcategory"
+                    value={drawerDraft.Subcategory || ""}
+                    onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                  >
+                    {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                    {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
+                      <MenuItem value="" disabled>
+                        No subcategories
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Expense Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={drawerDraft["Expense Date"] || ""}
+                  onChange={(e) => setDrawerField("Expense Date", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={drawerDraft["Payment Status"] || ""}
+                    onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                  >
+                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                    {!validation.paymentStatus?.length ? (
+                      <MenuItem value="" disabled>
+                        No payment statuses
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={drawerDraft.Particular || ""}
+                  onChange={(e) => setDrawerField("Particular", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Details"
+                  value={drawerDraft.Details || ""}
+                  onChange={(e) => setDrawerField("Details", e.target.value)}
+                  multiline
+                  minRows={2}
+                />
+              </Grid>
+
+              <Grid item xs={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="QTY"
+                  value={drawerDraft["QTY"] || ""}
+                  onChange={(e) => setDrawerField("QTY", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Rate"
+                  value={drawerDraft["Rate"] || ""}
+                  onChange={(e) => setDrawerField("Rate", e.target.value)}
+                />
+              </Grid>
+              <Grid item xs={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="GST %"
+                  value={drawerDraft["GST %"] || ""}
+                  onChange={(e) => setDrawerField("GST %", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="GST Amount"
+                  value={drawerDraft["GST Amount"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Total Amount"
+                  value={drawerDraft["Total Amount"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Attachment Link"
+                  value={drawerDraft["Attachment Link"] || ""}
+                  onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Voucher/Invoice No"
+                  value={drawerDraft["Voucher/Invoice No"] || ""}
+                  onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenAddExpense(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={submitAddExpense}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
+              {loading ? "Submitting…" : "Submit"}
             </Button>
           </DialogActions>
         </Dialog>
@@ -1610,7 +2111,14 @@ export default function CostingTable() {
                 },
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1,
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
                   {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
                 </Typography>

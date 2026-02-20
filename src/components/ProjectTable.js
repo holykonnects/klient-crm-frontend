@@ -820,7 +820,7 @@ export default function ProjectTable() {
   };
 
   // ---------- Add/Edit modal close guard ----------
-  const canCloseModal = !submitting;
+  
 
   return (
     <ThemeProvider theme={theme}>

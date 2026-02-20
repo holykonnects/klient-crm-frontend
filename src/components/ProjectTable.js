@@ -182,22 +182,32 @@ const downloadTextFile = (filename, content, mime = "text/csv;charset=utf-8") =>
   URL.revokeObjectURL(url);
 };
 
-/** Day filter */
-const parseYMDLocal = (ymd) => {
+/** Date range (inclusive) */
+const parseYMDLocalStart = (ymd) => {
   if (!ymd) return null;
   const [y, m, d] = String(ymd).split("-").map(Number);
   if (!y || !m || !d) return null;
   return new Date(y, m - 1, d, 0, 0, 0, 0);
 };
 
-const inSameDay = (value, ymd) => {
+const parseYMDLocalEnd = (ymd) => {
+  if (!ymd) return null;
+  const [y, m, d] = String(ymd).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, 23, 59, 59, 999);
+};
+
+const inDateRange = (value, fromYMD, toYMD) => {
   const d = parseAsDate(value);
   if (!d) return false;
-  const day = parseYMDLocal(ymd);
-  if (!day) return true; // if not set, allow
-  const end = new Date(day);
-  end.setHours(23, 59, 59, 999);
-  return d >= day && d <= end;
+
+  const from = parseYMDLocalStart(fromYMD);
+  const to = parseYMDLocalEnd(toYMD);
+
+  if (!from && !to) return true;
+  if (from && !to) return d >= from;
+  if (!from && to) return d <= to;
+  return d >= from && d <= to;
 };
 
 export default function ProjectTable() {
@@ -227,19 +237,39 @@ export default function ProjectTable() {
 
   const [submitting, setSubmitting] = useState(false);
 
-  // ✅ Hybrid Extract (simple)
+  // ✅ Extract (Hybrid & Simple)
   const [extractOpen, setExtractOpen] = useState(false);
-  const [extractProjectId, setExtractProjectId] = useState("");
-  const [extractDay, setExtractDay] = useState(""); // YYYY-MM-DD
+  const [extractProjectId, setExtractProjectId] = useState("__ALL__"); // "__ALL__" or specific ID
+  const [extractFrom, setExtractFrom] = useState(""); // YYYY-MM-DD
+  const [extractTo, setExtractTo] = useState(""); // YYYY-MM-DD
   const [extractMode, setExtractMode] = useState("changes"); // changes | snapshot
   const [extractUseDisplayFormatting, setExtractUseDisplayFormatting] = useState(true);
 
-  // one column selector for extract page (lets user remove unnecessary items)
+  // Snapshot column selector (full headers)
   const [extractSelectedColumns, setExtractSelectedColumns] = useState([]);
+
+  // Changes column selector (small set)
+  const CHANGE_COLUMNS_ALL = ["Project ID", "Project Name", "Timestamp", "Field", "Old Value", "New Value"];
+  const [changesSelectedColumns, setChangesSelectedColumns] = useState(CHANGE_COLUMNS_ALL);
 
   const isControlHeader = (h) => norm(h) === norm(MULTI_KEY);
 
-  const isMulti = useCallback((header) => multiselectSetNorm.has(norm(header)), [multiselectSetNorm]);
+  const isMulti = useCallback(
+    (header) => multiselectSetNorm.has(norm(header)),
+    [multiselectSetNorm]
+  );
+
+  // ✅ prevents multiple submits + provides button state
+  const canCloseModal = !submitting;
+
+  // Owner header (for auto-fill when picking client)
+  const OWNER_HEADER = useMemo(() => {
+    const lower = headers.map((h) => norm(h));
+    const idx = lower.findIndex((h) =>
+      ["owner", "account owner", "lead owner", "project owner", "requested by"].includes(h)
+    );
+    return idx >= 0 ? headers[idx] : null;
+  }, [headers]);
 
   // ----------------- fetchers -----------------
   const fetchProjects = async () => {
@@ -286,9 +316,11 @@ export default function ProjectTable() {
       if (Array.isArray(data?.readonlyColumns)) setReadonlyColumns(new Set(data.readonlyColumns));
       if (Array.isArray(data?.columnOrder) && data.columnOrder.length) setColumnOrder(data.columnOrder);
 
+      // multiselect list: prefer API -> else from Validation column MULTI_KEY
       let msRaw = data?.multiselectFields;
-      if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) msRaw = rawValidation[MULTI_KEY];
-
+      if (!msRaw || (Array.isArray(msRaw) && msRaw.length === 0)) {
+        msRaw = rawValidation[MULTI_KEY];
+      }
       const msList = normalizeOptions(msRaw).map(norm);
       msList.push(...Array.from(FALLBACK_MULTI));
       setMultiselectSetNorm(new Set(msList));
@@ -307,7 +339,7 @@ export default function ProjectTable() {
   useEffect(() => {
     if (!rawHeaders.length) return;
 
-    const visible = rawHeaders.filter((h) => !isControlHeader(h));
+    const visible = rawHeaders.filter((h) => !isControlHeader(h)); // hide "Project Multiselect Fields"
     if (columnOrder && columnOrder.length) {
       const orderFiltered = columnOrder.filter((h) => visible.includes(h));
       const set = new Set(orderFiltered);
@@ -325,18 +357,22 @@ export default function ProjectTable() {
   }, [rawHeaders, columnOrder]); // eslint-disable-line
 
   // ---------- latest row per Project ID ----------
+  const PROJECT_ID_HEADER = "Project ID (unique, auto-generated)";
+
   const latestByProjectId = useMemo(() => {
-    const idHeader = "Project ID (unique, auto-generated)";
     const map = new Map();
     rows.forEach((r) => {
-      const id = r[idHeader];
+      const id = r[PROJECT_ID_HEADER];
       if (!id) return;
       const prev = map.get(id);
       const curTs = parseAsDate(r.Timestamp);
-      if (!prev) map.set(id, r);
-      else {
+      if (!prev) {
+        map.set(id, r);
+      } else {
         const prevTs = parseAsDate(prev.Timestamp);
-        if ((curTs && prevTs && curTs > prevTs) || (curTs && !prevTs)) map.set(id, r);
+        if ((curTs && prevTs && curTs > prevTs) || (curTs && !prevTs)) {
+          map.set(id, r);
+        }
       }
     });
     return Array.from(map.values());
@@ -410,7 +446,7 @@ export default function ProjectTable() {
   const onEdit = (row) => {
     const obj = { ...row };
     headers.forEach((h) => {
-      if (isMulti(h)) obj[h] = toStringArray(obj[h]);
+      if (isMulti(h)) obj[h] = toStringArray(obj[h]); // hydrate as array
     });
     setEditingRow(obj);
     setModalOpen(true);
@@ -427,15 +463,20 @@ export default function ProjectTable() {
     const out = {};
     headers.forEach((h) => {
       const v = rowObj[h];
-      if (isMulti(h)) out[h] = Array.isArray(v) ? v.join(", ") : v ?? "";
-      else if (typeof v === "string") out[h] = v.trim();
-      else out[h] = v ?? "";
+      if (isMulti(h)) {
+        out[h] = Array.isArray(v) ? v.join(", ") : v ?? "";
+      } else if (typeof v === "string") {
+        out[h] = v.trim();
+      } else {
+        out[h] = v ?? "";
+      }
     });
     return out;
   };
 
+  // ✅ submit guard + "Saving..." button state (prevents multiple submits)
   const handleSubmit = async () => {
-    if (submitting) return;
+    if (submitting) return; // hard guard
     setSubmitting(true);
 
     try {
@@ -459,9 +500,8 @@ export default function ProjectTable() {
   };
 
   const openLogs = (projectId) => {
-    const idHeader = "Project ID (unique, auto-generated)";
     const items = rows
-      .filter((r) => r[idHeader] === projectId)
+      .filter((r) => r[PROJECT_ID_HEADER] === projectId)
       .sort((a, b) => {
         const da = parseAsDate(a.Timestamp);
         const db = parseAsDate(b.Timestamp);
@@ -539,7 +579,15 @@ export default function ProjectTable() {
     return String(value);
   };
 
-  // ---------- Logs Differentiator ----------
+  // curated filters; extend as needed
+  const FILTER_LIST = [
+    "Project Status",
+    "Project Manager",
+    "Task Status (Not Started / In Progress / Completed)",
+    "Account Owner",
+  ].filter((h) => headers.includes(h));
+
+  // ---------- Logs Differentiator (highlight changed fields vs previous row) ----------
   const logsChangedSets = useMemo(() => {
     if (!logsRows?.length) return [];
     const arr = [];
@@ -565,89 +613,12 @@ export default function ProjectTable() {
     return arr;
   }, [logsRows, headers, isMulti]);
 
-  // ---------- Modal typing lag reduction ----------
+  // ---------- typing lag reduction ----------
   const setFieldValue = useCallback((key, value) => {
     setEditingRow((prev) => ({ ...(prev || {}), [key]: value }));
   }, []);
 
-  // curated filters
-  const FILTER_LIST = [
-    "Project Status",
-    "Project Manager",
-    "Task Status (Not Started / In Progress / Completed)",
-    "Account Owner",
-  ].filter((h) => headers.includes(h));
-
-  const canCloseModal = !submitting;
-
-  // ===================== Hybrid Extract (Simple) =====================
-  const PROJECT_ID_HEADER = "Project ID (unique, auto-generated)";
-
-  const projectOptions = useMemo(() => {
-    // Use current table projects (latest) to reduce confusion
-    return filteredRows
-      .map((r) => ({
-        id: r?.[PROJECT_ID_HEADER],
-        label:
-          r?.["Project Name"] ||
-          r?.["Project"] ||
-          r?.["Name"] ||
-          r?.["Project Title"] ||
-          r?.[PROJECT_ID_HEADER] ||
-          "",
-      }))
-      .filter((x) => x.id);
-  }, [filteredRows]);
-
-  // default extract day to today
-  const ensureExtractDefaults = () => {
-    if (!extractDay) {
-      const d = new Date();
-      setExtractDay(`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`);
-    }
-  };
-
-  // When opening extract: set defaults
-  useEffect(() => {
-    if (!extractOpen) return;
-    ensureExtractDefaults();
-
-    if (!extractProjectId && projectOptions.length) {
-      setExtractProjectId(String(projectOptions[0].id));
-    } else if (extractProjectId) {
-      const ok = projectOptions.some((p) => String(p.id) === String(extractProjectId));
-      if (!ok && projectOptions.length) setExtractProjectId(String(projectOptions[0].id));
-    }
-    // eslint-disable-next-line
-  }, [extractOpen, projectOptions]);
-
-  // Persist extract-selected columns
-  useEffect(() => {
-    if (!headers.length) return;
-    const saved = JSON.parse(localStorage.getItem("extractColumns-projects") || "null");
-    if (Array.isArray(saved) && saved.length) {
-      const cleaned = saved.filter((h) => headers.includes(h));
-      setExtractSelectedColumns(cleaned.length ? cleaned : headers);
-    } else {
-      setExtractSelectedColumns(headers);
-    }
-  }, [headers]);
-
-  useEffect(() => {
-    if (!headers.length) return;
-    localStorage.setItem("extractColumns-projects", JSON.stringify(extractSelectedColumns));
-  }, [extractSelectedColumns, headers.length]);
-
-  const toggleExtractColumn = (col) => {
-    setExtractSelectedColumns((prev) =>
-      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
-    );
-  };
-
-  const extractSelectAll = () => setExtractSelectedColumns(headers);
-  const extractDeselectAll = () => setExtractSelectedColumns([]);
-
-  // formatting for export
+  // ===================== Extract logic =====================
   const formatForExport = useCallback(
     (header, value) => {
       if (!extractUseDisplayFormatting) {
@@ -667,161 +638,280 @@ export default function ProjectTable() {
     [extractUseDisplayFormatting, isMulti]
   );
 
-  const getProjectHistoryOldestFirst = useCallback(() => {
-    if (!extractProjectId) return [];
-    return rows
-      .filter((r) => String(r?.[PROJECT_ID_HEADER] || "") === String(extractProjectId))
-      .slice()
-      .sort((a, b) => {
-        const da = parseAsDate(a.Timestamp);
-        const db = parseAsDate(b.Timestamp);
-        if (da && db) return da - db; // oldest -> newest
-        if (da && !db) return -1;
-        if (!da && db) return 1;
-        return 0;
-      });
-  }, [rows, extractProjectId]);
+  const projectOptions = useMemo(() => {
+    // use latestByProjectId to avoid "search filter" affecting extract ability
+    const opts = latestByProjectId
+      .map((r) => {
+        const id = r?.[PROJECT_ID_HEADER];
+        if (!id) return null;
+        const name =
+          r?.["Project Name"] ||
+          r?.["Project"] ||
+          r?.["Name"] ||
+          r?.["Project Title"] ||
+          "";
+        return { id: String(id), name: String(name || "") };
+      })
+      .filter(Boolean);
 
-  // --------- CHANGES VIEW (Field/Old/New) with column selector ---------
-  const CHANGE_COLUMNS_ALL = ["Timestamp", "Field", "Old Value", "New Value"];
+    // sort by name then id for nice dropdown
+    opts.sort((a, b) => {
+      const an = a.name.toLowerCase();
+      const bn = b.name.toLowerCase();
+      const c = an.localeCompare(bn);
+      return c !== 0 ? c : a.id.localeCompare(b.id, undefined, { numeric: true });
+    });
 
-  const [changesSelectedColumns, setChangesSelectedColumns] = useState(CHANGE_COLUMNS_ALL);
+    return opts;
+  }, [latestByProjectId]);
+
+  const ensureExtractDefaults = () => {
+    const d = new Date();
+    const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    if (!extractFrom) setExtractFrom(today);
+    if (!extractTo) setExtractTo(today);
+  };
 
   useEffect(() => {
-    const saved = JSON.parse(localStorage.getItem("extractChangeCols-projects") || "null");
-    if (Array.isArray(saved) && saved.length) {
-      const cleaned = saved.filter((c) => CHANGE_COLUMNS_ALL.includes(c));
+    if (!extractOpen) return;
+    ensureExtractDefaults();
+
+    // hydrate saved extract selections
+    const savedSnap = JSON.parse(localStorage.getItem("extractColumns-projects") || "null");
+    if (Array.isArray(savedSnap) && savedSnap.length) {
+      const cleaned = savedSnap.filter((h) => headers.includes(h));
+      setExtractSelectedColumns(cleaned.length ? cleaned : headers);
+    } else {
+      setExtractSelectedColumns(headers);
+    }
+
+    const savedChange = JSON.parse(localStorage.getItem("extractChangeCols-projects") || "null");
+    if (Array.isArray(savedChange) && savedChange.length) {
+      const cleaned = savedChange.filter((c) => CHANGE_COLUMNS_ALL.includes(c));
       setChangesSelectedColumns(cleaned.length ? cleaned : CHANGE_COLUMNS_ALL);
     } else {
       setChangesSelectedColumns(CHANGE_COLUMNS_ALL);
     }
-  }, []);
+    // eslint-disable-next-line
+  }, [extractOpen, headers.length]);
+
+  useEffect(() => {
+    if (!headers.length) return;
+    localStorage.setItem("extractColumns-projects", JSON.stringify(extractSelectedColumns));
+  }, [extractSelectedColumns, headers]);
 
   useEffect(() => {
     localStorage.setItem("extractChangeCols-projects", JSON.stringify(changesSelectedColumns));
   }, [changesSelectedColumns]);
+
+  const toggleExtractColumn = (col) => {
+    setExtractSelectedColumns((prev) =>
+      prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
+    );
+  };
+  const extractSelectAll = () => setExtractSelectedColumns(headers);
+  const extractDeselectAll = () => setExtractSelectedColumns([]);
 
   const toggleChangeCol = (col) => {
     setChangesSelectedColumns((prev) =>
       prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]
     );
   };
-
   const selectAllChangeCols = () => setChangesSelectedColumns(CHANGE_COLUMNS_ALL);
   const deselectAllChangeCols = () => setChangesSelectedColumns([]);
 
-  const dailyChanges = useMemo(() => {
-    if (!extractProjectId) return [];
-    const hist = getProjectHistoryOldestFirst();
-    if (!hist.length) return [];
+  const getProjectHistoryOldestFirst = useCallback(
+    (projectId) => {
+      if (!projectId) return [];
+      return rows
+        .filter((r) => String(r?.[PROJECT_ID_HEADER] || "") === String(projectId))
+        .slice()
+        .sort((a, b) => {
+          const da = parseAsDate(a.Timestamp);
+          const db = parseAsDate(b.Timestamp);
+          if (da && db) return da - db; // oldest -> newest
+          if (da && !db) return -1;
+          if (!da && db) return 1;
+          return 0;
+        });
+    },
+    [rows]
+  );
 
-    const dayEntries = extractDay ? hist.filter((r) => inSameDay(r?.Timestamp, extractDay)) : hist;
+  const getProjectDisplayName = useCallback(
+    (projectId) => {
+      const latest = latestByProjectId.find((r) => String(r?.[PROJECT_ID_HEADER] || "") === String(projectId));
+      const name =
+        latest?.["Project Name"] ||
+        latest?.["Project"] ||
+        latest?.["Name"] ||
+        latest?.["Project Title"] ||
+        "";
+      return String(name || "");
+    },
+    [latestByProjectId]
+  );
 
+  // --------- CHANGES VIEW (for single or ALL projects) ---------
+  const extractChangesRows = useMemo(() => {
     const normalizeDiffVal = (h, v) => (isMulti(h) ? toStringArray(v).join(", ") : String(v ?? ""));
 
-    const out = [];
+    const makeChangesForOneProject = (pid) => {
+      const hist = getProjectHistoryOldestFirst(pid);
+      if (!hist.length) return [];
 
-    dayEntries.forEach((entry) => {
-      const i = hist.indexOf(entry);
-      const prev = i > 0 ? hist[i - 1] : null;
+      const entriesInRange = hist.filter((r) => inDateRange(r?.Timestamp, extractFrom, extractTo));
+      if (!entriesInRange.length) return [];
 
-      if (!prev) {
-        // first ever record - treat as creation (optional)
-        headers.forEach((h) => {
-          const newNorm = normalizeDiffVal(h, entry?.[h]);
-          if (!newNorm) return;
-          out.push({
-            Timestamp: entry?.Timestamp ?? "",
-            Field: h,
-            "Old Value": "",
-            "New Value": formatForExport(h, entry?.[h]),
+      const out = [];
+      const projectName = getProjectDisplayName(pid);
+
+      entriesInRange.forEach((entry) => {
+        const idx = hist.indexOf(entry);
+        const prev = idx > 0 ? hist[idx - 1] : null;
+
+        if (!prev) {
+          // first ever record (creation)
+          headers.forEach((h) => {
+            const newNorm = normalizeDiffVal(h, entry?.[h]);
+            if (!newNorm) return;
+            out.push({
+              "Project ID": pid,
+              "Project Name": projectName,
+              Timestamp: entry?.Timestamp ?? "",
+              Field: h,
+              "Old Value": "",
+              "New Value": formatForExport(h, entry?.[h]),
+            });
           });
-        });
-        return;
-      }
-
-      headers.forEach((h) => {
-        const a = normalizeDiffVal(h, entry?.[h]);
-        const b = normalizeDiffVal(h, prev?.[h]);
-        if (a !== b) {
-          out.push({
-            Timestamp: entry?.Timestamp ?? "",
-            Field: h,
-            "Old Value": formatForExport(h, prev?.[h]),
-            "New Value": formatForExport(h, entry?.[h]),
-          });
+          return;
         }
-      });
-    });
 
-    // newest changes first
+        headers.forEach((h) => {
+          const a = normalizeDiffVal(h, entry?.[h]);
+          const b = normalizeDiffVal(h, prev?.[h]);
+          if (a !== b) {
+            out.push({
+              "Project ID": pid,
+              "Project Name": projectName,
+              Timestamp: entry?.Timestamp ?? "",
+              Field: h,
+              "Old Value": formatForExport(h, prev?.[h]),
+              "New Value": formatForExport(h, entry?.[h]),
+            });
+          }
+        });
+      });
+
+      return out;
+    };
+
+    let out = [];
+    if (extractProjectId === "__ALL__") {
+      // all projects
+      const allIds = Array.from(new Set(rows.map((r) => r?.[PROJECT_ID_HEADER]).filter(Boolean))).map(String);
+      allIds.forEach((pid) => {
+        out = out.concat(makeChangesForOneProject(pid));
+      });
+    } else if (extractProjectId) {
+      out = makeChangesForOneProject(String(extractProjectId));
+    }
+
+    // newest first
     out.sort((x, y) => {
       const dx = parseAsDate(x.Timestamp);
       const dy = parseAsDate(y.Timestamp);
       if (dx && dy) return dy - dx;
       if (dx && !dy) return -1;
       if (!dx && dy) return 1;
+      // if same timestamp, sort by project id then field
+      const p = String(x["Project ID"] ?? "").localeCompare(String(y["Project ID"] ?? ""), undefined, { numeric: true });
+      if (p !== 0) return p;
+      return String(x.Field ?? "").localeCompare(String(y.Field ?? ""));
+    });
+
+    return out;
+  }, [
+    extractProjectId,
+    extractFrom,
+    extractTo,
+    rows,
+    headers,
+    isMulti,
+    getProjectHistoryOldestFirst,
+    getProjectDisplayName,
+    PROJECT_ID_HEADER,
+    formatForExport,
+  ]);
+
+  // --------- SNAPSHOT VIEW (for single or ALL projects) ---------
+  const extractSnapshotRows = useMemo(() => {
+    const withinRange = (r) => inDateRange(r?.Timestamp, extractFrom, extractTo);
+
+    let out = [];
+    if (extractProjectId === "__ALL__") {
+      out = rows.filter((r) => r?.[PROJECT_ID_HEADER] && withinRange(r));
+    } else if (extractProjectId) {
+      out = rows.filter(
+        (r) => String(r?.[PROJECT_ID_HEADER] || "") === String(extractProjectId) && withinRange(r)
+      );
+    }
+
+    // newest first
+    out.sort((a, b) => {
+      const da = parseAsDate(a.Timestamp);
+      const db = parseAsDate(b.Timestamp);
+      if (da && db) return db - da;
+      if (da && !db) return -1;
+      if (!da && db) return 1;
       return 0;
     });
 
     return out;
-  }, [extractProjectId, extractDay, headers, getProjectHistoryOldestFirst, isMulti, formatForExport]);
-
-  // --------- SNAPSHOT VIEW (Full rows for that day) with column selector ---------
-  const dailySnapshots = useMemo(() => {
-    if (!extractProjectId) return [];
-    const hist = getProjectHistoryOldestFirst();
-    const dayEntries = extractDay ? hist.filter((r) => inSameDay(r?.Timestamp, extractDay)) : hist;
-
-    // newest snapshot first
-    return dayEntries
-      .slice()
-      .sort((a, b) => {
-        const da = parseAsDate(a.Timestamp);
-        const db = parseAsDate(b.Timestamp);
-        if (da && db) return db - da;
-        if (da && !db) return -1;
-        if (!da && db) return 1;
-        return 0;
-      });
-  }, [extractProjectId, extractDay, getProjectHistoryOldestFirst]);
+  }, [extractProjectId, extractFrom, extractTo, rows, PROJECT_ID_HEADER]);
 
   // --------- Downloads ---------
   const downloadChangesCSV = () => {
     const cols = (changesSelectedColumns || []).filter((c) => CHANGE_COLUMNS_ALL.includes(c));
     const finalCols = cols.length ? cols : CHANGE_COLUMNS_ALL;
 
-    const lines = dailyChanges.map((r) =>
+    const lines = extractChangesRows.map((r) =>
       finalCols
-        .map((c) => csvEscape(c === "Timestamp" ? formatDDMMYYYY_HHMMSSS(r[c]) : r[c]))
+        .map((c) =>
+          csvEscape(
+            c === "Timestamp"
+              ? formatDDMMYYYY_HHMMSSS(r[c])
+              : r[c]
+          )
+        )
         .join(",")
     );
 
     const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
 
-    const dayPart = extractDay ? extractDay.replaceAll("-", "") : "ALLDAYS";
-    const pid = extractProjectId || "PROJECT";
-    downloadTextFile(`Project_Changes_${pid}_${dayPart}.csv`, csv);
+    const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
+    const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
+    const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : (extractProjectId || "PROJECT");
+    downloadTextFile(`Project_Changes_${pid}_${fromPart}_to_${toPart}.csv`, csv);
   };
 
   const downloadSnapshotsCSV = () => {
     const cols = (extractSelectedColumns || []).filter((h) => headers.includes(h));
     const finalCols = cols.length ? cols : headers;
 
-    const lines = dailySnapshots.map((row) =>
+    const lines = extractSnapshotRows.map((row) =>
       finalCols.map((h) => csvEscape(formatForExport(h, row?.[h]))).join(",")
     );
 
     const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
 
-    const dayPart = extractDay ? extractDay.replaceAll("-", "") : "ALLDAYS";
-    const pid = extractProjectId || "PROJECT";
-    downloadTextFile(`Project_Snapshot_${pid}_${dayPart}.csv`, csv);
+    const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
+    const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
+    const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : (extractProjectId || "PROJECT");
+    downloadTextFile(`Project_Snapshot_${pid}_${fromPart}_to_${toPart}.csv`, csv);
   };
 
-  // ---------- Add/Edit modal close guard ----------
-  
-
+  // ---------- render ----------
   return (
     <ThemeProvider theme={theme}>
       {(loading || submitting) && <LoadingOverlay />}
@@ -864,7 +954,12 @@ export default function ProjectTable() {
                 ),
                 endAdornment: search ? (
                   <InputAdornment position="end">
-                    <IconButton onClick={() => setSearch("")} size="small">
+                    <IconButton
+                      aria-label="clear search"
+                      edge="end"
+                      onClick={() => setSearch("")}
+                      size="small"
+                    >
                       <ClearIcon fontSize="small" />
                     </IconButton>
                   </InputAdornment>
@@ -896,13 +991,13 @@ export default function ProjectTable() {
               <ViewColumnIcon />
             </IconButton>
 
-            {/* ✅ Hybrid Extract (simple) */}
+            {/* ✅ Extract */}
             <IconButton
               onClick={() => {
                 ensureExtractDefaults();
                 setExtractOpen(true);
               }}
-              title="Extract (Project Day-wise)"
+              title="Extract"
               disabled={loading || submitting}
             >
               <FileDownloadIcon />
@@ -911,7 +1006,6 @@ export default function ProjectTable() {
             <IconButton onClick={fetchProjects} title="Refresh" disabled={loading || submitting}>
               <RefreshIcon />
             </IconButton>
-
             <IconButton onClick={onAdd} color="primary" title="Add Project" disabled={loading || submitting}>
               <AddIcon />
             </IconButton>
@@ -1009,10 +1103,10 @@ export default function ProjectTable() {
           </Typography>
         )}
 
-        {/* ===================== HYBRID EXTRACT (SIMPLE) ===================== */}
+        {/* ===================== EXTRACT DIALOG ===================== */}
         <Dialog open={extractOpen} onClose={() => setExtractOpen(false)} maxWidth="lg" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
-            Extract — Project Updates (Day-wise)
+            Extract — Project Updates
           </DialogTitle>
 
           <DialogContent dividers>
@@ -1025,9 +1119,13 @@ export default function ProjectTable() {
                     value={extractProjectId}
                     onChange={(e) => setExtractProjectId(e.target.value)}
                   >
+                    <MenuItem value="__ALL__">
+                      <b>All Projects</b>
+                    </MenuItem>
+
                     {projectOptions.map((p) => (
-                      <MenuItem key={p.id} value={String(p.id)}>
-                        {p.label ? `${p.label} — ${p.id}` : String(p.id)}
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.name ? `${p.name} — ${p.id}` : p.id}
                       </MenuItem>
                     ))}
                   </Select>
@@ -1038,28 +1136,36 @@ export default function ProjectTable() {
                 <TextField
                   size="small"
                   type="date"
-                  label="Day"
+                  label="From"
                   InputLabelProps={{ shrink: true }}
-                  value={extractDay}
-                  onChange={(e) => setExtractDay(e.target.value)}
+                  value={extractFrom}
+                  onChange={(e) => setExtractFrom(e.target.value)}
                   fullWidth
                 />
               </Grid>
 
               <Grid item xs={12} md={3}>
-                <FormControlLabel
-                  control={
-                    <Checkbox
-                      checked={extractUseDisplayFormatting}
-                      onChange={(e) => setExtractUseDisplayFormatting(e.target.checked)}
-                    />
-                  }
-                  label="Formatted values"
+                <TextField
+                  size="small"
+                  type="date"
+                  label="To"
+                  InputLabelProps={{ shrink: true }}
+                  value={extractTo}
+                  onChange={(e) => setExtractTo(e.target.value)}
+                  fullWidth
                 />
               </Grid>
 
               <Grid item xs={12}>
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 2,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <ToggleButtonGroup
                     value={extractMode}
                     exclusive
@@ -1070,23 +1176,41 @@ export default function ProjectTable() {
                     <ToggleButton value="snapshot">Snapshot</ToggleButton>
                   </ToggleButtonGroup>
 
-                  <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                    Timestamp parsing supports <b>DD/MM/YYYY</b> and <b>DDMMYYYYHHMMSSmmm</b>.
-                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Checkbox
+                        checked={extractUseDisplayFormatting}
+                        onChange={(e) => setExtractUseDisplayFormatting(e.target.checked)}
+                      />
+                    }
+                    label="Formatted values"
+                  />
                 </Box>
               </Grid>
 
-              {/* ===== Changes Column Selector (simple, only 4 options) ===== */}
+              {/* ===== Changes View ===== */}
               {extractMode === "changes" ? (
                 <Grid item xs={12}>
                   <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 1,
+                      }}
+                    >
                       <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
                         Columns (Changes View)
                       </Typography>
                       <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        <Button size="small" onClick={selectAllChangeCols}>Select All</Button>
-                        <Button size="small" onClick={deselectAllChangeCols}>Deselect All</Button>
+                        <Button size="small" onClick={selectAllChangeCols}>
+                          Select All
+                        </Button>
+                        <Button size="small" onClick={deselectAllChangeCols}>
+                          Deselect All
+                        </Button>
                       </Box>
                     </Box>
 
@@ -1094,7 +1218,7 @@ export default function ProjectTable() {
 
                     <Grid container spacing={0.5}>
                       {CHANGE_COLUMNS_ALL.map((c) => (
-                        <Grid item xs={12} sm={6} md={3} key={c}>
+                        <Grid item xs={12} sm={6} md={4} key={c}>
                           <FormControlLabel
                             control={
                               <Checkbox
@@ -1110,13 +1234,15 @@ export default function ProjectTable() {
                     </Grid>
 
                     <Typography sx={{ fontSize: 11, opacity: 0.7, mt: 1 }}>
-                      Changes found: <b>{dailyChanges.length}</b>
+                      Changes found: <b>{extractChangesRows.length}</b>
                     </Typography>
 
                     <Divider sx={{ my: 1 }} />
 
-                    {dailyChanges.length === 0 ? (
-                      <Typography sx={{ fontSize: 12 }}>No changes found for this project on this day.</Typography>
+                    {extractChangesRows.length === 0 ? (
+                      <Typography sx={{ fontSize: 12 }}>
+                        No changes found for selected project(s) in this date range.
+                      </Typography>
                     ) : (
                       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
                         <Table size="small" stickyHeader>
@@ -1130,40 +1256,62 @@ export default function ProjectTable() {
                             }}
                           >
                             <TableRow>
-                              {(changesSelectedColumns.length ? changesSelectedColumns : CHANGE_COLUMNS_ALL).map((c) => (
-                                <TableCell key={c}>{c}</TableCell>
-                              ))}
+                              {(changesSelectedColumns.length ? changesSelectedColumns : CHANGE_COLUMNS_ALL).map(
+                                (c) => (
+                                  <TableCell key={c}>{c}</TableCell>
+                                )
+                              )}
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {dailyChanges.map((r, i) => (
+                            {extractChangesRows.slice(0, 50).map((r, i) => (
                               <TableRow key={i} hover>
-                                {(changesSelectedColumns.length ? changesSelectedColumns : CHANGE_COLUMNS_ALL).map((c) => (
-                                  <TableCell key={c}>
-                                    {c === "Timestamp" ? formatDDMMYYYY_HHMMSSS(r[c]) : r[c]}
-                                  </TableCell>
-                                ))}
+                                {(changesSelectedColumns.length ? changesSelectedColumns : CHANGE_COLUMNS_ALL).map(
+                                  (c) => (
+                                    <TableCell key={c}>
+                                      {c === "Timestamp" ? formatDDMMYYYY_HHMMSSS(r[c]) : r[c]}
+                                    </TableCell>
+                                  )
+                                )}
                               </TableRow>
                             ))}
                           </TableBody>
                         </Table>
+
+                        {extractChangesRows.length > 50 ? (
+                          <Typography sx={{ fontSize: 11, opacity: 0.7, p: 1 }}>
+                            Showing first 50 rows in preview. Download to get all.
+                          </Typography>
+                        ) : null}
                       </Paper>
                     )}
                   </Paper>
                 </Grid>
               ) : null}
 
-              {/* ===== Snapshot Column Selector (full headers, user can remove) ===== */}
+              {/* ===== Snapshot View ===== */}
               {extractMode === "snapshot" ? (
                 <Grid item xs={12}>
                   <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
-                    <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 1 }}>
+                    <Box
+                      sx={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                        gap: 1,
+                      }}
+                    >
                       <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
                         Columns (Snapshot View)
                       </Typography>
                       <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        <Button size="small" onClick={extractSelectAll}>Select All</Button>
-                        <Button size="small" onClick={extractDeselectAll}>Deselect All</Button>
+                        <Button size="small" onClick={extractSelectAll}>
+                          Select All
+                        </Button>
+                        <Button size="small" onClick={extractDeselectAll}>
+                          Deselect All
+                        </Button>
                       </Box>
                     </Box>
 
@@ -1187,13 +1335,15 @@ export default function ProjectTable() {
                     </Grid>
 
                     <Typography sx={{ fontSize: 11, opacity: 0.7, mt: 1 }}>
-                      Snapshots found: <b>{dailySnapshots.length}</b> (each row is an update entry on that day)
+                      Snapshot rows found: <b>{extractSnapshotRows.length}</b>
                     </Typography>
 
                     <Divider sx={{ my: 1 }} />
 
-                    {dailySnapshots.length === 0 ? (
-                      <Typography sx={{ fontSize: 12 }}>No snapshot rows found for this project on this day.</Typography>
+                    {extractSnapshotRows.length === 0 ? (
+                      <Typography sx={{ fontSize: 12 }}>
+                        No snapshot rows found for selected project(s) in this date range.
+                      </Typography>
                     ) : (
                       <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
                         <Table size="small" stickyHeader>
@@ -1213,7 +1363,7 @@ export default function ProjectTable() {
                             </TableRow>
                           </TableHead>
                           <TableBody>
-                            {dailySnapshots.slice(0, 25).map((row, i) => (
+                            {extractSnapshotRows.slice(0, 25).map((row, i) => (
                               <TableRow key={i} hover>
                                 {(extractSelectedColumns.length ? extractSelectedColumns : headers).map((h) => (
                                   <TableCell key={h}>{formatForExport(h, row?.[h])}</TableCell>
@@ -1223,7 +1373,7 @@ export default function ProjectTable() {
                           </TableBody>
                         </Table>
 
-                        {dailySnapshots.length > 25 ? (
+                        {extractSnapshotRows.length > 25 ? (
                           <Typography sx={{ fontSize: 11, opacity: 0.7, p: 1 }}>
                             Showing first 25 rows in preview. Download to get all.
                           </Typography>
@@ -1245,7 +1395,9 @@ export default function ProjectTable() {
               startIcon={<FileDownloadIcon />}
               onClick={() => (extractMode === "changes" ? downloadChangesCSV() : downloadSnapshotsCSV())}
               disabled={
-                extractMode === "changes" ? dailyChanges.length === 0 : dailySnapshots.length === 0
+                extractMode === "changes"
+                  ? extractChangesRows.length === 0
+                  : extractSnapshotRows.length === 0
               }
             >
               Download CSV
@@ -1278,9 +1430,11 @@ export default function ProjectTable() {
                           return (
                             <TableCell
                               key={h}
-                              sx={isChanged ? { backgroundColor: "#fff3cd", fontWeight: 700 } : undefined}
+                              sx={isChanged ? { backgroundColor: "e9eff5", fontWeight: 400 } : undefined}
                             >
-                              {h === "Timestamp" ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
+                              {h === "Timestamp"
+                                ? formatDDMMYYYY_HHMMSSS(row[h])
+                                : renderCell(h, row[h])}
                             </TableCell>
                           );
                         })}
@@ -1310,18 +1464,33 @@ export default function ProjectTable() {
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             {editingRow?.[PROJECT_ID_HEADER] ? "Edit Project" : "Add Project"}
           </DialogTitle>
-
           <DialogContent dividers>
             <Grid container spacing={2}>
               {headers.map((h) => {
                 const isReadonly = readonlyColumns.has(h);
-                const options = validation[h] || [];
-                const hasOptions = Array.isArray(options) && options.length > 0;
+                const hasOptions = Array.isArray(validation[h]) && validation[h].length > 0;
 
-                // multiselect dropdown
+                if (h === "Client (Linked Deal/Account ID)") {
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <ClientSelector
+                        value={editingRow?.[h] || ""}
+                        onPick={({ value, owner }) =>
+                          setEditingRow((prev) => ({
+                            ...prev,
+                            [h]: value,
+                            ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {}),
+                          }))
+                        }
+                      />
+                    </Grid>
+                  );
+                }
+
                 if (hasOptions && isMulti(h)) {
-                  const safeOptions = (options || []).map(String);
+                  const safeOptions = (validation[h] || []).map(String);
                   const valueArr = toStringArray(editingRow?.[h]);
+
                   return (
                     <Grid item xs={12} sm={6} key={h}>
                       <FormControl fullWidth size="small" disabled={isReadonly || submitting}>
@@ -1358,7 +1527,6 @@ export default function ProjectTable() {
                   );
                 }
 
-                // normal dropdown
                 if (hasOptions) {
                   return (
                     <Grid item xs={12} sm={6} key={h}>
@@ -1369,7 +1537,7 @@ export default function ProjectTable() {
                           value={editingRow?.[h] || ""}
                           onChange={(e) => setFieldValue(h, e.target.value)}
                         >
-                          {options.map((opt) => (
+                          {validation[h].map((opt) => (
                             <MenuItem key={opt} value={opt}>
                               {opt}
                             </MenuItem>
@@ -1380,7 +1548,6 @@ export default function ProjectTable() {
                   );
                 }
 
-                // text
                 return (
                   <Grid item xs={12} sm={6} key={h}>
                     <TextField
@@ -1398,7 +1565,6 @@ export default function ProjectTable() {
               })}
             </Grid>
           </DialogContent>
-
           <DialogActions>
             <Button
               onClick={() => {
@@ -1424,5 +1590,78 @@ export default function ProjectTable() {
         </Dialog>
       </Box>
     </ThemeProvider>
+  );
+}
+
+/** ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" and returns owner */
+function ClientSelector({ value, onPick }) {
+  const [source, setSource] = React.useState(() =>
+    String(value).startsWith("deals:") ? "deals" : "accounts"
+  );
+  const [options, setOptions] = React.useState([]); // [{id,label,owner?}]
+  const [loading, setLoading] = React.useState(false);
+
+  const fetchOptions = async (src) => {
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`
+      );
+      const data = await res.json();
+      const list = Array.isArray(data?.options) ? data.options : [];
+      setOptions(list);
+    } catch (e) {
+      console.error(e);
+      setOptions([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  React.useEffect(() => {
+    fetchOptions(source);
+  }, [source]);
+
+  const currentId = React.useMemo(() => {
+    if (!value) return "";
+    const pipe = String(value).indexOf("|");
+    const colon = String(value).indexOf(":");
+    if (colon === -1) return "";
+    const id = String(value).slice(colon + 1, pipe > colon ? pipe : undefined);
+    return id;
+  }, [value]);
+
+  const handlePick = (id) => {
+    const opt = options.find((o) => String(o.id) === String(id));
+    const label = opt?.label || "";
+    const owner = opt?.owner || "";
+    const v = `${source}:${id}${label ? "|" + label : ""}`;
+    onPick && onPick({ value: v, owner });
+  };
+
+  return (
+    <Box sx={{ display: "flex", gap: 1, width: "100%" }}>
+      <FormControl size="small" sx={{ minWidth: 160 }}>
+        <InputLabel>Client Source</InputLabel>
+        <Select label="Client Source" value={source} onChange={(e) => setSource(e.target.value)}>
+          <MenuItem value="accounts">Accounts</MenuItem>
+          <MenuItem value="deals">Deals</MenuItem>
+        </Select>
+      </FormControl>
+      <FormControl size="small" fullWidth>
+        <InputLabel>{loading ? "Loading…" : "Select Client"}</InputLabel>
+        <Select
+          label={loading ? "Loading…" : "Select Client"}
+          value={currentId}
+          onChange={(e) => handlePick(e.target.value)}
+        >
+          {options.map((opt) => (
+            <MenuItem key={opt.id} value={opt.id}>
+              {opt.label}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    </Box>
   );
 }

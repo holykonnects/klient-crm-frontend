@@ -1,5 +1,5 @@
 // src/components/ProjectTable.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -138,6 +138,42 @@ const downloadTextFile = (filename, content, mime = "text/csv;charset=utf-8") =>
   URL.revokeObjectURL(url);
 };
 
+/** Day filter helpers */
+const parseYMDLocal = (ymd) => {
+  if (!ymd) return null;
+  const [y, m, d] = String(ymd).split("-").map(Number);
+  if (!y || !m || !d) return null;
+  return new Date(y, m - 1, d, 0, 0, 0, 0);
+};
+
+const inDateRange = (value, fromYMD, toYMD) => {
+  const d = parseAsDate(value);
+  if (!d) return false;
+
+  const from = parseYMDLocal(fromYMD);
+  const to = parseYMDLocal(toYMD);
+
+  if (from && !to) {
+    const end = new Date(from);
+    end.setHours(23, 59, 59, 999);
+    return d >= from && d <= end;
+  }
+
+  if (!from && to) {
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
+    return d <= end;
+  }
+
+  if (from && to) {
+    const end = new Date(to);
+    end.setHours(23, 59, 59, 999);
+    return d >= from && d <= end;
+  }
+
+  return true;
+};
+
 export default function ProjectTable() {
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
@@ -166,14 +202,18 @@ export default function ProjectTable() {
   // ✅ prevents multiple submits + provides button state
   const [submitting, setSubmitting] = useState(false);
 
-  // ✅ Extract dialog + settings
+  // ✅ Extract modal (single selector like Cost Sheet)
   const [extractOpen, setExtractOpen] = useState(false);
-  const [extractScope, setExtractScope] = useState("latest_filtered"); // latest_filtered | history_for_filtered | all_rows
+  const [extractScope, setExtractScope] = useState("updates_history"); // table_latest | updates_history | all_rows
   const [extractUseDisplayFormatting, setExtractUseDisplayFormatting] = useState(true);
 
-  // ✅ Extract column selector (independent of table columns)
-  const [extractColumnsMode, setExtractColumnsMode] = useState("custom"); // custom | visible | all
-  const [extractColumns, setExtractColumns] = useState([]); // actual selected columns for export
+  const [extractEnableDateFilter, setExtractEnableDateFilter] = useState(true);
+  const [extractDateField, setExtractDateField] = useState("Timestamp");
+  const [extractFromDate, setExtractFromDate] = useState(""); // YYYY-MM-DD
+  const [extractToDate, setExtractToDate] = useState(""); // YYYY-MM-DD
+
+  // ✅ Single column selector for extract
+  const [extractColumns, setExtractColumns] = useState([]);
 
   const isControlHeader = (h) => norm(h) === norm(MULTI_KEY);
 
@@ -242,7 +282,6 @@ export default function ProjectTable() {
         msRaw = rawValidation[MULTI_KEY];
       }
       const msList = normalizeOptions(msRaw).map(norm);
-      // add fallbacks explicitly (Vendors, Assigned Team)
       msList.push(...Array.from(FALLBACK_MULTI));
       setMultiselectSetNorm(new Set(msList));
     } catch (err) {
@@ -261,7 +300,6 @@ export default function ProjectTable() {
     if (!rawHeaders.length) return;
 
     const visible = rawHeaders.filter((h) => !isControlHeader(h)); // hide "Project Multiselect Fields"
-
     if (columnOrder && columnOrder.length) {
       const orderFiltered = columnOrder.filter((h) => visible.includes(h));
       const set = new Set(orderFiltered);
@@ -278,18 +316,18 @@ export default function ProjectTable() {
     }
   }, [rawHeaders, columnOrder]); // eslint-disable-line
 
-  // ✅ load/save extract columns in localStorage (like table columns)
+  // multiselect check using normalized names
+  const isMulti = useCallback((header) => multiselectSetNorm.has(norm(header)), [multiselectSetNorm]);
+
+  // ✅ Load/Save extract columns (single selector)
   useEffect(() => {
     if (!headers.length) return;
 
-    // Load saved extract columns once per header change
     const saved = JSON.parse(localStorage.getItem("extractColumns-projects") || "null");
     if (Array.isArray(saved) && saved.length) {
-      // keep only those still in headers
       const cleaned = saved.filter((h) => headers.includes(h));
-      setExtractColumns(cleaned.length ? cleaned : headers);
+      setExtractColumns(cleaned.length ? cleaned : (visibleColumns?.length ? visibleColumns : headers));
     } else {
-      // default: visible columns if available else all headers
       setExtractColumns(visibleColumns?.length ? visibleColumns : headers);
     }
     // eslint-disable-next-line
@@ -299,9 +337,6 @@ export default function ProjectTable() {
     if (!headers.length) return;
     localStorage.setItem("extractColumns-projects", JSON.stringify(extractColumns));
   }, [extractColumns, headers.length]);
-
-  // multiselect check using normalized names
-  const isMulti = (header) => multiselectSetNorm.has(norm(header));
 
   // ---------- latest row per Project ID ----------
   const latestByProjectId = useMemo(() => {
@@ -406,20 +441,16 @@ export default function ProjectTable() {
     const out = {};
     headers.forEach((h) => {
       const v = rowObj[h];
-      if (isMulti(h)) {
-        out[h] = Array.isArray(v) ? v.join(", ") : v ?? "";
-      } else if (typeof v === "string") {
-        out[h] = v.trim();
-      } else {
-        out[h] = v ?? "";
-      }
+      if (isMulti(h)) out[h] = Array.isArray(v) ? v.join(", ") : v ?? "";
+      else if (typeof v === "string") out[h] = v.trim();
+      else out[h] = v ?? "";
     });
     return out;
   };
 
-  // ✅ submit guard + "Saving..." button state (prevents multiple submits)
+  // ✅ submit guard + "Saving..." button state
   const handleSubmit = async () => {
-    if (submitting) return; // hard guard
+    if (submitting) return;
     setSubmitting(true);
 
     try {
@@ -523,13 +554,13 @@ export default function ProjectTable() {
     return String(value);
   };
 
-  // ---------- Extract logic ----------
-  const getExtractRows = () => {
+  // ---------------- Extract (single selector) ----------------
+  const getBaseExtractRows = () => {
     const idHeader = "Project ID (unique, auto-generated)";
 
-    if (extractScope === "latest_filtered") return filteredRows;
+    if (extractScope === "table_latest") return filteredRows;
 
-    if (extractScope === "history_for_filtered") {
+    if (extractScope === "updates_history") {
       const ids = new Set(filteredRows.map((r) => r?.[idHeader]).filter(Boolean));
       return rows
         .filter((r) => ids.has(r?.[idHeader]))
@@ -546,10 +577,17 @@ export default function ProjectTable() {
     return rows; // all_rows
   };
 
+  const getExtractRows = () => {
+    const base = getBaseExtractRows();
+
+    if (!extractEnableDateFilter) return base;
+    if (!extractFromDate && !extractToDate) return base;
+
+    const field = extractDateField || "Timestamp";
+    return base.filter((r) => inDateRange(r?.[field], extractFromDate, extractToDate));
+  };
+
   const getExtractColumns = () => {
-    if (extractColumnsMode === "all") return headers;
-    if (extractColumnsMode === "visible") return (visibleColumns?.length ? visibleColumns : headers);
-    // custom
     const safe = (extractColumns || []).filter((h) => headers.includes(h));
     return safe.length ? safe : headers;
   };
@@ -559,7 +597,6 @@ export default function ProjectTable() {
       if (isMulti(header)) return toStringArray(value).join(", ");
       return value ?? "";
     }
-
     if (value === null || value === undefined || value === "") return "";
     if (PERCENT_FIELDS.has(header)) {
       const n = Number(value);
@@ -590,13 +627,52 @@ export default function ProjectTable() {
     downloadTextFile(filename, csv);
   };
 
-  // ✅ Extract Column Selector handlers
   const toggleExtractColumn = (col) => {
     setExtractColumns((prev) => (prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col]));
   };
 
   const selectAllExtractColumns = () => setExtractColumns(headers);
   const deselectAllExtractColumns = () => setExtractColumns([]);
+
+  const useVisibleForExtract = () => setExtractColumns(visibleColumns?.length ? visibleColumns : headers);
+  const useAllForExtract = () => setExtractColumns(headers);
+
+  // ---------------- Logs Differentiator (what changed) ----------------
+  const logsChangedSets = useMemo(() => {
+    // logsRows is sorted newest->oldest
+    if (!logsRows?.length) return [];
+    const cols = headers;
+    const arr = [];
+
+    for (let i = 0; i < logsRows.length; i++) {
+      const cur = logsRows[i] || {};
+      const prev = logsRows[i + 1] || null; // older entry
+      const changed = new Set();
+
+      if (!prev) {
+        // newest entry has no prev comparison
+        arr.push(changed);
+        continue;
+      }
+
+      cols.forEach((h) => {
+        const a = cur?.[h];
+        const b = prev?.[h];
+
+        const aNorm = isMulti(h) ? toStringArray(a).join(", ") : String(a ?? "");
+        const bNorm = isMulti(h) ? toStringArray(b).join(", ") : String(b ?? "");
+        if (aNorm !== bNorm) changed.add(h);
+      });
+
+      arr.push(changed);
+    }
+    return arr;
+  }, [logsRows, headers, isMulti]);
+
+  // ---------- Modal typing lag reduction: stable setter + memo field ----------
+  const setFieldValue = useCallback((key, value) => {
+    setEditingRow((prev) => ({ ...(prev || {}), [key]: value }));
+  }, []);
 
   // curated filters; extend as needed
   const FILTER_LIST = [
@@ -607,6 +683,13 @@ export default function ProjectTable() {
   ].filter((h) => headers.includes(h));
 
   const canCloseModal = !submitting;
+
+  // Date-field options for extract (keeps it simple but flexible)
+  const extractDateFieldOptions = useMemo(() => {
+    const core = ["Timestamp"];
+    const extra = headers.filter((h) => /date|timestamp/i.test(h) && !core.includes(h));
+    return Array.from(new Set([...core, ...extra]));
+  }, [headers]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -774,52 +857,30 @@ export default function ProjectTable() {
           </Typography>
         )}
 
-        {/* ✅ Extract Dialog with Column Selector */}
+        {/* ✅ Extract Dialog (single selector like Cost Sheet) */}
         <Dialog open={extractOpen} onClose={() => setExtractOpen(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Extract Projects (CSV)
           </DialogTitle>
 
           <DialogContent dividers>
-            <Typography sx={{ fontSize: 12, opacity: 0.85, mb: 2 }}>
-              Configure export below. No Apps Script update required (export is generated from the already-fetched table
-              data).
-            </Typography>
-
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
                 <FormControl size="small" fullWidth>
-                  <InputLabel>Data Scope</InputLabel>
+                  <InputLabel>Scope</InputLabel>
                   <Select
-                    label="Data Scope"
+                    label="Scope"
                     value={extractScope}
                     onChange={(e) => setExtractScope(e.target.value)}
                   >
-                    <MenuItem value="latest_filtered">
-                      Latest rows (table view) — {filteredRows.length} row(s)
-                    </MenuItem>
-                    <MenuItem value="history_for_filtered">Full history for current table projects (logs)</MenuItem>
-                    <MenuItem value="all_rows">Entire sheet (all rows)</MenuItem>
+                    <MenuItem value="table_latest">Table View (Latest per Project)</MenuItem>
+                    <MenuItem value="updates_history">Updates / History (Logs for current table projects)</MenuItem>
+                    <MenuItem value="all_rows">All Rows (Entire Sheet)</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
 
               <Grid item xs={12} md={6}>
-                <FormControl size="small" fullWidth>
-                  <InputLabel>Columns Export Mode</InputLabel>
-                  <Select
-                    label="Columns Export Mode"
-                    value={extractColumnsMode}
-                    onChange={(e) => setExtractColumnsMode(e.target.value)}
-                  >
-                    <MenuItem value="custom">Custom column selection</MenuItem>
-                    <MenuItem value="visible">Use table visible columns ({visibleColumns.length})</MenuItem>
-                    <MenuItem value="all">All columns ({headers.length})</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12}>
                 <FormControlLabel
                   control={
                     <Checkbox
@@ -827,57 +888,121 @@ export default function ProjectTable() {
                       onChange={(e) => setExtractUseDisplayFormatting(e.target.checked)}
                     />
                   }
-                  label="Use display formatting (dates/money/% as shown in table)"
+                  label="Use display formatting (dates/money/% as shown)"
                 />
               </Grid>
 
-              {/* ✅ Custom Column Selector */}
-              {extractColumnsMode === "custom" && (
-                <Grid item xs={12}>
-                  <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
-                    <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", mb: 1 }}>
-                      <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
-                        Select columns to export ({(extractColumns || []).length})
-                      </Typography>
-                      <Box sx={{ display: "flex", gap: 1 }}>
-                        <Button size="small" onClick={selectAllExtractColumns}>
-                          Select All
-                        </Button>
-                        <Button size="small" onClick={deselectAllExtractColumns}>
-                          Deselect All
-                        </Button>
-                      </Box>
+              {/* Day-to-day filter */}
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 2, flexWrap: "wrap" }}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          checked={extractEnableDateFilter}
+                          onChange={(e) => setExtractEnableDateFilter(e.target.checked)}
+                        />
+                      }
+                      label="Enable day-to-day (date range) filter"
+                    />
+
+                    <FormControl size="small" sx={{ minWidth: 240 }}>
+                      <InputLabel>Date Field</InputLabel>
+                      <Select
+                        label="Date Field"
+                        value={extractDateField}
+                        onChange={(e) => setExtractDateField(e.target.value)}
+                        disabled={!extractEnableDateFilter}
+                      >
+                        {extractDateFieldOptions.map((h) => (
+                          <MenuItem key={h} value={h}>
+                            {h}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="From"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractFromDate}
+                      onChange={(e) => setExtractFromDate(e.target.value)}
+                      disabled={!extractEnableDateFilter}
+                      sx={{ minWidth: 170 }}
+                    />
+
+                    <TextField
+                      size="small"
+                      type="date"
+                      label="To"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractToDate}
+                      onChange={(e) => setExtractToDate(e.target.value)}
+                      disabled={!extractEnableDateFilter}
+                      sx={{ minWidth: 170 }}
+                    />
+                  </Box>
+
+                  <Typography sx={{ fontSize: 11, opacity: 0.7, mt: 1 }}>
+                    Tip: If you set only <b>From</b>, it exports that day’s updates (00:00–23:59).
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              {/* Single column selector */}
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, p: 1.5 }}>
+                  <Box sx={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 2, flexWrap: "wrap", mb: 1 }}>
+                    <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
+                      Columns to export ({(extractColumns || []).length})
+                    </Typography>
+
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      <Button size="small" onClick={selectAllExtractColumns}>
+                        Select All
+                      </Button>
+                      <Button size="small" onClick={deselectAllExtractColumns}>
+                        Deselect All
+                      </Button>
+                      <Button size="small" onClick={useVisibleForExtract}>
+                        Use Visible
+                      </Button>
+                      <Button size="small" onClick={useAllForExtract}>
+                        Use All
+                      </Button>
                     </Box>
+                  </Box>
 
-                    <Divider sx={{ mb: 1 }} />
+                  <Divider sx={{ mb: 1 }} />
 
-                    <Grid container spacing={0.5}>
-                      {headers.map((col) => (
-                        <Grid item xs={12} sm={6} md={4} key={col}>
-                          <FormControlLabel
-                            control={
-                              <Checkbox
-                                size="small"
-                                checked={extractColumns.includes(col)}
-                                onChange={() => toggleExtractColumn(col)}
-                              />
-                            }
-                            label={
-                              <Typography sx={{ fontSize: 12, fontFamily: "Montserrat, sans-serif" }}>
-                                {col}
-                              </Typography>
-                            }
-                          />
-                        </Grid>
-                      ))}
-                    </Grid>
-                  </Paper>
+                  <Grid container spacing={0.5}>
+                    {headers.map((col) => (
+                      <Grid item xs={12} sm={6} md={4} key={col}>
+                        <FormControlLabel
+                          control={
+                            <Checkbox
+                              size="small"
+                              checked={extractColumns.includes(col)}
+                              onChange={() => toggleExtractColumn(col)}
+                            />
+                          }
+                          label={
+                            <Typography sx={{ fontSize: 12, fontFamily: "Montserrat, sans-serif" }}>
+                              {col}
+                            </Typography>
+                          }
+                        />
+                      </Grid>
+                    ))}
+                  </Grid>
 
                   <Typography sx={{ fontSize: 11, opacity: 0.7, mt: 1 }}>
                     ✅ Saved automatically (localStorage): <b>extractColumns-projects</b>
                   </Typography>
-                </Grid>
-              )}
+                </Paper>
+              </Grid>
 
               {/* Preview */}
               <Grid item xs={12}>
@@ -909,9 +1034,9 @@ export default function ProjectTable() {
           </DialogActions>
         </Dialog>
 
-        {/* Logs Modal */}
+        {/* Logs Modal (with changed-field highlight) */}
         <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="lg" fullWidth>
-          <DialogTitle>Project Logs</DialogTitle>
+          <DialogTitle>Project Logs (Highlights = Changed Fields)</DialogTitle>
           <DialogContent dividers>
             {logsRows.length === 0 ? (
               <Typography>No logs available.</Typography>
@@ -925,15 +1050,31 @@ export default function ProjectTable() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {logsRows.map((row, i) => (
-                    <TableRow key={i}>
-                      {headers.map((h) => (
-                        <TableCell key={h}>
-                          {h === "Timestamp" ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
+                  {logsRows.map((row, i) => {
+                    const changedSet = logsChangedSets[i] || new Set();
+                    return (
+                      <TableRow key={i}>
+                        {headers.map((h) => {
+                          const isChanged = changedSet.has(h);
+                          return (
+                            <TableCell
+                              key={h}
+                              sx={
+                                isChanged
+                                  ? {
+                                      backgroundColor: "#fff3cd",
+                                      fontWeight: 700,
+                                    }
+                                  : undefined
+                              }
+                            >
+                              {h === "Timestamp" ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -943,11 +1084,11 @@ export default function ProjectTable() {
           </DialogActions>
         </Dialog>
 
-        {/* Add/Edit Modal */}
+        {/* Add/Edit Modal (reduced lag via memo field component) */}
         <Dialog
           open={modalOpen}
           onClose={() => {
-            if (submitting) return;
+            if (!canCloseModal) return;
             setModalOpen(false);
             setEditingRow(null);
           }}
@@ -962,8 +1103,10 @@ export default function ProjectTable() {
             <Grid container spacing={2}>
               {headers.map((h) => {
                 const isReadonly = readonlyColumns.has(h);
-                const hasOptions = Array.isArray(validation[h]) && validation[h].length > 0;
+                const options = validation[h] || [];
+                const hasOptions = Array.isArray(options) && options.length > 0;
 
+                // client selector special
                 if (h === "Client (Linked Deal/Account ID)") {
                   return (
                     <Grid item xs={12} sm={6} key={h}>
@@ -971,7 +1114,7 @@ export default function ProjectTable() {
                         value={editingRow?.[h] || ""}
                         onPick={({ value, owner }) =>
                           setEditingRow((prev) => ({
-                            ...prev,
+                            ...(prev || {}),
                             [h]: value,
                             ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {}),
                           }))
@@ -981,80 +1124,17 @@ export default function ProjectTable() {
                   );
                 }
 
-                if (hasOptions && isMulti(h)) {
-                  const safeOptions = (validation[h] || []).map(String);
-                  const valueArr = toStringArray(editingRow?.[h]);
-
-                  const handleMultiChange = (e) => {
-                    const raw = e.target.value;
-                    const next = Array.isArray(raw) ? raw : toStringArray(raw);
-                    setEditingRow((prev) => ({ ...prev, [h]: next }));
-                  };
-
-                  return (
-                    <Grid item xs={12} sm={6} key={h}>
-                      <FormControl fullWidth size="small" disabled={isReadonly || submitting}>
-                        <InputLabel>{h}</InputLabel>
-                        <Select
-                          label={h}
-                          multiple
-                          value={valueArr}
-                          onChange={handleMultiChange}
-                          renderValue={(selected) => (
-                            <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
-                              {selected.map((val) => (
-                                <Chip key={`${h}-${val}`} size="small" variant="outlined" label={val} />
-                              ))}
-                            </Box>
-                          )}
-                        >
-                          {safeOptions.map((opt) => {
-                            const checked = valueArr.indexOf(opt) > -1;
-                            return (
-                              <MenuItem key={opt} value={opt}>
-                                <Checkbox size="small" checked={checked} />
-                                <ListItemText primary={opt} />
-                              </MenuItem>
-                            );
-                          })}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                  );
-                }
-
-                if (hasOptions) {
-                  return (
-                    <Grid item xs={12} sm={6} key={h}>
-                      <FormControl fullWidth size="small" disabled={isReadonly || submitting}>
-                        <InputLabel>{h}</InputLabel>
-                        <Select
-                          label={h}
-                          value={editingRow?.[h] || ""}
-                          onChange={(e) => setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))}
-                        >
-                          {validation[h].map((opt) => (
-                            <MenuItem key={opt} value={opt}>
-                              {opt}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                  );
-                }
-
                 return (
                   <Grid item xs={12} sm={6} key={h}>
-                    <TextField
-                      fullWidth
-                      size="small"
-                      label={h}
-                      value={Array.isArray(editingRow?.[h]) ? (editingRow?.[h] || []).join(", ") : editingRow?.[h] || ""}
-                      onChange={(e) => setEditingRow((prev) => ({ ...prev, [h]: e.target.value }))}
-                      multiline={isMultilineHeader(h)}
-                      minRows={isMultilineHeader(h) ? 3 : 1}
+                    <ProjectField
+                      header={h}
+                      value={editingRow?.[h]}
                       disabled={isReadonly || submitting}
+                      hasOptions={hasOptions}
+                      options={options}
+                      isMulti={isMulti(h)}
+                      multiline={isMultilineHeader(h)}
+                      onSetValue={setFieldValue}
                     />
                   </Grid>
                 );
@@ -1065,7 +1145,7 @@ export default function ProjectTable() {
           <DialogActions>
             <Button
               onClick={() => {
-                if (submitting) return;
+                if (!canCloseModal) return;
                 setModalOpen(false);
                 setEditingRow(null);
               }}
@@ -1089,6 +1169,99 @@ export default function ProjectTable() {
     </ThemeProvider>
   );
 }
+
+/** Memo field to reduce typing lag (only the edited field updates) */
+const ProjectField = React.memo(function ProjectField({
+  header,
+  value,
+  disabled,
+  hasOptions,
+  options,
+  isMulti,
+  multiline,
+  onSetValue,
+}) {
+  const valArr = useMemo(() => (isMulti ? toStringArray(value) : []), [isMulti, value]);
+
+  const handleTextChange = useCallback(
+    (e) => onSetValue(header, e.target.value),
+    [header, onSetValue]
+  );
+
+  const handleSelectChange = useCallback(
+    (e) => onSetValue(header, e.target.value),
+    [header, onSetValue]
+  );
+
+  const handleMultiChange = useCallback(
+    (e) => {
+      const raw = e.target.value;
+      const next = Array.isArray(raw) ? raw : toStringArray(raw);
+      onSetValue(header, next);
+    },
+    [header, onSetValue]
+  );
+
+  if (hasOptions && isMulti) {
+    const safeOptions = (options || []).map(String);
+    return (
+      <FormControl fullWidth size="small" disabled={disabled}>
+        <InputLabel>{header}</InputLabel>
+        <Select
+          label={header}
+          multiple
+          value={valArr}
+          onChange={handleMultiChange}
+          renderValue={(selected) => (
+            <Box sx={{ display: "flex", gap: 0.5, flexWrap: "wrap" }}>
+              {selected.map((val) => (
+                <Chip key={`${header}-${val}`} size="small" variant="outlined" label={val} />
+              ))}
+            </Box>
+          )}
+        >
+          {safeOptions.map((opt) => {
+            const checked = valArr.indexOf(opt) > -1;
+            return (
+              <MenuItem key={opt} value={opt}>
+                <Checkbox size="small" checked={checked} />
+                <ListItemText primary={opt} />
+              </MenuItem>
+            );
+          })}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  if (hasOptions) {
+    return (
+      <FormControl fullWidth size="small" disabled={disabled}>
+        <InputLabel>{header}</InputLabel>
+        <Select label={header} value={value || ""} onChange={handleSelectChange}>
+          {(options || []).map((opt) => (
+            <MenuItem key={opt} value={opt}>
+              {opt}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    );
+  }
+
+  return (
+    <TextField
+      fullWidth
+      size="small"
+      label={header}
+      value={Array.isArray(value) ? value.join(", ") : value || ""}
+      onChange={handleTextChange}
+      multiline={multiline}
+      minRows={multiline ? 3 : 1}
+      disabled={disabled}
+    />
+  );
+});
 
 /** ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" and returns owner */
 function ClientSelector({ value, onPick }) {
@@ -1143,7 +1316,11 @@ function ClientSelector({ value, onPick }) {
       </FormControl>
       <FormControl size="small" fullWidth>
         <InputLabel>{loading ? "Loading…" : "Select Client"}</InputLabel>
-        <Select label={loading ? "Loading…" : "Select Client"} value={currentId} onChange={(e) => handlePick(e.target.value)}>
+        <Select
+          label={loading ? "Loading…" : "Select Client"}
+          value={currentId}
+          onChange={(e) => handlePick(e.target.value)}
+        >
           {options.map((opt) => (
             <MenuItem key={opt.id} value={opt.id}>
               {opt.label}

@@ -209,6 +209,19 @@ function normalizeValidationResponse(raw) {
   return { heads, subcategories, paymentStatus };
 }
 
+function getExtractColsStorageKey(userKey) {
+  return `kk_costing_extract_cols_v1::${userKey || "anon"}`;
+}
+
+function safeJsonParse(s, fallback) {
+  try {
+    const v = JSON.parse(s);
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 /* ===================== Component ===================== */
 
 export default function CostingTable() {
@@ -277,6 +290,7 @@ export default function CostingTable() {
   const [extractColumnsAnchor, setExtractColumnsAnchor] = useState(null);
   const [extractVisibleCols, setExtractVisibleCols] = useState({});
   const [extractColsTouched, setExtractColsTouched] = useState(false);
+  const [extractCacheLoaded, setExtractCacheLoaded] = useState(false);
 
   // This fallback list already exists in your file (from openEditModal). Reusing it to avoid assumptions.
   const fallbackLineItemHeaders = useMemo(() => {
@@ -313,24 +327,61 @@ export default function CostingTable() {
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
-  // Initialize extract column selector when modal opens (default = ALL columns checked)
+  // ✅ Load cached selection (per user) when Extract modal opens
   useEffect(() => {
     if (!openExtract) return;
 
+    const userKey = String(loggedInName || "").trim();
+    const storageKey = getExtractColsStorageKey(userKey);
+
+    // Build "all selected" default
+    const allDefault = {};
+    (extractAllColumns || []).forEach((c) => (allDefault[c] = true));
+
+    // Load cached map once per open
+    const cached = safeJsonParse(localStorage.getItem(storageKey), null);
+
+    // If user already changed selection in this session, keep it
     setExtractVisibleCols((prev) => {
-      // If user already changed selection in this session, keep it
       if (extractColsTouched && prev && Object.keys(prev).length) return prev;
 
-      const initial = {};
-      (extractAllColumns || []).forEach((c) => (initial[c] = true));
-      return initial;
+      if (cached && typeof cached === "object") {
+        // Normalize cached keys to current headers:
+        // - keep only columns that still exist
+        // - add new columns defaulting to true
+        const next = { ...allDefault };
+        Object.keys(next).forEach((k) => {
+          if (k in cached) next[k] = cached[k] !== false;
+        });
+        return next;
+      }
+
+      return allDefault;
     });
 
-    // If modal opens fresh, treat as not touched until user changes
-    if (!extractColsTouched) {
-      // keep as-is; user can now modify
-    }
-  }, [openExtract, extractAllColumns, extractColsTouched]);
+    setExtractCacheLoaded(true);
+    // IMPORTANT: do not force extractColsTouched=true here — user hasn't changed yet
+  }, [openExtract, extractAllColumns, loggedInName, extractColsTouched]);
+
+  // ✅ POINT 4 (ADDED): Persist extract column selection per end user
+  // Place: immediately after the "load cached selection" effect above.
+  useEffect(() => {
+    if (!openExtract) return;
+    if (!extractCacheLoaded) return; // avoid saving before we load
+    if (!extractColsTouched) return; // save only after user changes selection
+
+    const userKey = String(loggedInName || "").trim();
+    const storageKey = getExtractColsStorageKey(userKey);
+
+    const map = extractVisibleCols || {};
+    localStorage.setItem(storageKey, JSON.stringify(map));
+  }, [
+    extractVisibleCols,
+    extractColsTouched,
+    openExtract,
+    loggedInName,
+    extractCacheLoaded,
+  ]);
 
   function openExtractColumns(e) {
     setExtractColumnsAnchor(e.currentTarget);
@@ -390,23 +441,6 @@ export default function CostingTable() {
   const [openAddExpense, setOpenAddExpense] = useState(false);
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
-
-  function openAddExpenseModal() {
-    setAddExpenseMode("existing");
-    setSelectedExistingSheetId("");
-    setEntityOptions([]);
-    setCreateForm((p) => ({
-      ...p,
-      Owner: loggedInName || p.Owner,
-      Status: "Draft",
-      "Linked Entity Type": "",
-      "Linked Entity ID": "",
-      "Linked Entity Name": "",
-    }));
-    // prepare a fresh line item draft
-    setDrawerDraft(blankDraft(""));
-    setOpenAddExpense(true);
-  }
 
   // used to prevent stale async setState
   const loadSeq = useRef(0);
@@ -506,6 +540,23 @@ export default function CostingTable() {
       "Linked Entity Name": "",
     }));
     setOpenCreate(true);
+  }
+
+  function openAddExpenseModal() {
+    setAddExpenseMode("existing");
+    setSelectedExistingSheetId("");
+    setEntityOptions([]);
+    setCreateForm((p) => ({
+      ...p,
+      Owner: loggedInName || p.Owner,
+      Status: "Draft",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+    }));
+    // prepare a fresh line item draft
+    setDrawerDraft(blankDraft(""));
+    setOpenAddExpense(true);
   }
 
   // ✅ Load entity dropdown when Linked Entity Type changes
@@ -1050,6 +1101,7 @@ export default function CostingTable() {
                 setOpenExtract(true);
                 // reset touched flag only when opening fresh (so it defaults to all)
                 setExtractColsTouched(false);
+                // keep cacheLoaded as-is; it will flip true on open via effect
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
@@ -1213,7 +1265,12 @@ export default function CostingTable() {
               <Grid item xs={12}>
                 <Paper
                   variant="outlined"
-                  sx={{ p: 1.2, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 2,
+                    borderColor: "#e9eefc",
+                    bgcolor: "#fbfcff",
+                  }}
                 >
                   <Box
                     sx={{
@@ -1417,9 +1474,7 @@ export default function CostingTable() {
                   <Select
                     label="Format"
                     value={extractForm.format}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, format: e.target.value }))
-                    }
+                    onChange={(e) => setExtractForm((p) => ({ ...p, format: e.target.value }))}
                   >
                     <MenuItem value="csv">CSV</MenuItem>
                     <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
@@ -1580,9 +1635,7 @@ export default function CostingTable() {
                       <Select
                         label="Status"
                         value={createForm.Status || "Draft"}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({ ...p, Status: e.target.value }))
-                        }
+                        onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                       >
                         {["Draft", "Final", "Archived"].map((s) => (
                           <MenuItem key={s} value={s}>
@@ -1599,9 +1652,7 @@ export default function CostingTable() {
                       size="small"
                       label="Notes"
                       value={createForm.Notes || ""}
-                      onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, Notes: e.target.value }))
-                      }
+                      onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
                       multiline
                       minRows={2}
                     />
@@ -1741,6 +1792,18 @@ export default function CostingTable() {
                   label="GST %"
                   value={drawerDraft["GST %"] || ""}
                   onChange={(e) => setDrawerField("GST %", e.target.value)}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Amount"
+                  value={drawerDraft["Amount"] || ""}
+                  onChange={(e) => setDrawerField("Amount", e.target.value)}
+                  InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
+                  helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
                 />
               </Grid>
 

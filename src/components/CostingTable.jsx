@@ -29,6 +29,7 @@ import {
   Paper,
   Drawer,
   Autocomplete,
+  CircularProgress,
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
@@ -124,7 +125,6 @@ async function apiPost(payload) {
  * - Else if QTY and Rate present => auto Amount = QTY * Rate.
  * - GST Amount and Total always recompute from Amount + GST%.
  * - Amount stays editable ALWAYS.
- * - __autoAmount only drives helper text (manual vs auto), not readOnly.
  */
 function recomputeDraftLive(next) {
   const qty = safeNum(next["QTY"]);
@@ -151,7 +151,6 @@ function recomputeDraftLive(next) {
   };
 }
 
-// final compute before submit
 function computeRowTotals(row) {
   const tmp = recomputeDraftLive({ ...row });
   const cleaned = { ...tmp };
@@ -251,11 +250,12 @@ export default function CostingTable() {
   const [entityOptions, setEntityOptions] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
   const [entitySearchText, setEntitySearchText] = useState("");
+  const entityDebounceRef = useRef(null);
+  const entityReqSeqRef = useRef(0);
 
   // ✅ existing cost sheet search text
   const [existingSheetSearchText, setExistingSheetSearchText] = useState("");
 
-  // ✅ Drawer menu containment ref
   const drawerPaperRef = useRef(null);
 
   // ===== Extraction =====
@@ -485,9 +485,10 @@ export default function CostingTable() {
   }
 
   /**
-   * ✅ ENTITY SEARCH FIX
-   * - Use Autocomplete (searchable) instead of Select.
-   * - Also send optional q to backend (if your GAS ignores it, it still works with local filtering).
+   * ✅ ENTITY SEARCH (ProjectsTable-style)
+   * - debounce
+   * - server-side q filter (requires GAS patch below)
+   * - still safe if GAS returns full list (Autocomplete filters locally too)
    */
   async function loadEntitiesForType(type, q = "") {
     const t = String(type || "").trim();
@@ -496,7 +497,9 @@ export default function CostingTable() {
       return;
     }
 
+    const seq = ++entityReqSeqRef.current;
     setEntityLoading(true);
+
     try {
       const url =
         `${BACKEND}?action=getEntities` +
@@ -506,11 +509,11 @@ export default function CostingTable() {
         `&q=${encodeURIComponent(String(q || "").trim())}`;
 
       const res = await jsonpGet(url);
+      if (seq !== entityReqSeqRef.current) return;
 
       if (res?.success && Array.isArray(res.entities)) {
         setEntityOptions(res.entities);
       } else if (Array.isArray(res)) {
-        // if backend returns plain array
         setEntityOptions(res);
       } else {
         console.error("GET_ENTITIES_ERROR", res);
@@ -520,8 +523,23 @@ export default function CostingTable() {
       console.error("GET_ENTITIES_FETCH_ERROR", e);
       setEntityOptions([]);
     } finally {
-      setEntityLoading(false);
+      if (seq === entityReqSeqRef.current) setEntityLoading(false);
     }
+  }
+
+  function debouncedEntitySearch(type, text) {
+    const t = String(type || "").trim();
+    const q = String(text || "").trim();
+
+    if (entityDebounceRef.current) clearTimeout(entityDebounceRef.current);
+
+    entityDebounceRef.current = setTimeout(() => {
+      // ✅ min length (keeps server fast); allow empty to load default list
+      if (!t) return;
+      if (q.length === 0) return loadEntitiesForType(t, "");
+      if (q.length < 2) return; // require 2 chars for server search
+      loadEntitiesForType(t, q);
+    }, 250);
   }
 
   async function createCostSheet() {
@@ -627,7 +645,6 @@ export default function CostingTable() {
 
     payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
 
-    // ✅ final compute
     payloadRow = computeRowTotals(payloadRow);
 
     const hasSome =
@@ -727,7 +744,7 @@ export default function CostingTable() {
       Details: "",
       QTY: "",
       Rate: "",
-      Amount: "", // manual
+      Amount: "",
       "GST %": "",
       "GST Amount": "",
       "Total Amount": "",
@@ -796,7 +813,6 @@ export default function CostingTable() {
   }
 
   function forceAutoAmountInDrawer() {
-    // ✅ user can click “Use Auto” anytime: clears Amount so auto applies if QTY+Rate present
     setDrawerDraft((p) => recomputeDraftLive({ ...p, Amount: "" }));
   }
 
@@ -899,8 +915,10 @@ export default function CostingTable() {
     setAddExpenseMode("existing");
     setSelectedExistingSheetId("");
     setExistingSheetSearchText("");
+
     setEntityOptions([]);
     setEntitySearchText("");
+
     setCreateForm((p) => ({
       ...p,
       Owner: loggedInName || p.Owner,
@@ -909,6 +927,7 @@ export default function CostingTable() {
       "Linked Entity ID": "",
       "Linked Entity Name": "",
     }));
+
     setAddExpenseItems([blankDraft("")]);
     setOpenAddExpense(true);
   }
@@ -922,7 +941,9 @@ export default function CostingTable() {
       return;
     }
 
-    const cleanedItems = items.map((it) => computeRowTotals({ ...(it || {}), "Entered By": loggedInName }));
+    const cleanedItems = items.map((it) =>
+      computeRowTotals({ ...(it || {}), "Entered By": loggedInName })
+    );
 
     const validItems = cleanedItems.filter((payloadRow) => {
       const hasSome =
@@ -934,7 +955,9 @@ export default function CostingTable() {
     });
 
     if (!validItems.length) {
-      alert("Please enter at least Particular / Details / Amount OR QTY & Rate in at least one line item.");
+      alert(
+        "Please enter at least Particular / Details / Amount OR QTY & Rate in at least one line item."
+      );
       return;
     }
 
@@ -978,7 +1001,7 @@ export default function CostingTable() {
         return;
       }
 
-      // new cost sheet mode (same limitation as before: no-cors cannot return new ID)
+      // new cost sheet mode (no-cors cannot return new ID)
       if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
         alert("Please select Linked Entity Type and Linked Entity for the new Cost Sheet.");
         return;
@@ -1472,7 +1495,6 @@ export default function CostingTable() {
 
               {addExpenseMode === "existing" ? (
                 <Grid item xs={12}>
-                  {/* ✅ Searchable existing sheet picker */}
                   <Autocomplete
                     options={costSheets || []}
                     value={
@@ -1484,12 +1506,7 @@ export default function CostingTable() {
                     onInputChange={(_, v) => setExistingSheetSearchText(v)}
                     onChange={(_, v) => setSelectedExistingSheetId(v ? v["Cost Sheet ID"] : "")}
                     getOptionLabel={(cs) =>
-                      [
-                        cs?.["Cost Sheet ID"],
-                        cs?.["Linked Entity Name"],
-                        cs?.["Owner"],
-                        cs?.["Status"],
-                      ]
+                      [cs?.["Cost Sheet ID"], cs?.["Linked Entity Name"], cs?.["Owner"], cs?.["Status"]]
                         .filter(Boolean)
                         .join(" — ")
                     }
@@ -1526,6 +1543,8 @@ export default function CostingTable() {
                           }));
                           setEntityOptions([]);
                           setEntitySearchText("");
+
+                          // load initial list (empty q)
                           await loadEntitiesForType(type, "");
                         }}
                       >
@@ -1537,7 +1556,6 @@ export default function CostingTable() {
                   </Grid>
 
                   <Grid item xs={12}>
-                    {/* ✅ Searchable entity picker (Deals/Projects/Orders/Accounts) */}
                     <Autocomplete
                       disabled={!createForm["Linked Entity Type"]}
                       loading={entityLoading}
@@ -1548,13 +1566,9 @@ export default function CostingTable() {
                         ) || null
                       }
                       inputValue={entitySearchText}
-                      onInputChange={async (_, v) => {
+                      onInputChange={(_, v) => {
                         setEntitySearchText(v);
-                        // If you want server-side filtering, this will help once GAS supports q.
-                        // If GAS ignores q, still fine: Autocomplete filters locally.
-                        if (createForm["Linked Entity Type"]) {
-                          await loadEntitiesForType(createForm["Linked Entity Type"], v);
-                        }
+                        debouncedEntitySearch(createForm["Linked Entity Type"], v);
                       }}
                       onChange={(_, v) => {
                         setCreateForm((p) => ({
@@ -1562,6 +1576,16 @@ export default function CostingTable() {
                           "Linked Entity ID": v ? v.id : "",
                           "Linked Entity Name": v ? v.display : "",
                         }));
+                      }}
+                      filterOptions={(opts, state) => {
+                        // Local filter still applies (in case backend returns full list)
+                        const q = String(state.inputValue || "").toLowerCase();
+                        if (!q) return opts;
+                        return (opts || []).filter((o) =>
+                          String(o?.display || o?.id || "")
+                            .toLowerCase()
+                            .includes(q)
+                        );
                       }}
                       getOptionLabel={(opt) => String(opt?.display || opt?.name || opt?.id || "")}
                       renderInput={(params) => (
@@ -1572,8 +1596,17 @@ export default function CostingTable() {
                           helperText={
                             !createForm["Linked Entity Type"]
                               ? "Select Linked Entity Type first"
-                              : "Type to search"
+                              : "Type 2+ characters to search"
                           }
+                          InputProps={{
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {entityLoading ? <CircularProgress size={16} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
                         />
                       )}
                     />
@@ -1610,7 +1643,15 @@ export default function CostingTable() {
 
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    flexWrap: "wrap",
+                  }}
+                >
                   <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Line Items</Typography>
 
                   <Button
@@ -1764,6 +1805,7 @@ export default function CostingTable() {
                           />
                         </Grid>
 
+                        {/* ✅ ALIGNMENT FIX: Amount + Use Auto perfectly aligned */}
                         <Grid item xs={8}>
                           <TextField
                             fullWidth
@@ -1771,28 +1813,48 @@ export default function CostingTable() {
                             label="Amount (manual OR auto)"
                             value={it?.["Amount"] || ""}
                             onChange={(e) => setAddExpenseItemField(idx, "Amount", e.target.value)}
-                            helperText={it?.__autoAmount ? "Auto (QTY × Rate). You can still override." : "Manual (or leave blank to auto from QTY×Rate)."}
+                            helperText={
+                              it?.__autoAmount
+                                ? "Auto (QTY × Rate). You can still override."
+                                : "Manual (or leave blank to auto from QTY×Rate)."
+                            }
                           />
                         </Grid>
 
-                        <Grid item xs={4} sx={{ display: "flex", alignItems: "center" }}>
+                        <Grid item xs={4}>
                           <Button
                             variant="outlined"
                             size="small"
                             fullWidth
                             onClick={() => forceAutoAmountForExpenseItem(idx)}
-                            sx={{ fontFamily: "Montserrat, sans-serif" }}
+                            sx={{
+                              fontFamily: "Montserrat, sans-serif",
+                              height: 40, // ✅ matches MUI small TextField height
+                              mt: "22px", // ✅ aligns with TextField input line (not helper text)
+                            }}
                           >
                             Use Auto
                           </Button>
                         </Grid>
 
                         <Grid item xs={6}>
-                          <TextField fullWidth size="small" label="GST Amount" value={it?.["GST Amount"] || ""} InputProps={{ readOnly: true }} />
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="GST Amount"
+                            value={it?.["GST Amount"] || ""}
+                            InputProps={{ readOnly: true }}
+                          />
                         </Grid>
 
                         <Grid item xs={6}>
-                          <TextField fullWidth size="small" label="Total Amount" value={it?.["Total Amount"] || ""} InputProps={{ readOnly: true }} />
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Total Amount"
+                            value={it?.["Total Amount"] || ""}
+                            InputProps={{ readOnly: true }}
+                          />
                         </Grid>
 
                         <Grid item xs={12}>
@@ -1861,6 +1923,7 @@ export default function CostingTable() {
                       }));
                       setEntityOptions([]);
                       setEntitySearchText("");
+
                       await loadEntitiesForType(type, "");
                     }}
                   >
@@ -1872,7 +1935,6 @@ export default function CostingTable() {
               </Grid>
 
               <Grid item xs={12}>
-                {/* ✅ Searchable entity picker */}
                 <Autocomplete
                   disabled={!createForm["Linked Entity Type"]}
                   loading={entityLoading}
@@ -1883,11 +1945,9 @@ export default function CostingTable() {
                     ) || null
                   }
                   inputValue={entitySearchText}
-                  onInputChange={async (_, v) => {
+                  onInputChange={(_, v) => {
                     setEntitySearchText(v);
-                    if (createForm["Linked Entity Type"]) {
-                      await loadEntitiesForType(createForm["Linked Entity Type"], v);
-                    }
+                    debouncedEntitySearch(createForm["Linked Entity Type"], v);
                   }}
                   onChange={(_, v) => {
                     setCreateForm((p) => ({
@@ -1896,9 +1956,36 @@ export default function CostingTable() {
                       "Linked Entity Name": v ? v.display : "",
                     }));
                   }}
+                  filterOptions={(opts, state) => {
+                    const q = String(state.inputValue || "").toLowerCase();
+                    if (!q) return opts;
+                    return (opts || []).filter((o) =>
+                      String(o?.display || o?.id || "")
+                        .toLowerCase()
+                        .includes(q)
+                    );
+                  }}
                   getOptionLabel={(opt) => String(opt?.display || opt?.name || opt?.id || "")}
                   renderInput={(params) => (
-                    <TextField {...params} size="small" label="Linked Entity (Search)" />
+                    <TextField
+                      {...params}
+                      size="small"
+                      label="Linked Entity (Search)"
+                      helperText={
+                        !createForm["Linked Entity Type"]
+                          ? "Select Linked Entity Type first"
+                          : "Type 2+ characters to search"
+                      }
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {entityLoading ? <CircularProgress size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
                   )}
                 />
               </Grid>
@@ -2158,16 +2245,33 @@ export default function CostingTable() {
 
                 <Grid container spacing={1}>
                   <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="QTY" value={drawerDraft["QTY"] || ""} onChange={(e) => setDrawerField("QTY", e.target.value)} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="QTY"
+                      value={drawerDraft["QTY"] || ""}
+                      onChange={(e) => setDrawerField("QTY", e.target.value)}
+                    />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="Rate" value={drawerDraft["Rate"] || ""} onChange={(e) => setDrawerField("Rate", e.target.value)} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Rate"
+                      value={drawerDraft["Rate"] || ""}
+                      onChange={(e) => setDrawerField("Rate", e.target.value)}
+                    />
                   </Grid>
                   <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="GST %" value={drawerDraft["GST %"] || ""} onChange={(e) => setDrawerField("GST %", e.target.value)} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST %"
+                      value={drawerDraft["GST %"] || ""}
+                      onChange={(e) => setDrawerField("GST %", e.target.value)}
+                    />
                   </Grid>
 
-                  {/* ✅ FIX: Amount ALWAYS editable, but supports auto */}
                   <Grid item xs={8}>
                     <TextField
                       fullWidth
@@ -2183,23 +2287,39 @@ export default function CostingTable() {
                     />
                   </Grid>
 
-                  <Grid item xs={4} sx={{ display: "flex", alignItems: "center" }}>
+                  <Grid item xs={4}>
                     <Button
                       variant="outlined"
                       size="small"
                       fullWidth
                       onClick={forceAutoAmountInDrawer}
-                      sx={{ fontFamily: "Montserrat, sans-serif" }}
+                      sx={{
+                        fontFamily: "Montserrat, sans-serif",
+                        height: 40,
+                        mt: "22px",
+                      }}
                     >
                       Use Auto
                     </Button>
                   </Grid>
 
                   <Grid item xs={6}>
-                    <TextField fullWidth size="small" label="GST Amount" value={drawerDraft["GST Amount"] || ""} InputProps={{ readOnly: true }} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST Amount"
+                      value={drawerDraft["GST Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
                   </Grid>
                   <Grid item xs={6}>
-                    <TextField fullWidth size="small" label="Total Amount" value={drawerDraft["Total Amount"] || ""} InputProps={{ readOnly: true }} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Total Amount"
+                      value={drawerDraft["Total Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
                   </Grid>
                 </Grid>
 
@@ -2222,7 +2342,9 @@ export default function CostingTable() {
                 <Divider sx={{ my: 0.5 }} />
 
                 <Box sx={{ display: "flex", gap: 1 }}>
-                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>Cancel</Button>
+                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
+                    Cancel
+                  </Button>
                   <Button variant="contained" fullWidth sx={{ bgcolor: cornflowerBlue }} onClick={saveDrawer} disabled={loading}>
                     {loading ? "Saving…" : "Save"}
                   </Button>

@@ -31,9 +31,8 @@ import {
   FormControlLabel,
   ToggleButton,
   ToggleButtonGroup,
+  Autocomplete,
 } from "@mui/material";
-
-import Autocomplete from "@mui/material/Autocomplete";
 
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import AddIcon from "@mui/icons-material/Add";
@@ -145,7 +144,8 @@ const formatDDMMYYYY_HHMMSSS = (v) => {
   return `${dd}/${mm}/${yyyy} ${HH}:${MI}:${SS}.${MS}`;
 };
 
-const isMultilineHeader = (h) => /remarks|updates|description|notes/i.test(String(h));
+const isMultilineHeader = (h) =>
+  /remarks|updates|description|notes/i.test(String(h));
 
 const toStringArray = (val) => {
   if (Array.isArray(val)) return val.map((v) => String(v).trim()).filter(Boolean);
@@ -247,15 +247,22 @@ export default function ProjectTable() {
   const [extractMode, setExtractMode] = useState("changes"); // changes | snapshot
   const [extractUseDisplayFormatting, setExtractUseDisplayFormatting] = useState(true);
 
+  // ✅ Download button "Submitting…" state
+  const [extractDownloading, setExtractDownloading] = useState(false);
+
   // Snapshot column selector (full headers)
   const [extractSelectedColumns, setExtractSelectedColumns] = useState([]);
 
   // Changes column selector (small set)
-  const CHANGE_COLUMNS_ALL = ["Project ID", "Project Name", "Timestamp", "Field", "Old Value", "New Value"];
+  const CHANGE_COLUMNS_ALL = [
+    "Project ID",
+    "Project Name",
+    "Timestamp",
+    "Field",
+    "Old Value",
+    "New Value",
+  ];
   const [changesSelectedColumns, setChangesSelectedColumns] = useState(CHANGE_COLUMNS_ALL);
-
-  // ✅ Download button state for Extract
-  const [downloading, setDownloading] = useState(false);
 
   const isControlHeader = (h) => norm(h) === norm(MULTI_KEY);
 
@@ -618,7 +625,7 @@ export default function ProjectTable() {
     return arr;
   }, [logsRows, headers, isMulti]);
 
-  // ---------- typing lag reduction (stable setter) ----------
+  // ---------- typing lag reduction ----------
   const setFieldValue = useCallback((key, value) => {
     setEditingRow((prev) => ({ ...(prev || {}), [key]: value }));
   }, []);
@@ -644,7 +651,6 @@ export default function ProjectTable() {
   );
 
   const projectOptions = useMemo(() => {
-    // use latestByProjectId to avoid "search filter" affecting extract ability
     const opts = latestByProjectId
       .map((r) => {
         const id = r?.[PROJECT_ID_HEADER];
@@ -659,7 +665,6 @@ export default function ProjectTable() {
       })
       .filter(Boolean);
 
-    // sort by name then id for nice dropdown
     opts.sort((a, b) => {
       const an = a.name.toLowerCase();
       const bn = b.name.toLowerCase();
@@ -681,7 +686,6 @@ export default function ProjectTable() {
     if (!extractOpen) return;
     ensureExtractDefaults();
 
-    // hydrate saved extract selections
     const savedSnap = JSON.parse(localStorage.getItem("extractColumns-projects") || "null");
     if (Array.isArray(savedSnap) && savedSnap.length) {
       const cleaned = savedSnap.filter((h) => headers.includes(h));
@@ -761,13 +765,16 @@ export default function ProjectTable() {
 
   // --------- CHANGES VIEW (for single or ALL projects) ---------
   const extractChangesRows = useMemo(() => {
-    const normalizeDiffVal = (h, v) => (isMulti(h) ? toStringArray(v).join(", ") : String(v ?? ""));
+    const normalizeDiffVal = (h, v) =>
+      isMulti(h) ? toStringArray(v).join(", ") : String(v ?? "");
 
     const makeChangesForOneProject = (pid) => {
       const hist = getProjectHistoryOldestFirst(pid);
       if (!hist.length) return [];
 
-      const entriesInRange = hist.filter((r) => inDateRange(r?.Timestamp, extractFrom, extractTo));
+      const entriesInRange = hist.filter((r) =>
+        inDateRange(r?.Timestamp, extractFrom, extractTo)
+      );
       if (!entriesInRange.length) return [];
 
       const out = [];
@@ -778,7 +785,6 @@ export default function ProjectTable() {
         const prev = idx > 0 ? hist[idx - 1] : null;
 
         if (!prev) {
-          // first ever record (creation)
           headers.forEach((h) => {
             const newNorm = normalizeDiffVal(h, entry?.[h]);
             if (!newNorm) return;
@@ -815,7 +821,6 @@ export default function ProjectTable() {
 
     let out = [];
     if (extractProjectId === "__ALL__") {
-      // all projects
       const allIds = Array.from(
         new Set(rows.map((r) => r?.[PROJECT_ID_HEADER]).filter(Boolean))
       ).map(String);
@@ -826,16 +831,18 @@ export default function ProjectTable() {
       out = makeChangesForOneProject(String(extractProjectId));
     }
 
-    // newest first
     out.sort((x, y) => {
       const dx = parseAsDate(x.Timestamp);
       const dy = parseAsDate(y.Timestamp);
       if (dx && dy) return dy - dx;
       if (dx && !dy) return -1;
       if (!dx && dy) return 1;
-      const p = String(x["Project ID"] ?? "").localeCompare(String(y["Project ID"] ?? ""), undefined, {
-        numeric: true,
-      });
+
+      const p = String(x["Project ID"] ?? "").localeCompare(
+        String(y["Project ID"] ?? ""),
+        undefined,
+        { numeric: true }
+      );
       if (p !== 0) return p;
       return String(x.Field ?? "").localeCompare(String(y.Field ?? ""));
     });
@@ -863,11 +870,12 @@ export default function ProjectTable() {
       out = rows.filter((r) => r?.[PROJECT_ID_HEADER] && withinRange(r));
     } else if (extractProjectId) {
       out = rows.filter(
-        (r) => String(r?.[PROJECT_ID_HEADER] || "") === String(extractProjectId) && withinRange(r)
+        (r) =>
+          String(r?.[PROJECT_ID_HEADER] || "") === String(extractProjectId) &&
+          withinRange(r)
       );
     }
 
-    // newest first
     out.sort((a, b) => {
       const da = parseAsDate(a.Timestamp);
       const db = parseAsDate(b.Timestamp);
@@ -881,50 +889,53 @@ export default function ProjectTable() {
   }, [extractProjectId, extractFrom, extractTo, rows, PROJECT_ID_HEADER]);
 
   // --------- Downloads ---------
-  const downloadChangesCSV = () => {
-    const cols = (changesSelectedColumns || []).filter((c) => CHANGE_COLUMNS_ALL.includes(c));
-    const finalCols = cols.length ? cols : CHANGE_COLUMNS_ALL;
-
-    const lines = extractChangesRows.map((r) =>
-      finalCols
-        .map((c) => csvEscape(c === "Timestamp" ? formatDDMMYYYY_HHMMSSS(r[c]) : r[c]))
-        .join(",")
-    );
-
-    const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
-
-    const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
-    const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
-    const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : extractProjectId || "PROJECT";
-    downloadTextFile(`Project_Changes_${pid}_${fromPart}_to_${toPart}.csv`, csv);
-  };
-
-  const downloadSnapshotsCSV = () => {
-    const cols = (extractSelectedColumns || []).filter((h) => headers.includes(h));
-    const finalCols = cols.length ? cols : headers;
-
-    const lines = extractSnapshotRows.map((row) =>
-      finalCols.map((h) => csvEscape(formatForExport(h, row?.[h]))).join(",")
-    );
-
-    const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
-
-    const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
-    const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
-    const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : extractProjectId || "PROJECT";
-    downloadTextFile(`Project_Snapshot_${pid}_${fromPart}_to_${toPart}.csv`, csv);
-  };
-
-  const handleDownloadExtract = async () => {
-    if (downloading) return;
-    setDownloading(true);
+  const downloadChangesCSV = async () => {
+    if (extractDownloading) return;
+    setExtractDownloading(true);
     try {
-      // allow UI to paint spinner
-      await new Promise((r) => setTimeout(r, 0));
-      if (extractMode === "changes") downloadChangesCSV();
-      else downloadSnapshotsCSV();
+      const cols = (changesSelectedColumns || []).filter((c) => CHANGE_COLUMNS_ALL.includes(c));
+      const finalCols = cols.length ? cols : CHANGE_COLUMNS_ALL;
+
+      const lines = extractChangesRows.map((r) =>
+        finalCols
+          .map((c) =>
+            csvEscape(c === "Timestamp" ? formatDDMMYYYY_HHMMSSS(r[c]) : r[c])
+          )
+          .join(",")
+      );
+
+      const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
+
+      const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
+      const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
+      const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : (extractProjectId || "PROJECT");
+
+      downloadTextFile(`Project_Changes_${pid}_${fromPart}_to_${toPart}.csv`, csv);
     } finally {
-      setTimeout(() => setDownloading(false), 250);
+      setExtractDownloading(false);
+    }
+  };
+
+  const downloadSnapshotsCSV = async () => {
+    if (extractDownloading) return;
+    setExtractDownloading(true);
+    try {
+      const cols = (extractSelectedColumns || []).filter((h) => headers.includes(h));
+      const finalCols = cols.length ? cols : headers;
+
+      const lines = extractSnapshotRows.map((row) =>
+        finalCols.map((h) => csvEscape(formatForExport(h, row?.[h]))).join(",")
+      );
+
+      const csv = [finalCols.map(csvEscape).join(","), ...lines].join("\n");
+
+      const fromPart = extractFrom ? extractFrom.replaceAll("-", "") : "START";
+      const toPart = extractTo ? extractTo.replaceAll("-", "") : "END";
+      const pid = extractProjectId === "__ALL__" ? "ALL_PROJECTS" : (extractProjectId || "PROJECT");
+
+      downloadTextFile(`Project_Snapshot_${pid}_${fromPart}_to_${toPart}.csv`, csv);
+    } finally {
+      setExtractDownloading(false);
     }
   };
 
@@ -949,7 +960,14 @@ export default function ProjectTable() {
             </Typography>
           </Box>
 
-          <Box display="flex" justifyContent="flex-start" gap={2} mt={2} flexWrap="wrap" alignItems="center">
+          <Box
+            display="flex"
+            justifyContent="flex-start"
+            gap={2}
+            mt={2}
+            flexWrap="wrap"
+            alignItems="center"
+          >
             <TextField
               size="small"
               label="Search"
@@ -1066,8 +1084,7 @@ export default function ProjectTable() {
               <TableRow>
                 {visibleColumns.map((header) => (
                   <TableCell key={header} onClick={() => handleSort(header)} sx={{ cursor: "pointer" }}>
-                    {header}{" "}
-                    {sortConfig.key === header ? (sortConfig.direction === "asc" ? "↥" : "↧") : ""}
+                    {header} {sortConfig.key === header ? (sortConfig.direction === "asc" ? "↥" : "↧") : ""}
                   </TableCell>
                 ))}
                 <TableCell>Actions</TableCell>
@@ -1115,7 +1132,7 @@ export default function ProjectTable() {
         )}
 
         {/* ===================== EXTRACT DIALOG ===================== */}
-        <Dialog open={extractOpen} onClose={() => setExtractOpen(false)} maxWidth="lg" fullWidth>
+        <Dialog open={extractOpen} onClose={() => !extractDownloading && setExtractOpen(false)} maxWidth="lg" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Extract — Project Updates
           </DialogTitle>
@@ -1123,33 +1140,25 @@ export default function ProjectTable() {
           <DialogContent dividers>
             <Grid container spacing={2}>
               <Grid item xs={12} md={6}>
-                {/* ✅ Searchable project picker (typing search for entities) */}
-                <Autocomplete
-                  fullWidth
-                  size="small"
-                  options={[{ id: "__ALL__", name: "All Projects" }, ...projectOptions]}
-                  value={
-                    extractProjectId === "__ALL__"
-                      ? { id: "__ALL__", name: "All Projects" }
-                      : projectOptions.find((p) => String(p.id) === String(extractProjectId)) || null
-                  }
-                  onChange={(_, val) => setExtractProjectId(val?.id ? String(val.id) : "__ALL__")}
-                  getOptionLabel={(opt) =>
-                    opt?.id === "__ALL__"
-                      ? "All Projects"
-                      : opt?.name
-                      ? `${opt.name} — ${opt.id}`
-                      : String(opt?.id || "")
-                  }
-                  filterOptions={(options, state) => {
-                    const q = String(state.inputValue || "").toLowerCase().trim();
-                    if (!q) return options;
-                    return options.filter((o) =>
-                      (`${o?.name || ""} ${o?.id || ""}`).toLowerCase().includes(q)
-                    );
-                  }}
-                  renderInput={(params) => <TextField {...params} label="Select Project" />}
-                />
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Select Project</InputLabel>
+                  <Select
+                    label="Select Project"
+                    value={extractProjectId}
+                    onChange={(e) => setExtractProjectId(e.target.value)}
+                    disabled={extractDownloading}
+                  >
+                    <MenuItem value="__ALL__">
+                      <b>All Projects</b>
+                    </MenuItem>
+
+                    {projectOptions.map((p) => (
+                      <MenuItem key={p.id} value={p.id}>
+                        {p.name ? `${p.name} — ${p.id}` : p.id}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
 
               <Grid item xs={12} md={3}>
@@ -1161,6 +1170,7 @@ export default function ProjectTable() {
                   value={extractFrom}
                   onChange={(e) => setExtractFrom(e.target.value)}
                   fullWidth
+                  disabled={extractDownloading}
                 />
               </Grid>
 
@@ -1173,6 +1183,7 @@ export default function ProjectTable() {
                   value={extractTo}
                   onChange={(e) => setExtractTo(e.target.value)}
                   fullWidth
+                  disabled={extractDownloading}
                 />
               </Grid>
 
@@ -1191,6 +1202,7 @@ export default function ProjectTable() {
                     exclusive
                     onChange={(_, v) => v && setExtractMode(v)}
                     size="small"
+                    disabled={extractDownloading}
                   >
                     <ToggleButton value="changes">Changes</ToggleButton>
                     <ToggleButton value="snapshot">Snapshot</ToggleButton>
@@ -1201,6 +1213,7 @@ export default function ProjectTable() {
                       <Checkbox
                         checked={extractUseDisplayFormatting}
                         onChange={(e) => setExtractUseDisplayFormatting(e.target.checked)}
+                        disabled={extractDownloading}
                       />
                     }
                     label="Formatted values"
@@ -1221,12 +1234,14 @@ export default function ProjectTable() {
                         gap: 1,
                       }}
                     >
-                      <Typography sx={{ fontWeight: 700, fontSize: 12 }}>Columns (Changes View)</Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
+                        Columns (Changes View)
+                      </Typography>
                       <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        <Button size="small" onClick={selectAllChangeCols}>
+                        <Button size="small" onClick={selectAllChangeCols} disabled={extractDownloading}>
                           Select All
                         </Button>
-                        <Button size="small" onClick={deselectAllChangeCols}>
+                        <Button size="small" onClick={deselectAllChangeCols} disabled={extractDownloading}>
                           Deselect All
                         </Button>
                       </Box>
@@ -1243,6 +1258,7 @@ export default function ProjectTable() {
                                 size="small"
                                 checked={changesSelectedColumns.includes(c)}
                                 onChange={() => toggleChangeCol(c)}
+                                disabled={extractDownloading}
                               />
                             }
                             label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
@@ -1320,12 +1336,14 @@ export default function ProjectTable() {
                         gap: 1,
                       }}
                     >
-                      <Typography sx={{ fontWeight: 700, fontSize: 12 }}>Columns (Snapshot View)</Typography>
+                      <Typography sx={{ fontWeight: 700, fontSize: 12 }}>
+                        Columns (Snapshot View)
+                      </Typography>
                       <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
-                        <Button size="small" onClick={extractSelectAll}>
+                        <Button size="small" onClick={extractSelectAll} disabled={extractDownloading}>
                           Select All
                         </Button>
-                        <Button size="small" onClick={extractDeselectAll}>
+                        <Button size="small" onClick={extractDeselectAll} disabled={extractDownloading}>
                           Deselect All
                         </Button>
                       </Box>
@@ -1342,6 +1360,7 @@ export default function ProjectTable() {
                                 size="small"
                                 checked={extractSelectedColumns.includes(col)}
                                 onChange={() => toggleExtractColumn(col)}
+                                disabled={extractDownloading}
                               />
                             }
                             label={<Typography sx={{ fontSize: 12 }}>{col}</Typography>}
@@ -1403,26 +1422,23 @@ export default function ProjectTable() {
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={() => setExtractOpen(false)} disabled={downloading}>
+            <Button onClick={() => setExtractOpen(false)} disabled={extractDownloading}>
               Close
             </Button>
 
-            {/* ✅ Submitting state + disabled while downloading */}
             <Button
               variant="contained"
               sx={{ backgroundColor: "#6495ED" }}
-              startIcon={
-                downloading ? <CircularProgress size={16} color="inherit" /> : <FileDownloadIcon />
-              }
-              onClick={handleDownloadExtract}
+              startIcon={extractDownloading ? <CircularProgress size={16} color="inherit" /> : <FileDownloadIcon />}
+              onClick={() => (extractMode === "changes" ? downloadChangesCSV() : downloadSnapshotsCSV())}
               disabled={
-                downloading ||
+                extractDownloading ||
                 (extractMode === "changes"
                   ? extractChangesRows.length === 0
                   : extractSnapshotRows.length === 0)
               }
             >
-              {downloading ? "Downloading…" : "Download CSV"}
+              {extractDownloading ? "Submitting…" : "Download CSV"}
             </Button>
           </DialogActions>
         </Dialog>
@@ -1452,17 +1468,18 @@ export default function ProjectTable() {
                           return (
                             <TableCell
                               key={h}
-                              // ✅ cornflower tint + normal weight (no yellow, no bold)
                               sx={
                                 isChanged
                                   ? {
-                                      backgroundColor: "rgba(100, 149, 237, 0.18)",
-                                      fontWeight: 400,
+                                      backgroundColor: "rgba(100,149,237,0.14)", // ✅ cornflower tint
+                                      fontWeight: 400, // ✅ normal
                                     }
                                   : undefined
                               }
                             >
-                              {h === "Timestamp" ? formatDDMMYYYY_HHMMSSS(row[h]) : renderCell(h, row[h])}
+                              {h === "Timestamp"
+                                ? formatDDMMYYYY_HHMMSSS(row[h])
+                                : renderCell(h, row[h])}
                             </TableCell>
                           );
                         })}
@@ -1503,6 +1520,7 @@ export default function ProjectTable() {
                     <Grid item xs={12} sm={6} key={h}>
                       <ClientSelector
                         value={editingRow?.[h] || ""}
+                        disabled={isReadonly || submitting}
                         onPick={({ value, owner }) =>
                           setEditingRow((prev) => ({
                             ...prev,
@@ -1510,7 +1528,6 @@ export default function ProjectTable() {
                             ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {}),
                           }))
                         }
-                        disabled={submitting || isReadonly}
                       />
                     </Grid>
                   );
@@ -1626,24 +1643,73 @@ export default function ProjectTable() {
   );
 }
 
-/**
- * ClientSelector — choose Accounts/Deals then a specific record; stores value as "source:id|label" and returns owner
- * ✅ Updated: second picker is now searchable (typing search) via Autocomplete.
- */
+/** ✅ ClientSelector — searchable Deals/Accounts picker (Deal Name + Mobile + Company + ID) */
 function ClientSelector({ value, onPick, disabled }) {
   const [source, setSource] = React.useState(() =>
     String(value).startsWith("deals:") ? "deals" : "accounts"
   );
-  const [options, setOptions] = React.useState([]); // [{id,label,owner?}]
+  const [options, setOptions] = React.useState([]); // normalized list
   const [loading, setLoading] = React.useState(false);
 
   const fetchOptions = async (src) => {
     setLoading(true);
     try {
-      const res = await fetch(`${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`);
+      const res = await fetch(
+        `${WEB_APP_BASE}?action=getClientOptions&source=${encodeURIComponent(src)}`
+      );
       const data = await res.json();
       const list = Array.isArray(data?.options) ? data.options : [];
-      setOptions(list);
+
+      // ✅ Normalize + build a strong label + searchable text + remove repeats
+      const mapped = list
+        .map((o) => {
+          const id = String(o?.id ?? "").trim();
+          const company = String(o?.company ?? "").trim();
+          const mobile = String(o?.mobile ?? "").trim();
+          const dealName = String(o?.dealName ?? "").trim();
+          const owner = String(o?.owner ?? "").trim();
+
+          // Deals: Deal Name | Company | Mobile | #ID
+          // Accounts: Company | Mobile | #ID
+          const label =
+            src === "deals"
+              ? [dealName || "Deal", company || "Client", mobile || "", id ? `#${id}` : ""]
+                  .filter(Boolean)
+                  .join(" | ")
+              : [company || "Client", mobile || "", id ? `#${id}` : ""]
+                  .filter(Boolean)
+                  .join(" | ");
+
+          const searchText = `${dealName} ${company} ${mobile} ${id} ${owner}`.toLowerCase();
+
+          return {
+            ...o,
+            id,
+            owner,
+            company,
+            mobile,
+            dealName,
+            label,
+            searchText,
+          };
+        })
+        .filter((o) => o.id);
+
+      // ✅ Deduplicate by source:id
+      const seen = new Set();
+      const deduped = [];
+      for (const o of mapped) {
+        const key = `${src}:${o.id}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+        deduped.push(o);
+      }
+
+      deduped.sort((a, b) =>
+        String(a.label).localeCompare(String(b.label), undefined, { sensitivity: "base" })
+      );
+
+      setOptions(deduped);
     } catch (e) {
       console.error(e);
       setOptions([]);
@@ -1654,6 +1720,7 @@ function ClientSelector({ value, onPick, disabled }) {
 
   React.useEffect(() => {
     fetchOptions(source);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [source]);
 
   const currentId = React.useMemo(() => {
@@ -1671,8 +1738,8 @@ function ClientSelector({ value, onPick, disabled }) {
 
   const handlePick = (opt) => {
     if (!opt?.id) return;
-    const label = opt?.label || "";
     const owner = opt?.owner || "";
+    const label = opt?.label || "";
     const v = `${source}:${opt.id}${label ? "|" + label : ""}`;
     onPick && onPick({ value: v, owner });
   };
@@ -1687,7 +1754,6 @@ function ClientSelector({ value, onPick, disabled }) {
         </Select>
       </FormControl>
 
-      {/* ✅ Searchable dropdown */}
       <Autocomplete
         fullWidth
         size="small"
@@ -1696,16 +1762,17 @@ function ClientSelector({ value, onPick, disabled }) {
         loading={loading}
         disabled={disabled}
         onChange={(_, val) => handlePick(val)}
-        getOptionLabel={(opt) => String(opt?.label || opt?.id || "")}
+        getOptionLabel={(opt) => String(opt?.label || "")}
+        isOptionEqualToValue={(opt, val) => String(opt?.id) === String(val?.id)}
         filterOptions={(opts, state) => {
           const q = String(state.inputValue || "").toLowerCase().trim();
           if (!q) return opts;
-          return opts.filter((o) => String(o?.label || "").toLowerCase().includes(q) || String(o?.id || "").toLowerCase().includes(q));
+          return opts.filter((o) => String(o.searchText || "").includes(q));
         }}
         renderInput={(params) => (
           <TextField
             {...params}
-            label={loading ? "Loading…" : "Select Client (type to search)"}
+            label={loading ? "Loading…" : "Select Client (type Deal Name / Mobile / Company)"}
           />
         )}
       />

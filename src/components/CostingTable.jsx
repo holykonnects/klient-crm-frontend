@@ -2371,3 +2371,4 @@ export default function CostingTable() {
     </ThemeProvider>
   );
 }
+

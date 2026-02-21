@@ -114,49 +114,108 @@ async function apiPost(payload) {
   return { success: true };
 }
 
-function computeRowTotals(row) {
-  const qty = safeNum(row["QTY"]);
-  const rate = safeNum(row["Rate"]);
-  const amount = row["Amount"] !== "" ? safeNum(row["Amount"]) : qty * rate;
-
-  const gstPct = safeNum(row["GST %"]);
-  const gstAmount =
-    row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
-
-  const total =
-    row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
-
-  return {
-    ...row,
-    Amount: amount ? amount : "",
-    "GST Amount": gstAmount ? gstAmount : "",
-    "Total Amount": total ? total : "",
-  };
-}
-
-// Live totals in drawer (same idea, but always recompute from QTY/Rate + GST%)
+/**
+ * ✅ AUTO CALC FIX (single source of truth)
+ *
+ * Rules:
+ * 1) If QTY and Rate are BOTH present (>0) and user chooses Auto => Amount = QTY×Rate (read-only)
+ * 2) If QTY×Rate is NOT available => user can manually enter Total Amount (editable)
+ *    - If GST% is present, we back-calc:
+ *        GST Amount = Total * (GST% / (100 + GST%))
+ *        Amount = Total - GST Amount
+ *    - If GST% is blank/0, Amount = Total, GST Amount = 0
+ * 3) If user manually enters Amount (Auto off), Total auto-computes (Amount + GST Amount)
+ */
 function recomputeDraftLive(next) {
   const qty = safeNum(next["QTY"]);
   const rate = safeNum(next["Rate"]);
   const hasQtyRate = qty > 0 && rate > 0;
 
-  const auto = Boolean(next.__autoAmount);
-  const userHasManualAmount = String(next["Amount"] ?? "").trim() !== "" && !auto;
-
-  let amount = next["Amount"];
-  if (hasQtyRate && !userHasManualAmount) amount = qty * rate;
-
   const gstPct = safeNum(next["GST %"]);
-  const hasAmount = String(amount ?? "").trim() !== "";
-  const gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
-  const total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
 
-  return {
+  // Explicit toggles (persisted in draft only, stripped before POST)
+  const useAutoAmount =
+    hasQtyRate ? (next.__useAutoAmount !== false) : false; // default true when qty/rate exists
+  const useManualTotal =
+    !hasQtyRate ? Boolean(next.__useManualTotal) : false; // only allowed when no qty/rate
+
+  // Current raw values
+  const rawAmountStr = String(next["Amount"] ?? "").trim();
+  const rawTotalStr = String(next["Total Amount"] ?? "").trim();
+
+  // 1) Determine Amount
+  let amount = next["Amount"];
+  if (hasQtyRate && useAutoAmount) {
+    amount = qty * rate;
+  } else {
+    // keep manual amount as typed
+    amount = rawAmountStr === "" ? "" : safeNum(amount);
+  }
+
+  // 2) If manual total is enabled (only when qty/rate unavailable)
+  //    then Total is editable and Amount/GST Amount are derived from Total + GST%
+  let gstAmount = "";
+  let total = "";
+
+  if (!hasQtyRate && useManualTotal) {
+    total = rawTotalStr === "" ? "" : safeNum(next["Total Amount"]);
+
+    if (String(total ?? "").trim() !== "") {
+      if (gstPct > 0) {
+        const derivedGst = (safeNum(total) * gstPct) / (100 + gstPct);
+        const derivedAmt = safeNum(total) - derivedGst;
+
+        amount = derivedAmt;
+        gstAmount = derivedGst;
+      } else {
+        amount = safeNum(total);
+        gstAmount = 0;
+      }
+    } else {
+      // if user cleared total, clear derived fields too
+      amount = "";
+      gstAmount = "";
+    }
+  } else {
+    // 3) Normal mode: GST Amount + Total are computed from Amount and GST%
+    const hasAmount = String(amount ?? "").trim() !== "";
+    gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
+    total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
+  }
+
+  // Normalize blanks
+  const out = {
     ...next,
     Amount: amount === 0 ? "" : amount,
     "GST Amount": gstAmount === 0 ? "" : gstAmount,
     "Total Amount": total === 0 ? "" : total,
-    __autoAmount: hasQtyRate && !userHasManualAmount,
+
+    // UI flags
+    __hasQtyRate: hasQtyRate,
+    __useAutoAmount: hasQtyRate ? useAutoAmount : false,
+    __useManualTotal: !hasQtyRate ? useManualTotal : false,
+  };
+
+  return out;
+}
+
+/**
+ * Final totals before save (server row):
+ * - Uses the same rules, but WITHOUT draft-only flags in the payload.
+ */
+function computeRowTotals(row) {
+  const draft = recomputeDraftLive({
+    ...row,
+    // ensure flags exist for consistent behavior but do not force them on the server
+    __useAutoAmount: row.__useAutoAmount,
+    __useManualTotal: row.__useManualTotal,
+  });
+
+  return {
+    ...row,
+    Amount: draft.Amount ?? "",
+    "GST Amount": draft["GST Amount"] ?? "",
+    "Total Amount": draft["Total Amount"] ?? "",
   };
 }
 
@@ -273,7 +332,7 @@ export default function CostingTable() {
         },
       },
     };
-  }, [openEdit]); // ensures ref is available when edit modal (and drawer) are mounted
+  }, [openEdit]);
 
   // ===== Extraction =====
   const [openExtract, setOpenExtract] = useState(false);
@@ -358,8 +417,6 @@ export default function CostingTable() {
 
       return allDefault;
     });
-
-    // IMPORTANT: do not force extractColsTouched=true here — user hasn't changed yet
   }, [openExtract, extractAllColumns, loggedInName, extractColsTouched]);
 
   function openExtractColumns(e) {
@@ -370,7 +427,6 @@ export default function CostingTable() {
   }
 
   const selectedExtractFields = useMemo(() => {
-    // If nothing selected OR selector never loaded, return empty => backend exports all
     const keys = Object.keys(extractVisibleCols || {});
     if (!keys.length) return [];
     return keys.filter((k) => extractVisibleCols[k] !== false);
@@ -384,23 +440,17 @@ export default function CostingTable() {
       ),
     };
 
-    // ✅ Only send fields if user unchecked something (i.e., not all selected)
-    // If all are selected, we omit "fields" to keep backend default "export all"
     const allCount = (extractAllColumns || []).length;
     const selCount = selectedExtractFields.length;
 
     const params = new URLSearchParams(baseParams);
 
     if (selCount > 0 && selCount < allCount) {
-      // Backend supports fields as JSON array string (recommended)
       params.set("fields", JSON.stringify(selectedExtractFields));
     }
 
     const url = `${BACKEND}?${params.toString()}`;
-
-    // Direct download / new tab
     window.open(url, "_blank");
-
     setOpenExtract(false);
   }
 
@@ -416,7 +466,7 @@ export default function CostingTable() {
     Notes: "",
   });
 
-  /* ===================== ✅ NEW: ADD EXPENSE (Existing OR New Cost Sheet) ===================== */
+  /* ===================== ✅ NEW: ADD EXPENSE ===================== */
   const [openAddExpense, setOpenAddExpense] = useState(false);
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
@@ -476,7 +526,6 @@ export default function CostingTable() {
       setValidation(parsed);
     } catch (e) {
       console.error("ENSURE_VALIDATION_ERROR", e);
-      // keep silent: table can still work, dropdowns just won't
     }
   }
 
@@ -562,10 +611,8 @@ export default function CostingTable() {
     setLoading(true);
     try {
       await apiPost({ action: "createCostSheet", data: { ...createForm } });
-
       setOpenCreate(false);
 
-      // refresh after a short delay (no-cors can't read response)
       setTimeout(async () => {
         await loadAll();
       }, 800);
@@ -580,7 +627,6 @@ export default function CostingTable() {
   }
 
   async function openEditModal(row) {
-    // ✅ make sure validation is present so drawer dropdowns are not empty
     await ensureValidationLoaded();
 
     setActiveSheet(row);
@@ -648,7 +694,12 @@ export default function CostingTable() {
     const costSheetId = activeSheet["Cost Sheet ID"];
 
     let payloadRow = { ...(row || {}) };
-    if ("__autoAmount" in payloadRow) delete payloadRow.__autoAmount;
+
+    // strip UI-only flags before POST
+    const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal"];
+    uiKeys.forEach((k) => {
+      if (k in payloadRow) delete payloadRow[k];
+    });
 
     payloadRow["Cost Sheet ID"] = costSheetId;
 
@@ -671,10 +722,11 @@ export default function CostingTable() {
     const hasSome =
       String(payloadRow.Particular || "").trim() ||
       String(payloadRow.Details || "").trim() ||
-      String(payloadRow.Amount || "").trim();
+      String(payloadRow.Amount || "").trim() ||
+      String(payloadRow["Total Amount"] || "").trim();
 
     if (!hasSome) {
-      alert("Please enter at least Particular / Details / Amount.");
+      alert("Please enter at least Particular / Details / Amount / Total Amount.");
       return;
     }
 
@@ -772,17 +824,20 @@ export default function CostingTable() {
       "Attachment Link": "",
       "Voucher/Invoice No": "",
       "Payment Status": "",
-      __autoAmount: false,
+      // ✅ draft-only toggles
+      __useAutoAmount: true,
+      __useManualTotal: false,
     });
 
   const [drawerDraft, setDrawerDraft] = useState(() => blankDraft(""));
 
-  // keep entered by updated if user changes while drawer open
   useEffect(() => {
-    setDrawerDraft((p) => ({
-      ...p,
-      "Entered By": loggedInName || p["Entered By"] || "",
-    }));
+    setDrawerDraft((p) =>
+      recomputeDraftLive({
+        ...p,
+        "Entered By": loggedInName || p["Entered By"] || "",
+      })
+    );
   }, [loggedInName]);
 
   async function openDrawerAdd(headPreset) {
@@ -818,7 +873,14 @@ export default function CostingTable() {
       "Attachment Link": item?.["Attachment Link"] ?? "",
       "Voucher/Invoice No": item?.["Voucher/Invoice No"] ?? "",
       "Payment Status": item?.["Payment Status"] ?? "",
-      __autoAmount: false,
+      // ✅ default behavior:
+      // - if qty/rate exists => auto is ON
+      // - else => manual total is ON if total exists and amount is empty
+      __useAutoAmount: true,
+      __useManualTotal:
+        !(safeNum(item?.["QTY"]) > 0 && safeNum(item?.["Rate"]) > 0) &&
+        String(item?.["Total Amount"] ?? "").trim() !== "" &&
+        String(item?.["Amount"] ?? "").trim() === "",
     });
 
     setDrawerDraft(pre);
@@ -831,12 +893,51 @@ export default function CostingTable() {
 
   function setDrawerField(key, value) {
     setDrawerDraft((p) => {
-      if (key === "Amount") {
-        const next = { ...p, Amount: value, __autoAmount: false };
+      const next = { ...p };
+
+      if (key === "Head Name") {
+        next["Head Name"] = value;
+        next.Subcategory = "";
         return recomputeDraftLive(next);
       }
-      const next = { ...p, [key]: value };
-      if (key === "Head Name") next.Subcategory = "";
+
+      if (key === "__useAutoAmount") {
+        next.__useAutoAmount = Boolean(value);
+        // if turning auto ON and qty/rate exists, amount becomes computed
+        return recomputeDraftLive(next);
+      }
+
+      if (key === "Amount") {
+        // manual amount => auto OFF; manual total OFF (because total will compute)
+        next.Amount = value;
+        next.__useAutoAmount = false;
+        next.__useManualTotal = false;
+        return recomputeDraftLive(next);
+      }
+
+      if (key === "Total Amount") {
+        // only valid when qty/rate unavailable
+        next["Total Amount"] = value;
+        next.__useManualTotal = true;
+        next.__useAutoAmount = false;
+        // amount derived from total in recompute
+        return recomputeDraftLive(next);
+      }
+
+      next[key] = value;
+
+      // if user edits QTY / Rate, keep existing __useAutoAmount preference,
+      // but recompute (auto will engage only if qty/rate present AND __useAutoAmount true)
+      if (key === "QTY" || key === "Rate") {
+        // if qty/rate becomes available, default auto ON unless user explicitly turned it OFF already
+        if (next.__useAutoAmount !== false) next.__useAutoAmount = true;
+        // manual total only when qty/rate unavailable
+        if (safeNum(next["QTY"]) > 0 && safeNum(next["Rate"]) > 0) {
+          next.__useManualTotal = false;
+        }
+      }
+
+      // if GST% changes and manual total is ON, derived values update too
       return recomputeDraftLive(next);
     });
   }
@@ -899,14 +1000,36 @@ export default function CostingTable() {
       const next = [...prev];
       const cur = next[index] ? { ...next[index] } : blankDraft("");
 
+      // maintain same logic as drawer
+      if (key === "__useAutoAmount") {
+        const updated = { ...cur, __useAutoAmount: Boolean(value) };
+        updated.__useManualTotal = false;
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
       if (key === "Amount") {
-        const updated = { ...cur, Amount: value, __autoAmount: false };
+        const updated = { ...cur, Amount: value, __useAutoAmount: false, __useManualTotal: false };
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
+      if (key === "Total Amount") {
+        const updated = { ...cur, "Total Amount": value, __useManualTotal: true, __useAutoAmount: false };
         next[index] = recomputeDraftLive(updated);
         return next;
       }
 
       const updated = { ...cur, [key]: value };
       if (key === "Head Name") updated.Subcategory = "";
+
+      if (key === "QTY" || key === "Rate") {
+        if (updated.__useAutoAmount !== false) updated.__useAutoAmount = true;
+        if (safeNum(updated["QTY"]) > 0 && safeNum(updated["Rate"]) > 0) {
+          updated.__useManualTotal = false;
+        }
+      }
+
       next[index] = recomputeDraftLive(updated);
       return next;
     });
@@ -951,15 +1074,13 @@ export default function CostingTable() {
       "Linked Entity ID": "",
       "Linked Entity Name": "",
     }));
-    // ✅ start with one line item draft
     setAddExpenseItems([blankDraft("")]);
     setOpenAddExpense(true);
   }
 
-  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE (Existing OR New) ===================== */
+  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE ===================== */
 
   async function submitAddExpense() {
-    // Ensure validation is present so dropdowns aren’t empty
     await ensureValidationLoaded();
 
     const items = Array.isArray(addExpenseItems) ? addExpenseItems : [];
@@ -968,10 +1089,15 @@ export default function CostingTable() {
       return;
     }
 
-    // Basic per-item validation
     const cleanedItems = items.map((it) => {
       let payloadRow = { ...(it || {}) };
-      if ("__autoAmount" in payloadRow) delete payloadRow.__autoAmount;
+
+      // strip UI-only flags before POST
+      const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal"];
+      uiKeys.forEach((k) => {
+        if (k in payloadRow) delete payloadRow[k];
+      });
+
       payloadRow = computeRowTotals(payloadRow);
       payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
       return payloadRow;
@@ -981,12 +1107,13 @@ export default function CostingTable() {
       const hasSome =
         String(payloadRow.Particular || "").trim() ||
         String(payloadRow.Details || "").trim() ||
-        String(payloadRow.Amount || "").trim();
+        String(payloadRow.Amount || "").trim() ||
+        String(payloadRow["Total Amount"] || "").trim();
       return hasSome;
     });
 
     if (!validItems.length) {
-      alert("Please enter at least Particular / Details / Amount in at least one line item.");
+      alert("Please enter at least Particular / Details / Amount / Total Amount in at least one line item.");
       return;
     }
 
@@ -1002,7 +1129,6 @@ export default function CostingTable() {
           (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
         );
 
-        // stamp linkage fields from the chosen cost sheet row on each item
         for (const payloadRow of validItems) {
           payloadRow["Cost Sheet ID"] = selectedExistingSheetId;
 
@@ -1037,8 +1163,6 @@ export default function CostingTable() {
         return;
       }
 
-      // With no-cors POST, we cannot read back the newly created Cost Sheet ID here.
-      // So we submit ONLY the first valid line item together with createCostSheetAndAddLineItem (existing behavior).
       const first = validItems[0];
       if (validItems.length > 1) {
         alert(
@@ -1154,7 +1278,6 @@ export default function CostingTable() {
               variant="outlined"
               onClick={() => {
                 setOpenExtract(true);
-                // reset touched flag only when opening fresh (so it defaults to all)
                 setExtractColsTouched(false);
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
@@ -1162,7 +1285,6 @@ export default function CostingTable() {
               Extract
             </Button>
 
-            {/* ✅ NEW: Add Expense (Existing Cost Sheet OR New Cost Sheet + First Line Item) */}
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -1315,7 +1437,6 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {/* ✅ NEW: Column selector (before download) */}
               <Grid item xs={12}>
                 <Paper
                   variant="outlined"
@@ -1412,7 +1533,6 @@ export default function CostingTable() {
                                   setExtractVisibleCols((p) => ({ ...p, [c]: checked }));
                                   setExtractColsTouched(true);
 
-                                  // persist to localStorage (same key you already use)
                                   const userKey = String(loggedInName || "").trim();
                                   const storageKey = getExtractColsStorageKey(userKey);
                                   const next = { ...(extractVisibleCols || {}), [c]: checked };
@@ -1556,7 +1676,7 @@ export default function CostingTable() {
           </DialogActions>
         </Dialog>
 
-        {/* ================= ✅ ADD EXPENSE MODAL (Existing OR New Cost Sheet + MULTI Line Items) ================= */}
+        {/* ================= ✅ ADD EXPENSE MODAL ================= */}
         <Dialog
           open={openAddExpense}
           onClose={() => setOpenAddExpense(false)}
@@ -1776,244 +1896,302 @@ export default function CostingTable() {
 
               <Grid item xs={12}>
                 <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
-                  {(addExpenseItems || []).map((it, idx) => (
-                    <Paper
-                      key={idx}
-                      variant="outlined"
-                      sx={{
-                        p: 1.25,
-                        borderRadius: 2,
-                        borderColor: "#e9eefc",
-                        bgcolor: "#ffffff",
-                      }}
-                    >
-                      <Box
+                  {(addExpenseItems || []).map((it, idx) => {
+                    const hasQtyRate = Boolean(it?.__hasQtyRate);
+                    const canManualTotal = !hasQtyRate;
+
+                    return (
+                      <Paper
+                        key={idx}
+                        variant="outlined"
                         sx={{
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          gap: 1,
-                          mb: 1,
+                          p: 1.25,
+                          borderRadius: 2,
+                          borderColor: "#e9eefc",
+                          bgcolor: "#ffffff",
                         }}
                       >
-                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                          Item #{idx + 1} — Total: ₹ {fmtINR(safeNum(it?.["Total Amount"]))}
-                        </Typography>
-
-                        <IconButton
-                          size="small"
-                          onClick={() => removeExpenseItem(idx)}
-                          disabled={(addExpenseItems || []).length <= 1}
-                          title={
-                            (addExpenseItems || []).length <= 1
-                              ? "At least one line item is required"
-                              : "Remove this line item"
-                          }
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 1,
+                            mb: 1,
+                          }}
                         >
-                          <RemoveCircleOutlineIcon
-                            sx={{
-                              color:
-                                (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
-                            }}
-                          />
-                        </IconButton>
-                      </Box>
+                          <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                            Item #{idx + 1} — Total: ₹ {fmtINR(safeNum(it?.["Total Amount"]))}
+                          </Typography>
 
-                      <Grid container spacing={1.25}>
-                        <Grid item xs={12} md={6}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel>Head Name</InputLabel>
-                            <Select
-                              label="Head Name"
-                              value={it?.["Head Name"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Head Name", e.target.value)
-                              }
-                            >
-                              {(validation.heads || []).map((h) => (
-                                <MenuItem key={h} value={h}>
-                                  {h}
-                                </MenuItem>
-                              ))}
-                              {!validation.heads?.length ? (
-                                <MenuItem value="" disabled>
-                                  No heads found
-                                </MenuItem>
-                              ) : null}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-
-                        <Grid item xs={12} md={6}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel>Subcategory</InputLabel>
-                            <Select
-                              label="Subcategory"
-                              value={it?.Subcategory || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Subcategory", e.target.value)
-                              }
-                            >
-                              {subcatsForHead(it?.["Head Name"] || "").map((s) => (
-                                <MenuItem key={s} value={s}>
-                                  {s}
-                                </MenuItem>
-                              ))}
-                              {!subcatsForHead(it?.["Head Name"] || "").length ? (
-                                <MenuItem value="" disabled>
-                                  No subcategories
-                                </MenuItem>
-                              ) : null}
-                            </Select>
-                          </FormControl>
-                        </Grid>
-
-                        <Grid item xs={12} md={6}>
-                          <TextField
-                            fullWidth
+                          <IconButton
                             size="small"
-                            label="Expense Date"
-                            type="date"
-                            InputLabelProps={{ shrink: true }}
-                            value={it?.["Expense Date"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                            onClick={() => removeExpenseItem(idx)}
+                            disabled={(addExpenseItems || []).length <= 1}
+                            title={
+                              (addExpenseItems || []).length <= 1
+                                ? "At least one line item is required"
+                                : "Remove this line item"
                             }
-                          />
-                        </Grid>
+                          >
+                            <RemoveCircleOutlineIcon
+                              sx={{
+                                color:
+                                  (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
+                              }}
+                            />
+                          </IconButton>
+                        </Box>
 
-                        <Grid item xs={12} md={6}>
-                          <FormControl size="small" fullWidth>
-                            <InputLabel>Payment Status</InputLabel>
-                            <Select
-                              label="Payment Status"
-                              value={it?.["Payment Status"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Payment Status", e.target.value)
-                              }
-                            >
-                              {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map(
-                                (s) => (
+                        <Grid container spacing={1.25}>
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Head Name</InputLabel>
+                              <Select
+                                label="Head Name"
+                                value={it?.["Head Name"] || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Head Name", e.target.value)
+                                }
+                              >
+                                {(validation.heads || []).map((h) => (
+                                  <MenuItem key={h} value={h}>
+                                    {h}
+                                  </MenuItem>
+                                ))}
+                                {!validation.heads?.length ? (
+                                  <MenuItem value="" disabled>
+                                    No heads found
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Subcategory</InputLabel>
+                              <Select
+                                label="Subcategory"
+                                value={it?.Subcategory || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Subcategory", e.target.value)
+                                }
+                              >
+                                {subcatsForHead(it?.["Head Name"] || "").map((s) => (
                                   <MenuItem key={s} value={s}>
                                     {s}
                                   </MenuItem>
-                                )
-                              )}
-                              {!validation.paymentStatus?.length ? (
-                                <MenuItem value="" disabled>
-                                  No payment statuses
-                                </MenuItem>
-                              ) : null}
-                            </Select>
-                          </FormControl>
-                        </Grid>
+                                ))}
+                                {!subcatsForHead(it?.["Head Name"] || "").length ? (
+                                  <MenuItem value="" disabled>
+                                    No subcategories
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
 
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Particular"
-                            value={it?.Particular || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Particular", e.target.value)
-                            }
-                          />
-                        </Grid>
+                          <Grid item xs={12} md={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Expense Date"
+                              type="date"
+                              InputLabelProps={{ shrink: true }}
+                              value={it?.["Expense Date"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                              }
+                            />
+                          </Grid>
 
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Details"
-                            value={it?.Details || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Details", e.target.value)
-                            }
-                            multiline
-                            minRows={2}
-                          />
-                        </Grid>
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Payment Status</InputLabel>
+                              <Select
+                                label="Payment Status"
+                                value={it?.["Payment Status"] || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Payment Status", e.target.value)
+                                }
+                              >
+                                {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map(
+                                  (s) => (
+                                    <MenuItem key={s} value={s}>
+                                      {s}
+                                    </MenuItem>
+                                  )
+                                )}
+                                {!validation.paymentStatus?.length ? (
+                                  <MenuItem value="" disabled>
+                                    No payment statuses
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
 
-                        <Grid item xs={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="QTY"
-                            value={it?.["QTY"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "QTY", e.target.value)
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Rate"
-                            value={it?.["Rate"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Rate", e.target.value)
-                            }
-                          />
-                        </Grid>
-                        <Grid item xs={4}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="GST %"
-                            value={it?.["GST %"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "GST %", e.target.value)
-                            }
-                          />
-                        </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Particular"
+                              value={it?.Particular || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Particular", e.target.value)
+                              }
+                            />
+                          </Grid>
 
-                        <Grid item xs={6}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="GST Amount"
-                            value={it?.["GST Amount"] || ""}
-                            InputProps={{ readOnly: true }}
-                          />
-                        </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Details"
+                              value={it?.Details || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Details", e.target.value)
+                              }
+                              multiline
+                              minRows={2}
+                            />
+                          </Grid>
 
-                        <Grid item xs={6}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Total Amount"
-                            value={it?.["Total Amount"] || ""}
-                            InputProps={{ readOnly: true }}
-                          />
-                        </Grid>
+                          {/* ✅ Same row alignment as Drawer */}
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="QTY"
+                              value={it?.["QTY"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "QTY", e.target.value)
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Rate"
+                              value={it?.["Rate"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Rate", e.target.value)
+                              }
+                            />
+                          </Grid>
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="GST %"
+                              value={it?.["GST %"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "GST %", e.target.value)
+                              }
+                            />
+                          </Grid>
 
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Attachment Link"
-                            value={it?.["Attachment Link"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Attachment Link", e.target.value)
-                            }
-                          />
-                        </Grid>
+                          {/* ✅ Use Auto (aligned) */}
+                          <Grid item xs={12}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={Boolean(it?.__useAutoAmount) && hasQtyRate}
+                                  disabled={!hasQtyRate}
+                                  onChange={(e) =>
+                                    setAddExpenseItemField(idx, "__useAutoAmount", e.target.checked)
+                                  }
+                                />
+                              }
+                              label={
+                                <Typography sx={{ fontSize: 12 }}>
+                                  Use Auto Amount (QTY × Rate)
+                                </Typography>
+                              }
+                            />
+                          </Grid>
 
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            label="Voucher/Invoice No"
-                            value={it?.["Voucher/Invoice No"] || ""}
-                            onChange={(e) =>
-                              setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)
-                            }
-                          />
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Amount"
+                              value={it?.["Amount"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Amount", e.target.value)
+                              }
+                              InputProps={{
+                                readOnly: Boolean(it?.__useAutoAmount) && hasQtyRate,
+                              }}
+                              helperText={
+                                hasQtyRate
+                                  ? Boolean(it?.__useAutoAmount)
+                                    ? "Auto (QTY × Rate)"
+                                    : "Manual"
+                                  : "Derived from Total Amount (if Total is entered) or manual"
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="GST Amount"
+                              value={it?.["GST Amount"] || ""}
+                              InputProps={{ readOnly: true }}
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Total Amount"
+                              value={it?.["Total Amount"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Total Amount", e.target.value)
+                              }
+                              InputProps={{
+                                readOnly: !canManualTotal,
+                              }}
+                              helperText={
+                                canManualTotal
+                                  ? "Manual Total (when QTY×Rate is unavailable)"
+                                  : "Auto (Amount + GST Amount)"
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Attachment Link"
+                              value={it?.["Attachment Link"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Attachment Link", e.target.value)
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Voucher/Invoice No"
+                              value={it?.["Voucher/Invoice No"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)
+                              }
+                            />
+                          </Grid>
                         </Grid>
-                      </Grid>
-                    </Paper>
-                  ))}
+                      </Paper>
+                    );
+                  })}
                 </Box>
               </Grid>
             </Grid>
@@ -2492,6 +2670,25 @@ export default function CostingTable() {
                     />
                   </Grid>
 
+                  {/* ✅ Use Auto (aligned + does not remove dropdowns) */}
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)}
+                          disabled={!drawerDraft.__hasQtyRate}
+                          onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
+                        />
+                      }
+                      label={
+                        <Typography sx={{ fontSize: 12 }}>
+                          Use Auto Amount (QTY × Rate)
+                        </Typography>
+                      }
+                    />
+                  </Grid>
+
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -2499,8 +2696,18 @@ export default function CostingTable() {
                       label="Amount"
                       value={drawerDraft["Amount"] || ""}
                       onChange={(e) => setDrawerField("Amount", e.target.value)}
-                      InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
-                      helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+                      InputProps={{
+                        readOnly: Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate),
+                      }}
+                      helperText={
+                        drawerDraft.__hasQtyRate
+                          ? drawerDraft.__useAutoAmount
+                            ? "Auto (QTY × Rate)"
+                            : "Manual"
+                          : drawerDraft.__useManualTotal
+                            ? "Derived from Total Amount"
+                            : "Manual"
+                      }
                     />
                   </Grid>
 
@@ -2513,13 +2720,22 @@ export default function CostingTable() {
                       InputProps={{ readOnly: true }}
                     />
                   </Grid>
+
                   <Grid item xs={6}>
                     <TextField
                       fullWidth
                       size="small"
                       label="Total Amount"
                       value={drawerDraft["Total Amount"] || ""}
-                      InputProps={{ readOnly: true }}
+                      onChange={(e) => setDrawerField("Total Amount", e.target.value)}
+                      InputProps={{
+                        readOnly: Boolean(drawerDraft.__hasQtyRate),
+                      }}
+                      helperText={
+                        drawerDraft.__hasQtyRate
+                          ? "Auto (Amount + GST Amount)"
+                          : "Manual Total (when QTY×Rate is unavailable)"
+                      }
                     />
                   </Grid>
                 </Grid>

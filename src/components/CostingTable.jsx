@@ -30,6 +30,9 @@ import {
   Drawer,
 } from "@mui/material";
 
+import Autocomplete from "@mui/material/Autocomplete";
+import CircularProgress from "@mui/material/CircularProgress";
+
 import AddIcon from "@mui/icons-material/Add";
 import EditIcon from "@mui/icons-material/Edit";
 import DeleteOutlineIcon from "@mui/icons-material/DeleteOutline";
@@ -465,6 +468,18 @@ export default function CostingTable() {
     Status: "Draft",
     Notes: "",
   });
+
+  // ✅ Linked Entity search helpers (Autocomplete)
+  const selectedEntityOption = useMemo(() => {
+    const id = String(createForm?.["Linked Entity ID"] || "");
+    if (!id) return null;
+    return (entityOptions || []).find((x) => String(x.id) === id) || null;
+  }, [createForm, entityOptions]);
+
+  const entityOptionLabel = (opt) => {
+    if (!opt) return "";
+    return String(opt.display || opt.name || opt.label || opt.id || "");
+  };
 
   /* ===================== ✅ NEW: ADD EXPENSE ===================== */
   const [openAddExpense, setOpenAddExpense] = useState(false);
@@ -1015,7 +1030,12 @@ export default function CostingTable() {
       }
 
       if (key === "Total Amount") {
-        const updated = { ...cur, "Total Amount": value, __useManualTotal: true, __useAutoAmount: false };
+        const updated = {
+          ...cur,
+          "Total Amount": value,
+          __useManualTotal: true,
+          __useAutoAmount: false,
+        };
         next[index] = recomputeDraftLive(updated);
         return next;
       }
@@ -1113,7 +1133,9 @@ export default function CostingTable() {
     });
 
     if (!validItems.length) {
-      alert("Please enter at least Particular / Details / Amount / Total Amount in at least one line item.");
+      alert(
+        "Please enter at least Particular / Details / Amount / Total Amount in at least one line item."
+      );
       return;
     }
 
@@ -1796,40 +1818,40 @@ export default function CostingTable() {
                     </FormControl>
                   </Grid>
 
+                  {/* ✅ Linked Entity Search (Autocomplete) */}
                   <Grid item xs={12} md={6}>
-                    <FormControl
-                      fullWidth
+                    <Autocomplete
                       size="small"
-                      disabled={!createForm["Linked Entity Type"] || entityLoading}
-                    >
-                      <InputLabel>Linked Entity Name</InputLabel>
-                      <Select
-                        label="Linked Entity Name"
-                        value={createForm["Linked Entity ID"] || ""}
-                        onChange={(e) => {
-                          const id = e.target.value;
-                          const picked = (entityOptions || []).find(
-                            (x) => String(x.id) === String(id)
-                          );
-                          setCreateForm((p) => ({
-                            ...p,
-                            "Linked Entity ID": id,
-                            "Linked Entity Name": picked?.display || "",
-                          }));
-                        }}
-                      >
-                        {(entityOptions || []).map((opt) => (
-                          <MenuItem key={opt.id} value={opt.id}>
-                            {opt.display}
-                          </MenuItem>
-                        ))}
-                        {!entityOptions.length ? (
-                          <MenuItem value="" disabled>
-                            {entityLoading ? "Loading…" : "No entities found"}
-                          </MenuItem>
-                        ) : null}
-                      </Select>
-                    </FormControl>
+                      options={entityOptions || []}
+                      loading={entityLoading}
+                      value={selectedEntityOption}
+                      getOptionLabel={entityOptionLabel}
+                      isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                      disabled={!createForm["Linked Entity Type"]}
+                      onChange={(_, picked) => {
+                        const id = picked ? String(picked.id) : "";
+                        setCreateForm((p) => ({
+                          ...p,
+                          "Linked Entity ID": id,
+                          "Linked Entity Name": picked?.display || "",
+                        }));
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Linked Entity Name (Search)"
+                          InputProps={{
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {entityLoading ? <CircularProgress size={16} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
                   </Grid>
 
                   <Grid item xs={12} md={6}>
@@ -2102,7 +2124,11 @@ export default function CostingTable() {
                                   checked={Boolean(it?.__useAutoAmount) && hasQtyRate}
                                   disabled={!hasQtyRate}
                                   onChange={(e) =>
-                                    setAddExpenseItemField(idx, "__useAutoAmount", e.target.checked)
+                                    setAddExpenseItemField(
+                                      idx,
+                                      "__useAutoAmount",
+                                      e.target.checked
+                                    )
                                   }
                                 />
                               }
@@ -2252,40 +2278,40 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
+              {/* ✅ Linked Entity Search (Autocomplete) */}
               <Grid item xs={12} md={6}>
-                <FormControl
-                  fullWidth
+                <Autocomplete
                   size="small"
-                  disabled={!createForm["Linked Entity Type"] || entityLoading}
-                >
-                  <InputLabel>Linked Entity Name</InputLabel>
-                  <Select
-                    label="Linked Entity Name"
-                    value={createForm["Linked Entity ID"] || ""}
-                    onChange={(e) => {
-                      const id = e.target.value;
-                      const picked = (entityOptions || []).find(
-                        (x) => String(x.id) === String(id)
-                      );
-                      setCreateForm((p) => ({
-                        ...p,
-                        "Linked Entity ID": id,
-                        "Linked Entity Name": picked?.display || "",
-                      }));
-                    }}
-                  >
-                    {(entityOptions || []).map((opt) => (
-                      <MenuItem key={opt.id} value={opt.id}>
-                        {opt.display}
-                      </MenuItem>
-                    ))}
-                    {!entityOptions.length ? (
-                      <MenuItem value="" disabled>
-                        {entityLoading ? "Loading…" : "No entities found"}
-                      </MenuItem>
-                    ) : null}
-                  </Select>
-                </FormControl>
+                  options={entityOptions || []}
+                  loading={entityLoading}
+                  value={selectedEntityOption}
+                  getOptionLabel={entityOptionLabel}
+                  isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                  disabled={!createForm["Linked Entity Type"]}
+                  onChange={(_, picked) => {
+                    const id = picked ? String(picked.id) : "";
+                    setCreateForm((p) => ({
+                      ...p,
+                      "Linked Entity ID": id,
+                      "Linked Entity Name": picked?.display || "",
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Linked Entity Name (Search)"
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {entityLoading ? <CircularProgress size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
               </Grid>
 
               <Grid item xs={12} md={6}>
@@ -2676,7 +2702,10 @@ export default function CostingTable() {
                       control={
                         <Checkbox
                           size="small"
-                          checked={Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)}
+                          checked={
+                            Boolean(drawerDraft.__useAutoAmount) &&
+                            Boolean(drawerDraft.__hasQtyRate)
+                          }
                           disabled={!drawerDraft.__hasQtyRate}
                           onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
                         />
@@ -2697,7 +2726,9 @@ export default function CostingTable() {
                       value={drawerDraft["Amount"] || ""}
                       onChange={(e) => setDrawerField("Amount", e.target.value)}
                       InputProps={{
-                        readOnly: Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate),
+                        readOnly:
+                          Boolean(drawerDraft.__useAutoAmount) &&
+                          Boolean(drawerDraft.__hasQtyRate),
                       }}
                       helperText={
                         drawerDraft.__hasQtyRate
@@ -2705,8 +2736,8 @@ export default function CostingTable() {
                             ? "Auto (QTY × Rate)"
                             : "Manual"
                           : drawerDraft.__useManualTotal
-                            ? "Derived from Total Amount"
-                            : "Manual"
+                          ? "Derived from Total Amount"
+                          : "Manual"
                       }
                     />
                   </Grid>

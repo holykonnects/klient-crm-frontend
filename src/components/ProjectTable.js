@@ -1720,7 +1720,7 @@ function ClientSelector({ value, onPick, disabled }) {
 
   React.useEffect(() => {
     fetchOptions(source);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [source]);
 
   const currentId = React.useMemo(() => {

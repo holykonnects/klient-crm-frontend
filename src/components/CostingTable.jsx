@@ -28,7 +28,6 @@ import {
   TableContainer,
   Paper,
   Drawer,
-  Autocomplete,
 } from "@mui/material";
 
 import AddIcon from "@mui/icons-material/Add";
@@ -58,9 +57,7 @@ const BACKEND =
 /* ===================== helpers ===================== */
 
 function safeNum(v) {
-  const s = String(v ?? "").trim();
-  if (!s) return 0;
-  const n = Number(s.replace(/,/g, ""));
+  const n = Number(String(v ?? "").replace(/,/g, ""));
   return Number.isFinite(n) ? n : 0;
 }
 
@@ -117,48 +114,59 @@ async function apiPost(payload) {
   return { success: true };
 }
 
-/**
- * ✅ KEY FIX: Amount should NOT get “stagnant”.
- * Rules:
- * - If Amount is provided by user (non-empty) => use that.
- * - Else if QTY and Rate present => auto Amount = QTY * Rate.
- * - GST Amount and Total always recompute from Amount + GST%.
- * - Amount stays editable ALWAYS.
- * - __autoAmount only drives helper text (manual vs auto), not readOnly.
- */
-function recomputeDraftLive(next) {
-  const qty = safeNum(next["QTY"]);
-  const rate = safeNum(next["Rate"]);
-  const gstPct = safeNum(next["GST %"]);
+function computeRowTotals(row) {
+  const qty = safeNum(row["QTY"]);
+  const rate = safeNum(row["Rate"]);
+  const amount = row["Amount"] !== "" ? safeNum(row["Amount"]) : qty * rate;
 
-  const amountStr = String(next["Amount"] ?? "").trim();
-  const hasManualAmount = amountStr !== "";
+  const gstPct = safeNum(row["GST %"]);
+  const gstAmount =
+    row["GST Amount"] !== "" ? safeNum(row["GST Amount"]) : (amount * gstPct) / 100;
 
-  const canAuto = qty > 0 && rate > 0;
-  const autoAmount = canAuto ? qty * rate : 0;
-
-  const amountVal = hasManualAmount ? safeNum(amountStr) : canAuto ? autoAmount : 0;
-
-  const gstAmountVal = amountVal > 0 ? (amountVal * gstPct) / 100 : 0;
-  const totalVal = amountVal > 0 ? amountVal + gstAmountVal : 0;
+  const total =
+    row["Total Amount"] !== "" ? safeNum(row["Total Amount"]) : amount + gstAmount;
 
   return {
-    ...next,
-    Amount: hasManualAmount ? next["Amount"] : canAuto ? autoAmount : "",
-    "GST Amount": amountVal > 0 ? gstAmountVal : "",
-    "Total Amount": amountVal > 0 ? totalVal : "",
-    __autoAmount: !hasManualAmount && canAuto,
+    ...row,
+    Amount: amount ? amount : "",
+    "GST Amount": gstAmount ? gstAmount : "",
+    "Total Amount": total ? total : "",
   };
 }
 
-// final compute before submit
-function computeRowTotals(row) {
-  const tmp = recomputeDraftLive({ ...row });
-  const cleaned = { ...tmp };
-  delete cleaned.__autoAmount;
-  return cleaned;
+// Live totals in drawer (same idea, but always recompute from QTY/Rate + GST%)
+function recomputeDraftLive(next) {
+  const qty = safeNum(next["QTY"]);
+  const rate = safeNum(next["Rate"]);
+  const hasQtyRate = qty > 0 && rate > 0;
+
+  const auto = Boolean(next.__autoAmount);
+  const userHasManualAmount = String(next["Amount"] ?? "").trim() !== "" && !auto;
+
+  let amount = next["Amount"];
+  if (hasQtyRate && !userHasManualAmount) amount = qty * rate;
+
+  const gstPct = safeNum(next["GST %"]);
+  const hasAmount = String(amount ?? "").trim() !== "";
+  const gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
+  const total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
+
+  return {
+    ...next,
+    Amount: amount === 0 ? "" : amount,
+    "GST Amount": gstAmount === 0 ? "" : gstAmount,
+    "Total Amount": total === 0 ? "" : total,
+    __autoAmount: hasQtyRate && !userHasManualAmount,
+  };
 }
 
+/**
+ * ✅ Non-breaking validation normalizer
+ * - If backend returns heads/subcategories/paymentStatus -> use as-is
+ * - Otherwise fallback to common sheet-style keys
+ * - If Payment Status missing, fallback to your canonical list:
+ *   pending, partially paid, paid, hold/disputed
+ */
 const DEFAULT_PAYMENT_STATUSES = ["pending", "partially paid", "paid", "hold/disputed"];
 
 function normalizeValidationResponse(raw) {
@@ -247,16 +255,25 @@ export default function CostingTable() {
   const [lineItems, setLineItems] = useState([]);
   const [lineItemHeaders, setLineItemHeaders] = useState([]);
 
-  // ✅ Entity options + search input
+  // ✅ Entity dropdown options for CREATE modal (no assumptions)
   const [entityOptions, setEntityOptions] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
-  const [entitySearchText, setEntitySearchText] = useState("");
 
-  // ✅ existing cost sheet search text
-  const [existingSheetSearchText, setExistingSheetSearchText] = useState("");
-
-  // ✅ Drawer menu containment ref
+  // ✅ Drawer menu containment ref (FIX for dropdown hidden behind drawer)
   const drawerPaperRef = useRef(null);
+
+  // ✅ MenuProps to force Select menus to render INSIDE the Drawer (no portal stacking issues)
+  const drawerMenuProps = useMemo(() => {
+    return {
+      disablePortal: true,
+      container: drawerPaperRef.current,
+      PaperProps: {
+        sx: {
+          zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 80,
+        },
+      },
+    };
+  }, [openEdit]); // ensures ref is available when edit modal (and drawer) are mounted
 
   // ===== Extraction =====
   const [openExtract, setOpenExtract] = useState(false);
@@ -270,10 +287,12 @@ export default function CostingTable() {
     format: "csv",
   });
 
+  // ✅ Column selector for extraction (NO deletions; only additions)
   const [extractColumnsAnchor, setExtractColumnsAnchor] = useState(null);
   const [extractVisibleCols, setExtractVisibleCols] = useState({});
   const [extractColsTouched, setExtractColsTouched] = useState(false);
 
+  // This fallback list already exists in your file (from openEditModal). Reusing it to avoid assumptions.
   const fallbackLineItemHeaders = useMemo(() => {
     return [
       "Cost Sheet ID",
@@ -302,26 +321,34 @@ export default function CostingTable() {
     ];
   }, []);
 
+  // Use real headers if we have them (from any opened sheet), else fallback headers.
   const extractAllColumns = useMemo(() => {
     const hs = Array.isArray(lineItemHeaders) && lineItemHeaders.length ? lineItemHeaders : null;
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
+  // Initialize extract column selector when modal opens (default = ALL columns checked)
   useEffect(() => {
     if (!openExtract) return;
 
     const userKey = String(loggedInName || "").trim();
     const storageKey = getExtractColsStorageKey(userKey);
 
+    // Build "all selected" default
     const allDefault = {};
     (extractAllColumns || []).forEach((c) => (allDefault[c] = true));
 
+    // Load cached map once per open
     const cached = safeJsonParse(localStorage.getItem(storageKey), null);
 
+    // If user already changed selection in this session, keep it
     setExtractVisibleCols((prev) => {
       if (extractColsTouched && prev && Object.keys(prev).length) return prev;
 
       if (cached && typeof cached === "object") {
+        // Normalize cached keys to current headers:
+        // - keep only columns that still exist
+        // - add new columns defaulting to true
         const next = { ...allDefault };
         Object.keys(next).forEach((k) => {
           if (k in cached) next[k] = cached[k] !== false;
@@ -331,6 +358,8 @@ export default function CostingTable() {
 
       return allDefault;
     });
+
+    // IMPORTANT: do not force extractColsTouched=true here — user hasn't changed yet
   }, [openExtract, extractAllColumns, loggedInName, extractColsTouched]);
 
   function openExtractColumns(e) {
@@ -341,6 +370,7 @@ export default function CostingTable() {
   }
 
   const selectedExtractFields = useMemo(() => {
+    // If nothing selected OR selector never loaded, return empty => backend exports all
     const keys = Object.keys(extractVisibleCols || {});
     if (!keys.length) return [];
     return keys.filter((k) => extractVisibleCols[k] !== false);
@@ -354,17 +384,23 @@ export default function CostingTable() {
       ),
     };
 
-    const params = new URLSearchParams(baseParams);
-
+    // ✅ Only send fields if user unchecked something (i.e., not all selected)
+    // If all are selected, we omit "fields" to keep backend default "export all"
     const allCount = (extractAllColumns || []).length;
     const selCount = selectedExtractFields.length;
 
+    const params = new URLSearchParams(baseParams);
+
     if (selCount > 0 && selCount < allCount) {
+      // Backend supports fields as JSON array string (recommended)
       params.set("fields", JSON.stringify(selectedExtractFields));
     }
 
     const url = `${BACKEND}?${params.toString()}`;
+
+    // Direct download / new tab
     window.open(url, "_blank");
+
     setOpenExtract(false);
   }
 
@@ -373,19 +409,22 @@ export default function CostingTable() {
     Owner: "",
     "Linked Entity Type": "",
     "Linked Entity ID": "",
-    "Linked Entity Name": "", // store display string
+    "Linked Entity Name": "", // store the display string
     "Client Name": "",
     "Project Type": "",
     Status: "Draft",
     Notes: "",
   });
 
-  /* ===================== ✅ ADD EXPENSE (Existing OR New Cost Sheet) ===================== */
+  /* ===================== ✅ NEW: ADD EXPENSE (Existing OR New Cost Sheet) ===================== */
   const [openAddExpense, setOpenAddExpense] = useState(false);
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
-  const [addExpenseItems, setAddExpenseItems] = useState([]);
 
+  // ✅ NEW: Multi line-items in Add Expense (at one go)
+  const [addExpenseItems, setAddExpenseItems] = useState([]); // array of drafts
+
+  // used to prevent stale async setState
   const loadSeq = useRef(0);
 
   async function loadAll() {
@@ -422,6 +461,7 @@ export default function CostingTable() {
     loadAll();
   }, []);
 
+  // ✅ ensures validation exists before opening edit/drawer (prevents empty dropdowns)
   async function ensureValidationLoaded() {
     const hasAny =
       (validation.heads && validation.heads.length) ||
@@ -436,6 +476,7 @@ export default function CostingTable() {
       setValidation(parsed);
     } catch (e) {
       console.error("ENSURE_VALIDATION_ERROR", e);
+      // keep silent: table can still work, dropdowns just won't
     }
   }
 
@@ -472,7 +513,6 @@ export default function CostingTable() {
 
   function openCreateModal() {
     setEntityOptions([]);
-    setEntitySearchText("");
     setCreateForm((p) => ({
       ...p,
       Owner: loggedInName || p.Owner,
@@ -484,12 +524,8 @@ export default function CostingTable() {
     setOpenCreate(true);
   }
 
-  /**
-   * ✅ ENTITY SEARCH FIX
-   * - Use Autocomplete (searchable) instead of Select.
-   * - Also send optional q to backend (if your GAS ignores it, it still works with local filtering).
-   */
-  async function loadEntitiesForType(type, q = "") {
+  // ✅ Load entity dropdown when Linked Entity Type changes
+  async function loadEntitiesForType(type) {
     const t = String(type || "").trim();
     if (!t) {
       setEntityOptions([]);
@@ -498,27 +534,25 @@ export default function CostingTable() {
 
     setEntityLoading(true);
     try {
-      const url =
-        `${BACKEND}?action=getEntities` +
-        `&type=${encodeURIComponent(t)}` +
-        `&owner=${encodeURIComponent(loggedInName || "")}` +
-        `&role=${encodeURIComponent(role || "")}` +
-        `&q=${encodeURIComponent(String(q || "").trim())}`;
-
-      const res = await jsonpGet(url);
+      const res = await jsonpGet(
+        `${BACKEND}?action=getEntities&type=${encodeURIComponent(t)}&owner=${encodeURIComponent(
+          loggedInName || ""
+        )}&role=${encodeURIComponent(role || "")}`
+      );
 
       if (res?.success && Array.isArray(res.entities)) {
         setEntityOptions(res.entities);
-      } else if (Array.isArray(res)) {
-        // if backend returns plain array
-        setEntityOptions(res);
       } else {
         console.error("GET_ENTITIES_ERROR", res);
         setEntityOptions([]);
+        alert(
+          "Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response)."
+        );
       }
     } catch (e) {
       console.error("GET_ENTITIES_FETCH_ERROR", e);
       setEntityOptions([]);
+      alert("Entities could not be loaded (JSONP). Check deployment access.");
     } finally {
       setEntityLoading(false);
     }
@@ -531,6 +565,7 @@ export default function CostingTable() {
 
       setOpenCreate(false);
 
+      // refresh after a short delay (no-cors can't read response)
       setTimeout(async () => {
         await loadAll();
       }, 800);
@@ -545,6 +580,7 @@ export default function CostingTable() {
   }
 
   async function openEditModal(row) {
+    // ✅ make sure validation is present so drawer dropdowns are not empty
     await ensureValidationLoaded();
 
     setActiveSheet(row);
@@ -616,6 +652,7 @@ export default function CostingTable() {
 
     payloadRow["Cost Sheet ID"] = costSheetId;
 
+    // stamp linkage fields into line items
     payloadRow["Owner"] =
       activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
     payloadRow["Linked Entity Type"] =
@@ -625,19 +662,19 @@ export default function CostingTable() {
     payloadRow["Linked Entity Name"] =
       activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
 
+    // ensure entered by
     payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
 
-    // ✅ final compute
+    // compute totals (final)
     payloadRow = computeRowTotals(payloadRow);
 
     const hasSome =
       String(payloadRow.Particular || "").trim() ||
       String(payloadRow.Details || "").trim() ||
-      String(payloadRow.Amount || "").trim() ||
-      (safeNum(payloadRow["QTY"]) > 0 && safeNum(payloadRow["Rate"]) > 0);
+      String(payloadRow.Amount || "").trim();
 
     if (!hasSome) {
-      alert("Please enter at least Particular / Details / Amount OR QTY & Rate.");
+      alert("Please enter at least Particular / Details / Amount.");
       return;
     }
 
@@ -673,6 +710,7 @@ export default function CostingTable() {
         data: { costSheetId, particular },
       });
 
+      // Optimistic UI
       setLineItems((p) =>
         p.filter((x) => String(x["Particular"] || "").trim() !== particular)
       );
@@ -727,7 +765,7 @@ export default function CostingTable() {
       Details: "",
       QTY: "",
       Rate: "",
-      Amount: "", // manual
+      Amount: "",
       "GST %": "",
       "GST Amount": "",
       "Total Amount": "",
@@ -739,6 +777,7 @@ export default function CostingTable() {
 
   const [drawerDraft, setDrawerDraft] = useState(() => blankDraft(""));
 
+  // keep entered by updated if user changes while drawer open
   useEffect(() => {
     setDrawerDraft((p) => ({
       ...p,
@@ -748,6 +787,7 @@ export default function CostingTable() {
 
   async function openDrawerAdd(headPreset) {
     await ensureValidationLoaded();
+
     setDrawerMode("add");
     setDrawerOriginal(null);
     setDrawerDraft(blankDraft(headPreset));
@@ -773,6 +813,8 @@ export default function CostingTable() {
       Rate: item?.["Rate"] ?? "",
       Amount: item?.["Amount"] ?? "",
       "GST %": item?.["GST %"] ?? "",
+      "GST Amount": item?.["GST Amount"] ?? "",
+      "Total Amount": item?.["Total Amount"] ?? "",
       "Attachment Link": item?.["Attachment Link"] ?? "",
       "Voucher/Invoice No": item?.["Voucher/Invoice No"] ?? "",
       "Payment Status": item?.["Payment Status"] ?? "",
@@ -789,15 +831,14 @@ export default function CostingTable() {
 
   function setDrawerField(key, value) {
     setDrawerDraft((p) => {
+      if (key === "Amount") {
+        const next = { ...p, Amount: value, __autoAmount: false };
+        return recomputeDraftLive(next);
+      }
       const next = { ...p, [key]: value };
       if (key === "Head Name") next.Subcategory = "";
       return recomputeDraftLive(next);
     });
-  }
-
-  function forceAutoAmountInDrawer() {
-    // ✅ user can click “Use Auto” anytime: clears Amount so auto applies if QTY+Rate present
-    setDrawerDraft((p) => recomputeDraftLive({ ...p, Amount: "" }));
   }
 
   async function saveDrawer() {
@@ -817,6 +858,7 @@ export default function CostingTable() {
         });
 
         await addLineItemRow(drawerDraft);
+
         setDrawerOpen(false);
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
@@ -850,25 +892,22 @@ export default function CostingTable() {
     setDrawerDraft(blankDraft(headKeep));
   }
 
-  /* ===================== Add Expense Modal (MULTI ITEMS) ===================== */
+  /* ===================== ✅ NEW: Add Expense Modal helpers (MULTI ITEMS) ===================== */
 
   function setAddExpenseItemField(index, key, value) {
     setAddExpenseItems((prev) => {
       const next = [...prev];
       const cur = next[index] ? { ...next[index] } : blankDraft("");
 
+      if (key === "Amount") {
+        const updated = { ...cur, Amount: value, __autoAmount: false };
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
       const updated = { ...cur, [key]: value };
       if (key === "Head Name") updated.Subcategory = "";
       next[index] = recomputeDraftLive(updated);
-      return next;
-    });
-  }
-
-  function forceAutoAmountForExpenseItem(index) {
-    setAddExpenseItems((prev) => {
-      const next = [...prev];
-      const cur = next[index] ? { ...next[index] } : blankDraft("");
-      next[index] = recomputeDraftLive({ ...cur, Amount: "" });
       return next;
     });
   }
@@ -892,15 +931,18 @@ export default function CostingTable() {
   const addExpenseTotals = useMemo(() => {
     const items = Array.isArray(addExpenseItems) ? addExpenseItems : [];
     const sum = items.reduce((acc, it) => acc + safeNum(it?.["Total Amount"]), 0);
-    return { count: items.length, total: sum };
+    return {
+      count: items.length,
+      total: sum,
+    };
   }, [addExpenseItems]);
+
+  /* ===================== ✅ NEW: ADD EXPENSE open ===================== */
 
   function openAddExpenseModal() {
     setAddExpenseMode("existing");
     setSelectedExistingSheetId("");
-    setExistingSheetSearchText("");
     setEntityOptions([]);
-    setEntitySearchText("");
     setCreateForm((p) => ({
       ...p,
       Owner: loggedInName || p.Owner,
@@ -909,11 +951,15 @@ export default function CostingTable() {
       "Linked Entity ID": "",
       "Linked Entity Name": "",
     }));
+    // ✅ start with one line item draft
     setAddExpenseItems([blankDraft("")]);
     setOpenAddExpense(true);
   }
 
+  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE (Existing OR New) ===================== */
+
   async function submitAddExpense() {
+    // Ensure validation is present so dropdowns aren’t empty
     await ensureValidationLoaded();
 
     const items = Array.isArray(addExpenseItems) ? addExpenseItems : [];
@@ -922,19 +968,25 @@ export default function CostingTable() {
       return;
     }
 
-    const cleanedItems = items.map((it) => computeRowTotals({ ...(it || {}), "Entered By": loggedInName }));
+    // Basic per-item validation
+    const cleanedItems = items.map((it) => {
+      let payloadRow = { ...(it || {}) };
+      if ("__autoAmount" in payloadRow) delete payloadRow.__autoAmount;
+      payloadRow = computeRowTotals(payloadRow);
+      payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
+      return payloadRow;
+    });
 
     const validItems = cleanedItems.filter((payloadRow) => {
       const hasSome =
         String(payloadRow.Particular || "").trim() ||
         String(payloadRow.Details || "").trim() ||
-        String(payloadRow.Amount || "").trim() ||
-        (safeNum(payloadRow["QTY"]) > 0 && safeNum(payloadRow["Rate"]) > 0);
+        String(payloadRow.Amount || "").trim();
       return hasSome;
     });
 
     if (!validItems.length) {
-      alert("Please enter at least Particular / Details / Amount OR QTY & Rate in at least one line item.");
+      alert("Please enter at least Particular / Details / Amount in at least one line item.");
       return;
     }
 
@@ -950,6 +1002,7 @@ export default function CostingTable() {
           (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
         );
 
+        // stamp linkage fields from the chosen cost sheet row on each item
         for (const payloadRow of validItems) {
           payloadRow["Cost Sheet ID"] = selectedExistingSheetId;
 
@@ -978,17 +1031,19 @@ export default function CostingTable() {
         return;
       }
 
-      // new cost sheet mode (same limitation as before: no-cors cannot return new ID)
+      // addExpenseMode === "new"
       if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
-        alert("Please select Linked Entity Type and Linked Entity for the new Cost Sheet.");
+        alert("Please select Linked Entity Type and Linked Entity Name for the new Cost Sheet.");
         return;
       }
 
+      // With no-cors POST, we cannot read back the newly created Cost Sheet ID here.
+      // So we submit ONLY the first valid line item together with createCostSheetAndAddLineItem (existing behavior).
       const first = validItems[0];
       if (validItems.length > 1) {
         alert(
           "Note: In 'Create New Cost Sheet' mode, only the first line item will be submitted in one go. " +
-            "After the sheet is created and refresh completes, add remaining items to that cost sheet."
+            "After the sheet is created and the table refreshes, you can add remaining items to that cost sheet."
         );
       }
 
@@ -1062,19 +1117,25 @@ export default function CostingTable() {
   return (
     <ThemeProvider theme={theme}>
       <Box sx={{ p: 2 }}>
-        {/* ✅ HEADER */}
+        {/* ✅ HEADER (Logo Left, Title Right) */}
         <Box padding={4}>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
             <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
-              <Typography variant="h5" fontWeight="bold" sx={{ fontFamily: "Montserrat, sans-serif" }}>
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                sx={{ fontFamily: "Montserrat, sans-serif" }}
+              >
                 Costing
               </Typography>
 
               {loading ? (
-                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>Loading…</Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
+                  Loading…
+                </Typography>
               ) : null}
             </Box>
           </Box>
@@ -1093,6 +1154,7 @@ export default function CostingTable() {
               variant="outlined"
               onClick={() => {
                 setOpenExtract(true);
+                // reset touched flag only when opening fresh (so it defaults to all)
                 setExtractColsTouched(false);
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
@@ -1100,6 +1162,7 @@ export default function CostingTable() {
               Extract
             </Button>
 
+            {/* ✅ NEW: Add Expense (Existing Cost Sheet OR New Cost Sheet + First Line Item) */}
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -1132,10 +1195,16 @@ export default function CostingTable() {
 
             <FormControl size="small" sx={{ minWidth: 180 }}>
               <InputLabel>Status</InputLabel>
-              <Select value={statusFilter} label="Status" onChange={(e) => setStatusFilter(e.target.value)}>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
                 <MenuItem value="">All</MenuItem>
                 {["Draft", "Final", "Archived"].map((s) => (
-                  <MenuItem key={s} value={s}>{s}</MenuItem>
+                  <MenuItem key={s} value={s}>
+                    {s}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1149,7 +1218,9 @@ export default function CostingTable() {
               >
                 <MenuItem value="">All</MenuItem>
                 {["Account", "Deal", "Project", "Order"].map((t) => (
-                  <MenuItem key={t} value={t}>{t}</MenuItem>
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
                 ))}
               </Select>
             </FormControl>
@@ -1165,7 +1236,9 @@ export default function CostingTable() {
               anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
             >
               <Box sx={{ p: 1.5 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>Columns</Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
+                  Columns
+                </Typography>
                 <FormGroup>
                   {costSheetColumns.map((c) => (
                     <FormControlLabel
@@ -1174,7 +1247,9 @@ export default function CostingTable() {
                         <Checkbox
                           size="small"
                           checked={visibleCols[c] !== false}
-                          onChange={(e) => setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))}
+                          onChange={(e) =>
+                            setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))
+                          }
                         />
                       }
                       label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
@@ -1194,7 +1269,9 @@ export default function CostingTable() {
                   {costSheetColumns
                     .filter((c) => visibleCols[c] !== false)
                     .map((c) => (
-                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>{c}</TableCell>
+                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
+                        {c}
+                      </TableCell>
                     ))}
                   <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
                 </TableRow>
@@ -1206,7 +1283,9 @@ export default function CostingTable() {
                     {costSheetColumns
                       .filter((c) => visibleCols[c] !== false)
                       .map((c) => (
-                        <TableCell key={c} sx={{ fontSize: 12 }}>{String(r[c] ?? "")}</TableCell>
+                        <TableCell key={c} sx={{ fontSize: 12 }}>
+                          {String(r[c] ?? "")}
+                        </TableCell>
                       ))}
                     <TableCell>
                       <IconButton onClick={() => openEditModal(r)}>
@@ -1218,7 +1297,10 @@ export default function CostingTable() {
 
                 {!filtered.length ? (
                   <TableRow>
-                    <TableCell colSpan={costSheetColumns.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                    <TableCell
+                      colSpan={costSheetColumns.length + 1}
+                      sx={{ fontSize: 12, opacity: 0.7 }}
+                    >
                       No cost sheets found.
                     </TableCell>
                   </TableRow>
@@ -1233,11 +1315,24 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              {/* ✅ NEW: Column selector (before download) */}
               <Grid item xs={12}>
-                <Paper variant="outlined" sx={{ p: 1.2, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}>
-                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1 }}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 1.2, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                    }}
+                  >
                     <Box>
-                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Columns to Export</Typography>
+                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                        Columns to Export
+                      </Typography>
                       <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
                         Selected:{" "}
                         {selectedExtractFields.length
@@ -1264,8 +1359,17 @@ export default function CostingTable() {
                     anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
                   >
                     <Box sx={{ p: 1.5, maxWidth: 420 }}>
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
-                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Export Columns</Typography>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          mb: 1,
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                          Export Columns
+                        </Typography>
 
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button
@@ -1308,6 +1412,7 @@ export default function CostingTable() {
                                   setExtractVisibleCols((p) => ({ ...p, [c]: checked }));
                                   setExtractColsTouched(true);
 
+                                  // persist to localStorage (same key you already use)
                                   const userKey = String(loggedInName || "").trim();
                                   const storageKey = getExtractColsStorageKey(userKey);
                                   const next = { ...(extractVisibleCols || {}), [c]: checked };
@@ -1338,11 +1443,15 @@ export default function CostingTable() {
                   <Select
                     label="Linked Entity Type"
                     value={extractForm.entityType}
-                    onChange={(e) => setExtractForm((p) => ({ ...p, entityType: e.target.value }))}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, entityType: e.target.value }))
+                    }
                   >
                     <MenuItem value="">All</MenuItem>
                     {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1354,7 +1463,9 @@ export default function CostingTable() {
                   size="small"
                   label="Linked Entity ID"
                   value={extractForm.linkedEntityId}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))}
+                  onChange={(e) =>
+                    setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
+                  }
                 />
               </Grid>
 
@@ -1364,7 +1475,9 @@ export default function CostingTable() {
                   size="small"
                   label="Particular"
                   value={extractForm.particular}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, particular: e.target.value }))}
+                  onChange={(e) =>
+                    setExtractForm((p) => ({ ...p, particular: e.target.value }))
+                  }
                 />
               </Grid>
 
@@ -1374,11 +1487,15 @@ export default function CostingTable() {
                   <Select
                     label="Payment Status"
                     value={extractForm.paymentStatus}
-                    onChange={(e) => setExtractForm((p) => ({ ...p, paymentStatus: e.target.value }))}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, paymentStatus: e.target.value }))
+                    }
                   >
                     <MenuItem value="">All</MenuItem>
                     {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1414,7 +1531,9 @@ export default function CostingTable() {
                   <Select
                     label="Format"
                     value={extractForm.format}
-                    onChange={(e) => setExtractForm((p) => ({ ...p, format: e.target.value }))}
+                    onChange={(e) =>
+                      setExtractForm((p) => ({ ...p, format: e.target.value }))
+                    }
                   >
                     <MenuItem value="csv">CSV</MenuItem>
                     <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
@@ -1427,21 +1546,34 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
-            <Button variant="contained" onClick={triggerExtraction} sx={{ bgcolor: cornflowerBlue }}>
+            <Button
+              variant="contained"
+              onClick={triggerExtraction}
+              sx={{ bgcolor: cornflowerBlue }}
+            >
               Download
             </Button>
           </DialogActions>
         </Dialog>
 
-        {/* ================= ✅ ADD EXPENSE MODAL ================= */}
-        <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
+        {/* ================= ✅ ADD EXPENSE MODAL (Existing OR New Cost Sheet + MULTI Line Items) ================= */}
+        <Dialog
+          open={openAddExpense}
+          onClose={() => setOpenAddExpense(false)}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Mode</InputLabel>
-                  <Select label="Mode" value={addExpenseMode} onChange={(e) => setAddExpenseMode(e.target.value)}>
+                  <Select
+                    label="Mode"
+                    value={addExpenseMode}
+                    onChange={(e) => setAddExpenseMode(e.target.value)}
+                  >
                     <MenuItem value="existing">Add to Existing Cost Sheet</MenuItem>
                     <MenuItem value="new">Create New Cost Sheet</MenuItem>
                   </Select>
@@ -1463,7 +1595,9 @@ export default function CostingTable() {
                     gap: 0.4,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Batch Summary</Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                    Batch Summary
+                  </Typography>
                   <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
                     Line items: {addExpenseTotals.count} | Total: ₹ {fmtINR(addExpenseTotals.total)}
                   </Typography>
@@ -1472,31 +1606,36 @@ export default function CostingTable() {
 
               {addExpenseMode === "existing" ? (
                 <Grid item xs={12}>
-                  {/* ✅ Searchable existing sheet picker */}
-                  <Autocomplete
-                    options={costSheets || []}
-                    value={
-                      (costSheets || []).find(
-                        (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
-                      ) || null
-                    }
-                    inputValue={existingSheetSearchText}
-                    onInputChange={(_, v) => setExistingSheetSearchText(v)}
-                    onChange={(_, v) => setSelectedExistingSheetId(v ? v["Cost Sheet ID"] : "")}
-                    getOptionLabel={(cs) =>
-                      [
-                        cs?.["Cost Sheet ID"],
-                        cs?.["Linked Entity Name"],
-                        cs?.["Owner"],
-                        cs?.["Status"],
-                      ]
-                        .filter(Boolean)
-                        .join(" — ")
-                    }
-                    renderInput={(params) => (
-                      <TextField {...params} size="small" label="Existing Cost Sheet" />
-                    )}
-                  />
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Existing Cost Sheet</InputLabel>
+                    <Select
+                      label="Existing Cost Sheet"
+                      value={selectedExistingSheetId}
+                      onChange={(e) => setSelectedExistingSheetId(e.target.value)}
+                    >
+                      {(costSheets || []).map((cs) => {
+                        const id = cs["Cost Sheet ID"];
+                        const label = [
+                          cs["Cost Sheet ID"],
+                          cs["Linked Entity Name"],
+                          cs["Owner"],
+                          cs["Status"],
+                        ]
+                          .filter(Boolean)
+                          .join(" — ");
+                        return (
+                          <MenuItem key={id} value={id}>
+                            {label}
+                          </MenuItem>
+                        );
+                      })}
+                      {!costSheets?.length ? (
+                        <MenuItem value="" disabled>
+                          No cost sheets found
+                        </MenuItem>
+                      ) : null}
+                    </Select>
+                  </FormControl>
                 </Grid>
               ) : (
                 <>
@@ -1525,58 +1664,52 @@ export default function CostingTable() {
                             "Linked Entity Name": "",
                           }));
                           setEntityOptions([]);
-                          setEntitySearchText("");
-                          await loadEntitiesForType(type, "");
+                          await loadEntitiesForType(type);
                         }}
                       >
                         {["Account", "Deal", "Project", "Order"].map((t) => (
-                          <MenuItem key={t} value={t}>{t}</MenuItem>
+                          <MenuItem key={t} value={t}>
+                            {t}
+                          </MenuItem>
                         ))}
                       </Select>
                     </FormControl>
                   </Grid>
 
-                  <Grid item xs={12}>
-                    {/* ✅ Searchable entity picker (Deals/Projects/Orders/Accounts) */}
-                    <Autocomplete
-                      disabled={!createForm["Linked Entity Type"]}
-                      loading={entityLoading}
-                      options={entityOptions || []}
-                      value={
-                        (entityOptions || []).find(
-                          (x) => String(x.id) === String(createForm["Linked Entity ID"])
-                        ) || null
-                      }
-                      inputValue={entitySearchText}
-                      onInputChange={async (_, v) => {
-                        setEntitySearchText(v);
-                        // If you want server-side filtering, this will help once GAS supports q.
-                        // If GAS ignores q, still fine: Autocomplete filters locally.
-                        if (createForm["Linked Entity Type"]) {
-                          await loadEntitiesForType(createForm["Linked Entity Type"], v);
-                        }
-                      }}
-                      onChange={(_, v) => {
-                        setCreateForm((p) => ({
-                          ...p,
-                          "Linked Entity ID": v ? v.id : "",
-                          "Linked Entity Name": v ? v.display : "",
-                        }));
-                      }}
-                      getOptionLabel={(opt) => String(opt?.display || opt?.name || opt?.id || "")}
-                      renderInput={(params) => (
-                        <TextField
-                          {...params}
-                          size="small"
-                          label="Linked Entity (Search Deals/Projects/Orders/Accounts)"
-                          helperText={
-                            !createForm["Linked Entity Type"]
-                              ? "Select Linked Entity Type first"
-                              : "Type to search"
-                          }
-                        />
-                      )}
-                    />
+                  <Grid item xs={12} md={6}>
+                    <FormControl
+                      fullWidth
+                      size="small"
+                      disabled={!createForm["Linked Entity Type"] || entityLoading}
+                    >
+                      <InputLabel>Linked Entity Name</InputLabel>
+                      <Select
+                        label="Linked Entity Name"
+                        value={createForm["Linked Entity ID"] || ""}
+                        onChange={(e) => {
+                          const id = e.target.value;
+                          const picked = (entityOptions || []).find(
+                            (x) => String(x.id) === String(id)
+                          );
+                          setCreateForm((p) => ({
+                            ...p,
+                            "Linked Entity ID": id,
+                            "Linked Entity Name": picked?.display || "",
+                          }));
+                        }}
+                      >
+                        {(entityOptions || []).map((opt) => (
+                          <MenuItem key={opt.id} value={opt.id}>
+                            {opt.display}
+                          </MenuItem>
+                        ))}
+                        {!entityOptions.length ? (
+                          <MenuItem value="" disabled>
+                            {entityLoading ? "Loading…" : "No entities found"}
+                          </MenuItem>
+                        ) : null}
+                      </Select>
+                    </FormControl>
                   </Grid>
 
                   <Grid item xs={12} md={6}>
@@ -1585,10 +1718,14 @@ export default function CostingTable() {
                       <Select
                         label="Status"
                         value={createForm.Status || "Draft"}
-                        onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
+                        onChange={(e) =>
+                          setCreateForm((p) => ({ ...p, Status: e.target.value }))
+                        }
                       >
                         {["Draft", "Final", "Archived"].map((s) => (
-                          <MenuItem key={s} value={s}>{s}</MenuItem>
+                          <MenuItem key={s} value={s}>
+                            {s}
+                          </MenuItem>
                         ))}
                       </Select>
                     </FormControl>
@@ -1600,7 +1737,9 @@ export default function CostingTable() {
                       size="small"
                       label="Notes"
                       value={createForm.Notes || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, Notes: e.target.value }))
+                      }
                       multiline
                       minRows={2}
                     />
@@ -1610,8 +1749,18 @@ export default function CostingTable() {
 
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
-                <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
-                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Line Items</Typography>
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                    Line Items
+                  </Typography>
 
                   <Button
                     variant="outlined"
@@ -1631,9 +1780,22 @@ export default function CostingTable() {
                     <Paper
                       key={idx}
                       variant="outlined"
-                      sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#ffffff" }}
+                      sx={{
+                        p: 1.25,
+                        borderRadius: 2,
+                        borderColor: "#e9eefc",
+                        bgcolor: "#ffffff",
+                      }}
                     >
-                      <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, mb: 1 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          gap: 1,
+                          mb: 1,
+                        }}
+                      >
                         <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                           Item #{idx + 1} — Total: ₹ {fmtINR(safeNum(it?.["Total Amount"]))}
                         </Typography>
@@ -1642,9 +1804,18 @@ export default function CostingTable() {
                           size="small"
                           onClick={() => removeExpenseItem(idx)}
                           disabled={(addExpenseItems || []).length <= 1}
-                          title={(addExpenseItems || []).length <= 1 ? "At least one line item is required" : "Remove this line item"}
+                          title={
+                            (addExpenseItems || []).length <= 1
+                              ? "At least one line item is required"
+                              : "Remove this line item"
+                          }
                         >
-                          <RemoveCircleOutlineIcon sx={{ color: (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828" }} />
+                          <RemoveCircleOutlineIcon
+                            sx={{
+                              color:
+                                (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
+                            }}
+                          />
                         </IconButton>
                       </Box>
 
@@ -1655,13 +1826,19 @@ export default function CostingTable() {
                             <Select
                               label="Head Name"
                               value={it?.["Head Name"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Head Name", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Head Name", e.target.value)
+                              }
                             >
                               {(validation.heads || []).map((h) => (
-                                <MenuItem key={h} value={h}>{h}</MenuItem>
+                                <MenuItem key={h} value={h}>
+                                  {h}
+                                </MenuItem>
                               ))}
                               {!validation.heads?.length ? (
-                                <MenuItem value="" disabled>No heads found</MenuItem>
+                                <MenuItem value="" disabled>
+                                  No heads found
+                                </MenuItem>
                               ) : null}
                             </Select>
                           </FormControl>
@@ -1673,13 +1850,19 @@ export default function CostingTable() {
                             <Select
                               label="Subcategory"
                               value={it?.Subcategory || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Subcategory", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Subcategory", e.target.value)
+                              }
                             >
                               {subcatsForHead(it?.["Head Name"] || "").map((s) => (
-                                <MenuItem key={s} value={s}>{s}</MenuItem>
+                                <MenuItem key={s} value={s}>
+                                  {s}
+                                </MenuItem>
                               ))}
                               {!subcatsForHead(it?.["Head Name"] || "").length ? (
-                                <MenuItem value="" disabled>No subcategories</MenuItem>
+                                <MenuItem value="" disabled>
+                                  No subcategories
+                                </MenuItem>
                               ) : null}
                             </Select>
                           </FormControl>
@@ -1693,7 +1876,9 @@ export default function CostingTable() {
                             type="date"
                             InputLabelProps={{ shrink: true }}
                             value={it?.["Expense Date"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Expense Date", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                            }
                           />
                         </Grid>
 
@@ -1703,11 +1888,22 @@ export default function CostingTable() {
                             <Select
                               label="Payment Status"
                               value={it?.["Payment Status"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Payment Status", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Payment Status", e.target.value)
+                              }
                             >
-                              {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
-                                <MenuItem key={s} value={s}>{s}</MenuItem>
-                              ))}
+                              {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map(
+                                (s) => (
+                                  <MenuItem key={s} value={s}>
+                                    {s}
+                                  </MenuItem>
+                                )
+                              )}
+                              {!validation.paymentStatus?.length ? (
+                                <MenuItem value="" disabled>
+                                  No payment statuses
+                                </MenuItem>
+                              ) : null}
                             </Select>
                           </FormControl>
                         </Grid>
@@ -1718,7 +1914,9 @@ export default function CostingTable() {
                             size="small"
                             label="Particular"
                             value={it?.Particular || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Particular", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Particular", e.target.value)
+                            }
                           />
                         </Grid>
 
@@ -1728,7 +1926,9 @@ export default function CostingTable() {
                             size="small"
                             label="Details"
                             value={it?.Details || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Details", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Details", e.target.value)
+                            }
                             multiline
                             minRows={2}
                           />
@@ -1740,59 +1940,52 @@ export default function CostingTable() {
                             size="small"
                             label="QTY"
                             value={it?.["QTY"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "QTY", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "QTY", e.target.value)
+                            }
                           />
                         </Grid>
-
                         <Grid item xs={4}>
                           <TextField
                             fullWidth
                             size="small"
                             label="Rate"
                             value={it?.["Rate"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Rate", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Rate", e.target.value)
+                            }
                           />
                         </Grid>
-
                         <Grid item xs={4}>
                           <TextField
                             fullWidth
                             size="small"
                             label="GST %"
                             value={it?.["GST %"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "GST %", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "GST %", e.target.value)
+                            }
                           />
                         </Grid>
 
-                        <Grid item xs={8}>
+                        <Grid item xs={6}>
                           <TextField
                             fullWidth
                             size="small"
-                            label="Amount (manual OR auto)"
-                            value={it?.["Amount"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Amount", e.target.value)}
-                            helperText={it?.__autoAmount ? "Auto (QTY × Rate). You can still override." : "Manual (or leave blank to auto from QTY×Rate)."}
+                            label="GST Amount"
+                            value={it?.["GST Amount"] || ""}
+                            InputProps={{ readOnly: true }}
                           />
                         </Grid>
 
-                        <Grid item xs={4} sx={{ display: "flex", alignItems: "center" }}>
-                          <Button
-                            variant="outlined"
-                            size="small"
+                        <Grid item xs={6}>
+                          <TextField
                             fullWidth
-                            onClick={() => forceAutoAmountForExpenseItem(idx)}
-                            sx={{ fontFamily: "Montserrat, sans-serif" }}
-                          >
-                            Use Auto
-                          </Button>
-                        </Grid>
-
-                        <Grid item xs={6}>
-                          <TextField fullWidth size="small" label="GST Amount" value={it?.["GST Amount"] || ""} InputProps={{ readOnly: true }} />
-                        </Grid>
-
-                        <Grid item xs={6}>
-                          <TextField fullWidth size="small" label="Total Amount" value={it?.["Total Amount"] || ""} InputProps={{ readOnly: true }} />
+                            size="small"
+                            label="Total Amount"
+                            value={it?.["Total Amount"] || ""}
+                            InputProps={{ readOnly: true }}
+                          />
                         </Grid>
 
                         <Grid item xs={12}>
@@ -1801,7 +1994,9 @@ export default function CostingTable() {
                             size="small"
                             label="Attachment Link"
                             value={it?.["Attachment Link"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Attachment Link", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Attachment Link", e.target.value)
+                            }
                           />
                         </Grid>
 
@@ -1811,7 +2006,9 @@ export default function CostingTable() {
                             size="small"
                             label="Voucher/Invoice No"
                             value={it?.["Voucher/Invoice No"] || ""}
-                            onChange={(e) => setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)}
+                            onChange={(e) =>
+                              setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)
+                            }
                           />
                         </Grid>
                       </Grid>
@@ -1824,7 +2021,12 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenAddExpense(false)}>Cancel</Button>
-            <Button variant="contained" onClick={submitAddExpense} sx={{ bgcolor: cornflowerBlue }} disabled={loading}>
+            <Button
+              variant="contained"
+              onClick={submitAddExpense}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
               {loading ? "Submitting…" : "Submit"}
             </Button>
           </DialogActions>
@@ -1860,46 +2062,85 @@ export default function CostingTable() {
                         "Linked Entity Name": "",
                       }));
                       setEntityOptions([]);
-                      setEntitySearchText("");
-                      await loadEntitiesForType(type, "");
+                      await loadEntitiesForType(type);
                     }}
                   >
                     {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>{t}</MenuItem>
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12}>
-                {/* ✅ Searchable entity picker */}
-                <Autocomplete
-                  disabled={!createForm["Linked Entity Type"]}
-                  loading={entityLoading}
-                  options={entityOptions || []}
-                  value={
-                    (entityOptions || []).find(
-                      (x) => String(x.id) === String(createForm["Linked Entity ID"])
-                    ) || null
+              <Grid item xs={12} md={6}>
+                <FormControl
+                  fullWidth
+                  size="small"
+                  disabled={!createForm["Linked Entity Type"] || entityLoading}
+                >
+                  <InputLabel>Linked Entity Name</InputLabel>
+                  <Select
+                    label="Linked Entity Name"
+                    value={createForm["Linked Entity ID"] || ""}
+                    onChange={(e) => {
+                      const id = e.target.value;
+                      const picked = (entityOptions || []).find(
+                        (x) => String(x.id) === String(id)
+                      );
+                      setCreateForm((p) => ({
+                        ...p,
+                        "Linked Entity ID": id,
+                        "Linked Entity Name": picked?.display || "",
+                      }));
+                    }}
+                  >
+                    {(entityOptions || []).map((opt) => (
+                      <MenuItem key={opt.id} value={opt.id}>
+                        {opt.display}
+                      </MenuItem>
+                    ))}
+                    {!entityOptions.length ? (
+                      <MenuItem value="" disabled>
+                        {entityLoading ? "Loading…" : "No entities found"}
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Linked Entity ID"
+                  value={createForm["Linked Entity ID"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Client Name"
+                  value={createForm["Client Name"] || ""}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
                   }
-                  inputValue={entitySearchText}
-                  onInputChange={async (_, v) => {
-                    setEntitySearchText(v);
-                    if (createForm["Linked Entity Type"]) {
-                      await loadEntitiesForType(createForm["Linked Entity Type"], v);
-                    }
-                  }}
-                  onChange={(_, v) => {
-                    setCreateForm((p) => ({
-                      ...p,
-                      "Linked Entity ID": v ? v.id : "",
-                      "Linked Entity Name": v ? v.display : "",
-                    }));
-                  }}
-                  getOptionLabel={(opt) => String(opt?.display || opt?.name || opt?.id || "")}
-                  renderInput={(params) => (
-                    <TextField {...params} size="small" label="Linked Entity (Search)" />
-                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Project Type"
+                  value={createForm["Project Type"] || ""}
+                  onChange={(e) =>
+                    setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                  }
                 />
               </Grid>
 
@@ -1912,7 +2153,9 @@ export default function CostingTable() {
                     onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                   >
                     {["Draft", "Final", "Archived"].map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
@@ -1934,7 +2177,12 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
-            <Button variant="contained" onClick={createCostSheet} sx={{ bgcolor: cornflowerBlue }} disabled={loading}>
+            <Button
+              variant="contained"
+              onClick={createCostSheet}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
               {loading ? "Creating…" : "Create"}
             </Button>
           </DialogActions>
@@ -1971,7 +2219,8 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                Linked: {activeSheet?.["Linked Entity Type"] || ""} — {activeSheet?.["Linked Entity ID"] || ""}
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
+                {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
               </Typography>
             </Box>
@@ -1990,7 +2239,15 @@ export default function CostingTable() {
                 background: "#fff",
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 1, flexWrap: "wrap" }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
                   Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                 </Typography>
@@ -2013,11 +2270,16 @@ export default function CostingTable() {
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
                       {lineItemCols.map((c) => (
-                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        <TableCell
+                          key={c}
+                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
+                        >
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -2030,11 +2292,19 @@ export default function CostingTable() {
                           </TableCell>
                         ))}
                         <TableCell sx={{ whiteSpace: "nowrap" }}>
-                          <IconButton title="Edit" onClick={() => openDrawerEdit(it)} disabled={loading}>
+                          <IconButton
+                            title="Edit (will soft-delete old row and append updated row)"
+                            onClick={() => openDrawerEdit(it)}
+                            disabled={loading}
+                          >
                             <EditIcon sx={{ color: cornflowerBlue }} />
                           </IconButton>
 
-                          <IconButton onClick={() => softDeleteLineItem(it)} disabled={loading} title="Delete">
+                          <IconButton
+                            onClick={() => softDeleteLineItem(it)}
+                            disabled={loading}
+                            title="Delete"
+                          >
                             <DeleteOutlineIcon sx={{ color: "#c62828" }} />
                           </IconButton>
                         </TableCell>
@@ -2043,7 +2313,10 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell
+                          colSpan={lineItemCols.length + 1}
+                          sx={{ fontSize: 12, opacity: 0.7 }}
+                        >
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -2058,14 +2331,27 @@ export default function CostingTable() {
               anchor="right"
               open={drawerOpen}
               onClose={closeDrawer}
-              sx={{ zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20 }}
+              sx={{
+                zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20,
+              }}
               ModalProps={{ keepMounted: true }}
               PaperProps={{
                 ref: drawerPaperRef,
-                sx: { width: { xs: "100%", sm: 420 }, p: 2, zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 21 },
+                sx: {
+                  width: { xs: "100%", sm: 420 },
+                  p: 2,
+                  zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 21,
+                },
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1,
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
                   {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
                 </Typography>
@@ -2084,10 +2370,18 @@ export default function CostingTable() {
                     label="Head Name"
                     value={drawerDraft["Head Name"] || ""}
                     onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                    MenuProps={drawerMenuProps}
                   >
                     {(validation.heads || []).map((h) => (
-                      <MenuItem key={h} value={h}>{h}</MenuItem>
+                      <MenuItem key={h} value={h}>
+                        {h}
+                      </MenuItem>
                     ))}
+                    {!validation.heads?.length ? (
+                      <MenuItem value="" disabled>
+                        No heads found
+                      </MenuItem>
+                    ) : null}
                   </Select>
                 </FormControl>
 
@@ -2097,12 +2391,17 @@ export default function CostingTable() {
                     label="Subcategory"
                     value={drawerDraft.Subcategory || ""}
                     onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                    MenuProps={drawerMenuProps}
                   >
                     {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
                     {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
-                      <MenuItem value="" disabled>No subcategories</MenuItem>
+                      <MenuItem value="" disabled>
+                        No subcategories
+                      </MenuItem>
                     ) : null}
                   </Select>
                 </FormControl>
@@ -2131,10 +2430,18 @@ export default function CostingTable() {
                     label="Payment Status"
                     value={drawerDraft["Payment Status"] || ""}
                     onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                    MenuProps={drawerMenuProps}
                   >
                     {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
-                      <MenuItem key={s} value={s}>{s}</MenuItem>
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
                     ))}
+                    {!validation.paymentStatus?.length ? (
+                      <MenuItem value="" disabled>
+                        No payment statuses
+                      </MenuItem>
+                    ) : null}
                   </Select>
                 </FormControl>
 
@@ -2158,48 +2465,62 @@ export default function CostingTable() {
 
                 <Grid container spacing={1}>
                   <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="QTY" value={drawerDraft["QTY"] || ""} onChange={(e) => setDrawerField("QTY", e.target.value)} />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="Rate" value={drawerDraft["Rate"] || ""} onChange={(e) => setDrawerField("Rate", e.target.value)} />
-                  </Grid>
-                  <Grid item xs={4}>
-                    <TextField fullWidth size="small" label="GST %" value={drawerDraft["GST %"] || ""} onChange={(e) => setDrawerField("GST %", e.target.value)} />
-                  </Grid>
-
-                  {/* ✅ FIX: Amount ALWAYS editable, but supports auto */}
-                  <Grid item xs={8}>
                     <TextField
                       fullWidth
                       size="small"
-                      label="Amount (manual OR auto)"
-                      value={drawerDraft["Amount"] || ""}
-                      onChange={(e) => setDrawerField("Amount", e.target.value)}
-                      helperText={
-                        drawerDraft.__autoAmount
-                          ? "Auto (QTY × Rate). You can still override."
-                          : "Manual (or leave blank to auto from QTY×Rate)."
-                      }
+                      label="QTY"
+                      value={drawerDraft["QTY"] || ""}
+                      onChange={(e) => setDrawerField("QTY", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Rate"
+                      value={drawerDraft["Rate"] || ""}
+                      onChange={(e) => setDrawerField("Rate", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST %"
+                      value={drawerDraft["GST %"] || ""}
+                      onChange={(e) => setDrawerField("GST %", e.target.value)}
                     />
                   </Grid>
 
-                  <Grid item xs={4} sx={{ display: "flex", alignItems: "center" }}>
-                    <Button
-                      variant="outlined"
-                      size="small"
+                  <Grid item xs={12}>
+                    <TextField
                       fullWidth
-                      onClick={forceAutoAmountInDrawer}
-                      sx={{ fontFamily: "Montserrat, sans-serif" }}
-                    >
-                      Use Auto
-                    </Button>
+                      size="small"
+                      label="Amount"
+                      value={drawerDraft["Amount"] || ""}
+                      onChange={(e) => setDrawerField("Amount", e.target.value)}
+                      InputProps={{ readOnly: Boolean(drawerDraft.__autoAmount) }}
+                      helperText={drawerDraft.__autoAmount ? "Auto (QTY × Rate)" : "Manual"}
+                    />
                   </Grid>
 
                   <Grid item xs={6}>
-                    <TextField fullWidth size="small" label="GST Amount" value={drawerDraft["GST Amount"] || ""} InputProps={{ readOnly: true }} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST Amount"
+                      value={drawerDraft["GST Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
                   </Grid>
                   <Grid item xs={6}>
-                    <TextField fullWidth size="small" label="Total Amount" value={drawerDraft["Total Amount"] || ""} InputProps={{ readOnly: true }} />
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Total Amount"
+                      value={drawerDraft["Total Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
                   </Grid>
                 </Grid>
 
@@ -2222,19 +2543,35 @@ export default function CostingTable() {
                 <Divider sx={{ my: 0.5 }} />
 
                 <Box sx={{ display: "flex", gap: 1 }}>
-                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>Cancel</Button>
-                  <Button variant="contained" fullWidth sx={{ bgcolor: cornflowerBlue }} onClick={saveDrawer} disabled={loading}>
+                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
+                    Cancel
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    sx={{ bgcolor: cornflowerBlue }}
+                    onClick={saveDrawer}
+                    disabled={loading}
+                  >
                     {loading ? "Saving…" : "Save"}
                   </Button>
                 </Box>
 
-                <Button variant="contained" fullWidth sx={{ bgcolor: "#1f2a44" }} onClick={saveDrawerAndNew} disabled={loading}>
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ bgcolor: "#1f2a44" }}
+                  onClick={saveDrawerAndNew}
+                  disabled={loading}
+                >
                   {loading ? "Saving…" : "Save & New"}
                 </Button>
 
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                    Note: Edit works by marking the old row inactive (delete by Particular) and
+                    appending the updated row.
                   </Typography>
                 ) : null}
               </Box>

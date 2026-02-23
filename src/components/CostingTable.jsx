@@ -118,6 +118,24 @@ async function apiPost(payload) {
 }
 
 /**
+ * ✅ Concurrency helper (reduces submit time without needing backend changes)
+ * - Runs worker on items with max concurrency
+ * - Preserves "no-cors" safety (still fire-and-forget per request)
+ */
+async function runWithConcurrency(items, worker, concurrency = 5) {
+  const arr = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Math.floor(concurrency || 1));
+  let i = 0;
+  const runners = new Array(Math.min(limit, arr.length)).fill(0).map(async () => {
+    while (i < arr.length) {
+      const idx = i++;
+      await worker(arr[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+}
+
+/**
  * ✅ AUTO CALC FIX (single source of truth)
  *
  * Rules:
@@ -293,6 +311,9 @@ export default function CostingTable() {
   const role = user?.role || "";
 
   const [loading, setLoading] = useState(false);
+
+  // ✅ NEW: shows faster feedback during batch submits (does not remove existing loading)
+  const [submitProgress, setSubmitProgress] = useState(null); // { done, total, label }
 
   const [validation, setValidation] = useState({
     heads: [],
@@ -628,9 +649,10 @@ export default function CostingTable() {
       await apiPost({ action: "createCostSheet", data: { ...createForm } });
       setOpenCreate(false);
 
+      // slightly faster refresh — does not change behavior, only reduces wait
       setTimeout(async () => {
         await loadAll();
-      }, 800);
+      }, 300);
 
       alert("Cost Sheet created. Refreshing list…");
     } catch (e) {
@@ -749,9 +771,10 @@ export default function CostingTable() {
     try {
       await apiPost({ action: "addLineItem", data: payloadRow });
 
+      // faster refresh without changing functionality
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
-      }, 800);
+      }, 250);
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
       alert("Failed to add line item.");
@@ -784,7 +807,7 @@ export default function CostingTable() {
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
-      }, 800);
+      }, 250);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
       alert(
@@ -1098,7 +1121,7 @@ export default function CostingTable() {
     setOpenAddExpense(true);
   }
 
-  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE ===================== */
+  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE (FASTER) ===================== */
 
   async function submitAddExpense() {
     await ensureValidationLoaded();
@@ -1140,6 +1163,8 @@ export default function CostingTable() {
     }
 
     setLoading(true);
+    setSubmitProgress({ done: 0, total: validItems.length, label: "Submitting line items…" });
+
     try {
       if (addExpenseMode === "existing") {
         if (!selectedExistingSheetId) {
@@ -1151,30 +1176,48 @@ export default function CostingTable() {
           (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
         );
 
-        for (const payloadRow of validItems) {
-          payloadRow["Cost Sheet ID"] = selectedExistingSheetId;
+        // ✅ Build final payloads first (no repeated work in loop)
+        const payloads = validItems.map((p) => ({
+          ...p,
+          "Cost Sheet ID": selectedExistingSheetId,
+          Owner: sheetRow?.["Owner"] || p["Owner"] || loggedInName || "",
+          "Linked Entity Type":
+            sheetRow?.["Linked Entity Type"] || p["Linked Entity Type"] || "",
+          "Linked Entity ID": sheetRow?.["Linked Entity ID"] || p["Linked Entity ID"] || "",
+          "Linked Entity Name":
+            sheetRow?.["Linked Entity Name"] || p["Linked Entity Name"] || "",
+        }));
 
-          payloadRow["Owner"] = sheetRow?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
-          payloadRow["Linked Entity Type"] =
-            sheetRow?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
-          payloadRow["Linked Entity ID"] =
-            sheetRow?.["Linked Entity ID"] || payloadRow["Linked Entity ID"] || "";
-          payloadRow["Linked Entity Name"] =
-            sheetRow?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
+        // ✅ SUBMISSION SPEED FIX:
+        // Instead of sequential await in a for-loop, submit with controlled concurrency.
+        // This massively reduces perceived time without needing any GAS changes.
+        const CONCURRENCY = 6; // safe default; can tune later if needed
+        let doneCount = 0;
 
-          await apiPost({ action: "addLineItem", data: payloadRow });
-        }
+        await runWithConcurrency(
+          payloads,
+          async (payloadRow) => {
+            await apiPost({ action: "addLineItem", data: payloadRow });
+            doneCount += 1;
+            setSubmitProgress((prev) =>
+              prev ? { ...prev, done: doneCount } : { done: doneCount, total: payloads.length }
+            );
+          },
+          CONCURRENCY
+        );
 
+        // ✅ Close immediately once network calls are done
         setOpenAddExpense(false);
 
+        // ✅ Faster refresh (still refreshes; just not waiting 800ms)
         setTimeout(async () => {
           await loadAll();
-        }, 800);
+        }, 300);
 
         alert(
-          validItems.length === 1
+          payloads.length === 1
             ? "Line item added to existing Cost Sheet."
-            : `${validItems.length} line items added to existing Cost Sheet.`
+            : `${payloads.length} line items added to existing Cost Sheet.`
         );
         return;
       }
@@ -1216,7 +1259,7 @@ export default function CostingTable() {
 
       setTimeout(async () => {
         await loadAll();
-      }, 800);
+      }, 300);
 
       alert("New Cost Sheet created and first line item added.");
     } catch (e) {
@@ -1224,6 +1267,7 @@ export default function CostingTable() {
       alert("Failed to submit expense.");
     } finally {
       setLoading(false);
+      setSubmitProgress(null);
     }
   }
 
@@ -1281,6 +1325,12 @@ export default function CostingTable() {
               {loading ? (
                 <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
                   Loading…
+                  {submitProgress?.total ? (
+                    <span>
+                      {" "}
+                      ({submitProgress.done}/{submitProgress.total})
+                    </span>
+                  ) : null}
                 </Typography>
               ) : null}
             </Box>
@@ -1742,6 +1792,12 @@ export default function CostingTable() {
                   </Typography>
                   <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
                     Line items: {addExpenseTotals.count} | Total: ₹ {fmtINR(addExpenseTotals.total)}
+                    {submitProgress?.total ? (
+                      <span>
+                        {" "}
+                        | Submitting: {submitProgress.done}/{submitProgress.total}
+                      </span>
+                    ) : null}
                   </Typography>
                 </Paper>
               </Grid>

@@ -1421,7 +1421,7 @@ export default function CostingTable() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [drawerOpen, openAddExpense, openCreate, openExtract, openEdit, loading, activeSheet, createForm, addExpenseMode, selectedExistingSheetId, addExpenseItems]);
 
   /* ===================== Render ===================== */

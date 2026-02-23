@@ -401,6 +401,9 @@ export default function CostingTable() {
       "Linked Entity Type",
       "Linked Entity ID",
       "Linked Entity Name",
+      // ✅ ADDED (as per your updated Cost Line Items sheet)
+      "Client Name",
+      "Project Type",
     ];
   }, []);
 
@@ -605,6 +608,7 @@ export default function CostingTable() {
       "Linked Entity Type": "",
       "Linked Entity ID": "",
       "Linked Entity Name": "",
+      // keep Client Name / Project Type as user-entered (no deletions)
     }));
     setOpenCreate(true);
   }
@@ -706,6 +710,9 @@ export default function CostingTable() {
               "Linked Entity Type",
               "Linked Entity ID",
               "Linked Entity Name",
+              // ✅ ADDED fallback headers for updated sheet
+              "Client Name",
+              "Project Type",
             ];
 
       setLineItemHeaders(headers);
@@ -749,6 +756,12 @@ export default function CostingTable() {
       activeSheet?.["Linked Entity ID"] || payloadRow["Linked Entity ID"] || "";
     payloadRow["Linked Entity Name"] =
       activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
+
+    // ✅ NEW: stamp these into line item (since sheet now has these columns)
+    payloadRow["Client Name"] =
+      activeSheet?.["Client Name"] || payloadRow["Client Name"] || "";
+    payloadRow["Project Type"] =
+      activeSheet?.["Project Type"] || payloadRow["Project Type"] || "";
 
     // ensure entered by
     payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
@@ -1116,6 +1129,7 @@ export default function CostingTable() {
       "Linked Entity Type": "",
       "Linked Entity ID": "",
       "Linked Entity Name": "",
+      // keep Client Name / Project Type as user-entered (no deletions)
     }));
     setAddExpenseItems([blankDraft("")]);
     setOpenAddExpense(true);
@@ -1186,11 +1200,12 @@ export default function CostingTable() {
           "Linked Entity ID": sheetRow?.["Linked Entity ID"] || p["Linked Entity ID"] || "",
           "Linked Entity Name":
             sheetRow?.["Linked Entity Name"] || p["Linked Entity Name"] || "",
+          // ✅ NEW: pass through to line item if present in sheet
+          "Client Name": sheetRow?.["Client Name"] || p["Client Name"] || "",
+          "Project Type": sheetRow?.["Project Type"] || p["Project Type"] || "",
         }));
 
         // ✅ SUBMISSION SPEED FIX:
-        // Instead of sequential await in a for-loop, submit with controlled concurrency.
-        // This massively reduces perceived time without needing any GAS changes.
         const CONCURRENCY = 6; // safe default; can tune later if needed
         let doneCount = 0;
 
@@ -1206,10 +1221,8 @@ export default function CostingTable() {
           CONCURRENCY
         );
 
-        // ✅ Close immediately once network calls are done
         setOpenAddExpense(false);
 
-        // ✅ Faster refresh (still refreshes; just not waiting 800ms)
         setTimeout(async () => {
           await loadAll();
         }, 300);
@@ -1241,6 +1254,7 @@ export default function CostingTable() {
         Owner: createForm.Owner || loggedInName || "",
       };
 
+      // ✅ NEW: ensure first line item carries Client Name + Project Type too
       await apiPost({
         action: "createCostSheetAndAddLineItem",
         data: {
@@ -1251,6 +1265,8 @@ export default function CostingTable() {
             "Linked Entity Type": costSheetData["Linked Entity Type"],
             "Linked Entity ID": costSheetData["Linked Entity ID"],
             "Linked Entity Name": costSheetData["Linked Entity Name"],
+            "Client Name": costSheetData["Client Name"] || "",
+            "Project Type": costSheetData["Project Type"] || "",
           },
         },
       });
@@ -1301,6 +1317,112 @@ export default function CostingTable() {
     if (!picked.length) return lineItemHeaders.filter((h) => h !== "Active");
     return picked;
   }, [lineItemHeaders]);
+
+  /* ===================== ✅ Keyboard Shortcuts (no destructive overrides) ===================== */
+
+  function isEditableTarget(el) {
+    if (!el) return false;
+    const tag = String(el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const key = String(e.key || "").toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey; // meta for mac
+      const shift = e.shiftKey;
+
+      // ESC: close topmost
+      if (key === "escape") {
+        if (drawerOpen) {
+          e.preventDefault();
+          closeDrawer();
+          return;
+        }
+        if (openAddExpense) {
+          e.preventDefault();
+          setOpenAddExpense(false);
+          return;
+        }
+        if (openCreate) {
+          e.preventDefault();
+          setOpenCreate(false);
+          return;
+        }
+        if (openExtract) {
+          e.preventDefault();
+          setOpenExtract(false);
+          return;
+        }
+        if (openEdit) {
+          e.preventDefault();
+          setOpenEdit(false);
+          return;
+        }
+        return;
+      }
+
+      // Ctrl+Enter: context submit/save
+      if (ctrl && key === "enter") {
+        // allow Ctrl+Enter even in inputs
+        if (drawerOpen) {
+          e.preventDefault();
+          if (!loading) saveDrawer();
+          return;
+        }
+        if (openAddExpense) {
+          e.preventDefault();
+          if (!loading) submitAddExpense();
+          return;
+        }
+        if (openCreate) {
+          e.preventDefault();
+          if (!loading) createCostSheet();
+          return;
+        }
+        return;
+      }
+
+      // Ctrl+Shift+Enter: Save & New (Drawer only)
+      if (ctrl && shift && key === "enter") {
+        if (drawerOpen) {
+          e.preventDefault();
+          if (!loading) saveDrawerAndNew();
+          return;
+        }
+      }
+
+      // Ctrl+Shift+A: Add another expense item (Add Expense modal)
+      if (ctrl && shift && key === "a") {
+        if (openAddExpense) {
+          e.preventDefault();
+          addAnotherExpenseItem();
+          return;
+        }
+      }
+
+      // Global openers (avoid firing while typing normal text unless ctrl+shift is used)
+      if (ctrl && shift && key === "e") {
+        e.preventDefault();
+        openAddExpenseModal();
+        return;
+      }
+      if (ctrl && shift && key === "c") {
+        e.preventDefault();
+        openCreateModal();
+        return;
+      }
+
+      // If user is typing and no ctrl-based shortcut, do nothing
+      if (isEditableTarget(e.target) && !ctrl) return;
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawerOpen, openAddExpense, openCreate, openExtract, openEdit, loading, activeSheet, createForm, addExpenseMode, selectedExistingSheetId, addExpenseItems]);
 
   /* ===================== Render ===================== */
 
@@ -1375,6 +1497,10 @@ export default function CostingTable() {
               Add Cost Sheet
             </Button>
           </Box>
+
+          <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
+            Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter (Submit/Save) • Esc (Close)
+          </Typography>
         </Box>
 
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
@@ -1799,6 +1925,9 @@ export default function CostingTable() {
                       </span>
                     ) : null}
                   </Typography>
+                  <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                    Shortcuts: Ctrl+Enter (Submit) • Ctrl+Shift+A (Add Line Item) • Esc (Close)
+                  </Typography>
                 </Paper>
               </Grid>
 
@@ -1927,6 +2056,31 @@ export default function CostingTable() {
                         ))}
                       </Select>
                     </FormControl>
+                  </Grid>
+
+                  {/* ✅ ADDED: These were missing in Add Expense -> New Cost Sheet mode */}
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Client Name"
+                      value={createForm["Client Name"] || ""}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
+                      }
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Project Type"
+                      value={createForm["Project Type"] || ""}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                      }
+                    />
                   </Grid>
 
                   <Grid item xs={12}>
@@ -2482,6 +2636,12 @@ export default function CostingTable() {
                 Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
                 {activeSheet?.["Linked Entity ID"] || ""}
                 {"  "} | Owner: {activeSheet?.["Owner"] || ""}
+                {"  "} | Client: {activeSheet?.["Client Name"] || "—"}
+                {"  "} | Project Type: {activeSheet?.["Project Type"] || "—"}
+              </Typography>
+
+              <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close Drawer/Modal)
               </Typography>
             </Box>
           </DialogTitle>
@@ -2620,6 +2780,10 @@ export default function CostingTable() {
                   <CloseIcon />
                 </IconButton>
               </Box>
+
+              <Typography sx={{ fontSize: 11, opacity: 0.75, mb: 1 }}>
+                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close)
+              </Typography>
 
               <Divider sx={{ mb: 1.5 }} />
 

@@ -240,13 +240,6 @@ function computeRowTotals(row) {
   };
 }
 
-/**
- * ✅ Non-breaking validation normalizer
- * - If backend returns heads/subcategories/paymentStatus -> use as-is
- * - Otherwise fallback to common sheet-style keys
- * - If Payment Status missing, fallback to your canonical list:
- *   pending, partially paid, paid, hold/disputed
- */
 const DEFAULT_PAYMENT_STATUSES = ["pending", "partially paid", "paid", "hold/disputed"];
 
 function normalizeValidationResponse(raw) {
@@ -301,6 +294,36 @@ function safeJsonParse(s, fallback) {
   } catch {
     return fallback;
   }
+}
+
+/* ===================== ✅ NEW (NO ASSUMPTIONS): stable row key helpers ===================== */
+/**
+ * Why:
+ * - Your current backend softDelete uses (Cost Sheet ID + Particular).
+ * - If Particular duplicates / differs by spaces / empty, delete+edit can fail.
+ *
+ * What we do (non-breaking):
+ * - Always compute a client-side stable key using:
+ *    Cost Sheet ID + Entry Timestamp + Particular (as fallback)
+ * - Send BOTH particular + entryTimestamp to backend (backend may ignore extra fields safely),
+ *   and use key for optimistic UI filtering so the table immediately updates correctly.
+ */
+function normalizeTsForKey(v) {
+  if (!v) return "";
+  // Apps Script may return Date object serialized as string, or already a string.
+  // We keep it stable: try Date parse; else raw string.
+  const s = String(v);
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return String(d.getTime());
+  return s.trim();
+}
+
+function makeLineItemKey(costSheetId, item) {
+  const csid = String(costSheetId || item?.["Cost Sheet ID"] || "").trim();
+  const ts = normalizeTsForKey(item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]);
+  const part = String(item?.["Particular"] || "").trim();
+  // keep both parts; even if ts missing, part helps
+  return [csid || "-", ts || "-", part || "-"].join("|");
 }
 
 /* ===================== Component ===================== */
@@ -375,7 +398,6 @@ export default function CostingTable() {
   const [extractVisibleCols, setExtractVisibleCols] = useState({});
   const [extractColsTouched, setExtractColsTouched] = useState(false);
 
-  // This fallback list already exists in your file (from openEditModal). Reusing it to avoid assumptions.
   const fallbackLineItemHeaders = useMemo(() => {
     return [
       "Cost Sheet ID",
@@ -401,40 +423,31 @@ export default function CostingTable() {
       "Linked Entity Type",
       "Linked Entity ID",
       "Linked Entity Name",
-      // ✅ ADDED (as per your updated Cost Line Items sheet)
       "Client Name",
       "Project Type",
     ];
   }, []);
 
-  // Use real headers if we have them (from any opened sheet), else fallback headers.
   const extractAllColumns = useMemo(() => {
     const hs = Array.isArray(lineItemHeaders) && lineItemHeaders.length ? lineItemHeaders : null;
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
-  // Initialize extract column selector when modal opens (default = ALL columns checked)
   useEffect(() => {
     if (!openExtract) return;
 
     const userKey = String(loggedInName || "").trim();
     const storageKey = getExtractColsStorageKey(userKey);
 
-    // Build "all selected" default
     const allDefault = {};
     (extractAllColumns || []).forEach((c) => (allDefault[c] = true));
 
-    // Load cached map once per open
     const cached = safeJsonParse(localStorage.getItem(storageKey), null);
 
-    // If user already changed selection in this session, keep it
     setExtractVisibleCols((prev) => {
       if (extractColsTouched && prev && Object.keys(prev).length) return prev;
 
       if (cached && typeof cached === "object") {
-        // Normalize cached keys to current headers:
-        // - keep only columns that still exist
-        // - add new columns defaulting to true
         const next = { ...allDefault };
         Object.keys(next).forEach((k) => {
           if (k in cached) next[k] = cached[k] !== false;
@@ -486,14 +499,13 @@ export default function CostingTable() {
     Owner: "",
     "Linked Entity Type": "",
     "Linked Entity ID": "",
-    "Linked Entity Name": "", // store the display string
+    "Linked Entity Name": "",
     "Client Name": "",
     "Project Type": "",
     Status: "Draft",
     Notes: "",
   });
 
-  // ✅ Linked Entity search helpers (Autocomplete)
   const selectedEntityOption = useMemo(() => {
     const id = String(createForm?.["Linked Entity ID"] || "");
     if (!id) return null;
@@ -510,10 +522,8 @@ export default function CostingTable() {
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
 
-  // ✅ NEW: Multi line-items in Add Expense (at one go)
-  const [addExpenseItems, setAddExpenseItems] = useState([]); // array of drafts
+  const [addExpenseItems, setAddExpenseItems] = useState([]);
 
-  // used to prevent stale async setState
   const loadSeq = useRef(0);
 
   async function loadAll() {
@@ -550,7 +560,6 @@ export default function CostingTable() {
     loadAll();
   }, []);
 
-  // ✅ ensures validation exists before opening edit/drawer (prevents empty dropdowns)
   async function ensureValidationLoaded() {
     const hasAny =
       (validation.heads && validation.heads.length) ||
@@ -608,12 +617,10 @@ export default function CostingTable() {
       "Linked Entity Type": "",
       "Linked Entity ID": "",
       "Linked Entity Name": "",
-      // keep Client Name / Project Type as user-entered (no deletions)
     }));
     setOpenCreate(true);
   }
 
-  // ✅ Load entity dropdown when Linked Entity Type changes
   async function loadEntitiesForType(type) {
     const t = String(type || "").trim();
     if (!t) {
@@ -653,7 +660,6 @@ export default function CostingTable() {
       await apiPost({ action: "createCostSheet", data: { ...createForm } });
       setOpenCreate(false);
 
-      // slightly faster refresh — does not change behavior, only reduces wait
       setTimeout(async () => {
         await loadAll();
       }, 300);
@@ -680,12 +686,24 @@ export default function CostingTable() {
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
       );
       const arr = Array.isArray(items) ? items : [];
-      const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
-      setLineItems(activeOnly);
+
+      // ✅ FIX: Active filter is now case-insensitive and trims spaces
+      const activeOnly = arr.filter((x) => {
+        const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+        return a !== "no";
+      });
+
+      // ✅ NEW: attach stable key used for edit/delete/UI updates (non-breaking)
+      const withKeys = activeOnly.map((x) => ({
+        ...x,
+        __lineKey: makeLineItemKey(id, x),
+      }));
+
+      setLineItems(withKeys);
 
       const headers =
-        activeOnly.length
-          ? Object.keys(activeOnly[0])
+        withKeys.length
+          ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
           : [
               "Cost Sheet ID",
               "Head Name",
@@ -710,7 +728,6 @@ export default function CostingTable() {
               "Linked Entity Type",
               "Linked Entity ID",
               "Linked Entity Name",
-              // ✅ ADDED fallback headers for updated sheet
               "Client Name",
               "Project Type",
             ];
@@ -729,8 +746,17 @@ export default function CostingTable() {
       `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
     );
     const arr = Array.isArray(items) ? items : [];
-    const activeOnly = arr.filter((x) => String(x["Active"] || "Yes") !== "No");
-    setLineItems(activeOnly);
+    const activeOnly = arr.filter((x) => {
+      const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+      return a !== "no";
+    });
+
+    const withKeys = activeOnly.map((x) => ({
+      ...x,
+      __lineKey: makeLineItemKey(costSheetId, x),
+    }));
+
+    setLineItems(withKeys);
   }
 
   async function addLineItemRow(row) {
@@ -740,14 +766,13 @@ export default function CostingTable() {
     let payloadRow = { ...(row || {}) };
 
     // strip UI-only flags before POST
-    const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal"];
+    const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
     uiKeys.forEach((k) => {
       if (k in payloadRow) delete payloadRow[k];
     });
 
     payloadRow["Cost Sheet ID"] = costSheetId;
 
-    // stamp linkage fields into line items
     payloadRow["Owner"] =
       activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
     payloadRow["Linked Entity Type"] =
@@ -757,16 +782,13 @@ export default function CostingTable() {
     payloadRow["Linked Entity Name"] =
       activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
 
-    // ✅ NEW: stamp these into line item (since sheet now has these columns)
     payloadRow["Client Name"] =
       activeSheet?.["Client Name"] || payloadRow["Client Name"] || "";
     payloadRow["Project Type"] =
       activeSheet?.["Project Type"] || payloadRow["Project Type"] || "";
 
-    // ensure entered by
     payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
 
-    // compute totals (final)
     payloadRow = computeRowTotals(payloadRow);
 
     const hasSome =
@@ -784,7 +806,6 @@ export default function CostingTable() {
     try {
       await apiPost({ action: "addLineItem", data: payloadRow });
 
-      // faster refresh without changing functionality
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
       }, 250);
@@ -796,13 +817,22 @@ export default function CostingTable() {
     }
   }
 
+  /**
+   * ✅ UPDATED DELETE (non-breaking)
+   * - Uses a stable key for optimistic UI (so the row immediately disappears)
+   * - Sends BOTH particular + entryTimestamp (backend may ignore extra fields safely)
+   */
   async function softDeleteLineItem(item) {
     if (!activeSheet) return;
     const costSheetId = activeSheet["Cost Sheet ID"];
-    const particular = String(item["Particular"] || "").trim();
 
-    if (!particular) {
-      alert("Cannot delete: Particular is empty for this row.");
+    const particular = String(item?.["Particular"] || "").trim();
+    const entryTsRaw = item?.["Entry Timestamp"];
+    const entryTimestamp = String(entryTsRaw ?? "").trim(); // sent as-is (backend safe)
+    const lineKey = item?.__lineKey || makeLineItemKey(costSheetId, item);
+
+    if (!particular && !entryTimestamp) {
+      alert("Cannot delete: This row has no Particular and no Entry Timestamp.");
       return;
     }
 
@@ -810,13 +840,16 @@ export default function CostingTable() {
     try {
       await apiPost({
         action: "softDeleteLineItem",
-        data: { costSheetId, particular },
+        data: {
+          costSheetId,
+          particular, // legacy key (your current GAS uses this)
+          entryTimestamp, // extra discriminator (safe even if ignored)
+          lineKey, // extra discriminator (safe even if ignored)
+        },
       });
 
-      // Optimistic UI
-      setLineItems((p) =>
-        p.filter((x) => String(x["Particular"] || "").trim() !== particular)
-      );
+      // ✅ Optimistic UI: remove by stable key (NOT by Particular)
+      setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== lineKey));
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
@@ -824,7 +857,7 @@ export default function CostingTable() {
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
       alert(
-        "Failed to delete line item. If two rows share same Particular, delete may be ambiguous."
+        "Failed to delete line item. If two rows share the same Particular, delete can be ambiguous without Entry Timestamp support."
       );
     } finally {
       setLoading(false);
@@ -834,7 +867,7 @@ export default function CostingTable() {
   const totalsByHead = useMemo(() => {
     const out = {};
     (validation.heads || []).forEach((h) => (out[h] = 0));
-    lineItems.forEach((li) => {
+    (lineItems || []).forEach((li) => {
       const h = String(li["Head Name"] || "").trim();
       const total = safeNum(li["Total Amount"]);
       out[h] = safeNum(out[h]) + total;
@@ -855,6 +888,8 @@ export default function CostingTable() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("add"); // "add" | "edit"
+
+  // ✅ UPDATED: keep original + its stable key (for correct "edit -> delete old -> add new")
   const [drawerOriginal, setDrawerOriginal] = useState(null);
 
   const blankDraft = (headPreset) =>
@@ -875,7 +910,6 @@ export default function CostingTable() {
       "Attachment Link": "",
       "Voucher/Invoice No": "",
       "Payment Status": "",
-      // ✅ draft-only toggles
       __useAutoAmount: true,
       __useManualTotal: false,
     });
@@ -905,6 +939,8 @@ export default function CostingTable() {
 
     const headName = String(item?.["Head Name"] || "").trim();
     setDrawerMode("edit");
+
+    // ✅ keep original including stable key
     setDrawerOriginal(item || null);
 
     const pre = recomputeDraftLive({
@@ -924,9 +960,6 @@ export default function CostingTable() {
       "Attachment Link": item?.["Attachment Link"] ?? "",
       "Voucher/Invoice No": item?.["Voucher/Invoice No"] ?? "",
       "Payment Status": item?.["Payment Status"] ?? "",
-      // ✅ default behavior:
-      // - if qty/rate exists => auto is ON
-      // - else => manual total is ON if total exists and amount is empty
       __useAutoAmount: true,
       __useManualTotal:
         !(safeNum(item?.["QTY"]) > 0 && safeNum(item?.["Rate"]) > 0) &&
@@ -954,12 +987,10 @@ export default function CostingTable() {
 
       if (key === "__useAutoAmount") {
         next.__useAutoAmount = Boolean(value);
-        // if turning auto ON and qty/rate exists, amount becomes computed
         return recomputeDraftLive(next);
       }
 
       if (key === "Amount") {
-        // manual amount => auto OFF; manual total OFF (because total will compute)
         next.Amount = value;
         next.__useAutoAmount = false;
         next.__useManualTotal = false;
@@ -967,47 +998,61 @@ export default function CostingTable() {
       }
 
       if (key === "Total Amount") {
-        // only valid when qty/rate unavailable
         next["Total Amount"] = value;
         next.__useManualTotal = true;
         next.__useAutoAmount = false;
-        // amount derived from total in recompute
         return recomputeDraftLive(next);
       }
 
       next[key] = value;
 
-      // if user edits QTY / Rate, keep existing __useAutoAmount preference,
-      // but recompute (auto will engage only if qty/rate present AND __useAutoAmount true)
       if (key === "QTY" || key === "Rate") {
-        // if qty/rate becomes available, default auto ON unless user explicitly turned it OFF already
         if (next.__useAutoAmount !== false) next.__useAutoAmount = true;
-        // manual total only when qty/rate unavailable
         if (safeNum(next["QTY"]) > 0 && safeNum(next["Rate"]) > 0) {
           next.__useManualTotal = false;
         }
       }
 
-      // if GST% changes and manual total is ON, derived values update too
       return recomputeDraftLive(next);
     });
   }
 
+  /**
+   * ✅ UPDATED EDIT SAVE (non-breaking, fixes “edit adds new line but doesn’t remove old” in UI)
+   *
+   * We still use your audit-safe behavior (old row -> Active=No, new row -> append),
+   * BUT:
+   * - delete payload includes entryTimestamp + lineKey (extra discriminators)
+   * - optimistic UI removal uses stable key (not Particular)
+   */
   async function saveDrawer() {
     if (!activeSheet) return;
 
     if (drawerMode === "edit" && drawerOriginal) {
+      const costSheetId = activeSheet["Cost Sheet ID"];
       const oldParticular = String(drawerOriginal["Particular"] || "").trim();
-      if (!oldParticular) {
-        alert("Cannot edit: Original row Particular is empty, delete would be ambiguous.");
+      const oldEntryTimestamp = String(drawerOriginal?.["Entry Timestamp"] ?? "").trim();
+      const oldKey = drawerOriginal?.__lineKey || makeLineItemKey(costSheetId, drawerOriginal);
+
+      if (!oldParticular && !oldEntryTimestamp) {
+        alert("Cannot edit: Original row has no Particular and no Entry Timestamp.");
         return;
       }
+
       setLoading(true);
       try {
         await apiPost({
           action: "softDeleteLineItem",
-          data: { costSheetId: activeSheet["Cost Sheet ID"], particular: oldParticular },
+          data: {
+            costSheetId,
+            particular: oldParticular,
+            entryTimestamp: oldEntryTimestamp,
+            lineKey: oldKey,
+          },
         });
+
+        // ✅ Optimistic UI: remove old row immediately by stable key
+        setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== oldKey));
 
         await addLineItemRow(drawerDraft);
 
@@ -1015,7 +1060,7 @@ export default function CostingTable() {
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
         alert(
-          "Failed to save edit. Note: delete is by Particular, if duplicates exist it can be ambiguous."
+          "Failed to save edit. If duplicates exist (same Particular), ensure backend supports Entry Timestamp matching for precise deletes."
         );
       } finally {
         setLoading(false);
@@ -1051,7 +1096,6 @@ export default function CostingTable() {
       const next = [...prev];
       const cur = next[index] ? { ...next[index] } : blankDraft("");
 
-      // maintain same logic as drawer
       if (key === "__useAutoAmount") {
         const updated = { ...cur, __useAutoAmount: Boolean(value) };
         updated.__useManualTotal = false;
@@ -1116,8 +1160,6 @@ export default function CostingTable() {
     };
   }, [addExpenseItems]);
 
-  /* ===================== ✅ NEW: ADD EXPENSE open ===================== */
-
   function openAddExpenseModal() {
     setAddExpenseMode("existing");
     setSelectedExistingSheetId("");
@@ -1129,13 +1171,10 @@ export default function CostingTable() {
       "Linked Entity Type": "",
       "Linked Entity ID": "",
       "Linked Entity Name": "",
-      // keep Client Name / Project Type as user-entered (no deletions)
     }));
     setAddExpenseItems([blankDraft("")]);
     setOpenAddExpense(true);
   }
-
-  /* ===================== ✅ NEW: SUBMIT ADD EXPENSE (FASTER) ===================== */
 
   async function submitAddExpense() {
     await ensureValidationLoaded();
@@ -1149,8 +1188,7 @@ export default function CostingTable() {
     const cleanedItems = items.map((it) => {
       let payloadRow = { ...(it || {}) };
 
-      // strip UI-only flags before POST
-      const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal"];
+      const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
       uiKeys.forEach((k) => {
         if (k in payloadRow) delete payloadRow[k];
       });
@@ -1190,7 +1228,6 @@ export default function CostingTable() {
           (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
         );
 
-        // ✅ Build final payloads first (no repeated work in loop)
         const payloads = validItems.map((p) => ({
           ...p,
           "Cost Sheet ID": selectedExistingSheetId,
@@ -1200,13 +1237,11 @@ export default function CostingTable() {
           "Linked Entity ID": sheetRow?.["Linked Entity ID"] || p["Linked Entity ID"] || "",
           "Linked Entity Name":
             sheetRow?.["Linked Entity Name"] || p["Linked Entity Name"] || "",
-          // ✅ NEW: pass through to line item if present in sheet
           "Client Name": sheetRow?.["Client Name"] || p["Client Name"] || "",
           "Project Type": sheetRow?.["Project Type"] || p["Project Type"] || "",
         }));
 
-        // ✅ SUBMISSION SPEED FIX:
-        const CONCURRENCY = 6; // safe default; can tune later if needed
+        const CONCURRENCY = 6;
         let doneCount = 0;
 
         await runWithConcurrency(
@@ -1235,7 +1270,6 @@ export default function CostingTable() {
         return;
       }
 
-      // addExpenseMode === "new"
       if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
         alert("Please select Linked Entity Type and Linked Entity Name for the new Cost Sheet.");
         return;
@@ -1254,7 +1288,6 @@ export default function CostingTable() {
         Owner: createForm.Owner || loggedInName || "",
       };
 
-      // ✅ NEW: ensure first line item carries Client Name + Project Type too
       await apiPost({
         action: "createCostSheetAndAddLineItem",
         data: {
@@ -1331,10 +1364,9 @@ export default function CostingTable() {
   useEffect(() => {
     const onKeyDown = (e) => {
       const key = String(e.key || "").toLowerCase();
-      const ctrl = e.ctrlKey || e.metaKey; // meta for mac
+      const ctrl = e.ctrlKey || e.metaKey;
       const shift = e.shiftKey;
 
-      // ESC: close topmost
       if (key === "escape") {
         if (drawerOpen) {
           e.preventDefault();
@@ -1364,9 +1396,7 @@ export default function CostingTable() {
         return;
       }
 
-      // Ctrl+Enter: context submit/save
       if (ctrl && key === "enter") {
-        // allow Ctrl+Enter even in inputs
         if (drawerOpen) {
           e.preventDefault();
           if (!loading) saveDrawer();
@@ -1385,7 +1415,6 @@ export default function CostingTable() {
         return;
       }
 
-      // Ctrl+Shift+Enter: Save & New (Drawer only)
       if (ctrl && shift && key === "enter") {
         if (drawerOpen) {
           e.preventDefault();
@@ -1394,7 +1423,6 @@ export default function CostingTable() {
         }
       }
 
-      // Ctrl+Shift+A: Add another expense item (Add Expense modal)
       if (ctrl && shift && key === "a") {
         if (openAddExpense) {
           e.preventDefault();
@@ -1403,7 +1431,6 @@ export default function CostingTable() {
         }
       }
 
-      // Global openers (avoid firing while typing normal text unless ctrl+shift is used)
       if (ctrl && shift && key === "e") {
         e.preventDefault();
         openAddExpenseModal();
@@ -1415,7 +1442,6 @@ export default function CostingTable() {
         return;
       }
 
-      // If user is typing and no ctrl-based shortcut, do nothing
       if (isEditableTarget(e.target) && !ctrl) return;
     };
 
@@ -1433,6 +1459,9 @@ export default function CostingTable() {
     addExpenseMode,
     selectedExistingSheetId,
     addExpenseItems,
+    drawerMode,
+    drawerOriginal,
+    drawerDraft,
   ]);
 
   /* ===================== Render ===================== */
@@ -1881,7 +1910,12 @@ export default function CostingTable() {
         </Dialog>
 
         {/* ================= ✅ ADD EXPENSE MODAL ================= */}
-        <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
+        <Dialog
+          open={openAddExpense}
+          onClose={() => setOpenAddExpense(false)}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -2002,7 +2036,6 @@ export default function CostingTable() {
                     </FormControl>
                   </Grid>
 
-                  {/* ✅ Linked Entity Search (Autocomplete) */}
                   <Grid item xs={12} md={6}>
                     <Autocomplete
                       size="small"
@@ -2055,14 +2088,15 @@ export default function CostingTable() {
                     </FormControl>
                   </Grid>
 
-                  {/* ✅ ADDED: These were missing in Add Expense -> New Cost Sheet mode */}
                   <Grid item xs={12} md={6}>
                     <TextField
                       fullWidth
                       size="small"
                       label="Client Name"
                       value={createForm["Client Name"] || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
+                      }
                     />
                   </Grid>
 
@@ -2072,7 +2106,9 @@ export default function CostingTable() {
                       size="small"
                       label="Project Type"
                       value={createForm["Project Type"] || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                      }
                     />
                   </Grid>
 
@@ -2170,7 +2206,9 @@ export default function CostingTable() {
                               <Select
                                 label="Head Name"
                                 value={it?.["Head Name"] || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Head Name", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Head Name", e.target.value)
+                                }
                               >
                                 {(validation.heads || []).map((h) => (
                                   <MenuItem key={h} value={h}>
@@ -2192,7 +2230,9 @@ export default function CostingTable() {
                               <Select
                                 label="Subcategory"
                                 value={it?.Subcategory || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Subcategory", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Subcategory", e.target.value)
+                                }
                               >
                                 {subcatsForHead(it?.["Head Name"] || "").map((s) => (
                                   <MenuItem key={s} value={s}>
@@ -2216,7 +2256,9 @@ export default function CostingTable() {
                               type="date"
                               InputLabelProps={{ shrink: true }}
                               value={it?.["Expense Date"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Expense Date", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2226,18 +2268,15 @@ export default function CostingTable() {
                               <Select
                                 label="Payment Status"
                                 value={it?.["Payment Status"] || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Payment Status", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Payment Status", e.target.value)
+                                }
                               >
                                 {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
                                   <MenuItem key={s} value={s}>
                                     {s}
                                   </MenuItem>
                                 ))}
-                                {!validation.paymentStatus?.length ? (
-                                  <MenuItem value="" disabled>
-                                    No payment statuses
-                                  </MenuItem>
-                                ) : null}
                               </Select>
                             </FormControl>
                           </Grid>
@@ -2248,7 +2287,9 @@ export default function CostingTable() {
                               size="small"
                               label="Particular"
                               value={it?.Particular || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Particular", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Particular", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2258,13 +2299,14 @@ export default function CostingTable() {
                               size="small"
                               label="Details"
                               value={it?.Details || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Details", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Details", e.target.value)
+                              }
                               multiline
                               minRows={2}
                             />
                           </Grid>
 
-                          {/* ✅ Same row alignment as Drawer */}
                           <Grid item xs={4}>
                             <TextField
                               fullWidth
@@ -2289,11 +2331,12 @@ export default function CostingTable() {
                               size="small"
                               label="GST %"
                               value={it?.["GST %"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "GST %", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "GST %", e.target.value)
+                              }
                             />
                           </Grid>
 
-                          {/* ✅ Use Auto (aligned) */}
                           <Grid item xs={12}>
                             <FormControlLabel
                               control={
@@ -2306,7 +2349,11 @@ export default function CostingTable() {
                                   }
                                 />
                               }
-                              label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
+                              label={
+                                <Typography sx={{ fontSize: 12 }}>
+                                  Use Auto Amount (QTY × Rate)
+                                </Typography>
+                              }
                             />
                           </Grid>
 
@@ -2345,7 +2392,9 @@ export default function CostingTable() {
                               size="small"
                               label="Total Amount"
                               value={it?.["Total Amount"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Total Amount", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Total Amount", e.target.value)
+                              }
                               InputProps={{
                                 readOnly: !canManualTotal,
                               }}
@@ -2363,7 +2412,9 @@ export default function CostingTable() {
                               size="small"
                               label="Attachment Link"
                               value={it?.["Attachment Link"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Attachment Link", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Attachment Link", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2442,7 +2493,6 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              {/* ✅ Linked Entity Search (Autocomplete) */}
               <Grid item xs={12} md={6}>
                 <Autocomplete
                   size="small"
@@ -2655,8 +2705,8 @@ export default function CostingTable() {
                   </TableHead>
 
                   <TableBody>
-                    {lineItems.map((it, idx) => (
-                      <TableRow key={idx} hover>
+                    {(lineItems || []).map((it, idx) => (
+                      <TableRow key={it.__lineKey || idx} hover>
                         {lineItemCols.map((c) => (
                           <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
                             {String(it[c] ?? "")}
@@ -2664,7 +2714,7 @@ export default function CostingTable() {
                         ))}
                         <TableCell sx={{ whiteSpace: "nowrap" }}>
                           <IconButton
-                            title="Edit (will soft-delete old row and append updated row)"
+                            title="Edit (will mark old row inactive and append updated row)"
                             onClick={() => openDrawerEdit(it)}
                             disabled={loading}
                           >
@@ -2684,7 +2734,10 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell
+                          colSpan={lineItemCols.length + 1}
+                          sx={{ fontSize: 12, opacity: 0.7 }}
+                        >
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -2710,7 +2763,14 @@ export default function CostingTable() {
                 },
               }}
             >
-              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1,
+                }}
+              >
                 <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
                   {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
                 </Typography>
@@ -2800,11 +2860,6 @@ export default function CostingTable() {
                         {s}
                       </MenuItem>
                     ))}
-                    {!validation.paymentStatus?.length ? (
-                      <MenuItem value="" disabled>
-                        No payment statuses
-                      </MenuItem>
-                    ) : null}
                   </Select>
                 </FormControl>
 
@@ -2855,7 +2910,6 @@ export default function CostingTable() {
                     />
                   </Grid>
 
-                  {/* ✅ Use Auto (aligned + does not remove dropdowns) */}
                   <Grid item xs={12}>
                     <FormControlLabel
                       control={
@@ -2866,7 +2920,9 @@ export default function CostingTable() {
                           onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
                         />
                       }
-                      label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
+                      label={
+                        <Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>
+                      }
                     />
                   </Grid>
 
@@ -2967,7 +3023,7 @@ export default function CostingTable() {
 
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
+                    Note: Edit marks the old row inactive and appends the updated row (audit-safe). The UI now removes the old row using a stable key to avoid duplicates.
                   </Typography>
                 ) : null}
               </Box>

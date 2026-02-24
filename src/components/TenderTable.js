@@ -34,6 +34,15 @@ const selectorStyle = {
   fontSize: 8
 };
 
+// ✅ ADDED: small table styling for logs (simple + readable)
+const logTableSx = {
+  '& .MuiTableCell-root': {
+    fontSize: 9,
+    padding: '6px 8px',
+    verticalAlign: 'top'
+  }
+};
+
 const TenderTable = () => {
   const { user } = useAuth();
   const [allTenders, setAllTenders] = useState([]);
@@ -82,11 +91,11 @@ const TenderTable = () => {
           JSON.parse(localStorage.getItem(`visibleColumns-${user.username}-tenders`)) ||
           (deduped.length ? Object.keys(deduped[0]) : [])
         );
-        setLoading(false); // ✅ ADD THIS HERE
+        setLoading(false);
       })
       .catch(err => {
         console.error('❌ Tender data fetch error:', err);
-        setLoading(false); // ✅ Ensure loading is cleared on error too
+        setLoading(false);
       });
 
     fetch(dataUrl + '?action=dropdowns')
@@ -95,7 +104,7 @@ const TenderTable = () => {
       .catch(err => console.error('❌ Dropdown fetch error:', err));
   }, [user.username, user.role]);
 
-  // ✅ ADDED: missing handler (your code calls handleFilterChange but it wasn't defined)
+  // ✅ missing handler (your code calls handleFilterChange but it wasn't defined)
   const handleFilterChange = (filterKey, value) => {
     setFilters(prev => {
       if (filterKey === 'Tender Status') return { ...prev, status: value };
@@ -113,7 +122,7 @@ const TenderTable = () => {
     });
   };
 
-  // ✅ ADDED: log column toggle
+  // ✅ log column toggle
   const handleLogColumnToggle = (col) => {
     setLogVisibleColumns(prev => {
       const updated = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
@@ -122,22 +131,70 @@ const TenderTable = () => {
     });
   };
 
-  // ✅ ADDED: detect date fields
+  // ✅ detect date fields
   const isDateField = (fieldName) => /date/i.test(fieldName);
 
-  // ✅ ADDED: safe timestamp formatter (frontend-only)
-  const formatTimestamp = (ts) => {
-    if (!ts) return '';
-    const d = new Date(ts);
-    if (!isNaN(d)) {
-      return d.toLocaleString('en-GB', {
-        day: '2-digit', month: 'short', year: 'numeric',
-        hour: '2-digit', minute: '2-digit',
-        hour12: false
-      });
+  // ✅ UPDATED: One formatter for all cell values (fixes ISO date strings too)
+  const formatValue = (key, value) => {
+    if (value === null || value === undefined) return '';
+
+    // If GAS returns Date objects (rare in JSON), handle
+    if (Object.prototype.toString.call(value) === '[object Date]') {
+      const d = new Date(value);
+      if (!isNaN(d)) {
+        if (key === 'Timestamp') {
+          return d.toLocaleString('en-GB', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false });
+        }
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
     }
-    // fallback: show original if not parseable
-    return ts;
+
+    const str = String(value).trim();
+    if (!str) return '';
+
+    // Timestamp: prefer date+time
+    if (key === 'Timestamp') {
+      const d = new Date(str);
+      if (!isNaN(d)) {
+        return d.toLocaleString('en-GB', {
+          day: '2-digit', month: 'short', year: 'numeric',
+          hour: '2-digit', minute: '2-digit',
+          hour12: false
+        });
+      }
+      return str;
+    }
+
+    // ISO date string like 2025-07-10T18:30:00.000Z
+    if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/.test(str)) {
+      const d = new Date(str);
+      if (!isNaN(d)) {
+        return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+
+    // If the column name looks like a date field, try to parse more aggressively
+    if (isDateField(key)) {
+      // dd/MM/yyyy (your standard)
+      if (/^\d{2}\/\d{2}\/\d{4}$/.test(str)) {
+        const d = dayjs(str, 'DD/MM/YYYY', true);
+        if (d.isValid()) return d.format('DD MMM YYYY');
+      }
+
+      // yyyy-MM-dd (common)
+      if (/^\d{4}-\d{2}-\d{2}$/.test(str)) {
+        const d = dayjs(str, 'YYYY-MM-DD', true);
+        if (d.isValid()) return d.format('DD MMM YYYY');
+      }
+
+      // try Date constructor
+      const d2 = new Date(str);
+      if (!isNaN(d2)) {
+        return d2.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
+      }
+    }
+
+    return str;
   };
 
   const filteredTenders = tenders.filter(row => {
@@ -170,7 +227,7 @@ const TenderTable = () => {
     }
   };
 
-  // ✅ UPDATED: logs now compute columns & sort
+  // logs compute columns & sort
   const handleViewLogs = (row) => {
     const key = row['Bid Number'];
     const logs = allTenders
@@ -180,7 +237,6 @@ const TenderTable = () => {
 
     setTenderLogs(logs);
 
-    // Default log visible columns (persisted), else show all keys from the latest row
     const allCols = logs.length ? Object.keys(logs[logs.length - 1]) : [];
     const saved = JSON.parse(localStorage.getItem(`logVisibleColumns-${user.username}-tenders`));
     setLogVisibleColumns(saved || allCols);
@@ -194,15 +250,15 @@ const TenderTable = () => {
     setEditRow(prev => ({ ...prev, [name]: value }));
   };
 
-  // ✅ ADDED: date picker handler for edit modal
+  // date picker handler for edit modal
   const handleEditDateChange = (field, newValue) => {
     const formatted = newValue ? dayjs(newValue).format('DD/MM/YYYY') : '';
     setEditRow(prev => ({ ...prev, [field]: formatted }));
   };
 
-  // ✅ ADDED: compute per-row changed fields vs previous row
+  // compute per-row changed fields vs previous row
   const computeChanges = (prevRow, currRow, cols) => {
-    if (!prevRow) return cols; // first entry: treat as all fields (or show all)
+    if (!prevRow) return cols;
     return cols.filter((col) => {
       const a = (prevRow?.[col] ?? '').toString();
       const b = (currRow?.[col] ?? '').toString();
@@ -214,7 +270,6 @@ const TenderTable = () => {
 
   return (
     <ThemeProvider theme={theme}>
-      {/* ✅ ADDED: LocalizationProvider for date pickers in Edit Modal */}
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <Box p={4}>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
@@ -305,8 +360,7 @@ const TenderTable = () => {
                 <TableRow key={index}>
                   {visibleColumns.map((key, i) => (
                     <TableCell key={i}>
-                      {/* ✅ OPTIONAL display upgrade: pretty timestamp in table without breaking stored data */}
-                      {key === 'Timestamp' ? formatTimestamp(row[key]) : row[key]}
+                      {formatValue(key, row[key])}
                     </TableCell>
                   ))}
                   <TableCell>
@@ -330,7 +384,7 @@ const TenderTable = () => {
                       fullWidth
                       size="small"
                       label={key}
-                      value={key === 'Timestamp' ? formatTimestamp(value) : value}
+                      value={formatValue(key, value)}
                       InputProps={{ readOnly: true }}
                     />
                   </Grid>
@@ -341,13 +395,12 @@ const TenderTable = () => {
 
           {/* View Logs */}
           <Dialog open={logsOpen} onClose={() => setLogsOpen(false)} maxWidth="xl" fullWidth>
-            <DialogTitle>
-              Tender Logs
-            </DialogTitle>
+            <DialogTitle>Tender Logs</DialogTitle>
             <DialogContent dividers>
-              {/* ✅ Controls: show changes only + log column selector */}
-              <Box display="flex" alignItems="center" justifyContent="space-between" mb={2} flexWrap="wrap" gap={1}>
+              {/* Controls */}
+              <Box display="flex" alignItems="center" justifyContent="space-between" mb={1.5} flexWrap="wrap" gap={1}>
                 <FormControlLabel
+                  sx={{ m: 0 }}
                   control={
                     <Checkbox
                       checked={showOnlyChanges}
@@ -355,71 +408,68 @@ const TenderTable = () => {
                       size="small"
                     />
                   }
-                  label="Show only changed fields"
+                  label={<Typography sx={{ fontSize: 10 }}>Show only changed fields</Typography>}
                 />
 
-                <Box display="flex" alignItems="center" gap={1}>
-                  <Button
-                    size="small"
-                    startIcon={<ViewColumnIcon />}
-                    onClick={(e) => setLogColAnchorEl(e.currentTarget)}
-                    variant="outlined"
-                  >
-                    Columns
-                  </Button>
+                <Button
+                  size="small"
+                  startIcon={<ViewColumnIcon />}
+                  onClick={(e) => setLogColAnchorEl(e.currentTarget)}
+                  variant="outlined"
+                  sx={{ fontSize: 10 }}
+                >
+                  Columns
+                </Button>
 
-                  <Popover
-                    open={Boolean(logColAnchorEl)}
-                    anchorEl={logColAnchorEl}
-                    onClose={() => setLogColAnchorEl(null)}
-                  >
-                    <Box padding={2} sx={selectorStyle} minWidth={260}>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          const cols = tenderLogs.length ? Object.keys(tenderLogs[tenderLogs.length - 1]) : [];
-                          setLogVisibleColumns(cols);
-                          localStorage.setItem(`logVisibleColumns-${user.username}-tenders`, JSON.stringify(cols));
-                        }}
-                      >
-                        Select All
-                      </Button>
-                      <Button
-                        size="small"
-                        onClick={() => {
-                          setLogVisibleColumns([]);
-                          localStorage.setItem(`logVisibleColumns-${user.username}-tenders`, JSON.stringify([]));
-                        }}
-                      >
-                        Deselect All
-                      </Button>
+                <Popover
+                  open={Boolean(logColAnchorEl)}
+                  anchorEl={logColAnchorEl}
+                  onClose={() => setLogColAnchorEl(null)}
+                >
+                  <Box padding={2} sx={selectorStyle} minWidth={260}>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        const cols = tenderLogs.length ? Object.keys(tenderLogs[tenderLogs.length - 1]) : [];
+                        setLogVisibleColumns(cols);
+                        localStorage.setItem(`logVisibleColumns-${user.username}-tenders`, JSON.stringify(cols));
+                      }}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => {
+                        setLogVisibleColumns([]);
+                        localStorage.setItem(`logVisibleColumns-${user.username}-tenders`, JSON.stringify([]));
+                      }}
+                    >
+                      Deselect All
+                    </Button>
 
-                      {(tenderLogs.length ? Object.keys(tenderLogs[tenderLogs.length - 1]) : []).map(col => (
-                        <Box key={col}>
-                          <Checkbox
-                            size="small"
-                            checked={logVisibleColumns.includes(col)}
-                            onChange={() => handleLogColumnToggle(col)}
-                          /> {col}
-                        </Box>
-                      ))}
-                    </Box>
-                  </Popover>
-                </Box>
+                    {(tenderLogs.length ? Object.keys(tenderLogs[tenderLogs.length - 1]) : []).map(col => (
+                      <Box key={col}>
+                        <Checkbox
+                          size="small"
+                          checked={logVisibleColumns.includes(col)}
+                          onChange={() => handleLogColumnToggle(col)}
+                        /> {col}
+                      </Box>
+                    ))}
+                  </Box>
+                </Popover>
               </Box>
 
-              {/* ✅ Full logs table with diff */}
-              <Table size="small">
+              {/* Full logs table with simple diff (no bold everywhere) */}
+              <Table size="small" sx={logTableSx}>
                 <TableHead>
-                  <TableRow style={{ backgroundColor: '#f0f4ff' }}>
-                    {/* Always include a version index */}
+                  <TableRow style={{ backgroundColor: '#f7f9ff' }}>
                     <TableCell sx={{ fontWeight: 700 }}>Version</TableCell>
                     {logVisibleColumns.map(col => (
                       <TableCell key={col} sx={{ fontWeight: 700 }}>
                         {col}
                       </TableCell>
                     ))}
-                    {/* Optional: show changed fields list */}
                     <TableCell sx={{ fontWeight: 700 }}>Changed Fields</TableCell>
                   </TableRow>
                 </TableHead>
@@ -431,26 +481,33 @@ const TenderTable = () => {
 
                     return (
                       <TableRow key={idx}>
-                        <TableCell>{idx + 1}</TableCell>
+                        <TableCell sx={{ fontSize: 9 }}>{idx + 1}</TableCell>
 
                         {logVisibleColumns.map(col => {
                           const isChanged = changedCols.includes(col);
-                          const value = col === 'Timestamp' ? formatTimestamp(log[col]) : log[col];
+                          const value = formatValue(col, log[col]);
 
-                          // If showOnlyChanges is ON, blank out unchanged fields (but keep column structure)
+                          // If showOnlyChanges is ON, blank out unchanged fields (but keep columns)
                           const displayValue = showOnlyChanges && prev && !isChanged ? '' : (value ?? '');
 
                           return (
                             <TableCell
                               key={col}
-                              sx={isChanged ? { fontWeight: 700, borderLeft: '3px solid #6495ED' } : undefined}
+                              sx={
+                                isChanged
+                                  ? {
+                                      borderLeft: '3px solid #6495ED',
+                                      backgroundColor: '#f0f6ff' // subtle highlight, no bold
+                                    }
+                                  : undefined
+                              }
                             >
                               {displayValue}
                             </TableCell>
                           );
                         })}
 
-                        <TableCell>
+                        <TableCell sx={{ fontSize: 9 }}>
                           {prev ? changedCols.join(', ') : 'Initial Entry'}
                         </TableCell>
                       </TableRow>
@@ -483,7 +540,6 @@ const TenderTable = () => {
                         </Select>
                       </FormControl>
                     ) : isDateField(key) ? (
-                      // ✅ ADDED: Date picker for any key containing "date"
                       <DatePicker
                         label={key}
                         value={editRow[key] ? dayjs(editRow[key], 'DD/MM/YYYY') : null}
@@ -523,5 +579,3 @@ const TenderTable = () => {
 };
 
 export default TenderTable;
-
-                      

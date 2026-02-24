@@ -320,10 +320,70 @@ function normalizeTsForKey(v) {
 
 function makeLineItemKey(costSheetId, item) {
   const csid = String(costSheetId || item?.["Cost Sheet ID"] || "").trim();
-  const ts = normalizeTsForKey(item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]);
+  const ts = normalizeTsForKey(
+    item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]
+  );
   const part = String(item?.["Particular"] || "").trim();
   // keep both parts; even if ts missing, part helps
   return [csid || "-", ts || "-", part || "-"].join("|");
+}
+
+/* ===================== ✅ NEW: Refresh recalculation helpers ===================== */
+
+function findFirstExistingKey(obj, candidates = []) {
+  if (!obj) return null;
+  const keys = Object.keys(obj);
+  // exact match first
+  for (const c of candidates) {
+    if (c in obj) return c;
+  }
+  // case-insensitive fallback
+  const lowerMap = new Map(keys.map((k) => [String(k).toLowerCase(), k]));
+  for (const c of candidates) {
+    const hit = lowerMap.get(String(c).toLowerCase());
+    if (hit) return hit;
+  }
+  return null;
+}
+
+function aggregateCostSheetLineItems(items) {
+  const byHead = {};
+  let grand = 0;
+
+  (items || []).forEach((li) => {
+    const head = String(li?.["Head Name"] || "").trim();
+    const total = safeNum(li?.["Total Amount"]);
+    if (!head) return;
+
+    byHead[head] = safeNum(byHead[head]) + total;
+    grand += total;
+  });
+
+  return { byHead, grand };
+}
+
+function applyAggregatesToCostSheetRow(row, validationHeads, agg) {
+  const next = { ...row };
+  const heads = Array.isArray(validationHeads) ? validationHeads : [];
+
+  // ✅ Only overwrite head columns that ALREADY exist on the cost sheet row
+  heads.forEach((h) => {
+    if (h in next) next[h] = agg.byHead?.[h] ? fmtINR(agg.byHead[h]) : fmtINR(0);
+  });
+
+  // ✅ Try to populate an existing "grand total" column if it exists
+  const grandKey = findFirstExistingKey(next, [
+    "Grand Total",
+    "Grand Total Amount",
+    "Total",
+    "Total Amount",
+    "Total (₹)",
+    "Grand Total (₹)",
+  ]);
+
+  if (grandKey) next[grandKey] = fmtINR(agg.grand || 0);
+
+  return next;
 }
 
 /* ===================== Component ===================== */
@@ -384,6 +444,7 @@ export default function CostingTable() {
   // ===== Extraction =====
   const [openExtract, setOpenExtract] = useState(false);
   const [extractForm, setExtractForm] = useState({
+    costSheetId: "", // ✅ NEW (existing cost sheet selector)
     entityType: "",
     linkedEntityId: "",
     particular: "",
@@ -429,7 +490,8 @@ export default function CostingTable() {
   }, []);
 
   const extractAllColumns = useMemo(() => {
-    const hs = Array.isArray(lineItemHeaders) && lineItemHeaders.length ? lineItemHeaders : null;
+    const hs =
+      Array.isArray(lineItemHeaders) && lineItemHeaders.length ? lineItemHeaders : null;
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
@@ -473,10 +535,31 @@ export default function CostingTable() {
   }, [extractVisibleCols]);
 
   function triggerExtraction() {
+    // ✅ If a Cost Sheet is selected, ignore entity/date filters automatically
+    const isSheetMode = String(extractForm.costSheetId || "").trim();
+
     const baseParams = {
       action: "exportCosting",
+      ...(isSheetMode
+        ? { costSheetId: extractForm.costSheetId }
+        : Object.fromEntries(
+            Object.entries({
+              entityType: extractForm.entityType,
+              linkedEntityId: extractForm.linkedEntityId,
+              particular: extractForm.particular,
+              paymentStatus: extractForm.paymentStatus,
+              from: extractForm.from,
+              to: extractForm.to,
+              format: extractForm.format,
+            }).filter(([_, v]) => String(v || "").trim())
+          )),
+      // Always allow these even in sheet mode
       ...Object.fromEntries(
-        Object.entries(extractForm).filter(([_, v]) => String(v || "").trim())
+        Object.entries({
+          particular: extractForm.particular,
+          paymentStatus: extractForm.paymentStatus,
+          format: extractForm.format,
+        }).filter(([_, v]) => String(v || "").trim())
       ),
     };
 
@@ -551,6 +634,87 @@ export default function CostingTable() {
     } catch (e) {
       console.error("COSTING_LOAD_ERROR", e);
       alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+    } finally {
+      if (seq === loadSeq.current) setLoading(false);
+    }
+  }
+
+  /* ===================== ✅ NEW: Refresh + Recalculate totals from line items ===================== */
+
+  async function refreshAndRecalculate() {
+    const seq = ++loadSeq.current;
+    setLoading(true);
+
+    try {
+      // 1) load validation + cost sheets
+      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+      if (seq !== loadSeq.current) return;
+
+      const parsed = normalizeValidationResponse(rawV);
+      setValidation(parsed);
+
+      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
+      if (seq !== loadSeq.current) return;
+
+      const arr = Array.isArray(sheets) ? sheets : [];
+
+      if (!arr.length) {
+        setCostSheets([]);
+        return;
+      }
+
+      // 2) compute aggregates for each cost sheet by fetching its line items
+      const heads = parsed?.heads || validation?.heads || [];
+      const aggregatesById = {}; // { [Cost Sheet ID]: { byHead, grand } }
+
+      const CONCURRENCY = 6;
+
+      await runWithConcurrency(
+        arr,
+        async (sheetRow) => {
+          const id = sheetRow?.["Cost Sheet ID"];
+          if (!id) return;
+
+          try {
+            const items = await jsonpGet(
+              `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
+            );
+
+            const rows = Array.isArray(items) ? items : [];
+            const activeOnly = rows.filter((x) => {
+              const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+              return a !== "no";
+            });
+
+            aggregatesById[String(id)] = aggregateCostSheetLineItems(activeOnly);
+          } catch (e) {
+            console.error("REFRESH_RECALC_SHEET_ERROR", id, e);
+            aggregatesById[String(id)] = { byHead: {}, grand: 0 };
+          }
+        },
+        CONCURRENCY
+      );
+
+      if (seq !== loadSeq.current) return;
+
+      // 3) apply aggregates only into existing columns (no assumptions)
+      const recalced = arr.map((r) => {
+        const id = String(r?.["Cost Sheet ID"] || "");
+        const agg = aggregatesById[id] || { byHead: {}, grand: 0 };
+        return applyAggregatesToCostSheetRow(r, heads, agg);
+      });
+
+      setCostSheets(recalced);
+
+      if (recalced.length) {
+        const keys = Object.keys(recalced[0]);
+        const initial = {};
+        keys.forEach((k) => (initial[k] = true));
+        setVisibleCols(initial);
+      }
+    } catch (e) {
+      console.error("REFRESH_RECALC_ERROR", e);
+      alert("Failed to refresh + recalculate (JSONP). Check deployed URL and permissions.");
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -701,36 +865,35 @@ export default function CostingTable() {
 
       setLineItems(withKeys);
 
-      const headers =
-        withKeys.length
-          ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
-          : [
-              "Cost Sheet ID",
-              "Head Name",
-              "Subcategory",
-              "Expense Date",
-              "Entry Timestamp",
-              "Entered By",
-              "Entry Tag",
-              "Particular",
-              "Details",
-              "QTY",
-              "Rate",
-              "Amount",
-              "GST %",
-              "GST Amount",
-              "Total Amount",
-              "Attachment Link",
-              "Voucher/Invoice No",
-              "Payment Status",
-              "Active",
-              "Owner",
-              "Linked Entity Type",
-              "Linked Entity ID",
-              "Linked Entity Name",
-              "Client Name",
-              "Project Type",
-            ];
+      const headers = withKeys.length
+        ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
+        : [
+            "Cost Sheet ID",
+            "Head Name",
+            "Subcategory",
+            "Expense Date",
+            "Entry Timestamp",
+            "Entered By",
+            "Entry Tag",
+            "Particular",
+            "Details",
+            "QTY",
+            "Rate",
+            "Amount",
+            "GST %",
+            "GST Amount",
+            "Total Amount",
+            "Attachment Link",
+            "Voucher/Invoice No",
+            "Payment Status",
+            "Active",
+            "Owner",
+            "Linked Entity Type",
+            "Linked Entity ID",
+            "Linked Entity Name",
+            "Client Name",
+            "Project Type",
+          ];
 
       setLineItemHeaders(headers);
     } catch (e) {
@@ -773,8 +936,7 @@ export default function CostingTable() {
 
     payloadRow["Cost Sheet ID"] = costSheetId;
 
-    payloadRow["Owner"] =
-      activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+    payloadRow["Owner"] = activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
     payloadRow["Linked Entity Type"] =
       activeSheet?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
     payloadRow["Linked Entity ID"] =
@@ -782,8 +944,7 @@ export default function CostingTable() {
     payloadRow["Linked Entity Name"] =
       activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
 
-    payloadRow["Client Name"] =
-      activeSheet?.["Client Name"] || payloadRow["Client Name"] || "";
+    payloadRow["Client Name"] = activeSheet?.["Client Name"] || payloadRow["Client Name"] || "";
     payloadRow["Project Type"] =
       activeSheet?.["Project Type"] || payloadRow["Project Type"] || "";
 
@@ -1502,7 +1663,7 @@ export default function CostingTable() {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={loadAll}
+              onClick={refreshAndRecalculate}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Refresh
@@ -1688,9 +1849,7 @@ export default function CostingTable() {
                     }}
                   >
                     <Box>
-                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                        Columns to Export
-                      </Typography>
+                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Columns to Export</Typography>
                       <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
                         Selected:{" "}
                         {selectedExtractFields.length
@@ -1725,9 +1884,7 @@ export default function CostingTable() {
                           mb: 1,
                         }}
                       >
-                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                          Export Columns
-                        </Typography>
+                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Export Columns</Typography>
 
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button
@@ -1794,47 +1951,99 @@ export default function CostingTable() {
                 </Paper>
               </Grid>
 
+              {/* ✅ NEW: Existing Cost Sheet selector (replaces linked entity for extract usage) */}
               <Grid item xs={12}>
                 <FormControl fullWidth size="small">
-                  <InputLabel>Linked Entity Type</InputLabel>
+                  <InputLabel>Existing Cost Sheet</InputLabel>
                   <Select
-                    label="Linked Entity Type"
-                    value={extractForm.entityType}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, entityType: e.target.value }))
-                    }
+                    label="Existing Cost Sheet"
+                    value={extractForm.costSheetId || ""}
+                    onChange={(e) => {
+                      const val = e.target.value;
+                      setExtractForm((p) => ({
+                        ...p,
+                        costSheetId: val,
+                        // clear filters when selecting a cost sheet
+                        entityType: "",
+                        linkedEntityId: "",
+                        from: "",
+                        to: "",
+                      }));
+                    }}
                   >
-                    <MenuItem value="">All</MenuItem>
-                    {["Account", "Deal", "Project", "Order"].map((t) => (
-                      <MenuItem key={t} value={t}>
-                        {t}
+                    <MenuItem value="">Select…</MenuItem>
+                    {(costSheets || []).map((cs) => {
+                      const id = cs["Cost Sheet ID"];
+                      const label = [cs["Cost Sheet ID"], cs["Linked Entity Name"], cs["Owner"], cs["Status"]]
+                        .filter(Boolean)
+                        .join(" — ");
+                      return (
+                        <MenuItem key={id} value={id}>
+                          {label}
+                        </MenuItem>
+                      );
+                    })}
+                    {!costSheets?.length ? (
+                      <MenuItem value="" disabled>
+                        No cost sheets found
                       </MenuItem>
-                    ))}
+                    ) : null}
                   </Select>
                 </FormControl>
+
+                {extractForm.costSheetId ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 0.5 }}>
+                    Extract will be generated only for the selected cost sheet. Date/entity filters
+                    are disabled.
+                  </Typography>
+                ) : null}
               </Grid>
 
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Linked Entity ID"
-                  value={extractForm.linkedEntityId}
-                  onChange={(e) =>
-                    setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
-                  }
-                />
-              </Grid>
+              {/* ✅ When NOT selecting a cost sheet, keep legacy entity/date filters */}
+              {!extractForm.costSheetId ? (
+                <>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Linked Entity Type</InputLabel>
+                      <Select
+                        label="Linked Entity Type"
+                        value={extractForm.entityType}
+                        onChange={(e) =>
+                          setExtractForm((p) => ({ ...p, entityType: e.target.value }))
+                        }
+                      >
+                        <MenuItem value="">All</MenuItem>
+                        {["Account", "Deal", "Project", "Order"].map((t) => (
+                          <MenuItem key={t} value={t}>
+                            {t}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
 
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Linked Entity ID"
+                      value={extractForm.linkedEntityId}
+                      onChange={(e) =>
+                        setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
+                      }
+                    />
+                  </Grid>
+                </>
+              ) : null}
+
+              {/* keep these common filters even for selected cost sheet */}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
                   size="small"
                   label="Particular"
                   value={extractForm.particular}
-                  onChange={(e) =>
-                    setExtractForm((p) => ({ ...p, particular: e.target.value }))
-                  }
+                  onChange={(e) => setExtractForm((p) => ({ ...p, particular: e.target.value }))}
                 />
               </Grid>
 
@@ -1858,29 +2067,33 @@ export default function CostingTable() {
                 </FormControl>
               </Grid>
 
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="From Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={extractForm.from}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
-                />
-              </Grid>
+              {!extractForm.costSheetId ? (
+                <>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="From Date"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractForm.from}
+                      onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
+                    />
+                  </Grid>
 
-              <Grid item xs={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="To Date"
-                  type="date"
-                  InputLabelProps={{ shrink: true }}
-                  value={extractForm.to}
-                  onChange={(e) => setExtractForm((p) => ({ ...p, to: e.target.value }))}
-                />
-              </Grid>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="To Date"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractForm.to}
+                      onChange={(e) => setExtractForm((p) => ({ ...p, to: e.target.value }))}
+                    />
+                  </Grid>
+                </>
+              ) : null}
 
               <Grid item xs={12}>
                 <FormControl fullWidth size="small">
@@ -1888,9 +2101,7 @@ export default function CostingTable() {
                   <Select
                     label="Format"
                     value={extractForm.format}
-                    onChange={(e) =>
-                      setExtractForm((p) => ({ ...p, format: e.target.value }))
-                    }
+                    onChange={(e) => setExtractForm((p) => ({ ...p, format: e.target.value }))}
                   >
                     <MenuItem value="csv">CSV</MenuItem>
                     <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
@@ -1975,12 +2186,7 @@ export default function CostingTable() {
                     >
                       {(costSheets || []).map((cs) => {
                         const id = cs["Cost Sheet ID"];
-                        const label = [
-                          cs["Cost Sheet ID"],
-                          cs["Linked Entity Name"],
-                          cs["Owner"],
-                          cs["Status"],
-                        ]
+                        const label = [cs["Cost Sheet ID"], cs["Linked Entity Name"], cs["Owner"], cs["Status"]]
                           .filter(Boolean)
                           .join(" — ");
                         return (
@@ -2299,9 +2505,7 @@ export default function CostingTable() {
                               size="small"
                               label="Details"
                               value={it?.Details || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Details", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Details", e.target.value)}
                               multiline
                               minRows={2}
                             />
@@ -2331,9 +2535,7 @@ export default function CostingTable() {
                               size="small"
                               label="GST %"
                               value={it?.["GST %"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "GST %", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "GST %", e.target.value)}
                             />
                           </Grid>
 

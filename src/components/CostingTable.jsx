@@ -1421,8 +1421,19 @@ export default function CostingTable() {
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    
-  }, [drawerOpen, openAddExpense, openCreate, openExtract, openEdit, loading, activeSheet, createForm, addExpenseMode, selectedExistingSheetId, addExpenseItems]);
+  }, [
+    drawerOpen,
+    openAddExpense,
+    openCreate,
+    openExtract,
+    openEdit,
+    loading,
+    activeSheet,
+    createForm,
+    addExpenseMode,
+    selectedExistingSheetId,
+    addExpenseItems,
+  ]);
 
   /* ===================== Render ===================== */
 
@@ -1499,7 +1510,8 @@ export default function CostingTable() {
           </Box>
 
           <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
-            Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter (Submit/Save) • Esc (Close)
+            Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter
+            (Submit/Save) • Esc (Close)
           </Typography>
         </Box>
 
@@ -1556,9 +1568,7 @@ export default function CostingTable() {
               anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
             >
               <Box sx={{ p: 1.5 }}>
-                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>
-                  Columns
-                </Typography>
+                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>Columns</Typography>
                 <FormGroup>
                   {costSheetColumns.map((c) => (
                     <FormControlLabel
@@ -1864,23 +1874,14 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
-            <Button
-              variant="contained"
-              onClick={triggerExtraction}
-              sx={{ bgcolor: cornflowerBlue }}
-            >
+            <Button variant="contained" onClick={triggerExtraction} sx={{ bgcolor: cornflowerBlue }}>
               Download
             </Button>
           </DialogActions>
         </Dialog>
 
         {/* ================= ✅ ADD EXPENSE MODAL ================= */}
-        <Dialog
-          open={openAddExpense}
-          onClose={() => setOpenAddExpense(false)}
-          maxWidth="md"
-          fullWidth
-        >
+        <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -1913,9 +1914,7 @@ export default function CostingTable() {
                     gap: 0.4,
                   }}
                 >
-                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                    Batch Summary
-                  </Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Batch Summary</Typography>
                   <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
                     Line items: {addExpenseTotals.count} | Total: ₹ {fmtINR(addExpenseTotals.total)}
                     {submitProgress?.total ? (
@@ -2045,9 +2044,7 @@ export default function CostingTable() {
                       <Select
                         label="Status"
                         value={createForm.Status || "Draft"}
-                        onChange={(e) =>
-                          setCreateForm((p) => ({ ...p, Status: e.target.value }))
-                        }
+                        onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
                       >
                         {["Draft", "Final", "Archived"].map((s) => (
                           <MenuItem key={s} value={s}>
@@ -2065,9 +2062,7 @@ export default function CostingTable() {
                       size="small"
                       label="Client Name"
                       value={createForm["Client Name"] || ""}
-                      onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
-                      }
+                      onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
                     />
                   </Grid>
 
@@ -2077,9 +2072,7 @@ export default function CostingTable() {
                       size="small"
                       label="Project Type"
                       value={createForm["Project Type"] || ""}
-                      onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
-                      }
+                      onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
                     />
                   </Grid>
 
@@ -2089,9 +2082,7 @@ export default function CostingTable() {
                       size="small"
                       label="Notes"
                       value={createForm.Notes || ""}
-                      onChange={(e) =>
-                        setCreateForm((p) => ({ ...p, Notes: e.target.value }))
-                      }
+                      onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
                       multiline
                       minRows={2}
                     />
@@ -2110,9 +2101,7 @@ export default function CostingTable() {
                     flexWrap: "wrap",
                   }}
                 >
-                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                    Line Items
-                  </Typography>
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Line Items</Typography>
 
                   <Button
                     variant="outlined"
@@ -2168,8 +2157,7 @@ export default function CostingTable() {
                           >
                             <RemoveCircleOutlineIcon
                               sx={{
-                                color:
-                                  (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
+                                color: (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
                               }}
                             />
                           </IconButton>
@@ -2182,9 +2170,7 @@ export default function CostingTable() {
                               <Select
                                 label="Head Name"
                                 value={it?.["Head Name"] || ""}
-                                onChange={(e) =>
-                                  setAddExpenseItemField(idx, "Head Name", e.target.value)
-                                }
+                                onChange={(e) => setAddExpenseItemField(idx, "Head Name", e.target.value)}
                               >
                                 {(validation.heads || []).map((h) => (
                                   <MenuItem key={h} value={h}>
@@ -2206,9 +2192,7 @@ export default function CostingTable() {
                               <Select
                                 label="Subcategory"
                                 value={it?.Subcategory || ""}
-                                onChange={(e) =>
-                                  setAddExpenseItemField(idx, "Subcategory", e.target.value)
-                                }
+                                onChange={(e) => setAddExpenseItemField(idx, "Subcategory", e.target.value)}
                               >
                                 {subcatsForHead(it?.["Head Name"] || "").map((s) => (
                                   <MenuItem key={s} value={s}>
@@ -2232,9 +2216,7 @@ export default function CostingTable() {
                               type="date"
                               InputLabelProps={{ shrink: true }}
                               value={it?.["Expense Date"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Expense Date", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Expense Date", e.target.value)}
                             />
                           </Grid>
 
@@ -2244,17 +2226,13 @@ export default function CostingTable() {
                               <Select
                                 label="Payment Status"
                                 value={it?.["Payment Status"] || ""}
-                                onChange={(e) =>
-                                  setAddExpenseItemField(idx, "Payment Status", e.target.value)
-                                }
+                                onChange={(e) => setAddExpenseItemField(idx, "Payment Status", e.target.value)}
                               >
-                                {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map(
-                                  (s) => (
-                                    <MenuItem key={s} value={s}>
-                                      {s}
-                                    </MenuItem>
-                                  )
-                                )}
+                                {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                                  <MenuItem key={s} value={s}>
+                                    {s}
+                                  </MenuItem>
+                                ))}
                                 {!validation.paymentStatus?.length ? (
                                   <MenuItem value="" disabled>
                                     No payment statuses
@@ -2270,9 +2248,7 @@ export default function CostingTable() {
                               size="small"
                               label="Particular"
                               value={it?.Particular || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Particular", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Particular", e.target.value)}
                             />
                           </Grid>
 
@@ -2282,9 +2258,7 @@ export default function CostingTable() {
                               size="small"
                               label="Details"
                               value={it?.Details || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Details", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Details", e.target.value)}
                               multiline
                               minRows={2}
                             />
@@ -2297,9 +2271,7 @@ export default function CostingTable() {
                               size="small"
                               label="QTY"
                               value={it?.["QTY"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "QTY", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "QTY", e.target.value)}
                             />
                           </Grid>
                           <Grid item xs={4}>
@@ -2308,9 +2280,7 @@ export default function CostingTable() {
                               size="small"
                               label="Rate"
                               value={it?.["Rate"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Rate", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Rate", e.target.value)}
                             />
                           </Grid>
                           <Grid item xs={4}>
@@ -2319,9 +2289,7 @@ export default function CostingTable() {
                               size="small"
                               label="GST %"
                               value={it?.["GST %"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "GST %", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "GST %", e.target.value)}
                             />
                           </Grid>
 
@@ -2334,19 +2302,11 @@ export default function CostingTable() {
                                   checked={Boolean(it?.__useAutoAmount) && hasQtyRate}
                                   disabled={!hasQtyRate}
                                   onChange={(e) =>
-                                    setAddExpenseItemField(
-                                      idx,
-                                      "__useAutoAmount",
-                                      e.target.checked
-                                    )
+                                    setAddExpenseItemField(idx, "__useAutoAmount", e.target.checked)
                                   }
                                 />
                               }
-                              label={
-                                <Typography sx={{ fontSize: 12 }}>
-                                  Use Auto Amount (QTY × Rate)
-                                </Typography>
-                              }
+                              label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
                             />
                           </Grid>
 
@@ -2356,9 +2316,7 @@ export default function CostingTable() {
                               size="small"
                               label="Amount"
                               value={it?.["Amount"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Amount", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Amount", e.target.value)}
                               InputProps={{
                                 readOnly: Boolean(it?.__useAutoAmount) && hasQtyRate,
                               }}
@@ -2387,9 +2345,7 @@ export default function CostingTable() {
                               size="small"
                               label="Total Amount"
                               value={it?.["Total Amount"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Total Amount", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Total Amount", e.target.value)}
                               InputProps={{
                                 readOnly: !canManualTotal,
                               }}
@@ -2407,9 +2363,7 @@ export default function CostingTable() {
                               size="small"
                               label="Attachment Link"
                               value={it?.["Attachment Link"] || ""}
-                              onChange={(e) =>
-                                setAddExpenseItemField(idx, "Attachment Link", e.target.value)
-                              }
+                              onChange={(e) => setAddExpenseItemField(idx, "Attachment Link", e.target.value)}
                             />
                           </Grid>
 
@@ -2540,9 +2494,7 @@ export default function CostingTable() {
                   size="small"
                   label="Client Name"
                   value={createForm["Client Name"] || ""}
-                  onChange={(e) =>
-                    setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
-                  }
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
                 />
               </Grid>
 
@@ -2552,9 +2504,7 @@ export default function CostingTable() {
                   size="small"
                   label="Project Type"
                   value={createForm["Project Type"] || ""}
-                  onChange={(e) =>
-                    setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
-                  }
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
                 />
               </Grid>
 
@@ -2641,7 +2591,8 @@ export default function CostingTable() {
               </Typography>
 
               <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
-                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close Drawer/Modal)
+                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close
+                Drawer/Modal)
               </Typography>
             </Box>
           </DialogTitle>
@@ -2733,10 +2684,7 @@ export default function CostingTable() {
 
                     {!lineItems.length ? (
                       <TableRow>
-                        <TableCell
-                          colSpan={lineItemCols.length + 1}
-                          sx={{ fontSize: 12, opacity: 0.7 }}
-                        >
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No line items found for this cost sheet.
                         </TableCell>
                       </TableRow>
@@ -2751,9 +2699,7 @@ export default function CostingTable() {
               anchor="right"
               open={drawerOpen}
               onClose={closeDrawer}
-              sx={{
-                zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20,
-              }}
+              sx={{ zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20 }}
               ModalProps={{ keepMounted: true }}
               PaperProps={{
                 ref: drawerPaperRef,
@@ -2764,14 +2710,7 @@ export default function CostingTable() {
                 },
               }}
             >
-              <Box
-                sx={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  mb: 1,
-                }}
-              >
+              <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
                 <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
                   {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
                 </Typography>
@@ -2922,19 +2861,12 @@ export default function CostingTable() {
                       control={
                         <Checkbox
                           size="small"
-                          checked={
-                            Boolean(drawerDraft.__useAutoAmount) &&
-                            Boolean(drawerDraft.__hasQtyRate)
-                          }
+                          checked={Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)}
                           disabled={!drawerDraft.__hasQtyRate}
                           onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
                         />
                       }
-                      label={
-                        <Typography sx={{ fontSize: 12 }}>
-                          Use Auto Amount (QTY × Rate)
-                        </Typography>
-                      }
+                      label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
                     />
                   </Grid>
 
@@ -2946,9 +2878,7 @@ export default function CostingTable() {
                       value={drawerDraft["Amount"] || ""}
                       onChange={(e) => setDrawerField("Amount", e.target.value)}
                       InputProps={{
-                        readOnly:
-                          Boolean(drawerDraft.__useAutoAmount) &&
-                          Boolean(drawerDraft.__hasQtyRate),
+                        readOnly: Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate),
                       }}
                       helperText={
                         drawerDraft.__hasQtyRate
@@ -3037,8 +2967,7 @@ export default function CostingTable() {
 
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
-                    Note: Edit works by marking the old row inactive (delete by Particular) and
-                    appending the updated row.
+                    Note: Edit works by marking the old row inactive (delete by Particular) and appending the updated row.
                   </Typography>
                 ) : null}
               </Box>

@@ -754,7 +754,7 @@ export default function CostingTable() {
   // so figures always show correctly after a page refresh.
   useEffect(() => {
     refreshAndRecalculate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   async function ensureValidationLoaded() {

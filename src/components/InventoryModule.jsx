@@ -22,6 +22,7 @@ import {
   CircularProgress,
   IconButton,
   Tooltip,
+  Alert,
 } from "@mui/material";
 
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -32,21 +33,20 @@ import HistoryIcon from "@mui/icons-material/History";
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
 
-// 🔧 Set this to your Inventory Apps Script Web App /exec URL
-// Example: "https://script.google.com/macros/s/AKfycbxxxxxxx/exec"
-const DEFAULT_INVENTORY_API_URL = "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
+// ✅ Your Inventory Apps Script Web App URL
+const DEFAULT_INVENTORY_API_URL =
+  "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
 
-// -------- Helpers --------
+// ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
 const asNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
+const round2 = (n) => Math.round(asNum(n) * 100) / 100;
 
 function getUserFromLocalStorage() {
-  // Adjust keys if your CRM uses different storage
-  // Common pattern: localStorage.setItem("crmUser", JSON.stringify({...}))
   try {
     const raw = localStorage.getItem("crmUser");
     if (!raw) return { username: "", role: "" };
@@ -68,76 +68,264 @@ async function apiGet(apiUrl, params) {
   return json.data;
 }
 
-async function apiPost(apiUrl, body) {
-  const res = await fetch(apiUrl, {
+/**
+ * ✅ POST with no-cors (opaque response; cannot read JSON)
+ * Use only for createBooking submission where you don't need response.
+ */
+async function apiPostNoCors(apiUrl, body) {
+  await fetch(apiUrl, {
     method: "POST",
+    mode: "no-cors",
     headers: { "Content-Type": "application/json" },
-    // If you face CORS preflight issues, we can switch to `mode: "no-cors"`
-    // (but then you can't read the response). For now keep normal mode.
     body: JSON.stringify(body),
   });
-  const json = await res.json().catch(() => ({}));
-  if (!json?.ok) throw new Error(json?.error || "Request failed");
-  return json.data;
+  // no-cors response is opaque → no return value
 }
 
+// ---------- Local Calculation Engine (client-side) ----------
+function evalRate(expr) {
+  if (!expr) return 0;
+  const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
+  try {
+    // eslint-disable-next-line no-new-func
+    const val = Function(`"use strict"; return (${cleaned});`)();
+    return asNum(val);
+  } catch {
+    return 0;
+  }
+}
+
+function buildAliasMap(computedByMaterialName) {
+  // Map common tokens used in formulas to computed values
+  const out = {
+    Area: 0,
+    SBR: 0,
+    Color: 0,
+    Resurfacer: 0,
+    Cushion: 0,
+    EPDM: 0,
+  };
+
+  Object.entries(computedByMaterialName).forEach(([name, qty]) => {
+    const n = toUpper(name);
+
+    if (n === "SBR") out.SBR = qty;
+    if (n.includes("SBR/R GRADE")) out.SBR = qty;
+
+    if (n === "COLOR" || n.includes("ACRYLIC COLOR")) out.Color = qty;
+
+    if (n.includes("RESURFACER")) out.Resurfacer = qty;
+    if (n.includes("CUSHION")) out.Cushion = qty;
+
+    if (n.includes("EPDM GRANULE")) out.EPDM = qty;
+  });
+
+  return out;
+}
+
+function evalFormula(formula, area, computedByMaterialName) {
+  if (!formula) return 0;
+
+  const aliases = buildAliasMap(computedByMaterialName);
+  aliases.Area = area;
+
+  let expr = String(formula);
+
+  // Replace tokens (word boundaries)
+  Object.keys(aliases).forEach((k) => {
+    expr = expr.replace(new RegExp(`\\b${k}\\b`, "g"), String(aliases[k]));
+  });
+
+  const cleaned = expr.replace(/[^0-9+\-*/(). ]/g, "");
+  try {
+    // eslint-disable-next-line no-new-func
+    const val = Function(`"use strict"; return (${cleaned});`)();
+    return asNum(val);
+  } catch {
+    return 0;
+  }
+}
+
+function computeLocally({ category, variant, inputs, configRows, stockRows }) {
+  const cat = toUpper(category);
+  const varr = toUpper(variant);
+
+  const area =
+    cat === "PU" ? asNum(inputs.areaSqm || 0) : asNum(inputs.areaSqf || 0);
+
+  const wearCoatType = toUpper(inputs.wearCoatType || "SD");
+
+  // Build stock map by Material Name
+  const stockMap = {};
+  (stockRows || []).forEach((s) => {
+    stockMap[s.materialName] = s;
+  });
+
+  // Material computed qty
+  const computed = {}; // materialName -> qty
+  const items = [];
+
+  // 1) non-FORMULA first
+  (configRows || [])
+    .filter(
+      (r) =>
+        toUpper(r.category) === cat &&
+        toUpper(r.variant) === varr &&
+        toUpper(r.active) !== "FALSE"
+    )
+    .forEach((row) => {
+      if (row.calcType === "FORMULA") return;
+
+      // Wear coat IF handling
+      if (row.calcType === "AREA_X_RATE_IF") {
+        const should = toUpper(row.formula || "");
+        if (should && should !== wearCoatType) return;
+      }
+
+      let qty = 0;
+
+      if (row.calcType === "AREA_X_RATE" || row.calcType === "AREA_X_RATE_IF") {
+        qty = area * evalRate(row.baseRate);
+      } else if (row.calcType === "AREA_X_LAYER") {
+        const mult = asNum(inputs[row.inputKey] || 0);
+        qty = area * evalRate(row.baseRate) * mult;
+      } else if (row.calcType === "AREA_X_THICKNESS_RATE") {
+        const thick = asNum(inputs[row.inputKey] || 0);
+        qty = area * evalRate(row.baseRate) * thick;
+      } else if (row.calcType === "AREA_X_FIXED") {
+        qty = area * evalRate(row.baseRate);
+      } else {
+        return;
+      }
+
+      qty = round2(qty);
+      computed[row.materialName] = qty;
+
+      items.push({
+        materialName: row.materialName,
+        unit: row.unit,
+        requiredQty: qty,
+        calcType: row.calcType,
+      });
+    });
+
+  // 2) FORMULA pass
+  (configRows || [])
+    .filter(
+      (r) =>
+        toUpper(r.category) === cat &&
+        toUpper(r.variant) === varr &&
+        toUpper(r.active) !== "FALSE" &&
+        r.calcType === "FORMULA"
+    )
+    .forEach((row) => {
+      const qty = round2(evalFormula(row.formula, area, computed));
+      computed[row.materialName] = qty;
+
+      items.push({
+        materialName: row.materialName,
+        unit: row.unit,
+        requiredQty: qty,
+        calcType: "FORMULA",
+        formula: row.formula,
+      });
+    });
+
+  // 3) Packaging + availability (from stock sheet; pack size is default)
+  const withStock = items.map((it) => {
+    const s = stockMap[it.materialName];
+
+    const packSize = s ? asNum(s.packSize) : 0;
+    const packsNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
+    const packagingQty =
+      packSize > 0 ? packsNeeded * packSize : asNum(it.requiredQty);
+
+    // Availability computed from stock qty - reserved qty (ignore available columns from sheet)
+    const packaged = s ? asNum(s.packagedStockQty) : 0;
+    const loose = s ? asNum(s.looseStockQty) : 0;
+    const resPack = s ? asNum(s.reservedPackagedQty) : 0;
+    const resLoose = s ? asNum(s.reservedLooseQty) : 0;
+
+    const availPack = Math.max(0, packaged - resPack);
+    const availLoose = Math.max(0, loose - resLoose);
+    const availTotal = availPack + availLoose;
+
+    const shortageQty = Math.max(0, asNum(it.requiredQty) - availTotal);
+
+    return {
+      ...it,
+      packSize,
+      packsNeeded,
+      packagingQty: round2(packagingQty),
+      availablePackagedQty: round2(availPack),
+      availableLooseQty: round2(availLoose),
+      availableTotalQty: round2(availTotal),
+      shortageQty: round2(shortageQty),
+      canFulfill: shortageQty <= 0,
+    };
+  });
+
+  return {
+    category: cat,
+    variant: varr,
+    area,
+    wearCoatType,
+    items: withStock,
+  };
+}
+
+// ---------- Component ----------
 export default function InventoryModule({
   apiUrl = DEFAULT_INVENTORY_API_URL,
   logoSrc = "/assets/kk-logo.png",
   title = "Inventory Calculator",
 }) {
-  const [loading, setLoading] = useState(false);
+  const user = useMemo(() => getUserFromLocalStorage(), []);
 
-  // Validation data (from validation sheet via getValidation)
   const [validation, setValidation] = useState({});
   const [validationLoading, setValidationLoading] = useState(false);
 
-  // Selection
   const [category, setCategory] = useState("ACRYLIC");
   const [variant, setVariant] = useState("");
 
-  // Dynamic Inputs from Inventory Calc Inputs
   const [inputDefs, setInputDefs] = useState([]);
-  const [inputsLoading, setInputsLoading] = useState(false);
   const [inputs, setInputs] = useState({});
+  const [inputsLoading, setInputsLoading] = useState(false);
 
-  // Calculation result
+  const [configRows, setConfigRows] = useState([]);
+  const [configLoading, setConfigLoading] = useState(false);
+
+  const [stockRows, setStockRows] = useState([]);
+  const [stockLoading, setStockLoading] = useState(false);
+
   const [calcResult, setCalcResult] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
 
-  // Booking
   const [remarks, setRemarks] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
-  const [bookingSuccess, setBookingSuccess] = useState(null);
+  const [bookingNotice, setBookingNotice] = useState("");
 
-  // Bookings list (same page)
   const [bookings, setBookings] = useState([]);
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
 
-  const user = useMemo(() => getUserFromLocalStorage(), []);
-
-  // Derive variants list from validation
+  // Variants from validation sheet
   const variantsList = useMemo(() => {
-    // You can rename these columns in your "Inventory Validation" if needed
-    // and update here accordingly.
-    // We try multiple common keys to be safe.
     const acrylicVariants =
-      validation?.["Acrylic Variants"] ||
       validation?.["Acrylic Sub Base"] ||
+      validation?.["Acrylic Variants"] ||
       validation?.["Acrylic"] ||
       [];
     const puVariants =
-      validation?.["PU Variants"] ||
-      validation?.["PU Type"] ||
-      validation?.["PU"] ||
-      [];
-
-    if (toUpper(category) === "PU") return puVariants;
-    return acrylicVariants;
+      validation?.["PU Type"] || validation?.["PU Variants"] || validation?.["PU"] || [];
+    return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
 
-  // Load validation on mount
+  useEffect(() => {
+    if (variantsList?.length && !variant) setVariant(variantsList[0]);
+  }, [variantsList, variant]);
+
+  // Load validation (dropdowns)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl) return;
@@ -146,7 +334,6 @@ export default function InventoryModule({
         const data = await apiGet(apiUrl, { action: "getValidation" });
         setValidation(data || {});
       } catch (e) {
-        // keep silent but show minimal
         console.error("getValidation error:", e);
       } finally {
         setValidationLoading(false);
@@ -155,37 +342,24 @@ export default function InventoryModule({
     run();
   }, [apiUrl]);
 
-  // Ensure default variant
-  useEffect(() => {
-    if (!variantsList?.length) return;
-    if (!variant) setVariant(variantsList[0]);
-  }, [variantsList, variant]);
-
-  // Load inputs whenever category/variant changes
+  // Load inputs config for selected category/variant
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category || !variant) return;
 
       setInputsLoading(true);
       setCalcResult(null);
-      setBookingSuccess(null);
+      setBookingNotice("");
 
       try {
-        const defs = await apiGet(apiUrl, {
-          action: "getInputs",
-          category,
-          variant,
-        });
-
+        const defs = await apiGet(apiUrl, { action: "getInputs", category, variant });
         const safeDefs = Array.isArray(defs) ? defs : [];
         setInputDefs(safeDefs);
 
-        // initialize inputs with defaults
         const next = {};
         safeDefs.forEach((d) => {
-          const k = d.inputKey;
-          if (!k) return;
-          next[k] = d.defaultValue ?? "";
+          if (!d.inputKey) return;
+          next[d.inputKey] = d.defaultValue ?? "";
         });
         setInputs(next);
       } catch (e) {
@@ -196,106 +370,71 @@ export default function InventoryModule({
         setInputsLoading(false);
       }
     };
-
     run();
   }, [apiUrl, category, variant]);
 
-  const canCalculate = !!apiUrl && !!category && !!variant && inputDefs.length > 0;
+  // Load calc config for selected category/variant
+  useEffect(() => {
+    const run = async () => {
+      if (!apiUrl || !category || !variant) return;
+
+      setConfigLoading(true);
+      try {
+        const cfg = await apiGet(apiUrl, { action: "getCalcConfig", category, variant });
+        setConfigRows(Array.isArray(cfg) ? cfg : []);
+      } catch (e) {
+        console.error("getCalcConfig error:", e);
+        setConfigRows([]);
+      } finally {
+        setConfigLoading(false);
+      }
+    };
+    run();
+  }, [apiUrl, category, variant]);
+
+  // Load stock for category
+  useEffect(() => {
+    const run = async () => {
+      if (!apiUrl || !category) return;
+
+      setStockLoading(true);
+      try {
+        const st = await apiGet(apiUrl, { action: "getStock", category });
+        setStockRows(Array.isArray(st) ? st : []);
+      } catch (e) {
+        console.error("getStock error:", e);
+        setStockRows([]);
+      } finally {
+        setStockLoading(false);
+      }
+    };
+    run();
+  }, [apiUrl, category]);
 
   const handleChangeInput = (key, value) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const handleCalculate = async () => {
-    if (!canCalculate) return;
+  const normalizedInputs = useMemo(() => {
+    const out = { ...(inputs || {}) };
+    (inputDefs || []).forEach((d) => {
+      const key = d.inputKey;
+      if (!key) return;
 
-    setCalcLoading(true);
-    setBookingSuccess(null);
-    try {
-      const data = await apiPost(apiUrl, {
-        action: "calculate",
-        data: {
-          category,
-          variant,
-          inputs: normalizeInputsForPost(inputs, inputDefs),
-        },
-      });
-      setCalcResult(data || null);
-    } catch (e) {
-      console.error("calculate error:", e);
-      setCalcResult(null);
-      alert(`Calculation failed: ${e.message || e}`);
-    } finally {
-      setCalcLoading(false);
-    }
-  };
+      if (key === "wearCoatType") {
+        out[key] = safeStr(out[key] || "SD");
+        return;
+      }
 
-  const handleCreateBooking = async () => {
-    if (!calcResult?.items?.length) {
-      alert("Please calculate first.");
-      return;
-    }
-
-    setBookingLoading(true);
-    try {
-      const payloadInputs = normalizeInputsForPost(inputs, inputDefs);
-      const res = await apiPost(apiUrl, {
-        action: "createBooking",
-        data: {
-          category,
-          variant,
-          requestedBy: user.username || "End User",
-          inputs: payloadInputs,
-          remarks: remarks || "",
-        },
-      });
-
-      setBookingSuccess(res || null);
-      setRemarks("");
-
-      // try refresh bookings list
-      fetchBookings();
-    } catch (e) {
-      console.error("createBooking error:", e);
-      alert(`Booking failed: ${e.message || e}`);
-    } finally {
-      setBookingLoading(false);
-    }
-  };
-
-  const fetchBookings = async () => {
-    if (!apiUrl) return;
-    setBookingsLoading(true);
-    setBookingsError("");
-
-    try {
-      // ⚠️ This action needs to be added in GAS:
-      // doGet?action=getBookings&requestedBy=...&role=...
-      // UI will gracefully handle if not available.
-      const data = await apiGet(apiUrl, {
-        action: "getBookings",
-        requestedBy: user.username || "",
-        role: user.role || "",
-      });
-
-      setBookings(Array.isArray(data) ? data : []);
-    } catch (e) {
-      // This will happen until we add getBookings in GAS
-      setBookings([]);
-      setBookingsError(
-        "Bookings list endpoint is not enabled yet (needs GAS action=getBookings). Calculator + booking creation will still work."
-      );
-    } finally {
-      setBookingsLoading(false);
-    }
-  };
-
-  // Load bookings on mount (best effort)
-  useEffect(() => {
-    if (!apiUrl) return;
-    fetchBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiUrl]);
+      const val = out[key];
+      if (val === "" || val == null) out[key] = 0;
+      else {
+        const n = Number(val);
+        out[key] = Number.isFinite(n) ? n : val;
+      }
+    });
+    return out;
+  }, [inputs, inputDefs]);
 
   const totals = useMemo(() => {
     const items = calcResult?.items || [];
@@ -308,6 +447,101 @@ export default function InventoryModule({
       allFulfillable,
     };
   }, [calcResult]);
+
+  const handleCalculate = async () => {
+    setCalcLoading(true);
+    setBookingNotice("");
+    try {
+      // ✅ Client-side calculation (no POST, no CORS issues)
+      const result = computeLocally({
+        category,
+        variant,
+        inputs: normalizedInputs,
+        configRows,
+        stockRows,
+      });
+      setCalcResult(result);
+    } catch (e) {
+      console.error("local calculate error:", e);
+      setCalcResult(null);
+      alert(`Calculation failed: ${e.message || e}`);
+    } finally {
+      setCalcLoading(false);
+    }
+  };
+
+  const fetchBookings = async () => {
+    if (!apiUrl) return;
+    setBookingsLoading(true);
+    setBookingsError("");
+    try {
+      // Requires GAS support: doGet?action=getBookings...
+      const data = await apiGet(apiUrl, {
+        action: "getBookings",
+        requestedBy: user.username || "",
+        role: user.role || "",
+      });
+      setBookings(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setBookings([]);
+      setBookingsError(
+        "Bookings list endpoint is not enabled yet (needs GAS action=getBookings)."
+      );
+    } finally {
+      setBookingsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (!apiUrl) return;
+    fetchBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl]);
+
+  const handleCreateBooking = async () => {
+    if (!calcResult?.items?.length) {
+      alert("Please calculate first.");
+      return;
+    }
+
+    setBookingLoading(true);
+    setBookingNotice("");
+
+    try {
+      // ✅ no-cors submission
+      await apiPostNoCors(apiUrl, {
+        action: "createBooking",
+        data: {
+          category,
+          variant,
+          requestedBy: user.username || "End User",
+          inputs: normalizedInputs,
+          remarks: remarks || "",
+        },
+      });
+
+      setRemarks("");
+      setBookingNotice(
+        "✅ Booking submitted successfully. Refreshing bookings…"
+      );
+
+      // best-effort refresh (if getBookings exists)
+      setTimeout(() => fetchBookings(), 1200);
+    } catch (e) {
+      console.error("createBooking error:", e);
+      alert(`Booking submission failed: ${e.message || e}`);
+    } finally {
+      setBookingLoading(false);
+    }
+  };
+
+  const busy =
+    validationLoading ||
+    inputsLoading ||
+    configLoading ||
+    stockLoading ||
+    calcLoading ||
+    bookingLoading;
 
   return (
     <Box sx={{ p: 2, fontFamily }}>
@@ -348,20 +582,12 @@ export default function InventoryModule({
           </Box>
 
           <Box display="flex" alignItems="center" gap={1}>
-            <Tooltip title="Refresh">
-              <IconButton
-                onClick={() => {
-                  // refresh validation + inputs + bookings
-                  setValidation({});
-                  setCalcResult(null);
-                  setBookingSuccess(null);
-                  // run the same effects
-                  window.location.reload();
-                }}
-              >
+            <Tooltip title="Refresh (Reload page)">
+              <IconButton onClick={() => window.location.reload()}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
+            {busy ? <CircularProgress size={18} /> : null}
           </Box>
         </Box>
       </Paper>
@@ -417,12 +643,17 @@ export default function InventoryModule({
           </Grid>
 
           <Grid item xs={12} md={5}>
-            <Box display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }}>
+            <Box
+              display="flex"
+              gap={1}
+              justifyContent={{ xs: "flex-start", md: "flex-end" }}
+              flexWrap="wrap"
+            >
               <Button
                 variant="contained"
                 startIcon={calcLoading ? <CircularProgress size={16} /> : <CalculateIcon />}
                 onClick={handleCalculate}
-                disabled={!canCalculate || calcLoading || inputsLoading}
+                disabled={!variant || calcLoading || inputsLoading || configLoading || stockLoading}
                 sx={{
                   textTransform: "none",
                   fontFamily,
@@ -455,53 +686,59 @@ export default function InventoryModule({
         <Divider sx={{ my: 2 }} />
 
         {/* Dynamic Inputs */}
-        <Box>
-          <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>
-            Inputs
-          </Typography>
+        <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>
+          Inputs
+        </Typography>
 
-          {inputsLoading ? (
-            <Box display="flex" alignItems="center" gap={1}>
-              <CircularProgress size={16} />
-              <Typography sx={{ fontSize: 12, opacity: 0.7, fontFamily }}>
-                Loading inputs…
-              </Typography>
-            </Box>
-          ) : inputDefs.length === 0 ? (
-            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
-              No inputs found for this Category/Variant. Please check `Inventory Calc Inputs`.
+        {inputsLoading ? (
+          <Box display="flex" alignItems="center" gap={1}>
+            <CircularProgress size={16} />
+            <Typography sx={{ fontSize: 12, opacity: 0.7, fontFamily }}>
+              Loading inputs…
             </Typography>
-          ) : (
-            <Grid container spacing={2}>
-              {inputDefs.map((d) => (
-                <Grid key={`${d.variant}-${d.inputKey}`} item xs={12} sm={6} md={3}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={d.label || d.inputKey}
-                    value={inputs[d.inputKey] ?? ""}
-                    onChange={(e) => handleChangeInput(d.inputKey, e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                    helperText={d.unit ? `Unit: ${d.unit}` : ""}
-                  />
-                </Grid>
-              ))}
-
-              <Grid item xs={12}>
+          </Box>
+        ) : inputDefs.length === 0 ? (
+          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
+            No inputs found for this Category/Variant. Please check <b>Inventory Calc Inputs</b>.
+          </Typography>
+        ) : (
+          <Grid container spacing={2}>
+            {inputDefs.map((d) => (
+              <Grid key={`${d.variant}-${d.inputKey}`} item xs={12} sm={6} md={3}>
                 <TextField
                   fullWidth
                   size="small"
-                  label="Remarks (optional)"
-                  value={remarks}
-                  onChange={(e) => setRemarks(e.target.value)}
+                  label={d.label || d.inputKey}
+                  value={inputs[d.inputKey] ?? ""}
+                  onChange={(e) => handleChangeInput(d.inputKey, e.target.value)}
                   sx={{ fontFamily }}
                   inputProps={{ style: { fontFamily } }}
+                  helperText={d.unit ? `Unit: ${d.unit}` : ""}
                 />
               </Grid>
+            ))}
+
+            <Grid item xs={12}>
+              <TextField
+                fullWidth
+                size="small"
+                label="Remarks (optional)"
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                sx={{ fontFamily }}
+                inputProps={{ style: { fontFamily } }}
+              />
             </Grid>
-          )}
-        </Box>
+          </Grid>
+        )}
+
+        {bookingNotice ? (
+          <Box mt={2}>
+            <Alert severity="success" sx={{ fontFamily }}>
+              {bookingNotice}
+            </Alert>
+          </Box>
+        ) : null}
       </Paper>
 
       {/* Results */}
@@ -611,20 +848,6 @@ export default function InventoryModule({
             </Table>
           </TableContainer>
         )}
-
-        {bookingSuccess?.bookingId ? (
-          <Box mt={2}>
-            <Divider sx={{ mb: 2 }} />
-            <Typography sx={{ fontFamily, fontWeight: 700, color: "green" }}>
-              Booking Created: {bookingSuccess.bookingId}
-            </Typography>
-            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
-              Reserved Packaged: {bookingSuccess?.totals?.totalPack ?? "-"} | Reserved Loose:{" "}
-              {bookingSuccess?.totals?.totalLoose ?? "-"} | Shortage:{" "}
-              {bookingSuccess?.totals?.totalShort ?? "-"}
-            </Typography>
-          </Box>
-        ) : null}
       </Paper>
 
       {/* Bookings (same page) */}
@@ -689,16 +912,28 @@ export default function InventoryModule({
               </TableHead>
               <TableBody>
                 {bookings.map((b, idx) => (
-                  <TableRow key={b.bookingId || idx}>
+                  <TableRow key={b.bookingId || b["Booking ID"] || idx}>
                     <TableCell sx={{ fontFamily, fontSize: 12 }}>
                       {safeStr(b.timestamp || b.Timestamp)}
                     </TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.bookingId || b["Booking ID"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.requestedBy || b["Requested By"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.category || b.Category)}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.variant || b["Variant / Base Type"])}</TableCell>
                     <TableCell sx={{ fontFamily }}>
-                      <Chip size="small" label={safeStr(b.status || b.Status)} sx={{ fontFamily }} />
+                      {safeStr(b.bookingId || b["Booking ID"])}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily }}>
+                      {safeStr(b.requestedBy || b["Requested By"])}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily }}>
+                      {safeStr(b.category || b.Category)}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily }}>
+                      {safeStr(b.variant || b["Variant / Base Type"])}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily }}>
+                      <Chip
+                        size="small"
+                        label={safeStr(b.status || b.Status)}
+                        sx={{ fontFamily }}
+                      />
                     </TableCell>
                     <TableCell sx={{ fontFamily, fontSize: 12 }}>
                       {safeStr(b.remarks || b.Remarks)}
@@ -710,52 +945,6 @@ export default function InventoryModule({
           </TableContainer>
         )}
       </Paper>
-
-      {/* Missing API URL warning */}
-      {!apiUrl ? (
-        <Box mt={2}>
-          <Typography sx={{ fontFamily, fontSize: 12, color: "crimson" }}>
-            ⚠️ Please set your Inventory Apps Script Web App URL in <b>DEFAULT_INVENTORY_API_URL</b> or pass{" "}
-            <b>apiUrl</b> prop to this component.
-          </Typography>
-        </Box>
-      ) : null}
     </Box>
   );
-}
-
-// Normalize numeric inputs where appropriate
-function normalizeInputsForPost(inputs, inputDefs) {
-  const out = { ...(inputs || {}) };
-
-  // We convert numeric-looking fields to numbers except "wearCoatType"
-  // based on inputDefs units/keys.
-  (inputDefs || []).forEach((d) => {
-    const key = d.inputKey;
-    if (!key) return;
-
-    if (key === "wearCoatType") {
-      out[key] = safeStr(out[key] || "SD");
-      return;
-    }
-
-    const val = out[key];
-    // if empty keep 0
-    if (val === "" || val == null) {
-      out[key] = 0;
-      return;
-    }
-
-    // convert to number when possible
-    const n = Number(val);
-    out[key] = Number.isFinite(n) ? n : val;
-  });
-
-  return out;
-}
-
-function round2(v) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return 0;
-  return Math.round(n * 100) / 100;
 }

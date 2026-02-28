@@ -117,9 +117,7 @@ async function apiPost(payload) {
 }
 
 /**
- * ✅ Concurrency helper (reduces submit time without needing backend changes)
- * - Runs worker on items with max concurrency
- * - Preserves "no-cors" safety (still fire-and-forget per request)
+ * ✅ Concurrency helper (kept; now used mainly for JSONP fan-out if needed)
  */
 async function runWithConcurrency(items, worker, concurrency = 5) {
   const arr = Array.isArray(items) ? items : [];
@@ -224,7 +222,6 @@ function recomputeDraftLive(next) {
 function computeRowTotals(row) {
   const draft = recomputeDraftLive({
     ...row,
-    // ensure flags exist for consistent behavior but do not force them on the server
     __useAutoAmount: row.__useAutoAmount,
     __useManualTotal: row.__useManualTotal,
   });
@@ -292,22 +289,10 @@ function safeJsonParse(s, fallback) {
   }
 }
 
-/* ===================== ✅ NEW (NO ASSUMPTIONS): stable row key helpers ===================== */
-/**
- * Why:
- * - Your current backend softDelete uses (Cost Sheet ID + Particular).
- * - If Particular duplicates / differs by spaces / empty, delete+edit can fail.
- *
- * What we do (non-breaking):
- * - Always compute a client-side stable key using:
- *    Cost Sheet ID + Entry Timestamp + Particular (as fallback)
- * - Send BOTH particular + entryTimestamp to backend (backend may ignore extra fields safely),
- *   and use key for optimistic UI filtering so the table immediately updates correctly.
- */
+/* ===================== stable row key helpers ===================== */
+
 function normalizeTsForKey(v) {
   if (!v) return "";
-  // Apps Script may return Date object serialized as string, or already a string.
-  // We keep it stable: try Date parse; else raw string.
   const s = String(v);
   const d = new Date(s);
   if (!isNaN(d.getTime())) return String(d.getTime());
@@ -320,66 +305,7 @@ function makeLineItemKey(costSheetId, item) {
     item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]
   );
   const part = String(item?.["Particular"] || "").trim();
-  // keep both parts; even if ts missing, part helps
   return [csid || "-", ts || "-", part || "-"].join("|");
-}
-
-/* ===================== ✅ NEW: Refresh recalculation helpers ===================== */
-
-function findFirstExistingKey(obj, candidates = []) {
-  if (!obj) return null;
-  const keys = Object.keys(obj);
-  // exact match first
-  for (const c of candidates) {
-    if (c in obj) return c;
-  }
-  // case-insensitive fallback
-  const lowerMap = new Map(keys.map((k) => [String(k).toLowerCase(), k]));
-  for (const c of candidates) {
-    const hit = lowerMap.get(String(c).toLowerCase());
-    if (hit) return hit;
-  }
-  return null;
-}
-
-function aggregateCostSheetLineItems(items) {
-  const byHead = {};
-  let grand = 0;
-
-  (items || []).forEach((li) => {
-    const head = String(li?.["Head Name"] || "").trim();
-    const total = safeNum(li?.["Total Amount"]);
-    if (!head) return;
-
-    byHead[head] = safeNum(byHead[head]) + total;
-    grand += total;
-  });
-
-  return { byHead, grand };
-}
-
-function applyAggregatesToCostSheetRow(row, validationHeads, agg) {
-  const next = { ...row };
-  const heads = Array.isArray(validationHeads) ? validationHeads : [];
-
-  // ✅ Only overwrite head columns that ALREADY exist on the cost sheet row
-  heads.forEach((h) => {
-    if (h in next) next[h] = agg.byHead?.[h] ? fmtINR(agg.byHead[h]) : fmtINR(0);
-  });
-
-  // ✅ Try to populate an existing "grand total" column if it exists
-  const grandKey = findFirstExistingKey(next, [
-    "Grand Total",
-    "Grand Total Amount",
-    "Total",
-    "Total Amount",
-    "Total (₹)",
-    "Grand Total (₹)",
-  ]);
-
-  if (grandKey) next[grandKey] = fmtINR(agg.grand || 0);
-
-  return next;
 }
 
 /* ===================== Component ===================== */
@@ -390,8 +316,6 @@ export default function CostingTable() {
   const role = user?.role || "";
 
   const [loading, setLoading] = useState(false);
-
-  // ✅ NEW: shows faster feedback during batch submits (does not remove existing loading)
   const [submitProgress, setSubmitProgress] = useState(null); // { done, total, label }
 
   const [validation, setValidation] = useState({
@@ -417,14 +341,14 @@ export default function CostingTable() {
   const [lineItems, setLineItems] = useState([]);
   const [lineItemHeaders, setLineItemHeaders] = useState([]);
 
-  // ✅ Entity dropdown options for CREATE modal (no assumptions)
+  // ✅ Entity dropdown options for CREATE modal
   const [entityOptions, setEntityOptions] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
 
   // ✅ Drawer menu containment ref (FIX for dropdown hidden behind drawer)
   const drawerPaperRef = useRef(null);
 
-  // ✅ MenuProps to force Select menus to render INSIDE the Drawer (no portal stacking issues)
+  // ✅ MenuProps to force Select menus to render INSIDE the Drawer
   const drawerMenuProps = useMemo(() => {
     return {
       disablePortal: true,
@@ -440,7 +364,7 @@ export default function CostingTable() {
   // ===== Extraction =====
   const [openExtract, setOpenExtract] = useState(false);
   const [extractForm, setExtractForm] = useState({
-    costSheetId: "", // ✅ Existing cost sheet selector
+    costSheetId: "",
     entityType: "",
     linkedEntityId: "",
     particular: "",
@@ -450,7 +374,6 @@ export default function CostingTable() {
     format: "csv",
   });
 
-  // ✅ Column selector for extraction (NO deletions; only additions)
   const [extractColumnsAnchor, setExtractColumnsAnchor] = useState(null);
   const [extractVisibleCols, setExtractVisibleCols] = useState({});
   const [extractColsTouched, setExtractColsTouched] = useState(false);
@@ -491,7 +414,7 @@ export default function CostingTable() {
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
-  // ✅ NEW: Build searchable "Cost Sheet options" (for Autocomplete dropdowns)
+  // ✅ Build searchable "Cost Sheet options" (for Autocomplete dropdowns)
   const costSheetOptions = useMemo(() => {
     const arr = Array.isArray(costSheets) ? costSheets : [];
     return arr
@@ -560,7 +483,6 @@ export default function CostingTable() {
   }, [extractVisibleCols]);
 
   function triggerExtraction() {
-    // ✅ If a Cost Sheet is selected, ignore entity/date filters automatically
     const isSheetMode = String(extractForm.costSheetId || "").trim();
 
     const baseParams = {
@@ -578,7 +500,6 @@ export default function CostingTable() {
               format: extractForm.format,
             }).filter(([_, v]) => String(v || "").trim())
           )),
-      // Always allow these even in sheet mode
       ...Object.fromEntries(
         Object.entries({
           particular: extractForm.particular,
@@ -625,7 +546,7 @@ export default function CostingTable() {
     return String(opt.display || opt.name || opt.label || opt.id || "");
   };
 
-  /* ===================== ✅ NEW: ADD EXPENSE ===================== */
+  /* ===================== ADD EXPENSE ===================== */
   const [openAddExpense, setOpenAddExpense] = useState(false);
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
@@ -640,7 +561,12 @@ export default function CostingTable() {
 
   const loadSeq = useRef(0);
 
-  async function loadAll() {
+  /**
+   * ✅ FAST REFRESH (GAS efficiency update)
+   * GAS now recomputes totals when line items are added/updated (batch endpoints),
+   * so the UI should NOT JSONP fan-out per cost sheet anymore.
+   */
+  async function refreshFast() {
     const seq = ++loadSeq.current;
     setLoading(true);
     try {
@@ -663,99 +589,16 @@ export default function CostingTable() {
         setVisibleCols(initial);
       }
     } catch (e) {
-      console.error("COSTING_LOAD_ERROR", e);
+      console.error("COSTING_REFRESH_FAST_ERROR", e);
       alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
   }
 
-  /* ===================== ✅ Refresh + Recalculate totals from line items ===================== */
-  async function refreshAndRecalculate() {
-    const seq = ++loadSeq.current;
-    setLoading(true);
-
-    try {
-      // 1) load validation + cost sheets
-      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
-      if (seq !== loadSeq.current) return;
-
-      const parsed = normalizeValidationResponse(rawV);
-      setValidation(parsed);
-
-      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
-      if (seq !== loadSeq.current) return;
-
-      const arr = Array.isArray(sheets) ? sheets : [];
-
-      if (!arr.length) {
-        setCostSheets([]);
-        return;
-      }
-
-      // 2) compute aggregates for each cost sheet by fetching its line items
-      const heads = parsed?.heads || validation?.heads || [];
-      const aggregatesById = {}; // { [Cost Sheet ID]: { byHead, grand } }
-
-      const CONCURRENCY = 6;
-
-      await runWithConcurrency(
-        arr,
-        async (sheetRow) => {
-          const id = sheetRow?.["Cost Sheet ID"];
-          if (!id) return;
-
-          try {
-            const items = await jsonpGet(
-              `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
-            );
-
-            const rows = Array.isArray(items) ? items : [];
-            const activeOnly = rows.filter((x) => {
-              const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
-              return a !== "no";
-            });
-
-            aggregatesById[String(id)] = aggregateCostSheetLineItems(activeOnly);
-          } catch (e) {
-            console.error("REFRESH_RECALC_SHEET_ERROR", id, e);
-            aggregatesById[String(id)] = { byHead: {}, grand: 0 };
-          }
-        },
-        CONCURRENCY
-      );
-
-      if (seq !== loadSeq.current) return;
-
-      // 3) apply aggregates only into existing columns (no assumptions)
-      const recalced = arr.map((r) => {
-        const id = String(r?.["Cost Sheet ID"] || "");
-        const agg = aggregatesById[id] || { byHead: {}, grand: 0 };
-        return applyAggregatesToCostSheetRow(r, heads, agg);
-      });
-
-      setCostSheets(recalced);
-
-      if (recalced.length) {
-        const keys = Object.keys(recalced[0]);
-        const initial = {};
-        keys.forEach((k) => (initial[k] = true));
-        setVisibleCols(initial);
-      }
-    } catch (e) {
-      console.error("REFRESH_RECALC_ERROR", e);
-      alert("Failed to refresh + recalculate (JSONP). Check deployed URL and permissions.");
-    } finally {
-      if (seq === loadSeq.current) setLoading(false);
-    }
-  }
-
-  // ✅ REQUIRED UPDATE #1:
-  // On first mount, run refresh+recalculate (not just loadAll),
-  // so figures always show correctly after a page refresh.
+  // On first mount, run FAST refresh
   useEffect(() => {
-    refreshAndRecalculate();
-    
+    refreshFast();
   }, []);
 
   async function ensureValidationLoaded() {
@@ -857,10 +700,9 @@ export default function CostingTable() {
       await apiPost({ action: "createCostSheet", data: { ...createForm } });
       setOpenCreate(false);
 
-      // ✅ REQUIRED UPDATE #2:
-      // After mutations, refresh+recalculate so figures show correctly immediately.
+      // ✅ FAST refresh after mutation
       setTimeout(async () => {
-        await refreshAndRecalculate();
+        await refreshFast();
       }, 300);
 
       alert("Cost Sheet created. Refreshing list…");
@@ -886,13 +728,11 @@ export default function CostingTable() {
       );
       const arr = Array.isArray(items) ? items : [];
 
-      // ✅ FIX: Active filter is now case-insensitive and trims spaces
       const activeOnly = arr.filter((x) => {
         const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
         return a !== "no";
       });
 
-      // ✅ NEW: attach stable key used for edit/delete/UI updates (non-breaking)
       const withKeys = activeOnly.map((x) => ({
         ...x,
         __lineKey: makeLineItemKey(id, x),
@@ -902,33 +742,7 @@ export default function CostingTable() {
 
       const headers = withKeys.length
         ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
-        : [
-            "Cost Sheet ID",
-            "Head Name",
-            "Subcategory",
-            "Expense Date",
-            "Entry Timestamp",
-            "Entered By",
-            "Entry Tag",
-            "Particular",
-            "Details",
-            "QTY",
-            "Rate",
-            "Amount",
-            "GST %",
-            "GST Amount",
-            "Total Amount",
-            "Attachment Link",
-            "Voucher/Invoice No",
-            "Payment Status",
-            "Active",
-            "Owner",
-            "Linked Entity Type",
-            "Linked Entity ID",
-            "Linked Entity Name",
-            "Client Name",
-            "Project Type",
-          ];
+        : fallbackLineItemHeaders;
 
       setLineItemHeaders(headers);
     } catch (e) {
@@ -957,6 +771,12 @@ export default function CostingTable() {
     setLineItems(withKeys);
   }
 
+  /**
+   * ✅ Efficiency update (GAS batch endpoint)
+   * We now write line items via:
+   *   POST { action:"addLineItemsBatch", data:{ costSheetId, items:[...] } }
+   * (single write + recompute once)
+   */
   async function addLineItemRow(row) {
     if (!activeSheet) return;
     const costSheetId = activeSheet["Cost Sheet ID"];
@@ -1000,12 +820,14 @@ export default function CostingTable() {
 
     setLoading(true);
     try {
-      await apiPost({ action: "addLineItem", data: payloadRow });
+      await apiPost({
+        action: "addLineItemsBatch",
+        data: { costSheetId, items: [payloadRow] },
+      });
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
-        // ✅ Keep table figures accurate after edits/adds
-        await refreshAndRecalculate();
+        await refreshFast(); // server recompute already done
       }, 250);
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
@@ -1017,8 +839,8 @@ export default function CostingTable() {
 
   /**
    * ✅ UPDATED DELETE (non-breaking)
-   * - Uses a stable key for optimistic UI (so the row immediately disappears)
-   * - Sends BOTH particular + entryTimestamp (backend may ignore extra fields safely)
+   * - stable key for optimistic UI
+   * - sends both particular + entryTimestamp (backend may ignore extra fields safely)
    */
   async function softDeleteLineItem(item) {
     if (!activeSheet) return;
@@ -1026,7 +848,7 @@ export default function CostingTable() {
 
     const particular = String(item?.["Particular"] || "").trim();
     const entryTsRaw = item?.["Entry Timestamp"];
-    const entryTimestamp = String(entryTsRaw ?? "").trim(); // sent as-is (backend safe)
+    const entryTimestamp = String(entryTsRaw ?? "").trim();
     const lineKey = item?.__lineKey || makeLineItemKey(costSheetId, item);
 
     if (!particular && !entryTimestamp) {
@@ -1040,19 +862,17 @@ export default function CostingTable() {
         action: "softDeleteLineItem",
         data: {
           costSheetId,
-          particular, // legacy key (your current GAS uses this)
-          entryTimestamp, // extra discriminator (safe even if ignored)
-          lineKey, // extra discriminator (safe even if ignored)
+          particular,
+          entryTimestamp,
+          lineKey,
         },
       });
 
-      // ✅ Optimistic UI: remove by stable key (NOT by Particular)
       setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== lineKey));
 
       setTimeout(async () => {
         await refreshLineItemsForActiveSheet(costSheetId);
-        // ✅ Keep table figures accurate after deletes
-        await refreshAndRecalculate();
+        await refreshFast(); // server recompute already done
       }, 250);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
@@ -1088,8 +908,6 @@ export default function CostingTable() {
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [drawerMode, setDrawerMode] = useState("add"); // "add" | "edit"
-
-  // ✅ UPDATED: keep original + its stable key (for correct "edit -> delete old -> add new")
   const [drawerOriginal, setDrawerOriginal] = useState(null);
 
   const blankDraft = (headPreset) =>
@@ -1139,8 +957,6 @@ export default function CostingTable() {
 
     const headName = String(item?.["Head Name"] || "").trim();
     setDrawerMode("edit");
-
-    // ✅ keep original including stable key
     setDrawerOriginal(item || null);
 
     const pre = recomputeDraftLive({
@@ -1218,12 +1034,8 @@ export default function CostingTable() {
   }
 
   /**
-   * ✅ UPDATED EDIT SAVE (non-breaking, fixes “edit adds new line but doesn’t remove old” in UI)
-   *
-   * We still use your audit-safe behavior (old row -> Active=No, new row -> append),
-   * BUT:
-   * - delete payload includes entryTimestamp + lineKey (extra discriminators)
-   * - optimistic UI removal uses stable key (not Particular)
+   * ✅ UPDATED EDIT SAVE
+   * old row -> Active=No, new row -> append
    */
   async function saveDrawer() {
     if (!activeSheet) return;
@@ -1251,7 +1063,6 @@ export default function CostingTable() {
           },
         });
 
-        // ✅ Optimistic UI: remove old row immediately by stable key
         setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== oldKey));
 
         await addLineItemRow(drawerDraft);
@@ -1289,7 +1100,7 @@ export default function CostingTable() {
     setDrawerDraft(blankDraft(headKeep));
   }
 
-  /* ===================== ✅ NEW: Add Expense Modal helpers (MULTI ITEMS) ===================== */
+  /* ===================== Add Expense Modal helpers (MULTI ITEMS) ===================== */
 
   function setAddExpenseItemField(index, key, value) {
     setAddExpenseItems((prev) => {
@@ -1376,6 +1187,11 @@ export default function CostingTable() {
     setOpenAddExpense(true);
   }
 
+  /**
+   * ✅ Efficiency update:
+   * - Existing sheet: addLineItemsBatch (single POST)
+   * - New sheet: createCostSheetAndAddLineItems (single POST)
+   */
   async function submitAddExpense() {
     await ensureValidationLoaded();
 
@@ -1440,27 +1256,22 @@ export default function CostingTable() {
           "Project Type": sheetRow?.["Project Type"] || p["Project Type"] || "",
         }));
 
-        const CONCURRENCY = 6;
-        let doneCount = 0;
-
-        await runWithConcurrency(
-          payloads,
-          async (payloadRow) => {
-            await apiPost({ action: "addLineItem", data: payloadRow });
-            doneCount += 1;
-            setSubmitProgress((prev) =>
-              prev ? { ...prev, done: doneCount } : { done: doneCount, total: payloads.length }
-            );
+        await apiPost({
+          action: "addLineItemsBatch",
+          data: {
+            costSheetId: selectedExistingSheetId,
+            items: payloads,
           },
-          CONCURRENCY
+        });
+
+        setSubmitProgress((prev) =>
+          prev ? { ...prev, done: prev.total } : { done: payloads.length, total: payloads.length }
         );
 
         setOpenAddExpense(false);
 
-        // ✅ REQUIRED UPDATE #2:
-        // After mutations, refresh+recalculate so figures show correctly immediately.
         setTimeout(async () => {
-          await refreshAndRecalculate();
+          await refreshFast();
         }, 300);
 
         alert(
@@ -1471,17 +1282,10 @@ export default function CostingTable() {
         return;
       }
 
+      // NEW COST SHEET MODE
       if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
         alert("Please select Linked Entity Type and Linked Entity Name for the new Cost Sheet.");
         return;
-      }
-
-      const first = validItems[0];
-      if (validItems.length > 1) {
-        alert(
-          "Note: In 'Create New Cost Sheet' mode, only the first line item will be submitted in one go. " +
-            "After the sheet is created and the table refreshes, you can add remaining items to that cost sheet."
-        );
       }
 
       const costSheetData = {
@@ -1490,29 +1294,32 @@ export default function CostingTable() {
       };
 
       await apiPost({
-        action: "createCostSheetAndAddLineItem",
+        action: "createCostSheetAndAddLineItems",
         data: {
           costSheetData,
-          lineItemData: {
-            ...first,
+          items: validItems.map((p) => ({
+            ...p,
             Owner: costSheetData.Owner,
             "Linked Entity Type": costSheetData["Linked Entity Type"],
             "Linked Entity ID": costSheetData["Linked Entity ID"],
             "Linked Entity Name": costSheetData["Linked Entity Name"],
             "Client Name": costSheetData["Client Name"] || "",
             "Project Type": costSheetData["Project Type"] || "",
-          },
+          })),
         },
       });
 
+      setSubmitProgress((prev) =>
+        prev ? { ...prev, done: prev.total } : { done: validItems.length, total: validItems.length }
+      );
+
       setOpenAddExpense(false);
 
-      // ✅ REQUIRED UPDATE #2:
       setTimeout(async () => {
-        await refreshAndRecalculate();
+        await refreshFast();
       }, 300);
 
-      alert("New Cost Sheet created and first line item added.");
+      alert("New Cost Sheet created and line items added.");
     } catch (e) {
       console.error("ADD_EXPENSE_ERROR", e);
       alert("Failed to submit expense.");
@@ -1553,7 +1360,7 @@ export default function CostingTable() {
     return picked;
   }, [lineItemHeaders]);
 
-  /* ===================== ✅ Keyboard Shortcuts (no destructive overrides) ===================== */
+  /* ===================== Keyboard Shortcuts ===================== */
 
   function isEditableTarget(el) {
     if (!el) return false;
@@ -1704,7 +1511,7 @@ export default function CostingTable() {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={refreshAndRecalculate}
+              onClick={refreshFast}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Refresh
@@ -1852,18 +1659,21 @@ export default function CostingTable() {
                       <IconButton onClick={() => openEditModal(r)}>
                         <EditIcon sx={{ color: cornflowerBlue }} />
                       </IconButton>
+
                       <IconButton
-                          size="small"
-                          title="Download Cost Sheet"
-                          onClick={() => {
-                            const csId = r?.["Cost Sheet ID"] || "";
-                            const url = `${BACKEND}?action=exportCosting&format=csv&costSheetId=${encodeURIComponent(csId)}`;
-                            window.open(url, "_blank");
-                          }}
-                        >
-                          <DownloadIcon fontSize="small" />
-                        </IconButton>
-                      </TableCell>
+                        size="small"
+                        title="Download Cost Sheet"
+                        onClick={() => {
+                          const csId = r?.["Cost Sheet ID"] || "";
+                          const url = `${BACKEND}?action=exportCosting&format=csv&costSheetId=${encodeURIComponent(
+                            csId
+                          )}`;
+                          window.open(url, "_blank");
+                        }}
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
                   </TableRow>
                 ))}
 
@@ -2003,7 +1813,6 @@ export default function CostingTable() {
                 </Paper>
               </Grid>
 
-              {/* ✅ REQUIRED UPDATE #3: Searchable (type-to-search) existing cost sheet dropdown */}
               <Grid item xs={12}>
                 <Autocomplete
                   size="small"
@@ -2016,7 +1825,6 @@ export default function CostingTable() {
                     setExtractForm((p) => ({
                       ...p,
                       costSheetId: id,
-                      // clear filters when selecting a cost sheet
                       entityType: "",
                       linkedEntityId: "",
                       from: "",
@@ -2036,7 +1844,6 @@ export default function CostingTable() {
                 ) : null}
               </Grid>
 
-              {/* ✅ When NOT selecting a cost sheet, keep legacy entity/date filters */}
               {!extractForm.costSheetId ? (
                 <>
                   <Grid item xs={12}>
@@ -2071,7 +1878,6 @@ export default function CostingTable() {
                 </>
               ) : null}
 
-              {/* keep these common filters even for selected cost sheet */}
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -2153,7 +1959,7 @@ export default function CostingTable() {
           </DialogActions>
         </Dialog>
 
-        {/* ================= ✅ ADD EXPENSE MODAL ================= */}
+        {/* ================= ADD EXPENSE MODAL ================= */}
         <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
@@ -2205,7 +2011,6 @@ export default function CostingTable() {
 
               {addExpenseMode === "existing" ? (
                 <Grid item xs={12}>
-                  {/* ✅ REQUIRED UPDATE #3: Searchable existing cost sheet dropdown here too */}
                   <Autocomplete
                     size="small"
                     options={costSheetOptions}
@@ -2318,7 +2123,9 @@ export default function CostingTable() {
                       size="small"
                       label="Client Name"
                       value={createForm["Client Name"] || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
+                      }
                     />
                   </Grid>
 
@@ -2328,7 +2135,9 @@ export default function CostingTable() {
                       size="small"
                       label="Project Type"
                       value={createForm["Project Type"] || ""}
-                      onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                      }
                     />
                   </Grid>
 
@@ -2426,7 +2235,9 @@ export default function CostingTable() {
                               <Select
                                 label="Head Name"
                                 value={it?.["Head Name"] || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Head Name", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Head Name", e.target.value)
+                                }
                               >
                                 {(validation.heads || []).map((h) => (
                                   <MenuItem key={h} value={h}>
@@ -2448,7 +2259,9 @@ export default function CostingTable() {
                               <Select
                                 label="Subcategory"
                                 value={it?.Subcategory || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Subcategory", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Subcategory", e.target.value)
+                                }
                               >
                                 {subcatsForHead(it?.["Head Name"] || "").map((s) => (
                                   <MenuItem key={s} value={s}>
@@ -2472,7 +2285,9 @@ export default function CostingTable() {
                               type="date"
                               InputLabelProps={{ shrink: true }}
                               value={it?.["Expense Date"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Expense Date", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2482,7 +2297,9 @@ export default function CostingTable() {
                               <Select
                                 label="Payment Status"
                                 value={it?.["Payment Status"] || ""}
-                                onChange={(e) => setAddExpenseItemField(idx, "Payment Status", e.target.value)}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Payment Status", e.target.value)
+                                }
                               >
                                 {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
                                   <MenuItem key={s} value={s}>
@@ -2499,7 +2316,9 @@ export default function CostingTable() {
                               size="small"
                               label="Particular"
                               value={it?.Particular || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Particular", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Particular", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2555,7 +2374,11 @@ export default function CostingTable() {
                                   }
                                 />
                               }
-                              label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
+                              label={
+                                <Typography sx={{ fontSize: 12 }}>
+                                  Use Auto Amount (QTY × Rate)
+                                </Typography>
+                              }
                             />
                           </Grid>
 
@@ -2594,7 +2417,9 @@ export default function CostingTable() {
                               size="small"
                               label="Total Amount"
                               value={it?.["Total Amount"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Total Amount", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Total Amount", e.target.value)
+                              }
                               InputProps={{
                                 readOnly: !canManualTotal,
                               }}
@@ -2612,7 +2437,9 @@ export default function CostingTable() {
                               size="small"
                               label="Attachment Link"
                               value={it?.["Attachment Link"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Attachment Link", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Attachment Link", e.target.value)
+                              }
                             />
                           </Grid>
 
@@ -2622,7 +2449,9 @@ export default function CostingTable() {
                               size="small"
                               label="Voucher/Invoice No"
                               value={it?.["Voucher/Invoice No"] || ""}
-                              onChange={(e) => setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)
+                              }
                             />
                           </Grid>
                         </Grid>
@@ -3111,12 +2940,16 @@ export default function CostingTable() {
                       control={
                         <Checkbox
                           size="small"
-                          checked={Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)}
+                          checked={
+                            Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)
+                          }
                           disabled={!drawerDraft.__hasQtyRate}
                           onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
                         />
                       }
-                      label={<Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>}
+                      label={
+                        <Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>
+                      }
                     />
                   </Grid>
 
@@ -3219,7 +3052,7 @@ export default function CostingTable() {
                 {drawerMode === "edit" ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
                     Note: Edit marks the old row inactive and appends the updated row (audit-safe). The
-                    UI now removes the old row using a stable key to avoid duplicates.
+                    UI removes the old row using a stable key to avoid duplicates.
                   </Typography>
                 ) : null}
               </Box>

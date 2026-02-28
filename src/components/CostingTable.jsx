@@ -41,6 +41,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
 import CloseIcon from "@mui/icons-material/Close";
 import RemoveCircleOutlineIcon from "@mui/icons-material/RemoveCircleOutline";
+import DownloadIcon from "@mui/icons-material/Download";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -1851,7 +1852,18 @@ export default function CostingTable() {
                       <IconButton onClick={() => openEditModal(r)}>
                         <EditIcon sx={{ color: cornflowerBlue }} />
                       </IconButton>
-                    </TableCell>
+                      <IconButton
+                          size="small"
+                          title="Download Cost Sheet"
+                          onClick={() => {
+                            const csId = r?.["Cost Sheet ID"] || "";
+                            const url = `${BACKEND}?action=exportCosting&format=csv&costSheetId=${encodeURIComponent(csId)}`;
+                            window.open(url, "_blank");
+                          }}
+                        >
+                          <DownloadIcon fontSize="small" />
+                        </IconButton>
+                      </TableCell>
                   </TableRow>
                 ))}
 

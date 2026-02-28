@@ -476,7 +476,7 @@ export default function InventoryModule({
   useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [apiUrl]);
 
   const handleCreateBooking = async () => {

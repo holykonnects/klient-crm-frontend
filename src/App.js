@@ -21,6 +21,7 @@ import EmailTemplatesTable from './components/email/EmailTemplatesTable';
 import EmailDashboard from './components/email/EmailDashboard';
 import ExistenceCheckPage from './components/ExistenceCheckPage';
 import CostingTable from './components/CostingTable';
+import InventoryModule from './components/InventoryModule';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -43,6 +44,14 @@ const AppRoutes = () => {
           element={
             <ProtectedPage pageKey="Costing">
               <CostingTable />
+            </ProtectedPage>
+          }
+        />
+        <Route
+          path="inventory"
+          element={
+            <ProtectedPage pageKey="Inventory">
+              <InventoryModule />
             </ProtectedPage>
           }
         />

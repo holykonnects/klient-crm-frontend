@@ -61,12 +61,62 @@ function getUserFromLocalStorage() {
   }
 }
 
+/**
+ * ✅ JSONP helper (fixes CORS for GET calls to Apps Script Web App)
+ * We will use this for:
+ * - getValidation
+ * - getInputs
+ * - getCalcConfig
+ * - getStock
+ * - getBookings
+ */
+function jsonp(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const script = document.createElement("script");
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("JSONP timeout"));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try {
+        delete window[cb];
+      } catch {
+        window[cb] = undefined;
+      }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cb] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    const sep = url.includes("?") ? "&" : "?";
+    script.src = `${url}${sep}callback=${cb}`;
+    script.async = true;
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP load failed"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
+
+/**
+ * ✅ GET via JSONP (returns json.data)
+ * Requires GAS doGet to support ?callback=...
+ */
 async function apiGet(apiUrl, params) {
   const qs = new URLSearchParams(params);
-  const res = await fetch(`${apiUrl}?${qs.toString()}`, { method: "GET" });
-  const json = await res.json().catch(() => ({}));
-  if (!json?.ok) throw new Error(json?.error || "Request failed");
-  return json.data;
+  const payload = await jsonp(`${apiUrl}?${qs.toString()}`);
+  if (!payload?.ok) throw new Error(payload?.error || "Request failed");
+  return payload.data;
 }
 
 /**
@@ -310,7 +360,7 @@ export default function InventoryModule({
     if (variantsList?.length && !variant) setVariant(variantsList[0]);
   }, [variantsList, variant]);
 
-  // Load validation
+  // Load validation (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl) return;
@@ -327,7 +377,7 @@ export default function InventoryModule({
     run();
   }, [apiUrl]);
 
-  // Load inputs for category/variant
+  // Load inputs for category/variant (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category || !variant) return;
@@ -358,7 +408,7 @@ export default function InventoryModule({
     run();
   }, [apiUrl, category, variant]);
 
-  // Load calc config
+  // Load calc config (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category || !variant) return;
@@ -376,7 +426,7 @@ export default function InventoryModule({
     run();
   }, [apiUrl, category, variant]);
 
-  // Load stock for category
+  // Load stock for category (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category) return;
@@ -476,7 +526,6 @@ export default function InventoryModule({
   useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
-    
   }, [apiUrl]);
 
   const handleCreateBooking = async () => {
@@ -503,7 +552,7 @@ export default function InventoryModule({
       setRemarks("");
       setBookingNotice("✅ Booking submitted successfully. Refreshing bookings…");
 
-      // Best effort refresh (if GAS getBookings exists)
+      // Best effort refresh (JSONP getBookings)
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("createBooking error:", e);

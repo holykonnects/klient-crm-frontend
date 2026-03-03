@@ -81,6 +81,3040 @@ function jsonpGet(url) {
   return new Promise((resolve, reject) => {
     const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
 
+    let scriptEl = null;
+
+    const cleanup = () => {
+      try {
+        delete window[cbName];
+      } catch {}
+      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    };
+
+    window[cbName] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    scriptEl = document.createElement("script");
+    scriptEl.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
+    scriptEl.async = true;
+
+    scriptEl.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP load failed"));
+    };
+
+    document.body.appendChild(scriptEl);
+  });
+}
+
+// ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
+async function apiPost(payload) {
+  await fetch(BACKEND, {
+    method: "POST",
+    mode: "no-cors",
+    body: JSON.stringify(payload),
+  });
+  return { success: true };
+}
+
+/**
+ * ✅ Concurrency helper (kept; now used mainly for JSONP fan-out if needed)
+ */
+async function runWithConcurrency(items, worker, concurrency = 5) {
+  const arr = Array.isArray(items) ? items : [];
+  const limit = Math.max(1, Math.floor(concurrency || 1));
+  let i = 0;
+  const runners = new Array(Math.min(limit, arr.length)).fill(0).map(async () => {
+    while (i < arr.length) {
+      const idx = i++;
+      await worker(arr[idx], idx);
+    }
+  });
+  await Promise.all(runners);
+}
+
+/**
+ * ✅ AUTO CALC FIX (single source of truth)
+ *
+ * Rules:
+ * 1) If QTY and Rate are BOTH present (>0) and user chooses Auto => Amount = QTY×Rate (read-only)
+ * 2) If QTY×Rate is NOT available => user can manually enter Total Amount (editable)
+ *    - If GST% is present, we back-calc:
+ *        GST Amount = Total * (GST% / (100 + GST%))
+ *        Amount = Total - GST Amount
+ *    - If GST% is blank/0, Amount = Total, GST Amount = 0
+ * 3) If user manually enters Amount (Auto off), Total auto-computes (Amount + GST Amount)
+ */
+function recomputeDraftLive(next) {
+  const qty = safeNum(next["QTY"]);
+  const rate = safeNum(next["Rate"]);
+  const hasQtyRate = qty > 0 && rate > 0;
+
+  const gstPct = safeNum(next["GST %"]);
+
+  // Explicit toggles (persisted in draft only, stripped before POST)
+  const useAutoAmount = hasQtyRate ? next.__useAutoAmount !== false : false; // default true when qty/rate exists
+  const useManualTotal = !hasQtyRate ? Boolean(next.__useManualTotal) : false; // only allowed when no qty/rate
+
+  // Current raw values
+  const rawAmountStr = String(next["Amount"] ?? "").trim();
+  const rawTotalStr = String(next["Total Amount"] ?? "").trim();
+
+  // 1) Determine Amount
+  let amount = next["Amount"];
+  if (hasQtyRate && useAutoAmount) {
+    amount = qty * rate;
+  } else {
+    // keep manual amount as typed
+    amount = rawAmountStr === "" ? "" : safeNum(amount);
+  }
+
+  // 2) If manual total is enabled (only when qty/rate unavailable)
+  //    then Total is editable and Amount/GST Amount are derived from Total + GST%
+  let gstAmount = "";
+  let total = "";
+
+  if (!hasQtyRate && useManualTotal) {
+    total = rawTotalStr === "" ? "" : safeNum(next["Total Amount"]);
+
+    if (String(total ?? "").trim() !== "") {
+      if (gstPct > 0) {
+        const derivedGst = (safeNum(total) * gstPct) / (100 + gstPct);
+        const derivedAmt = safeNum(total) - derivedGst;
+
+        amount = derivedAmt;
+        gstAmount = derivedGst;
+      } else {
+        amount = safeNum(total);
+        gstAmount = 0;
+      }
+    } else {
+      // if user cleared total, clear derived fields too
+      amount = "";
+      gstAmount = "";
+    }
+  } else {
+    // 3) Normal mode: GST Amount + Total are computed from Amount and GST%
+    const hasAmount = String(amount ?? "").trim() !== "";
+    gstAmount = hasAmount ? (safeNum(amount) * gstPct) / 100 : "";
+    total = hasAmount ? safeNum(amount) + safeNum(gstAmount) : "";
+  }
+
+  // Normalize blanks
+  const out = {
+    ...next,
+    Amount: amount === 0 ? "" : amount,
+    "GST Amount": gstAmount === 0 ? "" : gstAmount,
+    "Total Amount": total === 0 ? "" : total,
+
+    // UI flags
+    __hasQtyRate: hasQtyRate,
+    __useAutoAmount: hasQtyRate ? useAutoAmount : false,
+    __useManualTotal: !hasQtyRate ? useManualTotal : false,
+  };
+
+  return out;
+}
+
+/**
+ * Final totals before save (server row):
+ * - Uses the same rules, but WITHOUT draft-only flags in the payload.
+ */
+function computeRowTotals(row) {
+  const draft = recomputeDraftLive({
+    ...row,
+    __useAutoAmount: row.__useAutoAmount,
+    __useManualTotal: row.__useManualTotal,
+  });
+
+  return {
+    ...row,
+    Amount: draft.Amount ?? "",
+    "GST Amount": draft["GST Amount"] ?? "",
+    "Total Amount": draft["Total Amount"] ?? "",
+  };
+}
+
+const DEFAULT_PAYMENT_STATUSES = ["pending", "partially paid", "paid", "hold/disputed"];
+
+function normalizeValidationResponse(raw) {
+  const v = raw?.data ? raw.data : raw;
+
+  const headsDirect = Array.isArray(v?.heads) ? v.heads : null;
+  const subcatsDirect =
+    v?.subcategories && typeof v.subcategories === "object" ? v.subcategories : null;
+  const payDirect = Array.isArray(v?.paymentStatus) ? v.paymentStatus : null;
+
+  if (headsDirect || subcatsDirect || payDirect) {
+    const pay = (payDirect && payDirect.length ? payDirect : DEFAULT_PAYMENT_STATUSES).map((x) =>
+      String(x).trim()
+    );
+    return {
+      heads: headsDirect || [],
+      subcategories: subcatsDirect || {},
+      paymentStatus: pay,
+    };
+  }
+
+  const heads =
+    (Array.isArray(v?.costHeads) && v.costHeads) ||
+    (Array.isArray(v?.["Cost Heads"]) && v["Cost Heads"]) ||
+    [];
+
+  const paymentStatusRaw =
+    (Array.isArray(v?.["Payment Status"]) && v["Payment Status"]) ||
+    (Array.isArray(v?.payment_status) && v.payment_status) ||
+    [];
+
+  const paymentStatus =
+    paymentStatusRaw && paymentStatusRaw.length
+      ? paymentStatusRaw.map((x) => String(x).trim())
+      : DEFAULT_PAYMENT_STATUSES;
+
+  const subcategories =
+    (v?.subcategoryMap && typeof v.subcategoryMap === "object" && v.subcategoryMap) || {};
+
+  return { heads, subcategories, paymentStatus };
+}
+
+function getExtractColsStorageKey(userKey) {
+  return `kk_costing_extract_cols_v1::${userKey || "anon"}`;
+}
+
+function safeJsonParse(s, fallback) {
+  try {
+    const v = JSON.parse(s);
+    return v ?? fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+/* ===================== stable row key helpers ===================== */
+
+function normalizeTsForKey(v) {
+  if (!v) return "";
+  const s = String(v);
+  const d = new Date(s);
+  if (!isNaN(d.getTime())) return String(d.getTime());
+  return s.trim();
+}
+
+function makeLineItemKey(costSheetId, item) {
+  const csid = String(costSheetId || item?.["Cost Sheet ID"] || "").trim();
+  const ts = normalizeTsForKey(
+    item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]
+  );
+  const part = String(item?.["Particular"] || "").trim();
+  return [csid || "-", ts || "-", part || "-"].join("|");
+}
+
+/* ===================== Component ===================== */
+
+export default function CostingTable() {
+  const { user } = useAuth();
+  const loggedInName = user?.username || user?.name || user?.email || "";
+  const role = user?.role || "";
+  const isAdmin = String(role || "").toLowerCase() === "admin";
+
+  const [loading, setLoading] = useState(false);
+  const [submitProgress, setSubmitProgress] = useState(null); // { done, total, label }
+
+  const [validation, setValidation] = useState({
+    heads: [],
+    subcategories: {},
+    paymentStatus: DEFAULT_PAYMENT_STATUSES,
+  });
+
+  const [costSheets, setCostSheets] = useState([]);
+  const [search, setSearch] = useState("");
+
+  const [statusFilter, setStatusFilter] = useState("");
+  const [entityTypeFilter, setEntityTypeFilter] = useState("");
+
+  const [columnsOpen, setColumnsOpen] = useState(null);
+  const [visibleCols, setVisibleCols] = useState({});
+
+  // Modal states
+  const [openCreate, setOpenCreate] = useState(false);
+  const [openEdit, setOpenEdit] = useState(false);
+
+  const [activeSheet, setActiveSheet] = useState(null);
+  const [lineItems, setLineItems] = useState([]);
+  const [lineItemHeaders, setLineItemHeaders] = useState([]);
+
+  // ✅ Entity dropdown options for CREATE modal
+  const [entityOptions, setEntityOptions] = useState([]);
+  const [entityLoading, setEntityLoading] = useState(false);
+
+  // ✅ Drawer menu containment ref (FIX for dropdown hidden behind drawer)
+  const drawerPaperRef = useRef(null);
+
+  // ✅ MenuProps to force Select menus to render INSIDE the Drawer
+  const getDrawerMenuProps = () => ({
+    disablePortal: true,
+    container: drawerPaperRef.current,
+    PaperProps: {
+      sx: {
+        zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 80,
+      },
+    },
+  });
+
+  // ===== Extraction =====
+  const [openExtract, setOpenExtract] = useState(false);
+  const [extractForm, setExtractForm] = useState({
+    costSheetId: "",
+    entityType: "",
+    linkedEntityId: "",
+    particular: "",
+    paymentStatus: "",
+    from: "",
+    to: "",
+    format: "csv",
+  });
+
+  const [extractColumnsAnchor, setExtractColumnsAnchor] = useState(null);
+  const [extractVisibleCols, setExtractVisibleCols] = useState({});
+  const [extractColsTouched, setExtractColsTouched] = useState(false);
+
+  const fallbackLineItemHeaders = useMemo(() => {
+    return [
+      "Cost Sheet ID",
+      "Head Name",
+      "Subcategory",
+      "Expense Date",
+      "Entry Timestamp",
+      "Entered By",
+      "Entry Tag",
+      "Particular",
+      "Details",
+      "QTY",
+      "Rate",
+      "Amount",
+      "GST %",
+      "GST Amount",
+      "Total Amount",
+      "Attachment Link",
+      "Voucher/Invoice No",
+      "Payment Status",
+      "Active",
+      "Owner",
+      "Linked Entity Type",
+      "Linked Entity ID",
+      "Linked Entity Name",
+      "Client Name",
+      "Project Type",
+    ];
+  }, []);
+
+  const extractAllColumns = useMemo(() => {
+    const hs =
+      Array.isArray(lineItemHeaders) && lineItemHeaders.length ? lineItemHeaders : null;
+    return hs || fallbackLineItemHeaders;
+  }, [lineItemHeaders, fallbackLineItemHeaders]);
+
+  // ✅ Build searchable "Cost Sheet options" (for Autocomplete dropdowns)
+  const costSheetOptions = useMemo(() => {
+    const arr = Array.isArray(costSheets) ? costSheets : [];
+    return arr
+      .map((cs) => {
+        const id = String(cs?.["Cost Sheet ID"] || "").trim();
+        const label = [
+          cs?.["Cost Sheet ID"],
+          cs?.["Linked Entity Name"],
+          cs?.["Owner"],
+          cs?.["Status"],
+        ]
+          .filter(Boolean)
+          .join(" — ");
+        return {
+          id,
+          label: label || id,
+          row: cs,
+        };
+      })
+      .filter((x) => x.id);
+  }, [costSheets]);
+
+  const selectedExtractCostSheetOption = useMemo(() => {
+    const id = String(extractForm?.costSheetId || "").trim();
+    if (!id) return null;
+    return costSheetOptions.find((x) => x.id === id) || null;
+  }, [extractForm?.costSheetId, costSheetOptions]);
+
+  useEffect(() => {
+    if (!openExtract) return;
+
+    const userKey = String(loggedInName || "").trim();
+    const storageKey = getExtractColsStorageKey(userKey);
+
+    const allDefault = {};
+    (extractAllColumns || []).forEach((c) => (allDefault[c] = true));
+
+    const cached = safeJsonParse(localStorage.getItem(storageKey), null);
+
+    setExtractVisibleCols((prev) => {
+      if (extractColsTouched && prev && Object.keys(prev).length) return prev;
+
+      if (cached && typeof cached === "object") {
+        const next = { ...allDefault };
+        Object.keys(next).forEach((k) => {
+          if (k in cached) next[k] = cached[k] !== false;
+        });
+        return next;
+      }
+
+      return allDefault;
+    });
+  }, [openExtract, extractAllColumns, loggedInName, extractColsTouched]);
+
+  function openExtractColumns(e) {
+    setExtractColumnsAnchor(e.currentTarget);
+  }
+  function closeExtractColumns() {
+    setExtractColumnsAnchor(null);
+  }
+
+  const selectedExtractFields = useMemo(() => {
+    const keys = Object.keys(extractVisibleCols || {});
+    if (!keys.length) return [];
+    return keys.filter((k) => extractVisibleCols[k] !== false);
+  }, [extractVisibleCols]);
+
+  function triggerExtraction() {
+    const isSheetMode = String(extractForm.costSheetId || "").trim();
+
+    const baseParams = {
+      action: "exportCosting",
+      ...(isSheetMode
+        ? { costSheetId: extractForm.costSheetId }
+        : Object.fromEntries(
+            Object.entries({
+              entityType: extractForm.entityType,
+              linkedEntityId: extractForm.linkedEntityId,
+              from: extractForm.from,
+              to: extractForm.to,
+            }).filter(([_, v]) => String(v || "").trim())
+          )),
+      ...Object.fromEntries(
+        Object.entries({
+          particular: extractForm.particular,
+          paymentStatus: extractForm.paymentStatus,
+          format: extractForm.format,
+        }).filter(([_, v]) => String(v || "").trim())
+      ),
+    };
+
+    const allCount = (extractAllColumns || []).length;
+    const selCount = selectedExtractFields.length;
+
+    const params = new URLSearchParams(baseParams);
+
+    if (selCount > 0 && selCount < allCount) {
+      params.set("fields", JSON.stringify(selectedExtractFields));
+    }
+
+    const url = `${BACKEND}?${params.toString()}`;
+    window.open(url, "_blank");
+    setOpenExtract(false);
+  }
+
+  // Create cost sheet form
+  const [createForm, setCreateForm] = useState({
+    Owner: "",
+    "Linked Entity Type": "",
+    "Linked Entity ID": "",
+    "Linked Entity Name": "",
+    "Client Name": "",
+    "Project Type": "",
+    Status: "Draft",
+    Notes: "",
+  });
+
+  const selectedEntityOption = useMemo(() => {
+    const id = String(createForm?.["Linked Entity ID"] || "");
+    if (!id) return null;
+    return (entityOptions || []).find((x) => String(x.id) === id) || null;
+  }, [createForm, entityOptions]);
+
+  const entityOptionLabel = (opt) => {
+    if (!opt) return "";
+    return String(opt.display || opt.name || opt.label || opt.id || "");
+  };
+
+  /* ===================== ADD EXPENSE ===================== */
+  const [openAddExpense, setOpenAddExpense] = useState(false);
+  const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
+  const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
+
+  const selectedAddExpenseCostSheetOption = useMemo(() => {
+    const id = String(selectedExistingSheetId || "").trim();
+    if (!id) return null;
+    return costSheetOptions.find((x) => x.id === id) || null;
+  }, [selectedExistingSheetId, costSheetOptions]);
+
+  const [addExpenseItems, setAddExpenseItems] = useState([]);
+
+  const loadSeq = useRef(0);
+
+  /**
+   * ✅ FAST REFRESH (GAS efficiency update)
+   * GAS now recomputes totals when line items are added/updated (batch endpoints),
+   * so the UI should NOT JSONP fan-out per cost sheet anymore.
+   */
+  async function refreshFast() {
+    const seq = ++loadSeq.current;
+    setLoading(true);
+    try {
+      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+      if (seq !== loadSeq.current) return;
+
+      const parsed = normalizeValidationResponse(rawV);
+      setValidation(parsed);
+
+      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
+      if (seq !== loadSeq.current) return;
+
+      const arr = Array.isArray(sheets) ? sheets : [];
+      setCostSheets(arr);
+
+      if (arr.length) {
+        const keys = Object.keys(arr[0]);
+        const initial = {};
+        keys.forEach((k) => (initial[k] = true));
+        setVisibleCols((prev) => (prev && Object.keys(prev).length ? prev : initial));
+      }
+
+      // ✅ Keep activeSheet in sync (so computed columns refresh visibly)
+      if (activeSheet?.["Cost Sheet ID"]) {
+        const id = String(activeSheet["Cost Sheet ID"]);
+        const fresh = arr.find((x) => String(x?.["Cost Sheet ID"]) === id) || null;
+        if (fresh) setActiveSheet(fresh);
+      }
+    } catch (e) {
+      console.error("COSTING_REFRESH_FAST_ERROR", e);
+      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+    } finally {
+      if (seq === loadSeq.current) setLoading(false);
+    }
+  }
+
+  // ✅ Slightly more robust post-mutation refresh (helps when GAS recompute is async)
+  async function refreshAfterMutation() {
+    // 1st refresh quickly
+    await refreshFast();
+    // 2nd refresh after a short delay (to catch recompute + sheet flush)
+    setTimeout(() => {
+      refreshFast();
+    }, 900);
+  }
+
+  // On first mount, run FAST refresh
+  useEffect(() => {
+    refreshFast();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  async function ensureValidationLoaded() {
+    const hasAny =
+      (validation.heads && validation.heads.length) ||
+      (validation.paymentStatus && validation.paymentStatus.length) ||
+      (validation.subcategories && Object.keys(validation.subcategories).length);
+
+    if (hasAny) return;
+
+    try {
+      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+      const parsed = normalizeValidationResponse(rawV);
+      setValidation(parsed);
+    } catch (e) {
+      console.error("ENSURE_VALIDATION_ERROR", e);
+    }
+  }
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+
+    return costSheets.filter((r) => {
+      const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
+      const entityOk =
+        !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+
+      const hay = Object.values(r)
+        .map((x) => String(x || ""))
+        .join(" ")
+        .toLowerCase();
+
+      const qOk = !q || hay.includes(q);
+      return statusOk && entityOk && qOk;
+    });
+  }, [costSheets, search, statusFilter, entityTypeFilter]);
+
+  const costSheetColumns = useMemo(() => {
+    if (!costSheets.length) return [];
+    return Object.keys(costSheets[0]);
+  }, [costSheets]);
+
+  function openColumns(e) {
+    setColumnsOpen(e.currentTarget);
+  }
+  function closeColumns() {
+    setColumnsOpen(null);
+  }
+
+  function openCreateModal() {
+    setEntityOptions([]);
+    setCreateForm((p) => ({
+      ...p,
+      Owner: isAdmin ? (p.Owner || loggedInName || "") : loggedInName || p.Owner,
+      Status: "Draft",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+    }));
+    setOpenCreate(true);
+  }
+
+  async function loadEntitiesForType(type) {
+    const t = String(type || "").trim();
+    if (!t) {
+      setEntityOptions([]);
+      return;
+    }
+
+    setEntityLoading(true);
+    try {
+      const res = await jsonpGet(
+        `${BACKEND}?action=getEntities&type=${encodeURIComponent(t)}&owner=${encodeURIComponent(
+          loggedInName || ""
+        )}&role=${encodeURIComponent(role || "")}`
+      );
+
+      if (res?.success && Array.isArray(res.entities)) {
+        setEntityOptions(res.entities);
+      } else {
+        console.error("GET_ENTITIES_ERROR", res);
+        setEntityOptions([]);
+        alert(
+          "Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response)."
+        );
+      }
+    } catch (e) {
+      console.error("GET_ENTITIES_FETCH_ERROR", e);
+      setEntityOptions([]);
+      alert("Entities could not be loaded (JSONP). Check deployment access.");
+    } finally {
+      setEntityLoading(false);
+    }
+  }
+
+  async function createCostSheet() {
+    setLoading(true);
+    try {
+      const payload = {
+        ...createForm,
+        Owner: isAdmin ? (createForm.Owner || loggedInName || "") : loggedInName || createForm.Owner,
+      };
+
+      await apiPost({ action: "createCostSheet", data: payload });
+      setOpenCreate(false);
+
+      // ✅ robust refresh
+      setTimeout(async () => {
+        await refreshAfterMutation();
+      }, 250);
+
+      alert("Cost Sheet created. Refreshing list…");
+    } catch (e) {
+      console.error("CREATE_COST_SHEET_ERROR", e);
+      alert("Failed to create cost sheet.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function openEditModal(row) {
+    await ensureValidationLoaded();
+
+    setActiveSheet(row);
+    setOpenEdit(true);
+    setLoading(true);
+
+    try {
+      const id = row["Cost Sheet ID"];
+      const items = await jsonpGet(
+        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
+      );
+      const arr = Array.isArray(items) ? items : [];
+
+      const activeOnly = arr.filter((x) => {
+        const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+        return a !== "no";
+      });
+
+      const withKeys = activeOnly.map((x) => ({
+        ...x,
+        __lineKey: makeLineItemKey(id, x),
+      }));
+
+      setLineItems(withKeys);
+
+      const headers = withKeys.length
+        ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
+        : fallbackLineItemHeaders;
+
+      setLineItemHeaders(headers);
+
+      // keep sheet row (and computed totals columns) fresh in header
+      setTimeout(() => {
+        refreshFast();
+      }, 200);
+    } catch (e) {
+      console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
+      alert("Failed to open cost sheet details.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function refreshLineItemsForActiveSheet(costSheetId) {
+    const items = await jsonpGet(
+      `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+    );
+    const arr = Array.isArray(items) ? items : [];
+    const activeOnly = arr.filter((x) => {
+      const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+      return a !== "no";
+    });
+
+    const withKeys = activeOnly.map((x) => ({
+      ...x,
+      __lineKey: makeLineItemKey(costSheetId, x),
+    }));
+
+    setLineItems(withKeys);
+  }
+
+  /**
+   * ✅ Efficiency update (GAS batch endpoint)
+   * We now write line items via:
+   *   POST { action:"addLineItemsBatch", data:{ costSheetId, items:[...] } }
+   * (single write + recompute once)
+   */
+  async function addLineItemRow(row) {
+    if (!activeSheet) return;
+    const costSheetId = activeSheet["Cost Sheet ID"];
+
+    let payloadRow = { ...(row || {}) };
+
+    // strip UI-only flags before POST
+    const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
+    uiKeys.forEach((k) => {
+      if (k in payloadRow) delete payloadRow[k];
+    });
+
+    payloadRow["Cost Sheet ID"] = costSheetId;
+
+    payloadRow["Owner"] = activeSheet?.["Owner"] || payloadRow["Owner"] || loggedInName || "";
+    payloadRow["Linked Entity Type"] =
+      activeSheet?.["Linked Entity Type"] || payloadRow["Linked Entity Type"] || "";
+    payloadRow["Linked Entity ID"] =
+      activeSheet?.["Linked Entity ID"] || payloadRow["Linked Entity ID"] || "";
+    payloadRow["Linked Entity Name"] =
+      activeSheet?.["Linked Entity Name"] || payloadRow["Linked Entity Name"] || "";
+
+    payloadRow["Client Name"] = activeSheet?.["Client Name"] || payloadRow["Client Name"] || "";
+    payloadRow["Project Type"] =
+      activeSheet?.["Project Type"] || payloadRow["Project Type"] || "";
+
+    payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
+
+    payloadRow = computeRowTotals(payloadRow);
+
+    const hasSome =
+      String(payloadRow.Particular || "").trim() ||
+      String(payloadRow.Details || "").trim() ||
+      String(payloadRow.Amount || "").trim() ||
+      String(payloadRow["Total Amount"] || "").trim();
+
+    if (!hasSome) {
+      alert("Please enter at least Particular / Details / Amount / Total Amount.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiPost({
+        action: "addLineItemsBatch",
+        data: { costSheetId, items: [payloadRow] },
+      });
+
+      setTimeout(async () => {
+        await refreshLineItemsForActiveSheet(costSheetId);
+        await refreshAfterMutation();
+      }, 350);
+    } catch (e) {
+      console.error("ADD_LINE_ITEM_ERROR", e);
+      alert("Failed to add line item.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  /**
+   * ✅ UPDATED DELETE (non-breaking)
+   * - stable key for optimistic UI
+   * - sends both particular + entryTimestamp (backend may ignore extra fields safely)
+   */
+  async function softDeleteLineItem(item) {
+    if (!activeSheet) return;
+    const costSheetId = activeSheet["Cost Sheet ID"];
+
+    const particular = String(item?.["Particular"] || "").trim();
+    const entryTsRaw = item?.["Entry Timestamp"];
+    const entryTimestamp = String(entryTsRaw ?? "").trim();
+    const lineKey = item?.__lineKey || makeLineItemKey(costSheetId, item);
+
+    if (!particular && !entryTimestamp) {
+      alert("Cannot delete: This row has no Particular and no Entry Timestamp.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await apiPost({
+        action: "softDeleteLineItem",
+        data: {
+          costSheetId,
+          particular,
+          entryTimestamp,
+          lineKey,
+        },
+      });
+
+      setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== lineKey));
+
+      setTimeout(async () => {
+        await refreshLineItemsForActiveSheet(costSheetId);
+        await refreshAfterMutation();
+      }, 350);
+    } catch (e) {
+      console.error("SOFT_DELETE_ERROR", e);
+      alert(
+        "Failed to delete line item. If two rows share the same Particular, delete can be ambiguous without Entry Timestamp support."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const totalsByHead = useMemo(() => {
+    const out = {};
+    (validation.heads || []).forEach((h) => (out[h] = 0));
+    (lineItems || []).forEach((li) => {
+      const h = String(li["Head Name"] || "").trim();
+      const total = safeNum(li["Total Amount"]);
+      out[h] = safeNum(out[h]) + total;
+    });
+    return out;
+  }, [lineItems, validation.heads]);
+
+  const grandTotal = useMemo(() => {
+    return Object.values(totalsByHead).reduce((a, b) => a + safeNum(b), 0);
+  }, [totalsByHead]);
+
+  const subcatsForHead = (head) => {
+    const m = validation.subcategories || {};
+    return Array.isArray(m[head]) ? m[head] : [];
+  };
+
+  /* ===================== Drawer Editor State ===================== */
+
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [drawerMode, setDrawerMode] = useState("add"); // "add" | "edit"
+  const [drawerOriginal, setDrawerOriginal] = useState(null);
+
+  const blankDraft = (headPreset) =>
+    recomputeDraftLive({
+      "Head Name": headPreset || "",
+      Subcategory: "",
+      "Expense Date": new Date().toISOString().slice(0, 10),
+      "Entered By": loggedInName,
+      "Entry Tag": "",
+      Particular: "",
+      Details: "",
+      QTY: "",
+      Rate: "",
+      Amount: "",
+      "GST %": "",
+      "GST Amount": "",
+      "Total Amount": "",
+      "Attachment Link": "",
+      "Voucher/Invoice No": "",
+      "Payment Status": "",
+      __useAutoAmount: true,
+      __useManualTotal: false,
+    });
+
+  const [drawerDraft, setDrawerDraft] = useState(() => blankDraft(""));
+
+  useEffect(() => {
+    setDrawerDraft((p) =>
+      recomputeDraftLive({
+        ...p,
+        "Entered By": loggedInName || p["Entered By"] || "",
+      })
+    );
+  }, [loggedInName]);
+
+  async function openDrawerAdd(headPreset) {
+    await ensureValidationLoaded();
+
+    setDrawerMode("add");
+    setDrawerOriginal(null);
+    setDrawerDraft(blankDraft(headPreset));
+    setDrawerOpen(true);
+  }
+
+  async function openDrawerEdit(item) {
+    await ensureValidationLoaded();
+
+    const headName = String(item?.["Head Name"] || "").trim();
+    setDrawerMode("edit");
+    setDrawerOriginal(item || null);
+
+    const pre = recomputeDraftLive({
+      "Head Name": headName,
+      Subcategory: item?.Subcategory ?? "",
+      "Expense Date": item?.["Expense Date"] ?? new Date().toISOString().slice(0, 10),
+      "Entered By": loggedInName,
+      "Entry Tag": item?.["Entry Tag"] ?? "",
+      Particular: item?.Particular ?? "",
+      Details: item?.Details ?? "",
+      QTY: item?.["QTY"] ?? "",
+      Rate: item?.["Rate"] ?? "",
+      Amount: item?.["Amount"] ?? "",
+      "GST %": item?.["GST %"] ?? "",
+      "GST Amount": item?.["GST Amount"] ?? "",
+      "Total Amount": item?.["Total Amount"] ?? "",
+      "Attachment Link": item?.["Attachment Link"] ?? "",
+      "Voucher/Invoice No": item?.["Voucher/Invoice No"] ?? "",
+      "Payment Status": item?.["Payment Status"] ?? "",
+      __useAutoAmount: true,
+      __useManualTotal:
+        !(safeNum(item?.["QTY"]) > 0 && safeNum(item?.["Rate"]) > 0) &&
+        String(item?.["Total Amount"] ?? "").trim() !== "" &&
+        String(item?.["Amount"] ?? "").trim() === "",
+    });
+
+    setDrawerDraft(pre);
+    setDrawerOpen(true);
+  }
+
+  function closeDrawer() {
+    setDrawerOpen(false);
+  }
+
+  function setDrawerField(key, value) {
+    setDrawerDraft((p) => {
+      const next = { ...p };
+
+      if (key === "Head Name") {
+        next["Head Name"] = value;
+        next.Subcategory = "";
+        return recomputeDraftLive(next);
+      }
+
+      if (key === "__useAutoAmount") {
+        next.__useAutoAmount = Boolean(value);
+        return recomputeDraftLive(next);
+      }
+
+      if (key === "Amount") {
+        next.Amount = value;
+        next.__useAutoAmount = false;
+        next.__useManualTotal = false;
+        return recomputeDraftLive(next);
+      }
+
+      if (key === "Total Amount") {
+        next["Total Amount"] = value;
+        next.__useManualTotal = true;
+        next.__useAutoAmount = false;
+        return recomputeDraftLive(next);
+      }
+
+      next[key] = value;
+
+      if (key === "QTY" || key === "Rate") {
+        if (next.__useAutoAmount !== false) next.__useAutoAmount = true;
+        if (safeNum(next["QTY"]) > 0 && safeNum(next["Rate"]) > 0) {
+          next.__useManualTotal = false;
+        }
+      }
+
+      return recomputeDraftLive(next);
+    });
+  }
+
+  /**
+   * ✅ UPDATED EDIT SAVE
+   * old row -> Active=No, new row -> append
+   */
+  async function saveDrawer() {
+    if (!activeSheet) return;
+
+    if (drawerMode === "edit" && drawerOriginal) {
+      const costSheetId = activeSheet["Cost Sheet ID"];
+      const oldParticular = String(drawerOriginal["Particular"] || "").trim();
+      const oldEntryTimestamp = String(drawerOriginal?.["Entry Timestamp"] ?? "").trim();
+      const oldKey = drawerOriginal?.__lineKey || makeLineItemKey(costSheetId, drawerOriginal);
+
+      if (!oldParticular && !oldEntryTimestamp) {
+        alert("Cannot edit: Original row has no Particular and no Entry Timestamp.");
+        return;
+      }
+
+      setLoading(true);
+      try {
+        await apiPost({
+          action: "softDeleteLineItem",
+          data: {
+            costSheetId,
+            particular: oldParticular,
+            entryTimestamp: oldEntryTimestamp,
+            lineKey: oldKey,
+          },
+        });
+
+        setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== oldKey));
+
+        await addLineItemRow(drawerDraft);
+
+        setDrawerOpen(false);
+      } catch (e) {
+        console.error("EDIT_SAVE_ERROR", e);
+        alert(
+          "Failed to save edit. If duplicates exist (same Particular), ensure backend supports Entry Timestamp matching for precise deletes."
+        );
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    await addLineItemRow(drawerDraft);
+    setDrawerOpen(false);
+  }
+
+  async function saveDrawerAndNew() {
+    if (!activeSheet) return;
+
+    const headKeep = String(drawerDraft?.["Head Name"] || "").trim();
+
+    if (drawerMode === "edit") {
+      await saveDrawer();
+      setTimeout(() => {
+        openDrawerAdd(headKeep);
+      }, 0);
+      return;
+    }
+
+    await addLineItemRow(drawerDraft);
+    setDrawerDraft(blankDraft(headKeep));
+  }
+
+  /* ===================== Add Expense Modal helpers (MULTI ITEMS) ===================== */
+
+  function setAddExpenseItemField(index, key, value) {
+    setAddExpenseItems((prev) => {
+      const next = [...prev];
+      const cur = next[index] ? { ...next[index] } : blankDraft("");
+
+      if (key === "__useAutoAmount") {
+        const updated = { ...cur, __useAutoAmount: Boolean(value) };
+        updated.__useManualTotal = false;
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
+      if (key === "Amount") {
+        const updated = { ...cur, Amount: value, __useAutoAmount: false, __useManualTotal: false };
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
+      if (key === "Total Amount") {
+        const updated = {
+          ...cur,
+          "Total Amount": value,
+          __useManualTotal: true,
+          __useAutoAmount: false,
+        };
+        next[index] = recomputeDraftLive(updated);
+        return next;
+      }
+
+      const updated = { ...cur, [key]: value };
+      if (key === "Head Name") updated.Subcategory = "";
+
+      if (key === "QTY" || key === "Rate") {
+        if (updated.__useAutoAmount !== false) updated.__useAutoAmount = true;
+        if (safeNum(updated["QTY"]) > 0 && safeNum(updated["Rate"]) > 0) {
+          updated.__useManualTotal = false;
+        }
+      }
+
+      next[index] = recomputeDraftLive(updated);
+      return next;
+    });
+  }
+
+  function addAnotherExpenseItem() {
+    setAddExpenseItems((prev) => {
+      const last = prev && prev.length ? prev[prev.length - 1] : null;
+      const headKeep = String(last?.["Head Name"] || "").trim();
+      return [...(prev || []), blankDraft(headKeep)];
+    });
+  }
+
+  function removeExpenseItem(index) {
+    setAddExpenseItems((prev) => {
+      const arr = [...(prev || [])];
+      arr.splice(index, 1);
+      return arr.length ? arr : [blankDraft("")];
+    });
+  }
+
+  const addExpenseTotals = useMemo(() => {
+    const items = Array.isArray(addExpenseItems) ? addExpenseItems : [];
+    const sum = items.reduce((acc, it) => acc + safeNum(it?.["Total Amount"]), 0);
+    return {
+      count: items.length,
+      total: sum,
+    };
+  }, [addExpenseItems]);
+
+  function openAddExpenseModal() {
+    setAddExpenseMode("existing");
+    setSelectedExistingSheetId("");
+    setEntityOptions([]);
+    setCreateForm((p) => ({
+      ...p,
+      Owner: isAdmin ? (p.Owner || loggedInName || "") : loggedInName || p.Owner,
+      Status: "Draft",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+    }));
+    setAddExpenseItems([blankDraft("")]);
+    setOpenAddExpense(true);
+  }
+
+  /**
+   * ✅ Efficiency update:
+   * - Existing sheet: addLineItemsBatch (single POST)
+   * - New sheet: createCostSheetAndAddLineItems (single POST)
+   */
+  async function submitAddExpense() {
+    await ensureValidationLoaded();
+
+    const items = Array.isArray(addExpenseItems) ? addExpenseItems : [];
+    if (!items.length) {
+      alert("Please add at least one line item.");
+      return;
+    }
+
+    const cleanedItems = items.map((it) => {
+      let payloadRow = { ...(it || {}) };
+
+      const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
+      uiKeys.forEach((k) => {
+        if (k in payloadRow) delete payloadRow[k];
+      });
+
+      payloadRow = computeRowTotals(payloadRow);
+      payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
+      return payloadRow;
+    });
+
+    const validItems = cleanedItems.filter((payloadRow) => {
+      const hasSome =
+        String(payloadRow.Particular || "").trim() ||
+        String(payloadRow.Details || "").trim() ||
+        String(payloadRow.Amount || "").trim() ||
+        String(payloadRow["Total Amount"] || "").trim();
+      return hasSome;
+    });
+
+    if (!validItems.length) {
+      alert(
+        "Please enter at least Particular / Details / Amount / Total Amount in at least one line item."
+      );
+      return;
+    }
+
+    setLoading(true);
+    setSubmitProgress({ done: 0, total: validItems.length, label: "Submitting line items…" });
+
+    try {
+      if (addExpenseMode === "existing") {
+        if (!selectedExistingSheetId) {
+          alert("Please select an existing Cost Sheet.");
+          return;
+        }
+
+        const sheetRow = (costSheets || []).find(
+          (x) => String(x["Cost Sheet ID"]) === String(selectedExistingSheetId)
+        );
+
+        const payloads = validItems.map((p) => ({
+          ...p,
+          "Cost Sheet ID": selectedExistingSheetId,
+          Owner: sheetRow?.["Owner"] || p["Owner"] || loggedInName || "",
+          "Linked Entity Type": sheetRow?.["Linked Entity Type"] || p["Linked Entity Type"] || "",
+          "Linked Entity ID": sheetRow?.["Linked Entity ID"] || p["Linked Entity ID"] || "",
+          "Linked Entity Name":
+            sheetRow?.["Linked Entity Name"] || p["Linked Entity Name"] || "",
+          "Client Name": sheetRow?.["Client Name"] || p["Client Name"] || "",
+          "Project Type": sheetRow?.["Project Type"] || p["Project Type"] || "",
+        }));
+
+        await apiPost({
+          action: "addLineItemsBatch",
+          data: {
+            costSheetId: selectedExistingSheetId,
+            items: payloads,
+          },
+        });
+
+        setSubmitProgress((prev) =>
+          prev ? { ...prev, done: prev.total } : { done: payloads.length, total: payloads.length }
+        );
+
+        setOpenAddExpense(false);
+
+        setTimeout(async () => {
+          await refreshAfterMutation();
+        }, 350);
+
+        alert(
+          payloads.length === 1
+            ? "Line item added to existing Cost Sheet."
+            : `${payloads.length} line items added to existing Cost Sheet.`
+        );
+        return;
+      }
+
+      // NEW COST SHEET MODE
+      if (!createForm["Linked Entity Type"] || !createForm["Linked Entity ID"]) {
+        alert("Please select Linked Entity Type and Linked Entity Name for the new Cost Sheet.");
+        return;
+      }
+
+      const costSheetData = {
+        ...createForm,
+        Owner: isAdmin ? (createForm.Owner || loggedInName || "") : loggedInName || createForm.Owner,
+      };
+
+      await apiPost({
+        action: "createCostSheetAndAddLineItems",
+        data: {
+          costSheetData,
+          items: validItems.map((p) => ({
+            ...p,
+            Owner: costSheetData.Owner,
+            "Linked Entity Type": costSheetData["Linked Entity Type"],
+            "Linked Entity ID": costSheetData["Linked Entity ID"],
+            "Linked Entity Name": costSheetData["Linked Entity Name"],
+            "Client Name": costSheetData["Client Name"] || "",
+            "Project Type": costSheetData["Project Type"] || "",
+          })),
+        },
+      });
+
+      setSubmitProgress((prev) =>
+        prev ? { ...prev, done: prev.total } : { done: validItems.length, total: validItems.length }
+      );
+
+      setOpenAddExpense(false);
+
+      setTimeout(async () => {
+        await refreshAfterMutation();
+      }, 350);
+
+      alert("New Cost Sheet created and line items added.");
+    } catch (e) {
+      console.error("ADD_EXPENSE_ERROR", e);
+      alert("Failed to submit expense.");
+    } finally {
+      setLoading(false);
+      setSubmitProgress(null);
+    }
+  }
+
+  /* ===================== Table columns for line items ===================== */
+
+  const defaultLineItemCols = [
+    "Head Name",
+    "Subcategory",
+    "Expense Date",
+    "Particular",
+    "QTY",
+    "Rate",
+    "Amount",
+    "GST %",
+    "GST Amount",
+    "Total Amount",
+    "Payment Status",
+    "Attachment Link",
+    "Voucher/Invoice No",
+    "Entered By",
+    "Entry Tag",
+    "Details",
+  ];
+
+  const lineItemCols = useMemo(() => {
+    if (!lineItemHeaders?.length) return defaultLineItemCols;
+
+    const available = new Set(lineItemHeaders);
+    const picked = defaultLineItemCols.filter((c) => available.has(c));
+
+    if (!picked.length) return lineItemHeaders.filter((h) => h !== "Active");
+    return picked;
+  }, [lineItemHeaders]);
+
+  /* ===================== Keyboard Shortcuts ===================== */
+
+  function isEditableTarget(el) {
+    if (!el) return false;
+    const tag = String(el.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return true;
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      const key = String(e.key || "").toLowerCase();
+      const ctrl = e.ctrlKey || e.metaKey;
+      const shift = e.shiftKey;
+
+      if (key === "escape") {
+        if (drawerOpen) {
+          e.preventDefault();
+          closeDrawer();
+          return;
+        }
+        if (openAddExpense) {
+          e.preventDefault();
+          setOpenAddExpense(false);
+          return;
+        }
+        if (openCreate) {
+          e.preventDefault();
+          setOpenCreate(false);
+          return;
+        }
+        if (openExtract) {
+          e.preventDefault();
+          setOpenExtract(false);
+          return;
+        }
+        if (openEdit) {
+          e.preventDefault();
+          setOpenEdit(false);
+          return;
+        }
+        return;
+      }
+
+      if (ctrl && key === "enter") {
+        if (drawerOpen) {
+          e.preventDefault();
+          if (!loading) saveDrawer();
+          return;
+        }
+        if (openAddExpense) {
+          e.preventDefault();
+          if (!loading) submitAddExpense();
+          return;
+        }
+        if (openCreate) {
+          e.preventDefault();
+          if (!loading) createCostSheet();
+          return;
+        }
+        return;
+      }
+
+      if (ctrl && shift && key === "enter") {
+        if (drawerOpen) {
+          e.preventDefault();
+          if (!loading) saveDrawerAndNew();
+          return;
+        }
+      }
+
+      if (ctrl && shift && key === "a") {
+        if (openAddExpense) {
+          e.preventDefault();
+          addAnotherExpenseItem();
+          return;
+        }
+      }
+
+      if (ctrl && shift && key === "e") {
+        e.preventDefault();
+        openAddExpenseModal();
+        return;
+      }
+      if (ctrl && shift && key === "c") {
+        e.preventDefault();
+        openCreateModal();
+        return;
+      }
+
+      if (isEditableTarget(e.target) && !ctrl) return;
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [
+    drawerOpen,
+    openAddExpense,
+    openCreate,
+    openExtract,
+    openEdit,
+    loading,
+    activeSheet,
+    createForm,
+    addExpenseMode,
+    selectedExistingSheetId,
+    addExpenseItems,
+    drawerMode,
+    drawerOriginal,
+    drawerDraft,
+  ]);
+
+  /* ===================== Render ===================== */
+
+  return (
+    <ThemeProvider theme={theme}>
+      <Box sx={{ p: 2 }}>
+        {/* ✅ HEADER (Logo Left, Title Right) */}
+        <Box padding={4}>
+          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+
+            <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+              <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
+              <Typography
+                variant="h5"
+                fontWeight="bold"
+                sx={{ fontFamily: "Montserrat, sans-serif" }}
+              >
+                Costing
+              </Typography>
+
+              {loading ? (
+                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>
+                  Loading…
+                  {submitProgress?.total ? (
+                    <span>
+                      {" "}
+                      ({submitProgress.done}/{submitProgress.total})
+                    </span>
+                  ) : null}
+                </Typography>
+              ) : null}
+            </Box>
+          </Box>
+
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+            <Button
+              variant="outlined"
+              startIcon={<RefreshIcon />}
+              onClick={refreshFast}
+              sx={{ fontFamily: "Montserrat, sans-serif" }}
+            >
+              Refresh
+            </Button>
+
+            <Button
+              variant="outlined"
+              onClick={() => {
+                setOpenExtract(true);
+                setExtractColsTouched(false);
+              }}
+              sx={{ fontFamily: "Montserrat, sans-serif" }}
+            >
+              Extract
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openAddExpenseModal}
+              sx={{ bgcolor: "#1f2a44", fontFamily: "Montserrat, sans-serif" }}
+            >
+              Add Expense
+            </Button>
+
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={openCreateModal}
+              sx={{ bgcolor: cornflowerBlue, fontFamily: "Montserrat, sans-serif" }}
+            >
+              Add Cost Sheet
+            </Button>
+          </Box>
+
+          <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
+            Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter
+            (Submit/Save) • Esc (Close)
+          </Typography>
+        </Box>
+
+        <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+            <TextField
+              size="small"
+              label="Search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ minWidth: 240 }}
+            />
+
+            <FormControl size="small" sx={{ minWidth: 180 }}>
+              <InputLabel>Status</InputLabel>
+              <Select
+                value={statusFilter}
+                label="Status"
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <MenuItem value="">All</MenuItem>
+                {["Draft", "Final", "Archived"].map((s) => (
+                  <MenuItem key={s} value={s}>
+                    {s}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <FormControl size="small" sx={{ minWidth: 220 }}>
+              <InputLabel>Linked Entity Type</InputLabel>
+              <Select
+                value={entityTypeFilter}
+                label="Linked Entity Type"
+                onChange={(e) => setEntityTypeFilter(e.target.value)}
+              >
+                <MenuItem value="">All</MenuItem>
+                {["Account", "Deal", "Project", "Order"].map((t) => (
+                  <MenuItem key={t} value={t}>
+                    {t}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+
+            <IconButton onClick={openColumns}>
+              <ViewColumnIcon />
+            </IconButton>
+
+            <Popover
+              open={Boolean(columnsOpen)}
+              anchorEl={columnsOpen}
+              onClose={closeColumns}
+              anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+            >
+              <Box sx={{ p: 1.5 }}>
+                <Typography sx={{ fontWeight: 800, fontSize: 12, mb: 1 }}>Columns</Typography>
+                <FormGroup>
+                  {costSheetColumns.map((c) => (
+                    <FormControlLabel
+                      key={c}
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={visibleCols[c] !== false}
+                          onChange={(e) =>
+                            setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))
+                          }
+                        />
+                      }
+                      label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
+                    />
+                  ))}
+                </FormGroup>
+              </Box>
+            </Popover>
+          </Box>
+
+          <Divider sx={{ my: 1 }} />
+
+          <TableContainer>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ background: "#f6f9ff" }}>
+                  {costSheetColumns
+                    .filter((c) => visibleCols[c] !== false)
+                    .map((c) => (
+                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
+                        {c}
+                      </TableCell>
+                    ))}
+                  <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {filtered.map((r, idx) => (
+                  <TableRow key={idx} hover>
+                    {costSheetColumns
+                      .filter((c) => visibleCols[c] !== false)
+                      .map((c) => (
+                        <TableCell key={c} sx={{ fontSize: 12 }}>
+                          {String(r[c] ?? "")}
+                        </TableCell>
+                      ))}
+                    <TableCell>
+                      <IconButton onClick={() => openEditModal(r)}>
+                        <EditIcon sx={{ color: cornflowerBlue }} />
+                      </IconButton>
+
+                      <IconButton
+                        size="small"
+                        title="Download Cost Sheet"
+                        onClick={() => {
+                          const csId = r?.["Cost Sheet ID"] || "";
+                          const url = `${BACKEND}?action=exportCosting&format=csv&costSheetId=${encodeURIComponent(
+                            csId
+                          )}`;
+                          window.open(url, "_blank");
+                        }}
+                      >
+                        <DownloadIcon fontSize="small" />
+                      </IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+
+                {!filtered.length ? (
+                  <TableRow>
+                    <TableCell
+                      colSpan={costSheetColumns.length + 1}
+                      sx={{ fontSize: 12, opacity: 0.7 }}
+                    >
+                      No cost sheets found.
+                    </TableCell>
+                  </TableRow>
+                ) : null}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        </Paper>
+
+        {/* ================= EXTRACT MODAL ================= */}
+        <Dialog open={openExtract} onClose={() => setOpenExtract(false)} maxWidth="sm" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 1.2, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}
+                >
+                  <Box
+                    sx={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 1,
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Columns to Export</Typography>
+                      <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                        Selected:{" "}
+                        {selectedExtractFields.length
+                          ? `${selectedExtractFields.length} / ${extractAllColumns.length}`
+                          : `All (${extractAllColumns.length})`}
+                      </Typography>
+                    </Box>
+
+                    <Button
+                      variant="outlined"
+                      size="small"
+                      startIcon={<ViewColumnIcon />}
+                      onClick={openExtractColumns}
+                      sx={{ fontFamily: "Montserrat, sans-serif" }}
+                    >
+                      Select Columns
+                    </Button>
+                  </Box>
+
+                  <Popover
+                    open={Boolean(extractColumnsAnchor)}
+                    anchorEl={extractColumnsAnchor}
+                    onClose={closeExtractColumns}
+                    anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+                  >
+                    <Box sx={{ p: 1.5, maxWidth: 420 }}>
+                      <Box
+                        sx={{
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          mb: 1,
+                        }}
+                      >
+                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Export Columns</Typography>
+
+                        <Box sx={{ display: "flex", gap: 1 }}>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              const all = {};
+                              (extractAllColumns || []).forEach((c) => (all[c] = true));
+                              setExtractVisibleCols(all);
+                              setExtractColsTouched(true);
+                            }}
+                          >
+                            Select All
+                          </Button>
+                          <Button
+                            size="small"
+                            onClick={() => {
+                              const none = {};
+                              (extractAllColumns || []).forEach((c) => (none[c] = false));
+                              setExtractVisibleCols(none);
+                              setExtractColsTouched(true);
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </Box>
+                      </Box>
+
+                      <Divider sx={{ mb: 1 }} />
+
+                      <FormGroup>
+                        {(extractAllColumns || []).map((c) => (
+                          <FormControlLabel
+                            key={c}
+                            control={
+                              <Checkbox
+                                size="small"
+                                checked={extractVisibleCols[c] !== false}
+                                onChange={(e) => {
+                                  const checked = e.target.checked;
+                                  setExtractVisibleCols((p) => ({ ...p, [c]: checked }));
+                                  setExtractColsTouched(true);
+
+                                  const userKey = String(loggedInName || "").trim();
+                                  const storageKey = getExtractColsStorageKey(userKey);
+                                  const next = { ...(extractVisibleCols || {}), [c]: checked };
+                                  try {
+                                    localStorage.setItem(storageKey, JSON.stringify(next));
+                                  } catch {}
+                                }}
+                              />
+                            }
+                            label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
+                          />
+                        ))}
+                      </FormGroup>
+
+                      <Divider sx={{ mt: 1 }} />
+
+                      <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
+                        If you keep all selected, export will behave as “export all columns”.
+                      </Typography>
+                    </Box>
+                  </Popover>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Autocomplete
+                  size="small"
+                  options={costSheetOptions}
+                  value={selectedExtractCostSheetOption}
+                  isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                  getOptionLabel={(opt) => String(opt?.label || opt?.id || "")}
+                  onChange={(_, picked) => {
+                    const id = picked ? String(picked.id) : "";
+                    setExtractForm((p) => ({
+                      ...p,
+                      costSheetId: id,
+                      entityType: "",
+                      linkedEntityId: "",
+                      from: "",
+                      to: "",
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Existing Cost Sheet (Search)" />
+                  )}
+                />
+
+                {extractForm.costSheetId ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 0.5 }}>
+                    Extract will be generated only for the selected cost sheet. Date/entity filters
+                    are disabled.
+                  </Typography>
+                ) : null}
+              </Grid>
+
+              {!extractForm.costSheetId ? (
+                <>
+                  <Grid item xs={12}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Linked Entity Type</InputLabel>
+                      <Select
+                        label="Linked Entity Type"
+                        value={extractForm.entityType}
+                        onChange={(e) => setExtractForm((p) => ({ ...p, entityType: e.target.value }))}
+                      >
+                        <MenuItem value="">All</MenuItem>
+                        {["Account", "Deal", "Project", "Order"].map((t) => (
+                          <MenuItem key={t} value={t}>
+                            {t}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Linked Entity ID"
+                      value={extractForm.linkedEntityId}
+                      onChange={(e) =>
+                        setExtractForm((p) => ({ ...p, linkedEntityId: e.target.value }))
+                      }
+                    />
+                  </Grid>
+                </>
+              ) : null}
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={extractForm.particular}
+                  onChange={(e) => setExtractForm((p) => ({ ...p, particular: e.target.value }))}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={extractForm.paymentStatus}
+                    onChange={(e) => setExtractForm((p) => ({ ...p, paymentStatus: e.target.value }))}
+                  >
+                    <MenuItem value="">All</MenuItem>
+                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              {!extractForm.costSheetId ? (
+                <>
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="From Date"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractForm.from}
+                      onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
+                    />
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="To Date"
+                      type="date"
+                      InputLabelProps={{ shrink: true }}
+                      value={extractForm.to}
+                      onChange={(e) => setExtractForm((p) => ({ ...p, to: e.target.value }))}
+                    />
+                  </Grid>
+                </>
+              ) : null}
+
+              <Grid item xs={12}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Format</InputLabel>
+                  <Select
+                    label="Format"
+                    value={extractForm.format}
+                    onChange={(e) => setExtractForm((p) => ({ ...p, format: e.target.value }))}
+                  >
+                    <MenuItem value="csv">CSV</MenuItem>
+                    <MenuItem value="xlsx">Excel (XLSX)</MenuItem>
+                    <MenuItem value="pdf">PDF</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
+            <Button variant="contained" onClick={triggerExtraction} sx={{ bgcolor: cornflowerBlue }}>
+              Download
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ================= ADD EXPENSE MODAL ================= */}
+        <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Mode</InputLabel>
+                  <Select
+                    label="Mode"
+                    value={addExpenseMode}
+                    onChange={(e) => setAddExpenseMode(e.target.value)}
+                  >
+                    <MenuItem value="existing">Add to Existing Cost Sheet</MenuItem>
+                    <MenuItem value="new">Create New Cost Sheet</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Paper
+                  variant="outlined"
+                  sx={{
+                    height: "100%",
+                    p: 1.1,
+                    borderRadius: 2,
+                    borderColor: "#e9eefc",
+                    bgcolor: "#fbfcff",
+                    display: "flex",
+                    flexDirection: "column",
+                    justifyContent: "center",
+                    gap: 0.4,
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Batch Summary</Typography>
+                  <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                    Line items: {addExpenseTotals.count} | Total: ₹ {fmtINR(addExpenseTotals.total)}
+                    {submitProgress?.total ? (
+                      <span>
+                        {" "}
+                        | Submitting: {submitProgress.done}/{submitProgress.total}
+                      </span>
+                    ) : null}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                    Shortcuts: Ctrl+Enter (Submit) • Ctrl+Shift+A (Add Line Item) • Esc (Close)
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              {addExpenseMode === "existing" ? (
+                <Grid item xs={12}>
+                  <Autocomplete
+                    size="small"
+                    options={costSheetOptions}
+                    value={selectedAddExpenseCostSheetOption}
+                    isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                    getOptionLabel={(opt) => String(opt?.label || opt?.id || "")}
+                    onChange={(_, picked) => {
+                      const id = picked ? String(picked.id) : "";
+                      setSelectedExistingSheetId(id);
+                    }}
+                    renderInput={(params) => (
+                      <TextField {...params} label="Existing Cost Sheet (Search)" />
+                    )}
+                  />
+                </Grid>
+              ) : (
+                <>
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Owner"
+                      value={createForm["Owner"] || ""}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, Owner: e.target.value }))}
+                      InputProps={{ readOnly: !isAdmin }}
+                      helperText={!isAdmin ? "Owner is locked to the logged-in user." : ""}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Linked Entity Type</InputLabel>
+                      <Select
+                        label="Linked Entity Type"
+                        value={createForm["Linked Entity Type"] || ""}
+                        onChange={async (e) => {
+                          const type = e.target.value;
+                          setCreateForm((p) => ({
+                            ...p,
+                            "Linked Entity Type": type,
+                            "Linked Entity ID": "",
+                            "Linked Entity Name": "",
+                          }));
+                          setEntityOptions([]);
+                          await loadEntitiesForType(type);
+                        }}
+                      >
+                        {["Account", "Deal", "Project", "Order"].map((t) => (
+                          <MenuItem key={t} value={t}>
+                            {t}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <Autocomplete
+                      size="small"
+                      options={entityOptions || []}
+                      loading={entityLoading}
+                      value={selectedEntityOption}
+                      getOptionLabel={entityOptionLabel}
+                      isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                      disabled={!createForm["Linked Entity Type"]}
+                      onChange={(_, picked) => {
+                        const id = picked ? String(picked.id) : "";
+                        setCreateForm((p) => ({
+                          ...p,
+                          "Linked Entity ID": id,
+                          "Linked Entity Name": picked?.display || "",
+                        }));
+                      }}
+                      renderInput={(params) => (
+                        <TextField
+                          {...params}
+                          label="Linked Entity Name (Search)"
+                          InputProps={{
+                            ...params.InputProps,
+                            endAdornment: (
+                              <>
+                                {entityLoading ? <CircularProgress size={16} /> : null}
+                                {params.InputProps.endAdornment}
+                              </>
+                            ),
+                          }}
+                        />
+                      )}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <FormControl fullWidth size="small">
+                      <InputLabel>Status</InputLabel>
+                      <Select
+                        label="Status"
+                        value={createForm.Status || "Draft"}
+                        onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
+                      >
+                        {["Draft", "Final", "Archived"].map((s) => (
+                          <MenuItem key={s} value={s}>
+                            {s}
+                          </MenuItem>
+                        ))}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Client Name"
+                      value={createForm["Client Name"] || ""}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))
+                      }
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Project Type"
+                      value={createForm["Project Type"] || ""}
+                      onChange={(e) =>
+                        setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))
+                      }
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Notes"
+                      value={createForm.Notes || ""}
+                      onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
+                      multiline
+                      minRows={2}
+                    />
+                  </Grid>
+                </>
+              )}
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Box
+                  sx={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 1,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Line Items</Typography>
+
+                  <Button
+                    variant="outlined"
+                    size="small"
+                    startIcon={<AddIcon />}
+                    onClick={addAnotherExpenseItem}
+                    sx={{ fontFamily: "Montserrat, sans-serif" }}
+                  >
+                    Add Another Line Item
+                  </Button>
+                </Box>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                  {(addExpenseItems || []).map((it, idx) => {
+                    const hasQtyRate = Boolean(it?.__hasQtyRate);
+                    const canManualTotal = !hasQtyRate;
+
+                    return (
+                      <Paper
+                        key={idx}
+                        variant="outlined"
+                        sx={{
+                          p: 1.25,
+                          borderRadius: 2,
+                          borderColor: "#e9eefc",
+                          bgcolor: "#ffffff",
+                        }}
+                      >
+                        <Box
+                          sx={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 1,
+                            mb: 1,
+                          }}
+                        >
+                          <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                            Item #{idx + 1} — Total: ₹ {fmtINR(safeNum(it?.["Total Amount"]))}
+                          </Typography>
+
+                          <IconButton
+                            size="small"
+                            onClick={() => removeExpenseItem(idx)}
+                            disabled={(addExpenseItems || []).length <= 1}
+                            title={
+                              (addExpenseItems || []).length <= 1
+                                ? "At least one line item is required"
+                                : "Remove this line item"
+                            }
+                          >
+                            <RemoveCircleOutlineIcon
+                              sx={{
+                                color: (addExpenseItems || []).length <= 1 ? "#bbb" : "#c62828",
+                              }}
+                            />
+                          </IconButton>
+                        </Box>
+
+                        <Grid container spacing={1.25}>
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Head Name</InputLabel>
+                              <Select
+                                label="Head Name"
+                                value={it?.["Head Name"] || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Head Name", e.target.value)
+                                }
+                              >
+                                {(validation.heads || []).map((h) => (
+                                  <MenuItem key={h} value={h}>
+                                    {h}
+                                  </MenuItem>
+                                ))}
+                                {!validation.heads?.length ? (
+                                  <MenuItem value="" disabled>
+                                    No heads found
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Subcategory</InputLabel>
+                              <Select
+                                label="Subcategory"
+                                value={it?.Subcategory || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Subcategory", e.target.value)
+                                }
+                              >
+                                {subcatsForHead(it?.["Head Name"] || "").map((s) => (
+                                  <MenuItem key={s} value={s}>
+                                    {s}
+                                  </MenuItem>
+                                ))}
+                                {!subcatsForHead(it?.["Head Name"] || "").length ? (
+                                  <MenuItem value="" disabled>
+                                    No subcategories
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Expense Date"
+                              type="date"
+                              InputLabelProps={{ shrink: true }}
+                              value={it?.["Expense Date"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Expense Date", e.target.value)
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12} md={6}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Payment Status</InputLabel>
+                              <Select
+                                label="Payment Status"
+                                value={it?.["Payment Status"] || ""}
+                                onChange={(e) =>
+                                  setAddExpenseItemField(idx, "Payment Status", e.target.value)
+                                }
+                              >
+                                {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                                  <MenuItem key={s} value={s}>
+                                    {s}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Particular"
+                              value={it?.Particular || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Particular", e.target.value)
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Details"
+                              value={it?.Details || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "Details", e.target.value)}
+                              multiline
+                              minRows={2}
+                            />
+                          </Grid>
+
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="QTY"
+                              value={it?.["QTY"] || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "QTY", e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Rate"
+                              value={it?.["Rate"] || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "Rate", e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={4}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="GST %"
+                              value={it?.["GST %"] || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "GST %", e.target.value)}
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <FormControlLabel
+                              control={
+                                <Checkbox
+                                  size="small"
+                                  checked={Boolean(it?.__useAutoAmount) && hasQtyRate}
+                                  disabled={!hasQtyRate}
+                                  onChange={(e) =>
+                                    setAddExpenseItemField(idx, "__useAutoAmount", e.target.checked)
+                                  }
+                                />
+                              }
+                              label={
+                                <Typography sx={{ fontSize: 12 }}>
+                                  Use Auto Amount (QTY × Rate)
+                                </Typography>
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Amount"
+                              value={it?.["Amount"] || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "Amount", e.target.value)}
+                              InputProps={{
+                                readOnly: Boolean(it?.__useAutoAmount) && hasQtyRate,
+                              }}
+                              helperText={
+                                hasQtyRate
+                                  ? Boolean(it?.__useAutoAmount)
+                                    ? "Auto (QTY × Rate)"
+                                    : "Manual"
+                                  : "Derived from Total Amount (if Total is entered) or manual"
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="GST Amount"
+                              value={it?.["GST Amount"] || ""}
+                              InputProps={{ readOnly: true }}
+                            />
+                          </Grid>
+                          <Grid item xs={6}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Total Amount"
+                              value={it?.["Total Amount"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Total Amount", e.target.value)
+                              }
+                              InputProps={{
+                                readOnly: !canManualTotal,
+                              }}
+                              helperText={
+                                canManualTotal
+                                  ? "Manual Total (when QTY×Rate is unavailable)"
+                                  : "Auto (Amount + GST Amount)"
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Attachment Link"
+                              value={it?.["Attachment Link"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Attachment Link", e.target.value)
+                              }
+                            />
+                          </Grid>
+
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Voucher/Invoice No"
+                              value={it?.["Voucher/Invoice No"] || ""}
+                              onChange={(e) =>
+                                setAddExpenseItemField(idx, "Voucher/Invoice No", e.target.value)
+                              }
+                            />
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    );
+                  })}
+                </Box>
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenAddExpense(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={submitAddExpense}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
+              {loading ? "Submitting…" : "Submit"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ================= CREATE COST SHEET MODAL ================= */}
+        <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Owner"
+                  value={createForm["Owner"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, Owner: e.target.value }))}
+                  InputProps={{ readOnly: !isAdmin }}
+                  helperText={!isAdmin ? "Owner is locked to the logged-in user." : ""}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Linked Entity Type</InputLabel>
+                  <Select
+                    label="Linked Entity Type"
+                    value={createForm["Linked Entity Type"] || ""}
+                    onChange={async (e) => {
+                      const type = e.target.value;
+                      setCreateForm((p) => ({
+                        ...p,
+                        "Linked Entity Type": type,
+                        "Linked Entity ID": "",
+                        "Linked Entity Name": "",
+                      }));
+                      setEntityOptions([]);
+                      await loadEntitiesForType(type);
+                    }}
+                  >
+                    {["Account", "Deal", "Project", "Order"].map((t) => (
+                      <MenuItem key={t} value={t}>
+                        {t}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <Autocomplete
+                  size="small"
+                  options={entityOptions || []}
+                  loading={entityLoading}
+                  value={selectedEntityOption}
+                  getOptionLabel={entityOptionLabel}
+                  isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                  disabled={!createForm["Linked Entity Type"]}
+                  onChange={(_, picked) => {
+                    const id = picked ? String(picked.id) : "";
+                    setCreateForm((p) => ({
+                      ...p,
+                      "Linked Entity ID": id,
+                      "Linked Entity Name": picked?.display || "",
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Linked Entity Name (Search)"
+                      InputProps={{
+                        ...params.InputProps,
+                        endAdornment: (
+                          <>
+                            {entityLoading ? <CircularProgress size={16} /> : null}
+                            {params.InputProps.endAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Linked Entity ID"
+                  value={createForm["Linked Entity ID"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Client Name"
+                  value={createForm["Client Name"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Client Name": e.target.value }))}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Project Type"
+                  value={createForm["Project Type"] || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, "Project Type": e.target.value }))}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Status</InputLabel>
+                  <Select
+                    label="Status"
+                    value={createForm.Status || "Draft"}
+                    onChange={(e) => setCreateForm((p) => ({ ...p, Status: e.target.value }))}
+                  >
+                    {["Draft", "Final", "Archived"].map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Notes"
+                  value={createForm.Notes || ""}
+                  onChange={(e) => setCreateForm((p) => ({ ...p, Notes: e.target.value }))}
+                  multiline
+                  minRows={3}
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenCreate(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={createCostSheet}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={loading}
+            >
+              {loading ? "Creating…" : "Create"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
+        {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
+        <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
+          <DialogTitle sx={{ fontWeight: 800 }}>
+            <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
+              <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
+                <Typography sx={{ fontWeight: 900 }}>
+                  Cost Sheet — {activeSheet?.["Cost Sheet ID"] || ""}
+                </Typography>
+
+                {activeSheet?.["Status"] ? (
+                  <Typography
+                    sx={{
+                      fontSize: 11,
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 1,
+                      bgcolor: "#eef4ff",
+                      border: "1px solid #d9e4ff",
+                      fontWeight: 800,
+                    }}
+                  >
+                    {String(activeSheet["Status"])}
+                  </Typography>
+                ) : null}
+              </Box>
+
+              <Typography sx={{ fontSize: 12.5, fontWeight: 800, color: "#1f2a44" }}>
+                {activeSheet?.["Linked Entity Name"] || "—"}
+              </Typography>
+
+              <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
+                Linked: {activeSheet?.["Linked Entity Type"] || ""} —{" "}
+                {activeSheet?.["Linked Entity ID"] || ""}
+                {"  "} | Owner: {activeSheet?.["Owner"] || ""}
+                {"  "} | Client: {activeSheet?.["Client Name"] || "—"}
+                {"  "} | Project Type: {activeSheet?.["Project Type"] || "—"}
+              </Typography>
+
+              <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close
+                Drawer/Modal)
+              </Typography>
+            </Box>
+          </DialogTitle>
+
+          <DialogContent dividers sx={{ position: "relative" }}>
+            <Paper
+              sx={{
+                p: 1.2,
+                mb: 1.2,
+                borderRadius: 2,
+                border: "1px solid #eee",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
+                background: "#fff",
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 1,
+                  flexWrap: "wrap",
+                }}
+              >
+                <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                  Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
+                </Typography>
+
+                <Button
+                  variant="contained"
+                  startIcon={<AddIcon />}
+                  sx={{ bgcolor: cornflowerBlue }}
+                  disabled={loading}
+                  onClick={() => openDrawerAdd("")}
+                >
+                  Add Line Item
+                </Button>
+              </Box>
+            </Paper>
+
+            <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
+              <TableContainer sx={{ maxHeight: 520 }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow sx={{ background: "#f6f9ff" }}>
+                      {lineItemCols.map((c) => (
+                        <TableCell
+                          key={c}
+                          sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}
+                        >
+                          {c}
+                        </TableCell>
+                      ))}
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
+                    </TableRow>
+                  </TableHead>
+
+                  <TableBody>
+                    {(lineItems || []).map((it, idx) => (
+                      <TableRow key={it.__lineKey || idx} hover>
+                        {lineItemCols.map((c) => (
+                          <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
+                            {String(it[c] ?? "")}
+                          </TableCell>
+                        ))}
+                        <TableCell sx={{ whiteSpace: "nowrap" }}>
+                          <IconButton
+                            title="Edit (will mark old row inactive and append updated row)"
+                            onClick={() => openDrawerEdit(it)}
+                            disabled={loading}
+                          >
+                            <EditIcon sx={{ color: cornflowerBlue }} />
+                          </IconButton>
+
+                          <IconButton
+                            onClick={() => softDeleteLineItem(it)}
+                            disabled={loading}
+                            title="Delete"
+                          >
+                            <DeleteOutlineIcon sx={{ color: "#c62828" }} />
+                          </IconButton>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+
+                    {!lineItems.length ? (
+                      <TableRow>
+                        <TableCell
+                          colSpan={lineItemCols.length + 1}
+                          sx={{ fontSize: 12, opacity: 0.7 }}
+                        >
+                          No line items found for this cost sheet.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+            </Paper>
+
+            {/* RIGHT DRAWER */}
+            <Drawer
+              anchor="right"
+              open={drawerOpen}
+              onClose={closeDrawer}
+              sx={{ zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20 }}
+              ModalProps={{ keepMounted: true }}
+              PaperProps={{
+                ref: drawerPaperRef,
+                sx: {
+                  width: { xs: "100%", sm: 420 },
+                  p: 2,
+                  zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 21,
+                },
+              }}
+            >
+              <Box
+                sx={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  mb: 1,
+                }}
+              >
+                <Typography sx={{ fontWeight: 900, fontSize: 16 }}>
+                  {drawerMode === "edit" ? "Edit Line Item" : "Add Line Item"}
+                </Typography>
+
+                <IconButton onClick={closeDrawer}>
+                  <CloseIcon />
+                </IconButton>
+              </Box>
+
+              <Typography sx={{ fontSize: 11, opacity: 0.75, mb: 1 }}>
+                Shortcuts: Ctrl+Enter (Save) • Ctrl+Shift+Enter (Save & New) • Esc (Close)
+              </Typography>
+
+              <Divider sx={{ mb: 1.5 }} />
+
+              <Box sx={{ display: "flex", flexDirection: "column", gap: 1.25 }}>
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Head Name</InputLabel>
+                  <Select
+                    label="Head Name"
+                    value={drawerDraft["Head Name"] || ""}
+                    onChange={(e) => setDrawerField("Head Name", e.target.value)}
+                    MenuProps={getDrawerMenuProps()}
+                  >
+                    {(validation.heads || []).map((h) => (
+                      <MenuItem key={h} value={h}>
+                        {h}
+                      </MenuItem>
+                    ))}
+                    {!validation.heads?.length ? (
+                      <MenuItem value="" disabled>
+                        No heads found
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Subcategory</InputLabel>
+                  <Select
+                    label="Subcategory"
+                    value={drawerDraft.Subcategory || ""}
+                    onChange={(e) => setDrawerField("Subcategory", e.target.value)}
+                    MenuProps={getDrawerMenuProps()}
+                  >
+                    {subcatsForHead(drawerDraft["Head Name"] || "").map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                    {!subcatsForHead(drawerDraft["Head Name"] || "").length ? (
+                      <MenuItem value="" disabled>
+                        No subcategories
+                      </MenuItem>
+                    ) : null}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Expense Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={drawerDraft["Expense Date"] || ""}
+                  onChange={(e) => setDrawerField("Expense Date", e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Entry Tag"
+                  value={drawerDraft["Entry Tag"] || ""}
+                  onChange={(e) => setDrawerField("Entry Tag", e.target.value)}
+                />
+
+                <FormControl size="small" fullWidth>
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={drawerDraft["Payment Status"] || ""}
+                    onChange={(e) => setDrawerField("Payment Status", e.target.value)}
+                    MenuProps={getDrawerMenuProps()}
+                  >
+                    {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={drawerDraft.Particular || ""}
+                  onChange={(e) => setDrawerField("Particular", e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Details"
+                  value={drawerDraft.Details || ""}
+                  onChange={(e) => setDrawerField("Details", e.target.value)}
+                  multiline
+                  minRows={2}
+                />
+
+                <Grid container spacing={1}>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="QTY"
+                      value={drawerDraft["QTY"] || ""}
+                      onChange={(e) => setDrawerField("QTY", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Rate"
+                      value={drawerDraft["Rate"] || ""}
+                      onChange={(e) => setDrawerField("Rate", e.target.value)}
+                    />
+                  </Grid>
+                  <Grid item xs={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST %"
+                      value={drawerDraft["GST %"] || ""}
+                      onChange={(e) => setDrawerField("GST %", e.target.value)}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <FormControlLabel
+                      control={
+                        <Checkbox
+                          size="small"
+                          checked={
+                            Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate)
+                          }
+                          disabled={!drawerDraft.__hasQtyRate}
+                          onChange={(e) => setDrawerField("__useAutoAmount", e.target.checked)}
+                        />
+                      }
+                      label={
+                        <Typography sx={{ fontSize: 12 }}>Use Auto Amount (QTY × Rate)</Typography>
+                      }
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Amount"
+                      value={drawerDraft["Amount"] || ""}
+                      onChange={(e) => setDrawerField("Amount", e.target.value)}
+                      InputProps={{
+                        readOnly:
+                          Boolean(drawerDraft.__useAutoAmount) && Boolean(drawerDraft.__hasQtyRate),
+                      }}
+                      helperText={
+                        drawerDraft.__hasQtyRate
+                          ? drawerDraft.__useAutoAmount
+                            ? "Auto (QTY × Rate)"
+                            : "Manual"
+                          : drawerDraft.__useManualTotal
+                          ? "Derived from Total Amount"
+                          : "Manual"
+                      }
+                    />
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="GST Amount"
+                      value={drawerDraft["GST Amount"] || ""}
+                      InputProps={{ readOnly: true }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Total Amount"
+                      value={drawerDraft["Total Amount"] || ""}
+                      onChange={(e) => setDrawerField("Total Amount", e.target.value)}
+                      InputProps={{
+                        readOnly: Boolean(drawerDraft.__hasQtyRate),
+                      }}
+                      helperText={
+                        drawerDraft.__hasQtyRate
+                          ? "Auto (Amount + GST Amount)"
+                          : "Manual Total (when QTY×Rate is unavailable)"
+                      }
+                    />
+                  </Grid>
+                </Grid>
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Attachment Link"
+                  value={drawerDraft["Attachment Link"] || ""}
+                  onChange={(e) => setDrawerField("Attachment Link", e.target.value)}
+                />
+
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Voucher/Invoice No"
+                  value={drawerDraft["Voucher/Invoice No"] || ""}
+                  onChange={(e) => setDrawerField("Voucher/Invoice No", e.target.value)}
+                />
+
+                <Divider sx={{ my: 0.5 }} />
+
+                <Box sx={{ display: "flex", gap: 1 }}>
+                  <Button variant="outlined" fullWidth onClick={closeDrawer} disabled={loading}>
+                    Cancel
+                  </Button>
+
+                  <Button
+                    variant="contained"
+                    fullWidth
+                    sx={{ bgcolor: cornflowerBlue }}
+                    onClick={saveDrawer}
+                    disabled={loading}
+                  >
+                    {loading ? "Saving…" : "Save"}
+                  </Button>
+                </Box>
+
+                <Button
+                  variant="contained"
+                  fullWidth
+                  sx={{ bgcolor: "#1f2a44" }}
+                  onClick={saveDrawerAndNew}
+                  disabled={loading}
+                >
+                  {loading ? "Saving…" : "Save & New"}
+                </Button>
+
+                {drawerMode === "edit" ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.75 }}>
+                    Note: Edit marks the old row inactive and appends the updated row (audit-safe). The
+                    UI removes the old row using a stable key to avoid duplicates.
+                  </Typography>
+                ) : null}
+              </Box>
+            </Drawer>
+          </DialogContent>
+
+          <DialogActions>
+            <Button onClick={() => setOpenEdit(false)}>Close</Button>
+          </DialogActions>
+        </Dialog>
+      </Box>
+    </ThemeProvider>
+  );
+}  return Number.isFinite(n) ? n : 0;
+}
+
+function fmtINR(n) {
+  try {
+    return new Intl.NumberFormat("en-IN", { maximumFractionDigits: 2 }).format(n);
+  } catch {
+    return String(n);
+  }
+}
+
+/**
+ * ✅ JSONP GET (no-cors friendly)
+ * Backend supports: ?action=...&callback=cb
+ */
+function jsonpGet(url) {
+  return new Promise((resolve, reject) => {
+    const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
     const cleanup = (script) => {
       try {
         delete window[cbName];

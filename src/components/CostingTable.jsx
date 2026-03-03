@@ -614,7 +614,7 @@ export default function CostingTable() {
   // On first mount, run FAST refresh
   useEffect(() => {
     refreshFast();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, []);
 
   async function ensureValidationLoaded() {

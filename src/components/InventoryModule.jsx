@@ -40,6 +40,8 @@ const INVENTORY_API_URL =
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
+const normalizeKey = (v) =>
+  safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
 const asNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;

@@ -40,23 +40,16 @@ const INVENTORY_API_URL =
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
-
-// ✅ Normalize comparisons so "Acrylic Base" == "ACRYLIC   BASE" == "Acrylic_Base"
 const normalizeKey = (v) =>
-  safeStr(v)
-    .replace(/_/g, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
-
+  safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
 const asNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
 };
-
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
 
 function getUserFromLocalStorage() {
+  // Adjust keys if your CRM uses different storage format
   try {
     const raw = localStorage.getItem("crmUser");
     if (!raw) return { username: "", role: "" };
@@ -72,6 +65,12 @@ function getUserFromLocalStorage() {
 
 /**
  * ✅ JSONP helper (fixes CORS for GET calls to Apps Script Web App)
+ * We will use this for:
+ * - getValidation
+ * - getInputs
+ * - getCalcConfig
+ * - getStock
+ * - getBookings
  */
 function jsonp(url, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
@@ -113,6 +112,7 @@ function jsonp(url, timeoutMs = 20000) {
 
 /**
  * ✅ GET via JSONP (returns json.data)
+ * Requires GAS doGet to support ?callback=...
  */
 async function apiGet(apiUrl, params) {
   const qs = new URLSearchParams(params);
@@ -123,15 +123,16 @@ async function apiGet(apiUrl, params) {
 
 /**
  * ✅ POST with no-cors (opaque response; cannot read JSON)
- * IMPORTANT: text/plain avoids preflight
+ * Use for createBooking submission to avoid preflight/CORS blocks.
  */
 async function apiPostNoCors(apiUrl, body) {
   await fetch(apiUrl, {
     method: "POST",
     mode: "no-cors",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  // no-cors response is opaque → cannot read bookingId from response
 }
 
 // ---------- Local Calculation Engine ----------
@@ -139,7 +140,7 @@ function evalRate(expr) {
   if (!expr) return 0;
   const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
   try {
-    
+    // eslint-disable-next-line no-new-func
     const val = Function(`"use strict"; return (${cleaned});`)();
     return asNum(val);
   } catch {
@@ -196,51 +197,49 @@ function evalFormula(formula, area, computedByMaterialName) {
 }
 
 function computeLocally({ category, variant, inputs, configRows, stockRows }) {
-  const cat = normalizeKey(category);
-  const varr = normalizeKey(variant);
+  const cat = toUpper(category);
+  const varr = toUpper(variant);
 
   const area = cat === "PU" ? asNum(inputs.areaSqm || 0) : asNum(inputs.areaSqf || 0);
-  const wearCoatType = normalizeKey(inputs.wearCoatType || "SD");
+  const wearCoatType = toUpper(inputs.wearCoatType || "SD");
 
-  // ✅ Build stock map by normalized Material Name
+  // Build stock map by Material Name
   const stockMap = {};
   (stockRows || []).forEach((s) => {
-    stockMap[normalizeKey(s.materialName)] = s;
+    stockMap[s.materialName] = s;
   });
 
   const computed = {}; // materialName -> qty
   const items = [];
 
-  const filteredCfg = (configRows || []).filter((r) => {
-    const rCat = normalizeKey(r.category);
-    const rVar = normalizeKey(r.variant);
-    const rAct = normalizeKey(r.active);
-    return rCat === cat && rVar === varr && rAct !== "FALSE";
-  });
+  const filteredCfg = (configRows || []).filter(
+    (r) =>
+      toUpper(r.category) === cat &&
+      toUpper(r.variant) === varr &&
+      toUpper(r.active) !== "FALSE"
+  );
 
   // 1) Non-FORMULA first
   filteredCfg.forEach((row) => {
-    if (normalizeKey(row.calcType) === "FORMULA") return;
+    if (row.calcType === "FORMULA") return;
 
     // Wear coat conditional rows
-    if (normalizeKey(row.calcType) === "AREA_X_RATE_IF") {
-      const should = normalizeKey(row.formula || "");
+    if (row.calcType === "AREA_X_RATE_IF") {
+      const should = toUpper(row.formula || "");
       if (should && should !== wearCoatType) return;
     }
 
     let qty = 0;
 
-    const ct = normalizeKey(row.calcType);
-
-    if (ct === "AREA_X_RATE" || ct === "AREA_X_RATE_IF") {
+    if (row.calcType === "AREA_X_RATE" || row.calcType === "AREA_X_RATE_IF") {
       qty = area * evalRate(row.baseRate);
-    } else if (ct === "AREA_X_LAYER") {
+    } else if (row.calcType === "AREA_X_LAYER") {
       const mult = asNum(inputs[row.inputKey] || 0);
       qty = area * evalRate(row.baseRate) * mult;
-    } else if (ct === "AREA_X_THICKNESS_RATE") {
+    } else if (row.calcType === "AREA_X_THICKNESS_RATE") {
       const thick = asNum(inputs[row.inputKey] || 0);
       qty = area * evalRate(row.baseRate) * thick;
-    } else if (ct === "AREA_X_FIXED") {
+    } else if (row.calcType === "AREA_X_FIXED") {
       qty = area * evalRate(row.baseRate);
     } else {
       return;
@@ -259,7 +258,7 @@ function computeLocally({ category, variant, inputs, configRows, stockRows }) {
 
   // 2) FORMULA pass
   filteredCfg
-    .filter((r) => normalizeKey(r.calcType) === "FORMULA")
+    .filter((r) => r.calcType === "FORMULA")
     .forEach((row) => {
       const qty = round2(evalFormula(row.formula, area, computed));
       computed[row.materialName] = qty;
@@ -275,12 +274,13 @@ function computeLocally({ category, variant, inputs, configRows, stockRows }) {
 
   // 3) Packaging + availability (pack size from stock sheet)
   const withStock = items.map((it) => {
-    const s = stockMap[normalizeKey(it.materialName)];
+    const s = stockMap[it.materialName];
 
     const packSize = s ? asNum(s.packSize) : 0;
     const packsNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
     const packagingQty = packSize > 0 ? packsNeeded * packSize : asNum(it.requiredQty);
 
+    // Availability computed from stock qty - reserved qty (ignore available columns)
     const packaged = s ? asNum(s.packagedStockQty) : 0;
     const loose = s ? asNum(s.looseStockQty) : 0;
     const resPack = s ? asNum(s.reservedPackagedQty) : 0;
@@ -343,11 +343,7 @@ export default function InventoryModule({
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
 
-  // ✅ NEW: user-selected pack size overrides (per material)
-  // key: normalized material name, value: number packSize
-  const [packSizeOverrides, setPackSizeOverrides] = useState({});
-
-  // Variants from validation sheet
+  // Variants from validation sheet (adjust header names if your validation uses different column headers)
   const variantsList = useMemo(() => {
     const acrylicVariants =
       validation?.["Acrylic Sub Base"] ||
@@ -359,7 +355,7 @@ export default function InventoryModule({
       validation?.["PU Variants"] ||
       validation?.["PU"] ||
       [];
-    return normalizeKey(category) === "PU" ? puVariants : acrylicVariants;
+    return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
 
   useEffect(() => {
@@ -432,92 +428,23 @@ export default function InventoryModule({
     run();
   }, [apiUrl, category, variant]);
 
-  const loadStock = async () => {
-    if (!apiUrl || !category) return;
-    setStockLoading(true);
-    try {
-      const st = await apiGet(apiUrl, { action: "getStock", category });
-      setStockRows(Array.isArray(st) ? st : []);
-    } catch (e) {
-      console.error("getStock error:", e);
-      setStockRows([]);
-    } finally {
-      setStockLoading(false);
-    }
-  };
-
   // Load stock for category (JSONP)
   useEffect(() => {
-    loadStock();
-    
-  }, [apiUrl, category]);
-
-  // ✅ Build normalized stock map for quick lookups
-  const stockMap = useMemo(() => {
-    const m = {};
-    (stockRows || []).forEach((s) => {
-      m[normalizeKey(s.materialName)] = s;
-    });
-    return m;
-  }, [stockRows]);
-
-  // ✅ Read validation pack size options flexibly
-  // Supported patterns in "Inventory Validation" sheet:
-  // - "Approved Pack Sizes"  (global list, e.g., 10, 20, 25)
-  // - "Pack Sizes"          (global list)
-  // - "Pack Sizes - Acrylic Resurfacer" (material-specific)
-  // - "Acrylic Resurfacer Pack Sizes"   (material-specific)
-  // - "Pack Sizes | Acrylic Resurfacer" (material-specific)
-  const getPackSizeOptionsForMaterial = (materialName) => {
-    const matNorm = normalizeKey(materialName);
-
-    const allKeys = Object.keys(validation || {});
-    const findMaterialKey = () => {
-      const candidates = allKeys.filter((k) => {
-        const kn = normalizeKey(k);
-        if (!kn.includes("PACK")) return false;
-        if (!kn.includes("SIZE")) return false;
-
-        // if key contains material name in any supported format
-        return kn.includes(matNorm);
-      });
-
-      // choose first matching candidate
-      return candidates.length ? candidates[0] : "";
+    const run = async () => {
+      if (!apiUrl || !category) return;
+      setStockLoading(true);
+      try {
+        const st = await apiGet(apiUrl, { action: "getStock", category });
+        setStockRows(Array.isArray(st) ? st : []);
+      } catch (e) {
+        console.error("getStock error:", e);
+        setStockRows([]);
+      } finally {
+        setStockLoading(false);
+      }
     };
-
-    // 1) material-specific column
-    const matKey = findMaterialKey();
-    let list = matKey ? validation?.[matKey] : null;
-
-    // 2) fallback: global pack sizes
-    if (!Array.isArray(list) || list.length === 0) {
-      list =
-        validation?.["Approved Pack Sizes"] ||
-        validation?.["Pack Sizes"] ||
-        validation?.["Packaging Sizes"] ||
-        [];
-    }
-
-    const parsed = (Array.isArray(list) ? list : [])
-      .map((x) => {
-        // allow formats like "20", "20 L", "20KG"
-        const s = safeStr(x);
-        const n = Number(String(s).match(/-?\d+(\.\d+)?/)?.[0] || "");
-        return Number.isFinite(n) ? n : null;
-      })
-      .filter((n) => n != null && n > 0);
-
-    // include stock pack size if present
-    const stockPack = asNum(stockMap[matNorm]?.packSize || 0);
-    const withStock = stockPack > 0 ? [stockPack, ...parsed] : parsed;
-
-    // unique + sorted
-    const uniq = Array.from(new Set(withStock.map((n) => round2(n))));
-    uniq.sort((a, b) => a - b);
-
-    return uniq;
-  };
+    run();
+  }, [apiUrl, category]);
 
   const normalizedInputs = useMemo(() => {
     const out = { ...(inputs || {}) };
@@ -567,20 +494,6 @@ export default function InventoryModule({
         configRows,
         stockRows,
       });
-
-      // ✅ Initialize packSizeOverrides from:
-      // 1) existing overrides (keep)
-      // 2) else from computed packSize (from stock)
-      const nextOverrides = { ...(packSizeOverrides || {}) };
-      (result?.items || []).forEach((it) => {
-        const k = normalizeKey(it.materialName);
-        if (nextOverrides[k] == null || nextOverrides[k] === "") {
-          const fromStock = asNum(it.packSize || 0);
-          if (fromStock > 0) nextOverrides[k] = fromStock;
-        }
-      });
-
-      setPackSizeOverrides(nextOverrides);
       setCalcResult(result);
     } catch (e) {
       console.error("local calculate error:", e);
@@ -589,36 +502,6 @@ export default function InventoryModule({
     } finally {
       setCalcLoading(false);
     }
-  };
-
-  // ✅ Compute displayed items with pack-size override applied + auto packs calc
-  const displayItems = useMemo(() => {
-    const items = calcResult?.items || [];
-
-    return items.map((it) => {
-      const key = normalizeKey(it.materialName);
-      const overridePack = asNum(packSizeOverrides?.[key] || 0);
-      const effectivePack = overridePack > 0 ? overridePack : asNum(it.packSize || 0);
-
-      const required = asNum(it.requiredQty);
-      const packsNeeded = effectivePack > 0 ? Math.ceil(required / effectivePack) : 0;
-      const packagingQty = effectivePack > 0 ? packsNeeded * effectivePack : required;
-
-      return {
-        ...it,
-        packSize: effectivePack,
-        packsNeeded,
-        packagingQty: round2(packagingQty),
-      };
-    });
-  }, [calcResult, packSizeOverrides]);
-
-  const handleChangePackSize = (materialName, newPackSize) => {
-    const key = normalizeKey(materialName);
-    setPackSizeOverrides((prev) => ({
-      ...(prev || {}),
-      [key]: asNum(newPackSize),
-    }));
   };
 
   const fetchBookings = async () => {
@@ -634,7 +517,9 @@ export default function InventoryModule({
       setBookings(Array.isArray(data) ? data : []);
     } catch (e) {
       setBookings([]);
-      setBookingsError("Bookings list not available / failed.");
+      setBookingsError(
+        "Bookings list endpoint is not enabled yet. Please add GAS action=getBookings."
+      );
     } finally {
       setBookingsLoading(false);
     }
@@ -643,7 +528,6 @@ export default function InventoryModule({
   useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
-    
   }, [apiUrl]);
 
   const handleCreateBooking = async () => {
@@ -656,17 +540,6 @@ export default function InventoryModule({
     setBookingNotice("");
 
     try {
-      // ✅ include pack selections in booking payload (optional)
-      // GAS can ignore it safely if not implemented yet
-      const packSelections = {};
-      displayItems.forEach((it) => {
-        packSelections[it.materialName] = {
-          packSize: asNum(it.packSize || 0),
-          packsNeeded: asNum(it.packsNeeded || 0),
-          packagingQty: asNum(it.packagingQty || 0),
-        };
-      });
-
       await apiPostNoCors(apiUrl, {
         action: "createBooking",
         data: {
@@ -675,17 +548,14 @@ export default function InventoryModule({
           requestedBy: user.username || "End User",
           inputs: normalizedInputs,
           remarks: remarks || "",
-          packSelections,
         },
       });
 
       setRemarks("");
-      setBookingNotice("✅ Booking submitted successfully. Refreshing bookings & stock…");
+      setBookingNotice("✅ Booking submitted successfully. Refreshing bookings…");
 
-      setTimeout(() => {
-        fetchBookings();
-        loadStock();
-      }, 1200);
+      // Best effort refresh (JSONP getBookings)
+      setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("createBooking error:", e);
       alert(`Booking submission failed: ${e.message || e}`);
@@ -796,9 +666,6 @@ export default function InventoryModule({
                 ))}
               </Select>
             </FormControl>
-            <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65, mt: 0.5 }}>
-              Selected Variant (normalized): <b>{normalizeKey(variant)}</b>
-            </Typography>
           </Grid>
 
           <Grid item xs={12} md={5}>
@@ -942,21 +809,15 @@ export default function InventoryModule({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Required
                   </TableCell>
-
-                  {/* ✅ Editable Pack Size */}
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Pack Size
                   </TableCell>
-
-                  {/* ✅ Auto Packs */}
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Packs
                   </TableCell>
-
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Packaging Qty
                   </TableCell>
-
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Available (Total)
                   </TableCell>
@@ -966,63 +827,31 @@ export default function InventoryModule({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                 </TableRow>
               </TableHead>
-
               <TableBody>
-                {displayItems.map((it) => {
+                {calcResult.items.map((it) => {
                   const ok = asNum(it.shortageQty) <= 0;
-
-                  const options = getPackSizeOptionsForMaterial(it.materialName);
-                  const hasOptions = Array.isArray(options) && options.length > 0;
-
                   return (
                     <TableRow key={`${it.materialName}-${it.calcType}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
                       <TableCell sx={{ fontFamily }}>{it.unit}</TableCell>
-
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(it.requiredQty)}
                       </TableCell>
-
-                      {/* ✅ Pack Size dropdown */}
                       <TableCell sx={{ fontFamily }} align="right">
-                        {hasOptions ? (
-                          <FormControl size="small" sx={{ minWidth: 110 }}>
-                            <Select
-                              value={asNum(it.packSize || 0)}
-                              onChange={(e) => handleChangePackSize(it.materialName, e.target.value)}
-                              sx={{ fontFamily, fontSize: 12 }}
-                            >
-                              {options.map((ps) => (
-                                <MenuItem key={`${it.materialName}-${ps}`} value={ps}>
-                                  {ps}
-                                </MenuItem>
-                              ))}
-                            </Select>
-                          </FormControl>
-                        ) : (
-                          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
-                            -
-                          </Typography>
-                        )}
+                        {it.packSize ? round2(it.packSize) : "-"}
                       </TableCell>
-
-                      {/* ✅ Packs auto */}
                       <TableCell sx={{ fontFamily }} align="right">
-                        {it.packSize ? it.packsNeeded : "-"}
+                        {it.packsNeeded ?? "-"}
                       </TableCell>
-
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(it.packagingQty)}
                       </TableCell>
-
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(it.availableTotalQty)}
                       </TableCell>
-
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(it.shortageQty)}
                       </TableCell>
-
                       <TableCell sx={{ fontFamily }}>
                         <Chip
                           size="small"
@@ -1030,118 +859,6 @@ export default function InventoryModule({
                           color={ok ? "success" : "warning"}
                           sx={{ fontFamily }}
                         />
-                      </TableCell>
-                    </TableRow>
-                  );
-                })}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        )}
-
-        {/* ✅ note for pack size validation */}
-        {calcResult?.items?.length ? (
-          <Box mt={1.5}>
-            <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.7 }}>
-              Pack Size dropdown uses <b>Inventory Validation</b> sheet. Add either a global column
-              <b> “Approved Pack Sizes”</b> (10, 20, 25…) or material specific columns like{" "}
-              <b>“Pack Sizes - Acrylic Resurfacer”</b>.
-            </Typography>
-          </Box>
-        ) : null}
-      </Paper>
-
-      {/* ✅ Stock Table View */}
-      <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
-          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
-            Stock Table View
-          </Typography>
-
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={stockLoading ? <CircularProgress size={14} /> : <RefreshIcon />}
-            onClick={loadStock}
-            sx={{
-              textTransform: "none",
-              fontFamily,
-              borderColor: cornflowerBlue,
-              color: cornflowerBlue,
-            }}
-          >
-            Refresh Stock
-          </Button>
-        </Box>
-
-        {stockLoading ? (
-          <Box display="flex" alignItems="center" gap={1}>
-            <CircularProgress size={16} />
-            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-              Loading stock…
-            </Typography>
-          </Box>
-        ) : stockRows.length === 0 ? (
-          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
-            No stock rows found for category <b>{normalizeKey(category)}</b>.
-          </Typography>
-        ) : (
-          <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
-            <Table size="small">
-              <TableHead>
-                <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Pack Size
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaged
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Loose
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Reserved Packaged
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Reserved Loose
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Total
-                  </TableCell>
-                </TableRow>
-              </TableHead>
-
-              <TableBody>
-                {stockRows.map((s, idx) => {
-                  const packaged = asNum(s.packagedStockQty);
-                  const loose = asNum(s.looseStockQty);
-                  const resP = asNum(s.reservedPackagedQty);
-                  const resL = asNum(s.reservedLooseQty);
-                  const avail = Math.max(0, packaged - resP) + Math.max(0, loose - resL);
-
-                  return (
-                    <TableRow key={`${s.materialName}-${idx}`}>
-                      <TableCell sx={{ fontFamily }}>{safeStr(s.materialName)}</TableCell>
-                      <TableCell sx={{ fontFamily }}>{safeStr(s.unit)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {asNum(s.packSize) ? round2(s.packSize) : "-"}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(packaged)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(loose)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(resP)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(resL)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(avail)}
                       </TableCell>
                     </TableRow>
                   );

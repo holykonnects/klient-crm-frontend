@@ -366,7 +366,7 @@ export default function CostingTable() {
   const [openExtract, setOpenExtract] = useState(false);
   const [extractForm, setExtractForm] = useState({
     exportType: "costing", // "costing" | "finance"
-    groupBy: "none", // "none" | "project" | "day" | "project_day"
+    subtotalBy: "none", // ✅ finance only: "none" or a column name selected by user
     costSheetId: "",
     entityType: "",
     linkedEntityId: "",
@@ -479,6 +479,40 @@ export default function CostingTable() {
     return keys.filter((k) => extractVisibleCols[k] !== false);
   }, [extractVisibleCols]);
 
+  // ✅ Finance subtotal dropdown options MUST come from the user-selected export columns
+  const financeSubtotalOptions = useMemo(() => {
+    // If user has explicitly chosen some columns, use those.
+    // If all are selected (default), this still returns all (since all are true).
+    const cols = Array.isArray(selectedExtractFields) && selectedExtractFields.length
+      ? selectedExtractFields
+      : (extractAllColumns || []);
+    // Keep stable order as per extractAllColumns
+    const order = new Map((extractAllColumns || []).map((c, i) => [c, i]));
+    return [...cols].sort((a, b) => (order.get(a) ?? 999999) - (order.get(b) ?? 999999));
+  }, [selectedExtractFields, extractAllColumns]);
+
+  // ✅ Keep subtotalBy sane whenever exportType/columns change
+  useEffect(() => {
+    if (!openExtract) return;
+
+    // If not finance, force none (so backend params remain clean)
+    if (extractForm.exportType !== "finance") {
+      if (extractForm.subtotalBy !== "none") {
+        setExtractForm((p) => ({ ...p, subtotalBy: "none" }));
+      }
+      return;
+    }
+
+    // Finance export: if subtotalBy is set to a column not in the selected export columns, reset.
+    const current = String(extractForm.subtotalBy || "none");
+    if (current === "none") return;
+
+    const ok = financeSubtotalOptions.includes(current);
+    if (!ok) {
+      setExtractForm((p) => ({ ...p, subtotalBy: "none" }));
+    }
+  }, [openExtract, extractForm.exportType, extractForm.subtotalBy, financeSubtotalOptions]);
+
   function triggerExtraction() {
     const isSheetMode = String(extractForm.costSheetId || "").trim();
 
@@ -490,8 +524,12 @@ export default function CostingTable() {
     const baseParams = {
       action: exportAction,
 
-      // ✅ finance grouping support (ignored safely by costing export)
-      ...(extractForm.exportType === "finance" ? { groupBy: extractForm.groupBy || "none" } : {}),
+      // ✅ Finance subtotal grouping (UI-driven)
+      ...(extractForm.exportType === "finance"
+        ? {
+            subtotalBy: String(extractForm.subtotalBy || "none"),
+          }
+        : {}),
 
       ...(isSheetMode
         ? { costSheetId: extractForm.costSheetId }
@@ -522,7 +560,7 @@ export default function CostingTable() {
 
     const params = new URLSearchParams(baseParams);
 
-    // ✅ Column filtering (backend can ignore if not implemented for finance)
+    // ✅ Column filtering (backend can ignore if not implemented for finance yet)
     if (selCount > 0 && selCount < allCount) {
       params.set("fields", JSON.stringify(selectedExtractFields));
     }
@@ -1718,7 +1756,7 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {/* ✅ FIXED: Paper properly closed + Export Type / Group By are proper Grid items */}
+              {/* ✅ FIXED: Paper properly closed + Export Type / Subtotal By are proper Grid items */}
               <Grid item xs={12}>
                 <Paper
                   variant="outlined"
@@ -1839,41 +1877,50 @@ export default function CostingTable() {
                 </Paper>
               </Grid>
 
-              {/* ✅ NEW: Export Type + Group By (correct placement) */}
+              {/* ✅ Export Type */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Export Type</InputLabel>
                   <Select
                     label="Export Type"
                     value={extractForm.exportType}
-                    onChange={(e) =>
+                    onChange={(e) => {
+                      const nextType = e.target.value;
                       setExtractForm((p) => ({
                         ...p,
-                        exportType: e.target.value,
-                        groupBy: e.target.value === "finance" ? (p.groupBy || "none") : "none",
-                      }))
-                    }
+                        exportType: nextType,
+                        subtotalBy: nextType === "finance" ? (p.subtotalBy || "none") : "none",
+                      }));
+                    }}
                   >
                     <MenuItem value="costing">Costing Export</MenuItem>
-                    <MenuItem value="finance">Finance Export (Daily/Project Report)</MenuItem>
+                    <MenuItem value="finance">Finance Export (Subtotals)</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
 
+              {/* ✅ NEW: Subtotal By (finance only) — options derived from the selected export columns */}
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" disabled={extractForm.exportType !== "finance"}>
-                  <InputLabel>Group By</InputLabel>
+                  <InputLabel>Subtotal By</InputLabel>
                   <Select
-                    label="Group By"
-                    value={extractForm.groupBy}
-                    onChange={(e) => setExtractForm((p) => ({ ...p, groupBy: e.target.value }))}
+                    label="Subtotal By"
+                    value={extractForm.subtotalBy}
+                    onChange={(e) => setExtractForm((p) => ({ ...p, subtotalBy: e.target.value }))}
                   >
                     <MenuItem value="none">None</MenuItem>
-                    <MenuItem value="project">Project-wise</MenuItem>
-                    <MenuItem value="day">Day-wise</MenuItem>
-                    <MenuItem value="project_day">Project + Day</MenuItem>
+                    {financeSubtotalOptions.map((c) => (
+                      <MenuItem key={c} value={c}>
+                        {c}
+                      </MenuItem>
+                    ))}
                   </Select>
                 </FormControl>
+                {extractForm.exportType === "finance" ? (
+                  <Typography sx={{ fontSize: 11, opacity: 0.72, mt: 0.5 }}>
+                    Subtotal dropdown shows only the columns you selected in “Select Columns”.
+                  </Typography>
+                ) : null}
               </Grid>
 
               <Grid item xs={12}>
@@ -2011,7 +2058,12 @@ export default function CostingTable() {
 
           <DialogActions>
             <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
-            <Button variant="contained" onClick={triggerExtraction} sx={{ bgcolor: cornflowerBlue }}>
+            <Button
+              variant="contained"
+              onClick={triggerExtraction}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={extractForm.exportType === "finance" && !extractForm.subtotalBy}
+            >
               Download
             </Button>
           </DialogActions>
@@ -2021,6 +2073,7 @@ export default function CostingTable() {
         <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
+            {/* (UNCHANGED from your shared code) */}
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
@@ -2643,6 +2696,7 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
+          {/* (UNCHANGED from your shared code) */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>

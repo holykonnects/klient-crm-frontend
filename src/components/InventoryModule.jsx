@@ -139,7 +139,7 @@ function evalRate(expr) {
   if (!expr) return 0;
   const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
   try {
-    // eslint-disable-next-line no-new-func
+    
     const val = Function(`"use strict"; return (${cleaned});`)();
     return asNum(val);
   } catch {

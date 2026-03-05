@@ -449,7 +449,7 @@ export default function InventoryModule({
   // Load stock for category (JSONP)
   useEffect(() => {
     loadStock();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [apiUrl, category]);
 
   // ✅ Build normalized stock map for quick lookups
@@ -643,7 +643,7 @@ export default function InventoryModule({
   useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    
   }, [apiUrl]);
 
   const handleCreateBooking = async () => {

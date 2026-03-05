@@ -40,8 +40,7 @@ const INVENTORY_API_URL =
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
-const normalizeKey = (v) =>
-  safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
+const normalizeKey = (v) => safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
 const asNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : 0;
@@ -196,7 +195,7 @@ function evalFormula(formula, area, computedByMaterialName) {
   }
 }
 
-function computeLocally({ category, variant, inputs, configRows, stockRows }) {
+function computeLocally({ category, variant, inputs, configRows, stockRows, packSizeOverride }) {
   const cat = toUpper(category);
   const varr = toUpper(variant);
 
@@ -272,11 +271,18 @@ function computeLocally({ category, variant, inputs, configRows, stockRows }) {
       });
     });
 
-  // 3) Packaging + availability (pack size from stock sheet)
+  // 3) Packaging + availability (pack size from stock sheet OR user override)
   const withStock = items.map((it) => {
     const s = stockMap[it.materialName];
 
-    const packSize = s ? asNum(s.packSize) : 0;
+    const stockPackSize = s ? asNum(s.packSize) : 0;
+    const overridePackSize =
+      packSizeOverride && packSizeOverride[it.materialName]
+        ? asNum(packSizeOverride[it.materialName])
+        : 0;
+
+    const packSize = overridePackSize > 0 ? overridePackSize : stockPackSize;
+
     const packsNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
     const packagingQty = packSize > 0 ? packsNeeded * packSize : asNum(it.requiredQty);
 
@@ -343,6 +349,9 @@ export default function InventoryModule({
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
 
+  // ✅ User-selected pack size overrides (materialName -> packSize)
+  const [packSizeOverride, setPackSizeOverride] = useState({});
+
   // Variants from validation sheet (adjust header names if your validation uses different column headers)
   const variantsList = useMemo(() => {
     const acrylicVariants =
@@ -350,17 +359,29 @@ export default function InventoryModule({
       validation?.["Acrylic Variants"] ||
       validation?.["Acrylic"] ||
       [];
-    const puVariants =
-      validation?.["PU Type"] ||
-      validation?.["PU Variants"] ||
-      validation?.["PU"] ||
-      [];
+    const puVariants = validation?.["PU Type"] || validation?.["PU Variants"] || validation?.["PU"] || [];
     return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
 
   useEffect(() => {
     if (variantsList?.length && !variant) setVariant(variantsList[0]);
   }, [variantsList, variant]);
+
+  // ✅ Pack sizes from validation (supports either "Pack Sizes" or "Approved Pack Sizes")
+  const approvedPackSizes = useMemo(() => {
+    const raw =
+      validation?.["Pack Sizes"] ||
+      validation?.["Approved Pack Sizes"] ||
+      validation?.["Packaging Sizes"] ||
+      [];
+
+    const nums = (raw || [])
+      .flatMap((v) => safeStr(v).split(/[|,]/))
+      .map((v) => Number(safeStr(v)))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    return Array.from(new Set(nums)).sort((a, b) => a - b);
+  }, [validation]);
 
   // Load validation (JSONP)
   useEffect(() => {
@@ -493,6 +514,7 @@ export default function InventoryModule({
         inputs: normalizedInputs,
         configRows,
         stockRows,
+        packSizeOverride,
       });
       setCalcResult(result);
     } catch (e) {
@@ -517,9 +539,7 @@ export default function InventoryModule({
       setBookings(Array.isArray(data) ? data : []);
     } catch (e) {
       setBookings([]);
-      setBookingsError(
-        "Bookings list endpoint is not enabled yet. Please add GAS action=getBookings."
-      );
+      setBookingsError("Bookings list endpoint is not enabled yet. Please add GAS action=getBookings.");
     } finally {
       setBookingsLoading(false);
     }
@@ -584,24 +604,11 @@ export default function InventoryModule({
           border: "1px solid rgba(100,149,237,0.25)",
         }}
       >
-        <Box
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-          gap={2}
-          flexWrap="wrap"
-        >
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
           <Box display="flex" alignItems="center" gap={2}>
-            <img
-              src={logoSrc}
-              alt="Klient Konnect"
-              style={{ height: 56, objectFit: "contain" }}
-            />
+            <img src={logoSrc} alt="Klient Konnect" style={{ height: 56, objectFit: "contain" }} />
             <Box>
-              <Typography
-                variant="h5"
-                sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}
-              >
+              <Typography variant="h5" sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                 {title}
               </Typography>
               <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
@@ -669,12 +676,7 @@ export default function InventoryModule({
           </Grid>
 
           <Grid item xs={12} md={5}>
-            <Box
-              display="flex"
-              gap={1}
-              justifyContent={{ xs: "flex-start", md: "flex-end" }}
-              flexWrap="wrap"
-            >
+            <Box display="flex" gap={1} justifyContent={{ xs: "flex-start", md: "flex-end" }} flexWrap="wrap">
               <Button
                 variant="contained"
                 startIcon={calcLoading ? <CircularProgress size={16} /> : <CalculateIcon />}
@@ -691,9 +693,7 @@ export default function InventoryModule({
 
               <Button
                 variant="outlined"
-                startIcon={
-                  bookingLoading ? <CircularProgress size={16} /> : <ShoppingCartCheckoutIcon />
-                }
+                startIcon={bookingLoading ? <CircularProgress size={16} /> : <ShoppingCartCheckoutIcon />}
                 onClick={handleCreateBooking}
                 disabled={!calcResult?.items?.length || bookingLoading}
                 sx={{
@@ -711,16 +711,12 @@ export default function InventoryModule({
 
         <Divider sx={{ my: 2 }} />
 
-        <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>
-          Inputs
-        </Typography>
+        <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>Inputs</Typography>
 
         {inputsLoading ? (
           <Box display="flex" alignItems="center" gap={1}>
             <CircularProgress size={16} />
-            <Typography sx={{ fontSize: 12, opacity: 0.7, fontFamily }}>
-              Loading inputs…
-            </Typography>
+            <Typography sx={{ fontSize: 12, opacity: 0.7, fontFamily }}>Loading inputs…</Typography>
           </Box>
         ) : inputDefs.length === 0 ? (
           <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
@@ -767,14 +763,9 @@ export default function InventoryModule({
       </Paper>
 
       {/* Results */}
-      <Paper
-        elevation={0}
-        sx={{ p: 2, mb: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}
-      >
+      <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={1} gap={2}>
-          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
-            Requirement & Availability
-          </Typography>
+          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>Requirement & Availability</Typography>
 
           {calcResult?.items?.length ? (
             <Box display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
@@ -837,9 +828,52 @@ export default function InventoryModule({
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(it.requiredQty)}
                       </TableCell>
+
+                      {/* ✅ Editable Pack Size (validation-approved) */}
                       <TableCell sx={{ fontFamily }} align="right">
-                        {it.packSize ? round2(it.packSize) : "-"}
+                        <Select
+                          size="small"
+                          value={packSizeOverride[it.materialName] ?? (it.packSize ? it.packSize : "")}
+                          displayEmpty
+                          onChange={(e) => {
+                            const val = e.target.value === "" ? "" : Number(e.target.value);
+
+                            setPackSizeOverride((prev) => ({
+                              ...prev,
+                              [it.materialName]: val,
+                            }));
+
+                            // ✅ Re-run calc immediately so Packs + Packaging Qty update
+                            try {
+                              const result = computeLocally({
+                                category,
+                                variant,
+                                inputs: normalizedInputs,
+                                configRows,
+                                stockRows,
+                                packSizeOverride: {
+                                  ...packSizeOverride,
+                                  [it.materialName]: val,
+                                },
+                              });
+                              setCalcResult(result);
+                            } catch (err) {
+                              console.error("recalc after pack size change failed:", err);
+                            }
+                          }}
+                          sx={{ fontFamily, minWidth: 90 }}
+                        >
+                          <MenuItem value="">
+                            <em>-</em>
+                          </MenuItem>
+                          {approvedPackSizes.map((ps) => (
+                            <MenuItem key={ps} value={ps}>
+                              {ps}
+                            </MenuItem>
+                          ))}
+                        </Select>
                       </TableCell>
+
                       <TableCell sx={{ fontFamily }} align="right">
                         {it.packsNeeded ?? "-"}
                       </TableCell>
@@ -874,9 +908,7 @@ export default function InventoryModule({
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
           <Box display="flex" alignItems="center" gap={1}>
             <HistoryIcon sx={{ color: cornflowerBlue }} />
-            <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
-              Bookings
-            </Typography>
+            <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>Bookings</Typography>
           </Box>
 
           <Button
@@ -891,22 +923,16 @@ export default function InventoryModule({
         </Box>
 
         {bookingsError ? (
-          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
-            {bookingsError}
-          </Typography>
+          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>{bookingsError}</Typography>
         ) : null}
 
         {bookingsLoading ? (
           <Box display="flex" alignItems="center" gap={1}>
             <CircularProgress size={16} />
-            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-              Loading bookings…
-            </Typography>
+            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Loading bookings…</Typography>
           </Box>
         ) : bookings.length === 0 ? (
-          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
-            No bookings to show.
-          </Typography>
+          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>No bookings to show.</Typography>
         ) : (
           <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
             <Table size="small">
@@ -924,9 +950,7 @@ export default function InventoryModule({
               <TableBody>
                 {bookings.map((b, idx) => (
                   <TableRow key={b["Booking ID"] || idx}>
-                    <TableCell sx={{ fontFamily, fontSize: 12 }}>
-                      {safeStr(b["Timestamp"])}
-                    </TableCell>
+                    <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b["Timestamp"])}</TableCell>
                     <TableCell sx={{ fontFamily }}>{safeStr(b["Booking ID"])}</TableCell>
                     <TableCell sx={{ fontFamily }}>{safeStr(b["Requested By"])}</TableCell>
                     <TableCell sx={{ fontFamily }}>{safeStr(b["Category"])}</TableCell>

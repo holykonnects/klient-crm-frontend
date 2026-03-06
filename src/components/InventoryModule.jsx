@@ -91,34 +91,12 @@ function pickFirst(row, keys = []) {
 }
 
 function isTruthyItemRow(row) {
-  const material = pickFirst(row, [
-    "Material Name",
-    "materialName",
-    "Item Name",
-    "itemName",
-    "Material",
-  ]);
-  const requiredQty = pickFirst(row, [
-    "Required Qty",
-    "requiredQty",
-    "Requirement Qty",
-    "Qty Required",
-  ]);
-  const packSize = pickFirst(row, ["Pack Size", "packSize"]);
-  const packsNeeded = pickFirst(row, ["Packs Needed", "packsNeeded"]);
-  const packagingQty = pickFirst(row, ["Packaging Qty", "packagingQty"]);
-  const shortageQty = pickFirst(row, ["Shortage Qty", "shortageQty"]);
-  return (
-    safeStr(material) !== "" ||
-    safeStr(requiredQty) !== "" ||
-    safeStr(packSize) !== "" ||
-    safeStr(packsNeeded) !== "" ||
-    safeStr(packagingQty) !== "" ||
-    safeStr(shortageQty) !== ""
-  );
+  return safeStr(row?.["Row Type"]).toUpperCase() === "CHILD";
 }
 
 function mapRowToChildItem(row) {
+  if (safeStr(row?.["Row Type"]).toUpperCase() !== "CHILD") return null;
+
   return {
     materialName: pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
     unit: pickFirst(row, ["Unit", "unit"]),
@@ -130,6 +108,7 @@ function mapRowToChildItem(row) {
       pickFirst(row, ["Available Total Qty", "availableTotalQty", "Available Qty", "availableQty"])
     ),
     shortageQty: asNum(pickFirst(row, ["Shortage Qty", "shortageQty"])),
+    canFulfill: toUpper(pickFirst(row, ["Can Fulfill", "canFulfill"])) === "YES",
     status: pickFirst(row, ["Item Status", "itemStatus", "Status", "status"]),
   };
 }
@@ -138,9 +117,8 @@ function groupBookingsForSummary(rows = []) {
   const grouped = new Map();
 
   rows.forEach((row, idx) => {
-    const bookingId = safeStr(
-      pickFirst(row, ["Booking ID", "bookingId", "BookingId"])
-    ) || `ROW_${idx + 1}`;
+    const bookingId =
+      safeStr(pickFirst(row, ["Booking ID", "bookingId", "BookingId"])) || `ROW_${idx + 1}`;
 
     if (!grouped.has(bookingId)) {
       grouped.set(bookingId, {
@@ -159,19 +137,34 @@ function groupBookingsForSummary(rows = []) {
     const group = grouped.get(bookingId);
     group.rows.push(row);
 
+    if (safeStr(row?.["Row Type"]).toUpperCase() === "PARENT") {
+      group.timestamp = pickFirst(row, ["Timestamp", "timestamp", "Created At"]) || group.timestamp;
+      group.requestedBy = pickFirst(row, ["Requested By", "requestedBy", "Created By"]) || group.requestedBy;
+      group.category = pickFirst(row, ["Category", "category"]) || group.category;
+      group.variant = pickFirst(row, ["Variant / Base Type", "variant", "Variant"]) || group.variant;
+      group.status = pickFirst(row, ["Status", "status", "Booking Status"]) || group.status;
+      group.remarks = pickFirst(row, ["Remarks", "remarks"]) || group.remarks;
+    }
+
     if (isTruthyItemRow(row)) {
-      group.childItems.push(mapRowToChildItem(row));
+      const item = mapRowToChildItem(row);
+      if (item) group.childItems.push(item);
     }
   });
 
   return Array.from(grouped.values()).map((g) => {
+    const parentRow =
+      g.rows.find((row) => safeStr(row?.["Row Type"]).toUpperCase() === "PARENT") || null;
+
     const totalItems = g.childItems.length;
-    const totalRequiredQty = round2(
-      g.childItems.reduce((sum, item) => sum + asNum(item.requiredQty), 0)
-    );
-    const totalShortageQty = round2(
-      g.childItems.reduce((sum, item) => sum + asNum(item.shortageQty), 0)
-    );
+
+    const totalRequiredQty = parentRow
+      ? round2(asNum(parentRow["Total Required Qty"]))
+      : round2(g.childItems.reduce((sum, item) => sum + asNum(item.requiredQty), 0));
+
+    const totalShortageQty = parentRow
+      ? round2(asNum(parentRow["Shortage Qty"]))
+      : round2(g.childItems.reduce((sum, item) => sum + asNum(item.shortageQty), 0));
 
     return {
       ...g,
@@ -488,7 +481,8 @@ export default function InventoryModule({
       validation?.["Acrylic Variants"] ||
       validation?.["Acrylic"] ||
       [];
-    const puVariants = validation?.["PU Type"] || validation?.["PU Variants"] || validation?.["PU"] || [];
+    const puVariants =
+      validation?.["PU Type"] || validation?.["PU Variants"] || validation?.["PU"] || [];
     return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
 
@@ -535,6 +529,20 @@ export default function InventoryModule({
   const bookingSummaryRows = useMemo(() => {
     return groupBookingsForSummary(bookings || []);
   }, [bookings]);
+
+  const selectedParentRow = useMemo(() => {
+    if (!selectedBooking?.rows?.length) return null;
+    return (
+      selectedBooking.rows.find(
+        (row) => safeStr(row["Row Type"]).toUpperCase() === "PARENT"
+      ) || null
+    );
+  }, [selectedBooking]);
+
+  const selectedInputsJson = useMemo(() => {
+    if (!selectedParentRow) return "";
+    return safeStr(selectedParentRow["Inputs JSON"]);
+  }, [selectedParentRow]);
 
   // Load validation (JSONP)
   useEffect(() => {
@@ -689,10 +697,16 @@ export default function InventoryModule({
         requestedBy: user.username || "",
         role: user.role || "",
       });
+
+      console.log("getBookings raw response =>", data);
+
       setBookings(Array.isArray(data) ? data : []);
     } catch (e) {
+      console.error("getBookings error:", e);
       setBookings([]);
-      setBookingsError("Bookings list endpoint is not enabled yet. Please add GAS action=getBookings.");
+      setBookingsError(
+        "Bookings list endpoint is not enabled yet. Please add GAS action=getBookings."
+      );
     } finally {
       setBookingsLoading(false);
     }
@@ -735,6 +749,8 @@ export default function InventoryModule({
             availableTotalQty: asNum(it.availableTotalQty),
             shortageQty: asNum(it.shortageQty),
             canFulfill: !!it.canFulfill,
+            calcType: it.calcType || "",
+            formula: it.formula || "",
           })),
         },
       };
@@ -809,6 +825,12 @@ export default function InventoryModule({
           ? {
               ...prev,
               status: selectedBookingStatus,
+              rows: (prev.rows || []).map((row) => ({
+                ...row,
+                Status: selectedBookingStatus,
+                status: selectedBookingStatus,
+                "Booking Status": selectedBookingStatus,
+              })),
             }
           : prev
       );
@@ -1003,7 +1025,9 @@ export default function InventoryModule({
       {/* Results */}
       <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={1} gap={2}>
-          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>Requirement & Availability</Typography>
+          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+            Requirement & Availability
+          </Typography>
 
           {calcResult?.items?.length ? (
             <Box display="flex" gap={1} flexWrap="wrap" justifyContent="flex-end">
@@ -1224,15 +1248,8 @@ export default function InventoryModule({
       </Paper>
 
       {/* Booking Detail Modal */}
-      <Dialog
-        open={bookingDetailOpen}
-        onClose={handleCloseBookingDetail}
-        fullWidth
-        maxWidth="lg"
-      >
-        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>
-          Booking Details
-        </DialogTitle>
+      <Dialog open={bookingDetailOpen} onClose={handleCloseBookingDetail} fullWidth maxWidth="lg">
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Booking Details</DialogTitle>
 
         <DialogContent dividers>
           {selectedBooking ? (
@@ -1299,6 +1316,25 @@ export default function InventoryModule({
                   <Typography sx={{ fontFamily, fontWeight: 500 }}>
                     {safeStr(selectedBooking.remarks) || "-"}
                   </Typography>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Input JSON</Typography>
+                  <Box
+                    sx={{
+                      mt: 0.5,
+                      p: 1.25,
+                      border: "1px solid rgba(0,0,0,0.08)",
+                      borderRadius: 1,
+                      backgroundColor: "#fafafa",
+                      fontFamily,
+                      fontSize: 12,
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    {selectedInputsJson || "-"}
+                  </Box>
                 </Grid>
               </Grid>
 
@@ -1423,9 +1459,9 @@ export default function InventoryModule({
                               size="small"
                               label={
                                 safeStr(item.status) ||
-                                (asNum(item.shortageQty) <= 0 ? "Available" : "Short")
+                                (item.canFulfill || asNum(item.shortageQty) <= 0 ? "Available" : "Short")
                               }
-                              color={asNum(item.shortageQty) <= 0 ? "success" : "warning"}
+                              color={item.canFulfill || asNum(item.shortageQty) <= 0 ? "success" : "warning"}
                               sx={{ fontFamily }}
                             />
                           </TableCell>

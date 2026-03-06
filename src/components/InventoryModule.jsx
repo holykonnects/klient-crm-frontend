@@ -23,12 +23,18 @@ import {
   IconButton,
   Tooltip,
   Alert,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
 } from "@mui/material";
 
 import RefreshIcon from "@mui/icons-material/Refresh";
 import CalculateIcon from "@mui/icons-material/Calculate";
 import ShoppingCartCheckoutIcon from "@mui/icons-material/ShoppingCartCheckout";
 import HistoryIcon from "@mui/icons-material/History";
+import VisibilityIcon from "@mui/icons-material/Visibility";
+import SaveIcon from "@mui/icons-material/Save";
 
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
@@ -60,6 +66,120 @@ function getUserFromLocalStorage() {
   } catch {
     return { username: "", role: "" };
   }
+}
+
+function formatDisplayDate(value) {
+  const raw = safeStr(value);
+  if (!raw) return "";
+  const d = new Date(raw);
+  if (Number.isNaN(d.getTime())) return raw;
+  return d.toLocaleString("en-IN", {
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function pickFirst(row, keys = []) {
+  for (const key of keys) {
+    const val = row?.[key];
+    if (safeStr(val) !== "") return val;
+  }
+  return "";
+}
+
+function isTruthyItemRow(row) {
+  const material = pickFirst(row, [
+    "Material Name",
+    "materialName",
+    "Item Name",
+    "itemName",
+    "Material",
+  ]);
+  const requiredQty = pickFirst(row, [
+    "Required Qty",
+    "requiredQty",
+    "Requirement Qty",
+    "Qty Required",
+  ]);
+  const packSize = pickFirst(row, ["Pack Size", "packSize"]);
+  const packsNeeded = pickFirst(row, ["Packs Needed", "packsNeeded"]);
+  const packagingQty = pickFirst(row, ["Packaging Qty", "packagingQty"]);
+  const shortageQty = pickFirst(row, ["Shortage Qty", "shortageQty"]);
+  return (
+    safeStr(material) !== "" ||
+    safeStr(requiredQty) !== "" ||
+    safeStr(packSize) !== "" ||
+    safeStr(packsNeeded) !== "" ||
+    safeStr(packagingQty) !== "" ||
+    safeStr(shortageQty) !== ""
+  );
+}
+
+function mapRowToChildItem(row) {
+  return {
+    materialName: pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
+    unit: pickFirst(row, ["Unit", "unit"]),
+    requiredQty: asNum(pickFirst(row, ["Required Qty", "requiredQty", "Requirement Qty", "Qty Required"])),
+    packSize: asNum(pickFirst(row, ["Pack Size", "packSize"])),
+    packsNeeded: asNum(pickFirst(row, ["Packs Needed", "packsNeeded"])),
+    packagingQty: asNum(pickFirst(row, ["Packaging Qty", "packagingQty"])),
+    availableTotalQty: asNum(
+      pickFirst(row, ["Available Total Qty", "availableTotalQty", "Available Qty", "availableQty"])
+    ),
+    shortageQty: asNum(pickFirst(row, ["Shortage Qty", "shortageQty"])),
+    status: pickFirst(row, ["Item Status", "itemStatus", "Status", "status"]),
+  };
+}
+
+function groupBookingsForSummary(rows = []) {
+  const grouped = new Map();
+
+  rows.forEach((row, idx) => {
+    const bookingId = safeStr(
+      pickFirst(row, ["Booking ID", "bookingId", "BookingId"])
+    ) || `ROW_${idx + 1}`;
+
+    if (!grouped.has(bookingId)) {
+      grouped.set(bookingId, {
+        bookingId,
+        timestamp: pickFirst(row, ["Timestamp", "timestamp", "Created At"]),
+        requestedBy: pickFirst(row, ["Requested By", "requestedBy", "Created By"]),
+        category: pickFirst(row, ["Category", "category"]),
+        variant: pickFirst(row, ["Variant / Base Type", "variant", "Variant"]),
+        status: pickFirst(row, ["Status", "status", "Booking Status"]),
+        remarks: pickFirst(row, ["Remarks", "remarks"]),
+        rows: [],
+        childItems: [],
+      });
+    }
+
+    const group = grouped.get(bookingId);
+    group.rows.push(row);
+
+    if (isTruthyItemRow(row)) {
+      group.childItems.push(mapRowToChildItem(row));
+    }
+  });
+
+  return Array.from(grouped.values()).map((g) => {
+    const totalItems = g.childItems.length;
+    const totalRequiredQty = round2(
+      g.childItems.reduce((sum, item) => sum + asNum(item.requiredQty), 0)
+    );
+    const totalShortageQty = round2(
+      g.childItems.reduce((sum, item) => sum + asNum(item.shortageQty), 0)
+    );
+
+    return {
+      ...g,
+      totalItems,
+      totalRequiredQty,
+      totalShortageQty,
+    };
+  });
 }
 
 /**
@@ -352,6 +472,15 @@ export default function InventoryModule({
   // ✅ User-selected pack size overrides (materialName -> packSize)
   const [packSizeOverride, setPackSizeOverride] = useState({});
 
+  // ✅ Booking detail modal states
+  const [bookingDetailOpen, setBookingDetailOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
+  const [selectedBookingStatus, setSelectedBookingStatus] = useState("");
+  const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
+  const [statusNotice, setStatusNotice] = useState("");
+
+  const isAdmin = toUpper(user?.role) === "ADMIN";
+
   // Variants from validation sheet (adjust header names if your validation uses different column headers)
   const variantsList = useMemo(() => {
     const acrylicVariants =
@@ -382,6 +511,30 @@ export default function InventoryModule({
 
     return Array.from(new Set(nums)).sort((a, b) => a - b);
   }, [validation]);
+
+  // ✅ Booking status options from validation sheet
+  const bookingStatusOptions = useMemo(() => {
+    const raw =
+      validation?.["Booking Status"] ||
+      validation?.["booking status"] ||
+      validation?.["Booking status"] ||
+      validation?.["Status"] ||
+      [];
+
+    return Array.from(
+      new Set(
+        (raw || [])
+          .flatMap((v) => safeStr(v).split(/[|,]/))
+          .map((v) => safeStr(v))
+          .filter(Boolean)
+      )
+    );
+  }, [validation]);
+
+  // ✅ Frontend summary grouping of bookings
+  const bookingSummaryRows = useMemo(() => {
+    return groupBookingsForSummary(bookings || []);
+  }, [bookings]);
 
   // Load validation (JSONP)
   useEffect(() => {
@@ -555,10 +708,10 @@ export default function InventoryModule({
       alert("Please calculate first.");
       return;
     }
-  
+
     setBookingLoading(true);
     setBookingNotice("");
-  
+
     try {
       const payload = {
         action: "createBooking",
@@ -585,20 +738,87 @@ export default function InventoryModule({
           })),
         },
       };
-  
+
       console.log("createBooking payload =>", payload);
-  
+
       await apiPostNoCors(apiUrl, payload);
-  
+
       setRemarks("");
       setBookingNotice("✅ Booking submitted successfully. Refreshing bookings…");
-  
+
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("createBooking error:", e);
       alert(`Booking submission failed: ${e.message || e}`);
     } finally {
       setBookingLoading(false);
+    }
+  };
+
+  const handleOpenBookingDetail = (booking) => {
+    setSelectedBooking(booking);
+    setSelectedBookingStatus(safeStr(booking?.status));
+    setStatusNotice("");
+    setBookingDetailOpen(true);
+  };
+
+  const handleCloseBookingDetail = () => {
+    setBookingDetailOpen(false);
+    setSelectedBooking(null);
+    setSelectedBookingStatus("");
+    setStatusNotice("");
+  };
+
+  const handleSaveBookingStatus = async () => {
+    if (!selectedBooking?.bookingId) return;
+
+    setStatusUpdateLoading(true);
+    setStatusNotice("");
+
+    try {
+      const payload = {
+        action: "updateBookingStatus",
+        data: {
+          bookingId: selectedBooking.bookingId,
+          status: selectedBookingStatus,
+          updatedBy: user.username || "",
+        },
+      };
+
+      console.log("updateBookingStatus payload =>", payload);
+
+      await apiPostNoCors(apiUrl, payload);
+
+      setStatusNotice("✅ Booking status updated successfully.");
+
+      setBookings((prev) =>
+        (prev || []).map((row) => {
+          const rowBookingId = safeStr(pickFirst(row, ["Booking ID", "bookingId", "BookingId"]));
+          if (rowBookingId !== selectedBooking.bookingId) return row;
+          return {
+            ...row,
+            Status: selectedBookingStatus,
+            status: selectedBookingStatus,
+            "Booking Status": selectedBookingStatus,
+          };
+        })
+      );
+
+      setSelectedBooking((prev) =>
+        prev
+          ? {
+              ...prev,
+              status: selectedBookingStatus,
+            }
+          : prev
+      );
+
+      setTimeout(() => fetchBookings(), 1200);
+    } catch (e) {
+      console.error("updateBookingStatus error:", e);
+      alert(`Booking status update failed: ${e.message || e}`);
+    } finally {
+      setStatusUpdateLoading(false);
     }
   };
 
@@ -949,7 +1169,7 @@ export default function InventoryModule({
             <CircularProgress size={16} />
             <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Loading bookings…</Typography>
           </Box>
-        ) : bookings.length === 0 ? (
+        ) : bookingSummaryRows.length === 0 ? (
           <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>No bookings to show.</Typography>
         ) : (
           <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
@@ -961,22 +1181,40 @@ export default function InventoryModule({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Requested By</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Variant</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Child Items
+                  </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Remarks</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
+                    Action
+                  </TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {bookings.map((b, idx) => (
-                  <TableRow key={b["Booking ID"] || idx}>
-                    <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b["Timestamp"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b["Booking ID"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b["Requested By"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b["Category"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b["Variant / Base Type"])}</TableCell>
-                    <TableCell sx={{ fontFamily }}>
-                      <Chip size="small" label={safeStr(b["Status"])} sx={{ fontFamily }} />
+                {bookingSummaryRows.map((b, idx) => (
+                  <TableRow key={b.bookingId || idx}>
+                    <TableCell sx={{ fontFamily, fontSize: 12 }}>
+                      {formatDisplayDate(b.timestamp)}
                     </TableCell>
-                    <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b["Remarks"])}</TableCell>
+                    <TableCell sx={{ fontFamily }}>{safeStr(b.bookingId)}</TableCell>
+                    <TableCell sx={{ fontFamily }}>{safeStr(b.requestedBy)}</TableCell>
+                    <TableCell sx={{ fontFamily }}>{safeStr(b.category)}</TableCell>
+                    <TableCell sx={{ fontFamily }}>{safeStr(b.variant)}</TableCell>
+                    <TableCell sx={{ fontFamily }} align="right">
+                      {b.totalItems || 0}
+                    </TableCell>
+                    <TableCell sx={{ fontFamily }}>
+                      <Chip size="small" label={safeStr(b.status) || "-"} sx={{ fontFamily }} />
+                    </TableCell>
+                    <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b.remarks)}</TableCell>
+                    <TableCell align="center">
+                      <Tooltip title="View booking items">
+                        <IconButton onClick={() => handleOpenBookingDetail(b)}>
+                          <VisibilityIcon sx={{ color: cornflowerBlue }} />
+                        </IconButton>
+                      </Tooltip>
+                    </TableCell>
                   </TableRow>
                 ))}
               </TableBody>
@@ -984,6 +1222,235 @@ export default function InventoryModule({
           </TableContainer>
         )}
       </Paper>
+
+      {/* Booking Detail Modal */}
+      <Dialog
+        open={bookingDetailOpen}
+        onClose={handleCloseBookingDetail}
+        fullWidth
+        maxWidth="lg"
+      >
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>
+          Booking Details
+        </DialogTitle>
+
+        <DialogContent dividers>
+          {selectedBooking ? (
+            <Box>
+              <Grid container spacing={2} sx={{ mb: 2 }}>
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Booking ID</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {safeStr(selectedBooking.bookingId)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Timestamp</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {formatDisplayDate(selectedBooking.timestamp)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Requested By</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {safeStr(selectedBooking.requestedBy)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Category</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {safeStr(selectedBooking.category)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Variant</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {safeStr(selectedBooking.variant)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Child Items</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {selectedBooking.totalItems || 0}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Required Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(selectedBooking.totalRequiredQty)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Shortage Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(selectedBooking.totalShortageQty)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Remarks</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 500 }}>
+                    {safeStr(selectedBooking.remarks) || "-"}
+                  </Typography>
+                </Grid>
+              </Grid>
+
+              <Divider sx={{ my: 2 }} />
+
+              <Box
+                display="flex"
+                alignItems="center"
+                justifyContent="space-between"
+                gap={2}
+                flexWrap="wrap"
+                mb={1}
+              >
+                <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                  Child Items
+                </Typography>
+
+                <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+                  {isAdmin ? (
+                    <>
+                      <FormControl size="small" sx={{ minWidth: 220 }}>
+                        <InputLabel>Booking Status</InputLabel>
+                        <Select
+                          label="Booking Status"
+                          value={selectedBookingStatus}
+                          onChange={(e) => setSelectedBookingStatus(e.target.value)}
+                          sx={{ fontFamily }}
+                        >
+                          {(bookingStatusOptions || []).map((status) => (
+                            <MenuItem key={status} value={status}>
+                              {status}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+
+                      <Button
+                        variant="contained"
+                        startIcon={statusUpdateLoading ? <CircularProgress size={16} /> : <SaveIcon />}
+                        onClick={handleSaveBookingStatus}
+                        disabled={!selectedBookingStatus || statusUpdateLoading}
+                        sx={{
+                          textTransform: "none",
+                          fontFamily,
+                          backgroundColor: cornflowerBlue,
+                        }}
+                      >
+                        Save Status
+                      </Button>
+                    </>
+                  ) : (
+                    <Chip
+                      size="small"
+                      label={`Status: ${safeStr(selectedBooking.status) || "-"}`}
+                      sx={{ fontFamily }}
+                    />
+                  )}
+                </Box>
+              </Box>
+
+              {statusNotice ? (
+                <Box mb={2}>
+                  <Alert severity="success" sx={{ fontFamily }}>
+                    {statusNotice}
+                  </Alert>
+                </Box>
+              ) : null}
+
+              {selectedBooking.childItems?.length ? (
+                <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
+                  <Table size="small">
+                    <TableHead>
+                      <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Required Qty
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Pack Size
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Packs Needed
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Packaging Qty
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Available Qty
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                          Shortage Qty
+                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
+                      </TableRow>
+                    </TableHead>
+                    <TableBody>
+                      {selectedBooking.childItems.map((item, index) => (
+                        <TableRow key={`${item.materialName || "item"}-${index}`}>
+                          <TableCell sx={{ fontFamily }}>{safeStr(item.materialName)}</TableCell>
+                          <TableCell sx={{ fontFamily }}>{safeStr(item.unit)}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {round2(item.requiredQty)}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {item.packSize ? round2(item.packSize) : "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {item.packsNeeded ? round2(item.packsNeeded) : "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {item.packagingQty ? round2(item.packagingQty) : "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {item.availableTotalQty ? round2(item.availableTotalQty) : "-"}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">
+                            {item.shortageQty ? round2(item.shortageQty) : 0}
+                          </TableCell>
+                          <TableCell sx={{ fontFamily }}>
+                            <Chip
+                              size="small"
+                              label={
+                                safeStr(item.status) ||
+                                (asNum(item.shortageQty) <= 0 ? "Available" : "Short")
+                              }
+                              color={asNum(item.shortageQty) <= 0 ? "success" : "warning"}
+                              sx={{ fontFamily }}
+                            />
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              ) : (
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
+                  No child items were returned for this booking. If items exist in the backend, ensure
+                  <b> getBookings </b>
+                  returns line-level rows against the same Booking ID.
+                </Typography>
+              )}
+            </Box>
+          ) : null}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseBookingDetail} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

@@ -555,26 +555,44 @@ export default function InventoryModule({
       alert("Please calculate first.");
       return;
     }
-
+  
     setBookingLoading(true);
     setBookingNotice("");
-
+  
     try {
-      await apiPostNoCors(apiUrl, {
+      const payload = {
         action: "createBooking",
         data: {
           category,
           variant,
           requestedBy: user.username || "End User",
-          inputs: normalizedInputs,
           remarks: remarks || "",
+          inputs: normalizedInputs,
+          totalRequiredQty: totals.totalRequired,
+          totalShortageQty: totals.totalShort,
+          allocationPackageQty: 0,
+          allocationLooseQty: 0,
+          items: (calcResult.items || []).map((it) => ({
+            materialName: it.materialName || "",
+            unit: it.unit || "",
+            requiredQty: asNum(it.requiredQty),
+            packSize: asNum(it.packSize),
+            packsNeeded: asNum(it.packsNeeded),
+            packagingQty: asNum(it.packagingQty),
+            availableTotalQty: asNum(it.availableTotalQty),
+            shortageQty: asNum(it.shortageQty),
+            canFulfill: !!it.canFulfill,
+          })),
         },
-      });
-
+      };
+  
+      console.log("createBooking payload =>", payload);
+  
+      await apiPostNoCors(apiUrl, payload);
+  
       setRemarks("");
       setBookingNotice("✅ Booking submitted successfully. Refreshing bookings…");
-
-      // Best effort refresh (JSONP getBookings)
+  
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("createBooking error:", e);

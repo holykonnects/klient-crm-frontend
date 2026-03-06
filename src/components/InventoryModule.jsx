@@ -1319,7 +1319,7 @@ export default function InventoryModule({
                 </Grid>
 
                 <Grid item xs={12}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Input JSON</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Requirement</Typography>
                   <Box
                     sx={{
                       mt: 0.5,

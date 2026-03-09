@@ -700,6 +700,11 @@ export default function StockManagement({
       return;
     }
 
+    if (asNum(createForm.packSize) <= 0) {
+      setCreateError("Pack Size is required.");
+      return;
+    }
+
     setCreating(true);
     setCreateNotice("");
     setCreateError("");
@@ -724,10 +729,12 @@ export default function StockManagement({
         },
       };
 
+      console.log("createStockItem payload =>", payload);
+
       await apiPostNoCors(apiUrl, payload);
 
-      setCreateNotice("✅ Material created successfully.");
-      setGlobalNotice("✅ New stock material created successfully.");
+      setCreateNotice("✅ Material submission sent.");
+      setGlobalNotice("✅ Material submission sent. Refreshing stock...");
 
       setTimeout(() => {
         handleCloseCreateModal();
@@ -1146,7 +1153,7 @@ export default function StockManagement({
                 </Grid>
 
                 <Grid item xs={12} md={4}>
-                  {modalForm.packSizeOptionsList?.length || approvedPackSizes.length ? (
+                  {(modalForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
                     <FormControl fullWidth size="small">
                       <InputLabel>Pack Size</InputLabel>
                       <Select
@@ -1155,11 +1162,19 @@ export default function StockManagement({
                         onChange={(e) => handleModalChange("packSize", e.target.value)}
                         sx={{ fontFamily }}
                       >
-                        {(modalForm.packSizeOptionsList || []).map((ps) => (
-                          <MenuItem key={ps} value={ps}>
-                            {ps}
-                          </MenuItem>
-                        ))}
+                        {Array.from(
+                          new Set([
+                            ...(modalForm.packSizeOptionsList || []),
+                            ...(approvedPackSizes || []),
+                          ])
+                        )
+                          .filter((ps) => asNum(ps) > 0)
+                          .sort((a, b) => a - b)
+                          .map((ps) => (
+                            <MenuItem key={ps} value={ps}>
+                              {ps}
+                            </MenuItem>
+                          ))}
                       </Select>
                     </FormControl>
                   ) : (
@@ -1383,7 +1398,7 @@ export default function StockManagement({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                {createForm.packSizeOptionsList?.length || approvedPackSizes.length ? (
+                {(createForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
                   <FormControl fullWidth size="small">
                     <InputLabel>Pack Size</InputLabel>
                     <Select
@@ -1392,11 +1407,19 @@ export default function StockManagement({
                       onChange={(e) => handleCreateChange("packSize", e.target.value)}
                       sx={{ fontFamily }}
                     >
-                      {(createForm.packSizeOptionsList || []).map((ps) => (
-                        <MenuItem key={ps} value={ps}>
-                          {ps}
-                        </MenuItem>
-                      ))}
+                      {Array.from(
+                        new Set([
+                          ...(createForm.packSizeOptionsList || []),
+                          ...(approvedPackSizes || []),
+                        ])
+                      )
+                        .filter((ps) => asNum(ps) > 0)
+                        .sort((a, b) => a - b)
+                        .map((ps) => (
+                          <MenuItem key={ps} value={ps}>
+                            {ps}
+                          </MenuItem>
+                        ))}
                     </Select>
                   </FormControl>
                 ) : (

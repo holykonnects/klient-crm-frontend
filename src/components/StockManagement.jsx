@@ -131,24 +131,6 @@ function parsePackSizeOptions(value) {
   ).sort((a, b) => a - b);
 }
 
-function normalizeInventoryCategory(category) {
-  const val = safeStr(category).toUpperCase();
-  if (val === "ACRYLIC") return "ACRYLIC";
-  if (val === "PU") return "PU";
-  return val;
-}
-
-function validationCategoryMatchesInventory(validationCategory, inventoryCategory) {
-  const v = safeStr(validationCategory).toUpperCase();
-  const i = normalizeInventoryCategory(inventoryCategory);
-
-  if (v === "ACRYLIC/PU") return i === "ACRYLIC" || i === "PU";
-  if (v === "ACRYLIC") return i === "ACRYLIC";
-  if (v === "PU") return i === "PU";
-
-  return v === i;
-}
-
 function buildStockRow(row, idx) {
   const packSize = asNum(row.packSize);
   const packagedStockQty = asNum(row.packagedStockQty);
@@ -259,7 +241,7 @@ export default function StockManagement({
 
   // ---------- Validation Mapping ----------
   // Supports either:
-  // 1) existing column-wise getValidation() response
+  // 1) current column-wise getValidation() response
   // 2) future row-wise response under validation.inventoryMaterialRows / validation.Inventory Material Rows
   const materialValidationRows = useMemo(() => {
     const rowWise =
@@ -271,14 +253,17 @@ export default function StockManagement({
     if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
       return rowWise
         .map((row) => ({
-          category: safeStr(row.category || row.Category),
+          category: safeStr(row.category || row.Category || row.Categories),
           materialName: safeStr(row.materialName || row["Material Name"]),
           unit: safeStr(row.unit || row.Unit),
         }))
         .filter((row) => row.category && row.materialName);
     }
 
-    const categories = validation?.["Category"] || [];
+    const categories =
+      validation?.["Categories"] ||
+      validation?.["Category"] ||
+      [];
     const materials = validation?.["Material Name"] || [];
     const units = validation?.["Unit"] || [];
 
@@ -286,14 +271,14 @@ export default function StockManagement({
     const rows = [];
 
     for (let i = 0; i < maxLen; i++) {
-      const category = safeStr(categories[i]);
+      const validationCategory = safeStr(categories[i]);
       const materialName = safeStr(materials[i]);
       const unit = safeStr(units[i]);
 
-      if (!category || !materialName) continue;
+      if (!validationCategory || !materialName) continue;
 
       rows.push({
-        category,
+        category: validationCategory,
         materialName,
         unit,
       });
@@ -304,6 +289,7 @@ export default function StockManagement({
 
   const categoryOptions = useMemo(() => {
     const fromValidation =
+      validation?.["Categories"] ||
       validation?.["Category"] ||
       validation?.["Inventory Category"] ||
       [];
@@ -319,16 +305,23 @@ export default function StockManagement({
     return Array.from(new Set([...normalized, ...fromRows]));
   }, [validation, stockRows]);
 
-  // Create Material modal category mapping based on inventory nomenclature
+  // ✅ Add Material modal should reflect the raw validation dropdown values exactly
   const createCategoryOptions = useMemo(() => {
-    return ["ACRYLIC", "PU"];
-  }, []);
+    return Array.from(
+      new Set(
+        (materialValidationRows || [])
+          .map((row) => safeStr(row.category))
+          .filter(Boolean)
+      )
+    );
+  }, [materialValidationRows]);
 
+  // ✅ Material Name dropdown should filter by exact selected validation category
   const createMaterialOptions = useMemo(() => {
     if (!safeStr(createForm.category)) return [];
 
-    const filtered = materialValidationRows.filter((row) =>
-      validationCategoryMatchesInventory(row.category, createForm.category)
+    const filtered = materialValidationRows.filter(
+      (row) => safeStr(row.category) === safeStr(createForm.category)
     );
 
     const deduped = [];
@@ -345,7 +338,7 @@ export default function StockManagement({
     return deduped.sort((a, b) => a.materialName.localeCompare(b.materialName));
   }, [materialValidationRows, createForm.category]);
 
-  // Update modal pack size dropdown validation fallback from validation sheet if available
+  // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
     const raw =
       validation?.["Pack Sizes"] ||
@@ -483,7 +476,9 @@ export default function StockManagement({
       if (field === "packSizeOptions") {
         const freeTextOptions = parsePackSizeOptions(value);
         const merged = Array.from(
-          new Set([...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0))
+          new Set(
+            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0)
+          )
         ).sort((a, b) => a - b);
 
         next.packSizeOptionsList = merged;
@@ -491,7 +486,9 @@ export default function StockManagement({
 
       if (field === "packSize") {
         const merged = Array.from(
-          new Set([...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0))
+          new Set(
+            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0)
+          )
         ).sort((a, b) => a - b);
         next.packSizeOptionsList = merged;
       }
@@ -592,7 +589,9 @@ export default function StockManagement({
       if (field === "packSizeOptions") {
         const freeTextOptions = parsePackSizeOptions(value);
         const merged = Array.from(
-          new Set([...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0))
+          new Set(
+            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0)
+          )
         ).sort((a, b) => a - b);
 
         next.packSizeOptionsList = merged;
@@ -600,7 +599,9 @@ export default function StockManagement({
 
       if (field === "packSize") {
         const merged = Array.from(
-          new Set([...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0))
+          new Set(
+            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0)
+          )
         ).sort((a, b) => a - b);
 
         next.packSizeOptionsList = merged;
@@ -643,6 +644,7 @@ export default function StockManagement({
         action: "createStockItem",
         data: {
           role: user.role || "",
+          // ✅ user sees raw validation category and backend receives the same selection
           category: createForm.category,
           materialName: createForm.materialName,
           unit: createForm.unit,
@@ -1096,34 +1098,68 @@ export default function StockManagement({
                 <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
 
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Reserved Packaged Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.reservedPackagedQty)}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Reserved Packaged Qty
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(modalForm.reservedPackagedQty)}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Reserved Loose Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.reservedLooseQty)}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Reserved Loose Qty
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(modalForm.reservedLooseQty)}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Packaged Stock Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.packagedStockQty)}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Derived Packaged Stock Qty
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(modalForm.packagedStockQty)}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Packaged Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.availablePackagedQty)}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Derived Available Packaged Qty
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(modalForm.availablePackagedQty)}
+                  </Typography>
                 </Grid>
                 <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Loose Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.availableLooseQty)}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Derived Available Loose Qty
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {round2(modalForm.availableLooseQty)}
+                  </Typography>
                 </Grid>
               </Grid>
 
-              {modalNotice ? <Box mt={2}><Alert severity="success" sx={{ fontFamily }}>{modalNotice}</Alert></Box> : null}
-              {modalError ? <Box mt={2}><Alert severity="error" sx={{ fontFamily }}>{modalError}</Alert></Box> : null}
+              {modalNotice ? (
+                <Box mt={2}>
+                  <Alert severity="success" sx={{ fontFamily }}>
+                    {modalNotice}
+                  </Alert>
+                </Box>
+              ) : null}
+              {modalError ? (
+                <Box mt={2}>
+                  <Alert severity="error" sx={{ fontFamily }}>
+                    {modalError}
+                  </Alert>
+                </Box>
+              ) : null}
             </Box>
           ) : null}
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>Close</Button>
+          <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
           <Button
             variant="contained"
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
@@ -1171,7 +1207,10 @@ export default function StockManagement({
                     disabled={!createForm.category}
                   >
                     {createMaterialOptions.map((item) => (
-                      <MenuItem key={`${item.materialName}-${item.unit}`} value={item.materialName}>
+                      <MenuItem
+                        key={`${item.materialName}-${item.unit}`}
+                        value={item.materialName}
+                      >
                         {item.materialName}
                       </MenuItem>
                     ))}
@@ -1289,25 +1328,51 @@ export default function StockManagement({
               <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
 
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Packaged Stock Qty</Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.packagedStockQty)}</Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Packaged Stock Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.packagedStockQty)}
+                </Typography>
               </Grid>
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Packaged Qty</Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.availablePackagedQty)}</Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Available Packaged Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.availablePackagedQty)}
+                </Typography>
               </Grid>
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Loose Qty</Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.availableLooseQty)}</Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Available Loose Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.availableLooseQty)}
+                </Typography>
               </Grid>
             </Grid>
 
-            {createNotice ? <Box mt={2}><Alert severity="success" sx={{ fontFamily }}>{createNotice}</Alert></Box> : null}
-            {createError ? <Box mt={2}><Alert severity="error" sx={{ fontFamily }}>{createError}</Alert></Box> : null}
+            {createNotice ? (
+              <Box mt={2}>
+                <Alert severity="success" sx={{ fontFamily }}>
+                  {createNotice}
+                </Alert>
+              </Box>
+            ) : null}
+            {createError ? (
+              <Box mt={2}>
+                <Alert severity="error" sx={{ fontFamily }}>
+                  {createError}
+                </Alert>
+              </Box>
+            ) : null}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>Close</Button>
+          <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
           <Button
             variant="contained"
             startIcon={creating ? <CircularProgress size={16} /> : <SaveIcon />}
@@ -1323,7 +1388,9 @@ export default function StockManagement({
       {/* Toggle Active Modal */}
       <Dialog open={openToggleModal} onClose={handleCloseToggleModal} fullWidth maxWidth="sm">
         <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>
-          {toggleRow && toUpper(toggleRow.active) === "TRUE" ? "Deactivate Material" : "Reactivate Material"}
+          {toggleRow && toUpper(toggleRow.active) === "TRUE"
+            ? "Deactivate Material"
+            : "Reactivate Material"}
         </DialogTitle>
         <DialogContent dividers>
           {toggleRow ? (

@@ -1,0 +1,730 @@
+// src/components/StockManagement.jsx
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  Box,
+  Typography,
+  Paper,
+  Grid,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
+  TextField,
+  Button,
+  Divider,
+  Table,
+  TableHead,
+  TableRow,
+  TableCell,
+  TableBody,
+  TableContainer,
+  CircularProgress,
+  IconButton,
+  Tooltip,
+  Alert,
+  Chip,
+} from "@mui/material";
+
+import RefreshIcon from "@mui/icons-material/Refresh";
+import SaveIcon from "@mui/icons-material/Save";
+import Inventory2Icon from "@mui/icons-material/Inventory2";
+
+const cornflowerBlue = "#6495ED";
+const fontFamily = "Montserrat, sans-serif";
+
+const INVENTORY_API_URL =
+  "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
+
+// ---------- Helpers ----------
+const safeStr = (v) => (v ?? "").toString().trim();
+const toUpper = (v) => safeStr(v).toUpperCase();
+const asNum = (v) => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : 0;
+};
+const round2 = (n) => Math.round(asNum(n) * 100) / 100;
+
+function getUserFromLocalStorage() {
+  try {
+    const raw = localStorage.getItem("crmUser");
+    if (!raw) return { username: "", role: "" };
+    const parsed = JSON.parse(raw);
+    return {
+      username: parsed?.loginUsername || parsed?.username || parsed?.name || "",
+      role: parsed?.role || "",
+    };
+  } catch {
+    return { username: "", role: "" };
+  }
+}
+
+function jsonp(url, timeoutMs = 20000) {
+  return new Promise((resolve, reject) => {
+    const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
+    const script = document.createElement("script");
+
+    const timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("JSONP timeout"));
+    }, timeoutMs);
+
+    function cleanup() {
+      clearTimeout(timer);
+      try {
+        delete window[cb];
+      } catch {
+        window[cb] = undefined;
+      }
+      if (script.parentNode) script.parentNode.removeChild(script);
+    }
+
+    window[cb] = (data) => {
+      cleanup();
+      resolve(data);
+    };
+
+    const sep = url.includes("?") ? "&" : "?";
+    script.src = `${url}${sep}callback=${cb}`;
+    script.async = true;
+
+    script.onerror = () => {
+      cleanup();
+      reject(new Error("JSONP load failed"));
+    };
+
+    document.body.appendChild(script);
+  });
+}
+
+async function apiGet(apiUrl, params) {
+  const qs = new URLSearchParams(params);
+  const payload = await jsonp(`${apiUrl}?${qs.toString()}`);
+  if (!payload?.ok) throw new Error(payload?.error || "Request failed");
+  return payload.data;
+}
+
+async function apiPostNoCors(apiUrl, body) {
+  await fetch(apiUrl, {
+    method: "POST",
+    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function parsePackSizeOptions(value) {
+  return Array.from(
+    new Set(
+      safeStr(value)
+        .split(/[|,]/)
+        .map((v) => asNum(v))
+        .filter((n) => n > 0)
+    )
+  ).sort((a, b) => a - b);
+}
+
+function buildEditableStockRow(row, idx) {
+  const packSize = asNum(row.packSize);
+  const packagedStockQty = asNum(row.packagedStockQty);
+  const readyPacksCount =
+    packSize > 0 ? round2(packagedStockQty / packSize) : 0;
+
+  const reservedPackagedQty = asNum(row.reservedPackagedQty);
+  const reservedLooseQty = asNum(row.reservedLooseQty);
+  const looseStockQty = asNum(row.looseStockQty);
+
+  return {
+    id: `${safeStr(row.category)}__${safeStr(row.materialName)}__${idx}`,
+    timestamp: row.timestamp || "",
+    category: safeStr(row.category),
+    materialName: safeStr(row.materialName),
+    unit: safeStr(row.unit),
+    packSize,
+    packSizeOptions: safeStr(row.packSizeOptions || ""),
+    packSizeOptionsList: parsePackSizeOptions(row.packSizeOptions || ""),
+    readyPacksCount,
+    packagedStockQty: round2(packagedStockQty),
+    looseStockQty: round2(looseStockQty),
+    reservedPackagedQty: round2(reservedPackagedQty),
+    reservedLooseQty: round2(reservedLooseQty),
+    availablePackagedQty: round2(Math.max(0, packagedStockQty - reservedPackagedQty)),
+    availableLooseQty: round2(Math.max(0, looseStockQty - reservedLooseQty)),
+    minStockLevel: asNum(row.minStockLevel),
+    active: safeStr(row.active || "TRUE"),
+    updatedBy: safeStr(row.updatedBy),
+    saving: false,
+    notice: "",
+    error: "",
+  };
+}
+
+export default function StockManagement({
+  apiUrl = INVENTORY_API_URL,
+  logoSrc = "/assets/kk-logo.png",
+  title = "Stock Management",
+}) {
+  const user = useMemo(() => getUserFromLocalStorage(), []);
+
+  const [validation, setValidation] = useState({});
+  const [validationLoading, setValidationLoading] = useState(false);
+
+  const [category, setCategory] = useState("ALL");
+  const [search, setSearch] = useState("");
+
+  const [stockRows, setStockRows] = useState([]);
+  const [stockLoading, setStockLoading] = useState(false);
+  const [stockError, setStockError] = useState("");
+
+  const [globalNotice, setGlobalNotice] = useState("");
+
+  const categoryOptions = useMemo(() => {
+    const fromValidation =
+      validation?.["Category"] ||
+      validation?.["Inventory Category"] ||
+      [];
+    const normalized = Array.from(
+      new Set(
+        (fromValidation || [])
+          .map((v) => safeStr(v))
+          .filter(Boolean)
+      )
+    );
+
+    const fromRows = Array.from(
+      new Set(stockRows.map((r) => safeStr(r.category)).filter(Boolean))
+    );
+
+    return Array.from(new Set([...normalized, ...fromRows]));
+  }, [validation, stockRows]);
+
+  const filteredRows = useMemo(() => {
+    const q = toUpper(search);
+    return (stockRows || []).filter((row) => {
+      const matchesCategory =
+        category === "ALL" || toUpper(row.category) === toUpper(category);
+
+      const hay =
+        `${row.category} ${row.materialName} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
+
+      const matchesSearch = !q || hay.includes(q);
+
+      return matchesCategory && matchesSearch;
+    });
+  }, [stockRows, category, search]);
+
+  const fetchValidation = async () => {
+    if (!apiUrl) return;
+    setValidationLoading(true);
+    try {
+      const data = await apiGet(apiUrl, { action: "getValidation" });
+      setValidation(data || {});
+    } catch (e) {
+      console.error("getValidation error:", e);
+    } finally {
+      setValidationLoading(false);
+    }
+  };
+
+  const fetchStock = async () => {
+    if (!apiUrl) return;
+    setStockLoading(true);
+    setStockError("");
+    setGlobalNotice("");
+
+    try {
+      const categoryParam = category === "ALL" ? "" : category;
+      const data = await apiGet(apiUrl, {
+        action: "getStock",
+        category: categoryParam,
+      });
+
+      const safeRows = Array.isArray(data) ? data : [];
+      const mapped = safeRows.map((row, idx) =>
+        buildEditableStockRow(
+          {
+            timestamp: row.timestamp || "",
+            category: row.category,
+            materialName: row.materialName,
+            unit: row.unit,
+            packSize: row.packSize,
+            packSizeOptions: row.packSizeOptions,
+            packagedStockQty: row.packagedStockQty,
+            looseStockQty: row.looseStockQty,
+            reservedPackagedQty: row.reservedPackagedQty,
+            reservedLooseQty: row.reservedLooseQty,
+            minStockLevel: row.minStockLevel,
+            active: row.active,
+            updatedBy: row.updatedBy,
+          },
+          idx
+        )
+      );
+
+      setStockRows(mapped);
+    } catch (e) {
+      console.error("getStock error:", e);
+      setStockRows([]);
+      setStockError(`Failed to load stock: ${e.message || e}`);
+    } finally {
+      setStockLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchValidation();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    fetchStock();
+  }, [apiUrl, category]);
+
+  const handleRowChange = (rowId, field, value) => {
+    setStockRows((prev) =>
+      prev.map((row) => {
+        if (row.id !== rowId) return row;
+
+        const next = { ...row, [field]: value, notice: "", error: "" };
+
+        const nextPackSize = field === "packSize" ? asNum(value) : asNum(next.packSize);
+        const nextReadyPacks =
+          field === "readyPacksCount" ? asNum(value) : asNum(next.readyPacksCount);
+        const nextLoose =
+          field === "looseStockQty" ? asNum(value) : asNum(next.looseStockQty);
+
+        next.packSize = nextPackSize;
+        next.readyPacksCount = nextReadyPacks;
+        next.packagedStockQty = round2(nextReadyPacks * nextPackSize);
+        next.looseStockQty = round2(nextLoose);
+
+        next.availablePackagedQty = round2(
+          Math.max(0, asNum(next.packagedStockQty) - asNum(next.reservedPackagedQty))
+        );
+        next.availableLooseQty = round2(
+          Math.max(0, asNum(next.looseStockQty) - asNum(next.reservedLooseQty))
+        );
+
+        return next;
+      })
+    );
+  };
+
+  const handleSaveRow = async (row) => {
+    setStockRows((prev) =>
+      prev.map((r) =>
+        r.id === row.id ? { ...r, saving: true, notice: "", error: "" } : r
+      )
+    );
+
+    try {
+      const payload = {
+        action: "setStock",
+        data: {
+          role: user.role || "",
+          category: row.category,
+          materialName: row.materialName,
+          unit: row.unit,
+          packSize: asNum(row.packSize),
+          packSizeOptions: safeStr(row.packSizeOptions),
+          readyPacksCount: asNum(row.readyPacksCount),
+          packagedStockQty: asNum(row.packagedStockQty),
+          looseStockQty: asNum(row.looseStockQty),
+          minStockLevel: asNum(row.minStockLevel),
+          active: safeStr(row.active || "TRUE"),
+          doneBy: user.username || "",
+          notes: "Row-wise stock update from Stock Management",
+        },
+      };
+
+      console.log("setStock payload =>", payload);
+
+      await apiPostNoCors(apiUrl, payload);
+
+      setStockRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? {
+                ...r,
+                saving: false,
+                notice: "Saved successfully",
+                error: "",
+                updatedBy: user.username || r.updatedBy,
+              }
+            : r
+        )
+      );
+
+      setGlobalNotice("✅ Stock row updated successfully.");
+
+      setTimeout(() => {
+        fetchStock();
+      }, 1200);
+    } catch (e) {
+      console.error("setStock error:", e);
+      setStockRows((prev) =>
+        prev.map((r) =>
+          r.id === row.id
+            ? {
+                ...r,
+                saving: false,
+                notice: "",
+                error: `Save failed: ${e.message || e}`,
+              }
+            : r
+        )
+      );
+    }
+  };
+
+  const totalRows = filteredRows.length;
+  const lowStockCount = filteredRows.filter(
+    (row) =>
+      asNum(row.minStockLevel) > 0 &&
+      asNum(row.availablePackagedQty + row.availableLooseQty) <= asNum(row.minStockLevel)
+  ).length;
+
+  return (
+    <Box sx={{ p: 2, fontFamily }}>
+      {/* Header */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          mb: 2,
+          borderRadius: 2,
+          border: "1px solid rgba(100,149,237,0.25)",
+        }}
+      >
+        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+          <Box display="flex" alignItems="center" gap={2}>
+            <img src={logoSrc} alt="Klient Konnect" style={{ height: 56, objectFit: "contain" }} />
+            <Box>
+              <Typography variant="h5" sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
+                {title}
+              </Typography>
+              <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
+                Manage ready packs and loose stock row-wise for inventory materials.
+              </Typography>
+            </Box>
+          </Box>
+
+          <Box display="flex" alignItems="center" gap={1}>
+            <Tooltip title="Refresh stock">
+              <IconButton onClick={fetchStock}>
+                <RefreshIcon />
+              </IconButton>
+            </Tooltip>
+            {(stockLoading || validationLoading) ? <CircularProgress size={18} /> : null}
+          </Box>
+        </Box>
+      </Paper>
+
+      {/* Filters */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          mb: 2,
+          borderRadius: 2,
+          border: "1px solid rgba(0,0,0,0.08)",
+        }}
+      >
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Category</InputLabel>
+              <Select
+                label="Category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                sx={{ fontFamily }}
+              >
+                <MenuItem value="ALL">ALL</MenuItem>
+                {categoryOptions.map((cat) => (
+                  <MenuItem key={cat} value={cat}>
+                    {cat}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={5}>
+            <TextField
+              fullWidth
+              size="small"
+              label="Search Material"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              sx={{ fontFamily }}
+              inputProps={{ style: { fontFamily } }}
+            />
+          </Grid>
+
+          <Grid item xs={12} md={4}>
+            <Box display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }} gap={1} flexWrap="wrap">
+              <Chip
+                icon={<Inventory2Icon />}
+                label={`Rows: ${totalRows}`}
+                size="small"
+                sx={{ fontFamily }}
+              />
+              <Chip
+                label={`Low Stock: ${lowStockCount}`}
+                size="small"
+                color={lowStockCount > 0 ? "warning" : "success"}
+                sx={{ fontFamily }}
+              />
+            </Box>
+          </Grid>
+        </Grid>
+
+        {globalNotice ? (
+          <Box mt={2}>
+            <Alert severity="success" sx={{ fontFamily }}>
+              {globalNotice}
+            </Alert>
+          </Box>
+        ) : null}
+
+        {stockError ? (
+          <Box mt={2}>
+            <Alert severity="error" sx={{ fontFamily }}>
+              {stockError}
+            </Alert>
+          </Box>
+        ) : null}
+      </Paper>
+
+      {/* Stock Table */}
+      <Paper
+        elevation={0}
+        sx={{
+          p: 2,
+          borderRadius: 2,
+          border: "1px solid rgba(0,0,0,0.08)",
+        }}
+      >
+        <Box display="flex" alignItems="center" gap={1} mb={1}>
+          <Inventory2Icon sx={{ color: cornflowerBlue }} />
+          <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+            Inventory Stock
+          </Typography>
+        </Box>
+
+        {stockLoading ? (
+          <Box display="flex" alignItems="center" gap={1}>
+            <CircularProgress size={16} />
+            <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+              Loading stock…
+            </Typography>
+          </Box>
+        ) : filteredRows.length === 0 ? (
+          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
+            No stock rows found.
+          </Typography>
+        ) : (
+          <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Pack Size
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Pack Size Options</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Ready Packs
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Packaged Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Packaged
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Loose
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Packaged
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Loose
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Min Stock
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Updated By</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
+                    Save
+                  </TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {filteredRows.map((row) => {
+                  const totalAvailable = round2(
+                    asNum(row.availablePackagedQty) + asNum(row.availableLooseQty)
+                  );
+                  const isLowStock =
+                    asNum(row.minStockLevel) > 0 && totalAvailable <= asNum(row.minStockLevel);
+
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell sx={{ fontFamily }}>{row.category}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.materialName}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {row.packSizeOptionsList.length > 0 ? (
+                          <Select
+                            size="small"
+                            value={row.packSize}
+                            onChange={(e) => handleRowChange(row.id, "packSize", e.target.value)}
+                            sx={{ fontFamily, minWidth: 90 }}
+                          >
+                            {row.packSizeOptionsList.map((ps) => (
+                              <MenuItem key={ps} value={ps}>
+                                {ps}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        ) : (
+                          <TextField
+                            size="small"
+                            type="number"
+                            value={row.packSize}
+                            onChange={(e) => handleRowChange(row.id, "packSize", e.target.value)}
+                            sx={{ width: 90 }}
+                            inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                          />
+                        )}
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }}>
+                        <TextField
+                          size="small"
+                          value={row.packSizeOptions}
+                          onChange={(e) => handleRowChange(row.id, "packSizeOptions", e.target.value)}
+                          sx={{ minWidth: 140 }}
+                          inputProps={{ style: { fontFamily } }}
+                          placeholder="25|50|100"
+                        />
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={row.readyPacksCount}
+                          onChange={(e) => handleRowChange(row.id, "readyPacksCount", e.target.value)}
+                          sx={{ width: 90 }}
+                          inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                        />
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagedStockQty)}
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={row.looseStockQty}
+                          onChange={(e) => handleRowChange(row.id, "looseStockQty", e.target.value)}
+                          sx={{ width: 95 }}
+                          inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                        />
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedPackagedQty)}
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedLooseQty)}
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        <Chip
+                          size="small"
+                          label={round2(row.availablePackagedQty)}
+                          color={isLowStock ? "warning" : "default"}
+                          sx={{ fontFamily }}
+                        />
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.availableLooseQty)}
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }} align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={row.minStockLevel}
+                          onChange={(e) => handleRowChange(row.id, "minStockLevel", e.target.value)}
+                          sx={{ width: 95 }}
+                          inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                        />
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily }}>
+                        <Select
+                          size="small"
+                          value={row.active}
+                          onChange={(e) => handleRowChange(row.id, "active", e.target.value)}
+                          sx={{ fontFamily, minWidth: 95 }}
+                        >
+                          <MenuItem value="TRUE">TRUE</MenuItem>
+                          <MenuItem value="FALSE">FALSE</MenuItem>
+                        </Select>
+                      </TableCell>
+
+                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
+                        {row.updatedBy || "-"}
+                        {row.notice ? (
+                          <Typography sx={{ fontFamily, fontSize: 10, color: "green", mt: 0.5 }}>
+                            {row.notice}
+                          </Typography>
+                        ) : null}
+                        {row.error ? (
+                          <Typography sx={{ fontFamily, fontSize: 10, color: "red", mt: 0.5 }}>
+                            {row.error}
+                          </Typography>
+                        ) : null}
+                      </TableCell>
+
+                      <TableCell align="center">
+                        <Button
+                          variant="contained"
+                          size="small"
+                          startIcon={row.saving ? <CircularProgress size={14} /> : <SaveIcon />}
+                          onClick={() => handleSaveRow(row)}
+                          disabled={row.saving}
+                          sx={{
+                            textTransform: "none",
+                            fontFamily,
+                            backgroundColor: cornflowerBlue,
+                          }}
+                        >
+                          Save
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
+        )}
+      </Paper>
+    </Box>
+  );
+}

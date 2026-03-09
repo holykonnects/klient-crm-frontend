@@ -68,8 +68,11 @@ function DashboardLayout({ children }) {
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Costing', icon: <CurrencyRupee />, route: '/costing', access: 'Costing' },
 
-    // ✅ NEW: Inventory Module
+    // ✅ NEW: Inventory
     { label: 'Inventory', icon: <Inventory2 />, route: '/inventory', access: 'Inventory' },
+
+    // ✅ NEW: Stock Management
+    { label: 'Stock Management', icon: <Inventory2 />, route: '/stock-management', access: 'Stock Management' },
 
     { label: 'Client Comms', icon: <Email />, route: '/email-dashboard', access: 'Email' }
   ];

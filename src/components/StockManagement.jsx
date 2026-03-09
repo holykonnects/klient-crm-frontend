@@ -319,10 +319,24 @@ export default function StockManagement({
     return Array.from(new Set([...normalized, ...fromRows]));
   }, [validation, stockRows]);
 
-  // Create Material modal category mapping based on inventory nomenclature
+  // ✅ Updated to pull modal category options from validation mapping, not hardcoded
   const createCategoryOptions = useMemo(() => {
-    return ["ACRYLIC", "PU"];
-  }, []);
+    const rows = materialValidationRows || [];
+
+    const mapped = rows
+      .flatMap((row) => {
+        const raw = safeStr(row.category).toUpperCase();
+
+        if (raw === "ACRYLIC") return ["ACRYLIC"];
+        if (raw === "PU") return ["PU"];
+        if (raw === "ACRYLIC/PU") return ["ACRYLIC", "PU"];
+
+        return [raw];
+      })
+      .filter(Boolean);
+
+    return Array.from(new Set(mapped)).sort();
+  }, [materialValidationRows]);
 
   const createMaterialOptions = useMemo(() => {
     if (!safeStr(createForm.category)) return [];

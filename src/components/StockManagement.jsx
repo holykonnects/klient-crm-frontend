@@ -131,6 +131,24 @@ function parsePackSizeOptions(value) {
   ).sort((a, b) => a - b);
 }
 
+function normalizeInventoryCategory(category) {
+  const val = safeStr(category).toUpperCase();
+  if (val === "ACRYLIC") return "ACRYLIC";
+  if (val === "PU") return "PU";
+  return val;
+}
+
+function validationCategoryMatchesInventory(validationCategory, inventoryCategory) {
+  const v = safeStr(validationCategory).toUpperCase();
+  const i = normalizeInventoryCategory(inventoryCategory);
+
+  if (v === "ACRYLIC/PU") return i === "ACRYLIC" || i === "PU";
+  if (v === "ACRYLIC") return i === "ACRYLIC";
+  if (v === "PU") return i === "PU";
+
+  return v === i;
+}
+
 function buildStockRow(row, idx) {
   const packSize = asNum(row.packSize);
   const packagedStockQty = asNum(row.packagedStockQty);
@@ -188,7 +206,7 @@ function buildNewMaterialState(defaultCategory = "") {
   return {
     category: defaultCategory && defaultCategory !== "ALL" ? defaultCategory : "",
     materialName: "",
-    unit: "kg",
+    unit: "",
     packSize: 0,
     packSizeOptions: "",
     packSizeOptionsList: [],
@@ -239,6 +257,31 @@ export default function StockManagement({
   const [toggleLoading, setToggleLoading] = useState(false);
   const [toggleError, setToggleError] = useState("");
 
+  const materialValidationRows = useMemo(() => {
+    const categories = validation?.["Category"] || [];
+    const materials = validation?.["Material Name"] || [];
+    const units = validation?.["Unit"] || [];
+
+    const maxLen = Math.max(categories.length, materials.length, units.length);
+    const rows = [];
+
+    for (let i = 0; i < maxLen; i++) {
+      const category = safeStr(categories[i]);
+      const materialName = safeStr(materials[i]);
+      const unit = safeStr(units[i]);
+
+      if (!category || !materialName) continue;
+
+      rows.push({
+        category,
+        materialName,
+        unit,
+      });
+    }
+
+    return rows;
+  }, [validation]);
+
   const categoryOptions = useMemo(() => {
     const fromValidation =
       validation?.["Category"] ||
@@ -255,6 +298,31 @@ export default function StockManagement({
 
     return Array.from(new Set([...normalized, ...fromRows]));
   }, [validation, stockRows]);
+
+  const createCategoryOptions = useMemo(() => {
+    return ["ACRYLIC", "PU"];
+  }, []);
+
+  const createMaterialOptions = useMemo(() => {
+    if (!safeStr(createForm.category)) return [];
+
+    const filtered = materialValidationRows.filter((row) =>
+      validationCategoryMatchesInventory(row.category, createForm.category)
+    );
+
+    const deduped = [];
+    const seen = new Set();
+
+    filtered.forEach((row) => {
+      const key = `${safeStr(row.materialName)}__${safeStr(row.unit)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        deduped.push(row);
+      }
+    });
+
+    return deduped.sort((a, b) => a.materialName.localeCompare(b.materialName));
+  }, [materialValidationRows, createForm.category]);
 
   const filteredRows = useMemo(() => {
     const q = toUpper(search);
@@ -450,6 +518,18 @@ export default function StockManagement({
   const handleCreateChange = (field, value) => {
     setCreateForm((prev) => {
       const next = { ...prev, [field]: value };
+
+      if (field === "category") {
+        next.materialName = "";
+        next.unit = "";
+      }
+
+      if (field === "materialName") {
+        const selectedMaterial = createMaterialOptions.find(
+          (item) => safeStr(item.materialName) === safeStr(value)
+        );
+        next.unit = selectedMaterial?.unit || "";
+      }
 
       if (field === "packSizeOptions") {
         next.packSizeOptionsList = parsePackSizeOptions(value);
@@ -992,50 +1072,143 @@ export default function StockManagement({
           <Box>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" label="Category" value={createForm.category} onChange={(e) => handleCreateChange("category", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" label="Material Name" value={createForm.materialName} onChange={(e) => handleCreateChange("materialName", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
-              </Grid>
-              <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" label="Unit" value={createForm.unit} onChange={(e) => handleCreateChange("unit", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+                <FormControl fullWidth size="small">
+                  <InputLabel>Category</InputLabel>
+                  <Select
+                    label="Category"
+                    value={createForm.category}
+                    onChange={(e) => handleCreateChange("category", e.target.value)}
+                    sx={{ fontFamily }}
+                  >
+                    {createCategoryOptions.map((cat) => (
+                      <MenuItem key={cat} value={cat}>
+                        {cat}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" label="Pack Size Options" value={createForm.packSizeOptions} onChange={(e) => handleCreateChange("packSizeOptions", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} placeholder="25|50|100" />
+                <FormControl fullWidth size="small">
+                  <InputLabel>Material Name</InputLabel>
+                  <Select
+                    label="Material Name"
+                    value={createForm.materialName}
+                    onChange={(e) => handleCreateChange("materialName", e.target.value)}
+                    sx={{ fontFamily }}
+                    disabled={!createForm.category}
+                  >
+                    {createMaterialOptions.map((item) => (
+                      <MenuItem key={`${item.materialName}-${item.unit}`} value={item.materialName}>
+                        {item.materialName}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Unit"
+                  value={createForm.unit}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily }, readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Pack Size Options"
+                  value={createForm.packSizeOptions}
+                  onChange={(e) => handleCreateChange("packSizeOptions", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                  placeholder="25|50|100"
+                />
               </Grid>
 
               <Grid item xs={12} md={4}>
                 {createForm.packSizeOptionsList?.length ? (
                   <FormControl fullWidth size="small">
                     <InputLabel>Pack Size</InputLabel>
-                    <Select label="Pack Size" value={createForm.packSize} onChange={(e) => handleCreateChange("packSize", e.target.value)} sx={{ fontFamily }}>
+                    <Select
+                      label="Pack Size"
+                      value={createForm.packSize}
+                      onChange={(e) => handleCreateChange("packSize", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
                       {createForm.packSizeOptionsList.map((ps) => (
                         <MenuItem key={ps} value={ps}>{ps}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
                 ) : (
-                  <TextField fullWidth size="small" type="number" label="Pack Size" value={createForm.packSize} onChange={(e) => handleCreateChange("packSize", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Pack Size"
+                    value={createForm.packSize}
+                    onChange={(e) => handleCreateChange("packSize", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
                 )}
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" type="number" label="Ready Packs Count" value={createForm.readyPacksCount} onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Ready Packs Count"
+                  value={createForm.readyPacksCount}
+                  onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" type="number" label="Loose Stock Qty" value={createForm.looseStockQty} onChange={(e) => handleCreateChange("looseStockQty", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Loose Stock Qty"
+                  value={createForm.looseStockQty}
+                  onChange={(e) => handleCreateChange("looseStockQty", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField fullWidth size="small" type="number" label="Min Stock Level" value={createForm.minStockLevel} onChange={(e) => handleCreateChange("minStockLevel", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Min Stock Level"
+                  value={createForm.minStockLevel}
+                  onChange={(e) => handleCreateChange("minStockLevel", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
               </Grid>
 
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Active</InputLabel>
-                  <Select label="Active" value={createForm.active} onChange={(e) => handleCreateChange("active", e.target.value)} sx={{ fontFamily }}>
+                  <Select
+                    label="Active"
+                    value={createForm.active}
+                    onChange={(e) => handleCreateChange("active", e.target.value)}
+                    sx={{ fontFamily }}
+                  >
                     <MenuItem value="TRUE">TRUE</MenuItem>
                     <MenuItem value="FALSE">FALSE</MenuItem>
                   </Select>

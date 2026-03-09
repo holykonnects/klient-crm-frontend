@@ -33,6 +33,7 @@ import RefreshIcon from "@mui/icons-material/Refresh";
 import Inventory2Icon from "@mui/icons-material/Inventory2";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
+import AddIcon from "@mui/icons-material/Add";
 
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
@@ -181,6 +182,26 @@ function deriveModalState(row) {
   };
 }
 
+function buildNewMaterialState(defaultCategory = "") {
+  return {
+    category: defaultCategory && defaultCategory !== "ALL" ? defaultCategory : "",
+    materialName: "",
+    unit: "kg",
+    packSize: 0,
+    packSizeOptions: "",
+    packSizeOptionsList: [],
+    readyPacksCount: 0,
+    packagedStockQty: 0,
+    looseStockQty: 0,
+    reservedPackagedQty: 0,
+    reservedLooseQty: 0,
+    availablePackagedQty: 0,
+    availableLooseQty: 0,
+    minStockLevel: 0,
+    active: "TRUE",
+  };
+}
+
 export default function StockManagement({
   apiUrl = INVENTORY_API_URL,
   logoSrc = "/assets/kk-logo.png",
@@ -205,6 +226,12 @@ export default function StockManagement({
   const [saving, setSaving] = useState(false);
   const [modalNotice, setModalNotice] = useState("");
   const [modalError, setModalError] = useState("");
+
+  const [openCreateModal, setOpenCreateModal] = useState(false);
+  const [createForm, setCreateForm] = useState(buildNewMaterialState());
+  const [creating, setCreating] = useState(false);
+  const [createNotice, setCreateNotice] = useState("");
+  const [createError, setCreateError] = useState("");
 
   const categoryOptions = useMemo(() => {
     const fromValidation =
@@ -403,6 +430,100 @@ export default function StockManagement({
     }
   };
 
+  const handleOpenCreateModal = () => {
+    setCreateForm(buildNewMaterialState(category));
+    setCreateNotice("");
+    setCreateError("");
+    setOpenCreateModal(true);
+  };
+
+  const handleCloseCreateModal = () => {
+    setOpenCreateModal(false);
+    setCreateForm(buildNewMaterialState(category));
+    setCreateNotice("");
+    setCreateError("");
+    setCreating(false);
+  };
+
+  const handleCreateChange = (field, value) => {
+    setCreateForm((prev) => {
+      const next = { ...prev, [field]: value };
+
+      if (field === "packSizeOptions") {
+        next.packSizeOptionsList = parsePackSizeOptions(value);
+      }
+
+      const packSize = field === "packSize" ? asNum(value) : asNum(next.packSize);
+      const readyPacksCount =
+        field === "readyPacksCount" ? asNum(value) : asNum(next.readyPacksCount);
+      const looseStockQty =
+        field === "looseStockQty" ? asNum(value) : asNum(next.looseStockQty);
+
+      next.packagedStockQty = round2(packSize * readyPacksCount);
+      next.availablePackagedQty = round2(next.packagedStockQty);
+      next.availableLooseQty = round2(looseStockQty);
+
+      return next;
+    });
+  };
+
+  const handleCreateMaterial = async () => {
+    if (!safeStr(createForm.category)) {
+      setCreateError("Category is required.");
+      return;
+    }
+    if (!safeStr(createForm.materialName)) {
+      setCreateError("Material Name is required.");
+      return;
+    }
+    if (!safeStr(createForm.unit)) {
+      setCreateError("Unit is required.");
+      return;
+    }
+
+    setCreating(true);
+    setCreateNotice("");
+    setCreateError("");
+
+    try {
+      const payload = {
+        action: "createStockItem",
+        data: {
+          role: user.role || "",
+          category: createForm.category,
+          materialName: createForm.materialName,
+          unit: createForm.unit,
+          packSize: asNum(createForm.packSize),
+          packSizeOptions: safeStr(createForm.packSizeOptions),
+          readyPacksCount: asNum(createForm.readyPacksCount),
+          packagedStockQty: asNum(createForm.packagedStockQty),
+          looseStockQty: asNum(createForm.looseStockQty),
+          minStockLevel: asNum(createForm.minStockLevel),
+          active: safeStr(createForm.active || "TRUE"),
+          doneBy: user.username || "",
+          notes: "New stock item created from Stock Management",
+        },
+      };
+
+      console.log("createStockItem payload =>", payload);
+
+      await apiPostNoCors(apiUrl, payload);
+
+      setCreateNotice("✅ Material created successfully.");
+      setGlobalNotice("✅ New stock material created successfully.");
+
+      setTimeout(() => {
+        handleCloseCreateModal();
+        fetchStock();
+      }, 1000);
+    } catch (e) {
+      console.error("createStockItem error:", e);
+      setCreateError(`Create failed: ${e.message || e}`);
+    } finally {
+      setCreating(false);
+    }
+  };
+
   const totalRows = filteredRows.length;
   const lowStockCount = filteredRows.filter(
     (row) =>
@@ -435,7 +556,20 @@ export default function StockManagement({
             </Box>
           </Box>
 
-          <Box display="flex" alignItems="center" gap={1}>
+          <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={handleOpenCreateModal}
+              sx={{
+                textTransform: "none",
+                fontFamily,
+                backgroundColor: cornflowerBlue,
+              }}
+            >
+              Add Material
+            </Button>
+
             <Tooltip title="Refresh stock">
               <IconButton onClick={fetchStock}>
                 <RefreshIcon />
@@ -842,6 +976,217 @@ export default function StockManagement({
             }}
           >
             Save Stock
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Create Material Modal */}
+      <Dialog open={openCreateModal} onClose={handleCloseCreateModal} fullWidth maxWidth="md">
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Add Material</DialogTitle>
+
+        <DialogContent dividers>
+          <Box>
+            <Grid container spacing={2}>
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Category"
+                  value={createForm.category}
+                  onChange={(e) => handleCreateChange("category", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Material Name"
+                  value={createForm.materialName}
+                  onChange={(e) => handleCreateChange("materialName", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Unit"
+                  value={createForm.unit}
+                  onChange={(e) => handleCreateChange("unit", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Pack Size Options"
+                  value={createForm.packSizeOptions}
+                  onChange={(e) => handleCreateChange("packSizeOptions", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                  placeholder="25|50|100"
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                {createForm.packSizeOptionsList?.length ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Pack Size</InputLabel>
+                    <Select
+                      label="Pack Size"
+                      value={createForm.packSize}
+                      onChange={(e) => handleCreateChange("packSize", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
+                      {createForm.packSizeOptionsList.map((ps) => (
+                        <MenuItem key={ps} value={ps}>
+                          {ps}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Pack Size"
+                    value={createForm.packSize}
+                    onChange={(e) => handleCreateChange("packSize", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
+                )}
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Ready Packs Count"
+                  value={createForm.readyPacksCount}
+                  onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Loose Stock Qty"
+                  value={createForm.looseStockQty}
+                  onChange={(e) => handleCreateChange("looseStockQty", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  type="number"
+                  label="Min Stock Level"
+                  value={createForm.minStockLevel}
+                  onChange={(e) => handleCreateChange("minStockLevel", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Active</InputLabel>
+                  <Select
+                    label="Active"
+                    value={createForm.active}
+                    onChange={(e) => handleCreateChange("active", e.target.value)}
+                    sx={{ fontFamily }}
+                  >
+                    <MenuItem value="TRUE">TRUE</MenuItem>
+                    <MenuItem value="FALSE">FALSE</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Packaged Stock Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.packagedStockQty)}
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Available Packaged Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.availablePackagedQty)}
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                  Derived Available Loose Qty
+                </Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                  {round2(createForm.availableLooseQty)}
+                </Typography>
+              </Grid>
+            </Grid>
+
+            {createNotice ? (
+              <Box mt={2}>
+                <Alert severity="success" sx={{ fontFamily }}>
+                  {createNotice}
+                </Alert>
+              </Box>
+            ) : null}
+
+            {createError ? (
+              <Box mt={2}>
+                <Alert severity="error" sx={{ fontFamily }}>
+                  {createError}
+                </Alert>
+              </Box>
+            ) : null}
+          </Box>
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={creating ? <CircularProgress size={16} /> : <SaveIcon />}
+            onClick={handleCreateMaterial}
+            disabled={creating}
+            sx={{
+              textTransform: "none",
+              fontFamily,
+              backgroundColor: cornflowerBlue,
+            }}
+          >
+            Create Material
           </Button>
         </DialogActions>
       </Dialog>

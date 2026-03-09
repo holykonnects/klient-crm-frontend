@@ -257,7 +257,27 @@ export default function StockManagement({
   const [toggleLoading, setToggleLoading] = useState(false);
   const [toggleError, setToggleError] = useState("");
 
+  // ---------- Validation Mapping ----------
+  // Supports either:
+  // 1) existing column-wise getValidation() response
+  // 2) future row-wise response under validation.inventoryMaterialRows / validation.Inventory Material Rows
   const materialValidationRows = useMemo(() => {
+    const rowWise =
+      validation?.inventoryMaterialRows ||
+      validation?.["Inventory Material Rows"] ||
+      validation?.inventoryMaterialValidation ||
+      [];
+
+    if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
+      return rowWise
+        .map((row) => ({
+          category: safeStr(row.category || row.Category),
+          materialName: safeStr(row.materialName || row["Material Name"]),
+          unit: safeStr(row.unit || row.Unit),
+        }))
+        .filter((row) => row.category && row.materialName);
+    }
+
     const categories = validation?.["Category"] || [];
     const materials = validation?.["Material Name"] || [];
     const units = validation?.["Unit"] || [];
@@ -299,6 +319,7 @@ export default function StockManagement({
     return Array.from(new Set([...normalized, ...fromRows]));
   }, [validation, stockRows]);
 
+  // Create Material modal category mapping based on inventory nomenclature
   const createCategoryOptions = useMemo(() => {
     return ["ACRYLIC", "PU"];
   }, []);
@@ -323,6 +344,22 @@ export default function StockManagement({
 
     return deduped.sort((a, b) => a.materialName.localeCompare(b.materialName));
   }, [materialValidationRows, createForm.category]);
+
+  // Update modal pack size dropdown validation fallback from validation sheet if available
+  const approvedPackSizes = useMemo(() => {
+    const raw =
+      validation?.["Pack Sizes"] ||
+      validation?.["Approved Pack Sizes"] ||
+      validation?.["Packaging Sizes"] ||
+      [];
+
+    const nums = (raw || [])
+      .flatMap((v) => safeStr(v).split(/[|,]/))
+      .map((v) => Number(safeStr(v)))
+      .filter((n) => Number.isFinite(n) && n > 0);
+
+    return Array.from(new Set(nums)).sort((a, b) => a - b);
+  }, [validation]);
 
   const filteredRows = useMemo(() => {
     const q = toUpper(search);
@@ -406,13 +443,22 @@ export default function StockManagement({
   }, [apiUrl, category]);
 
   const handleOpenModal = (row) => {
+    const validationPackSizes = approvedPackSizes || [];
+    const existingPackSizes = row.packSizeOptionsList?.length
+      ? row.packSizeOptionsList
+      : parsePackSizeOptions(row.packSizeOptions);
+
+    const mergedPackSizes = Array.from(
+      new Set(
+        [...existingPackSizes, ...validationPackSizes, asNum(row.packSize)]
+          .filter((n) => Number.isFinite(n) && n > 0)
+      )
+    ).sort((a, b) => a - b);
+
     setModalForm(
       deriveModalState({
         ...row,
-        packSizeOptionsList:
-          row.packSizeOptionsList?.length > 0
-            ? row.packSizeOptionsList
-            : parsePackSizeOptions(row.packSizeOptions),
+        packSizeOptionsList: mergedPackSizes,
       })
     );
     setModalNotice("");
@@ -435,7 +481,19 @@ export default function StockManagement({
       const next = { ...prev, [field]: value };
 
       if (field === "packSizeOptions") {
-        next.packSizeOptionsList = parsePackSizeOptions(value);
+        const freeTextOptions = parsePackSizeOptions(value);
+        const merged = Array.from(
+          new Set([...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0))
+        ).sort((a, b) => a - b);
+
+        next.packSizeOptionsList = merged;
+      }
+
+      if (field === "packSize") {
+        const merged = Array.from(
+          new Set([...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0))
+        ).sort((a, b) => a - b);
+        next.packSizeOptionsList = merged;
       }
 
       const derived = deriveModalState({
@@ -532,7 +590,20 @@ export default function StockManagement({
       }
 
       if (field === "packSizeOptions") {
-        next.packSizeOptionsList = parsePackSizeOptions(value);
+        const freeTextOptions = parsePackSizeOptions(value);
+        const merged = Array.from(
+          new Set([...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0))
+        ).sort((a, b) => a - b);
+
+        next.packSizeOptionsList = merged;
+      }
+
+      if (field === "packSize") {
+        const merged = Array.from(
+          new Set([...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0))
+        ).sort((a, b) => a - b);
+
+        next.packSizeOptionsList = merged;
       }
 
       const packSize = field === "packSize" ? asNum(value) : asNum(next.packSize);
@@ -940,7 +1011,7 @@ export default function StockManagement({
                 </Grid>
 
                 <Grid item xs={12} md={4}>
-                  {modalForm.packSizeOptionsList?.length ? (
+                  {(modalForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
                     <FormControl fullWidth size="small">
                       <InputLabel>Pack Size</InputLabel>
                       <Select
@@ -949,7 +1020,7 @@ export default function StockManagement({
                         onChange={(e) => handleModalChange("packSize", e.target.value)}
                         sx={{ fontFamily }}
                       >
-                        {modalForm.packSizeOptionsList.map((ps) => (
+                        {(modalForm.packSizeOptionsList || []).map((ps) => (
                           <MenuItem key={ps} value={ps}>{ps}</MenuItem>
                         ))}
                       </Select>
@@ -1133,7 +1204,7 @@ export default function StockManagement({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                {createForm.packSizeOptionsList?.length ? (
+                {(createForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
                   <FormControl fullWidth size="small">
                     <InputLabel>Pack Size</InputLabel>
                     <Select
@@ -1142,7 +1213,7 @@ export default function StockManagement({
                       onChange={(e) => handleCreateChange("packSize", e.target.value)}
                       sx={{ fontFamily }}
                     >
-                      {createForm.packSizeOptionsList.map((ps) => (
+                      {(createForm.packSizeOptionsList || []).map((ps) => (
                         <MenuItem key={ps} value={ps}>{ps}</MenuItem>
                       ))}
                     </Select>

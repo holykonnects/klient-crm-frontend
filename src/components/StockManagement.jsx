@@ -240,16 +240,15 @@ export default function StockManagement({
   const [toggleError, setToggleError] = useState("");
 
   // ---------- Validation Mapping ----------
-  // Supports either:
-  // 1) row-wise response under validation.inventoryMaterialRows / validation.Inventory Material Rows
-  // 2) column-wise getValidation() response using strict Category / Material Name / Unit
+  // Keep the row-wise logic available for any future use or backend normalization,
+  // but the Add Material modal now uses category-column headers directly.
   const materialValidationRows = useMemo(() => {
     const rowWise =
       validation?.inventoryMaterialRows ||
       validation?.["Inventory Material Rows"] ||
       validation?.inventoryMaterialValidation ||
       [];
-  
+
     if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
       return rowWise
         .map((row) => ({
@@ -259,40 +258,40 @@ export default function StockManagement({
         }))
         .filter((row) => row.category && row.materialName);
     }
-  
+
     const normalizedCategoryList = validation?.["Category"] || [];
     const normalizedMaterialList = validation?.["Material Name"] || [];
     const normalizedUnitList = validation?.["Unit"] || [];
-  
+
     const normalizedRows = [];
     const maxLen = Math.max(
       normalizedCategoryList.length,
       normalizedMaterialList.length,
       normalizedUnitList.length
     );
-  
+
     for (let i = 0; i < maxLen; i++) {
-      const category = safeStr(normalizedCategoryList[i]);
+      const categoryValue = safeStr(normalizedCategoryList[i]);
       const materialName = safeStr(normalizedMaterialList[i]);
       const unit = safeStr(normalizedUnitList[i]);
-  
-      if (category && materialName) {
+
+      if (categoryValue && materialName) {
         normalizedRows.push({
-          category,
+          category: categoryValue,
           materialName,
           unit,
         });
       }
     }
-  
+
     if (normalizedRows.length > 0) {
       return normalizedRows;
     }
-  
+
     const acrylicMaterials = validation?.["Acrylic Material"] || [];
     const acrylicOrPuMaterials = validation?.["Acrylic or PU Material"] || [];
     const puMaterials = validation?.["PU Material"] || [];
-  
+
     const groupedRows = [
       ...acrylicMaterials
         .map((item) => ({
@@ -301,7 +300,7 @@ export default function StockManagement({
           unit: "kg",
         }))
         .filter((row) => row.materialName),
-  
+
       ...acrylicOrPuMaterials
         .map((item) => ({
           category: "Acrylic or PU Material",
@@ -309,7 +308,7 @@ export default function StockManagement({
           unit: safeStr(item) === "Thinner" ? "ltr" : "kg",
         }))
         .filter((row) => row.materialName),
-  
+
       ...puMaterials
         .map((item) => ({
           category: "PU Material",
@@ -318,7 +317,7 @@ export default function StockManagement({
         }))
         .filter((row) => row.materialName),
     ];
-  
+
     return groupedRows;
   }, [validation]);
 
@@ -343,40 +342,55 @@ export default function StockManagement({
     return Array.from(new Set([...fromValidation, ...fromRows]));
   }, [validation, stockRows]);
 
-  // Add Material modal category dropdown: strict Category only
+  // Add Material modal category dropdown:
+  // category selection should look up the relevant validation COLUMN HEADER.
   const createCategoryOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        (validation?.["Category"] || [])
-          .map((v) => safeStr(v))
-          .filter(Boolean)
-      )
-    );
-  }, [validation]);
+    const allowedCategoryHeaders = [
+      "Acrylic Material",
+      "Acrylic or PU Material",
+      "PU Material",
+    ];
 
-  // Add Material modal material dropdown: filtered by selected Category
-  const createMaterialOptions = useMemo(() => {
-    if (!safeStr(createForm.category)) return [];
-
-    const filtered = materialValidationRows.filter(
-      (row) => safeStr(row.category) === safeStr(createForm.category)
-    );
-
-    const deduped = [];
-    const seen = new Set();
-
-    filtered.forEach((row) => {
-      const key = `${safeStr(row.materialName)}__${safeStr(row.unit)}`;
-      if (!seen.has(key)) {
-        seen.add(key);
-        deduped.push(row);
-      }
+    const filteredHeaders = allowedCategoryHeaders.filter((header) => {
+      const values = Array.isArray(validation?.[header]) ? validation[header] : [];
+      return values.map((v) => safeStr(v)).filter(Boolean).length > 0;
     });
 
-    return deduped.sort((a, b) =>
-      safeStr(a.materialName).localeCompare(safeStr(b.materialName))
-    );
-  }, [materialValidationRows, createForm.category]);
+    if (filteredHeaders.length > 0) {
+      return filteredHeaders;
+    }
+
+    const directCategory = (validation?.["Category"] || [])
+      .map((v) => safeStr(v))
+      .filter(Boolean);
+
+    return Array.from(new Set(directCategory));
+  }, [validation]);
+
+  // Add Material modal material dropdown:
+  // selected category directly maps to the values under that validation column.
+  const createMaterialOptions = useMemo(() => {
+    const selectedCategory = safeStr(createForm.category);
+    if (!selectedCategory) return [];
+
+    const values = Array.isArray(validation?.[selectedCategory])
+      ? validation[selectedCategory]
+      : [];
+
+    if (values.length > 0) {
+      return Array.from(
+        new Set(values.map((v) => safeStr(v)).filter(Boolean))
+      ).sort((a, b) => a.localeCompare(b));
+    }
+
+    // fallback to row mapping if needed
+    const filtered = materialValidationRows
+      .filter((row) => safeStr(row.category) === selectedCategory)
+      .map((row) => safeStr(row.materialName))
+      .filter(Boolean);
+
+    return Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b));
+  }, [validation, createForm.category, materialValidationRows]);
 
   // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
@@ -485,9 +499,8 @@ export default function StockManagement({
 
     const mergedPackSizes = Array.from(
       new Set(
-        [...existingPackSizes, ...validationPackSizes, asNum(row.packSize)].filter(
-          (n) => Number.isFinite(n) && n > 0
-        )
+        [...existingPackSizes, ...validationPackSizes, asNum(row.packSize)]
+          .filter((n) => Number.isFinite(n) && n > 0)
       )
     ).sort((a, b) => a - b);
 
@@ -628,10 +641,8 @@ export default function StockManagement({
       }
 
       if (field === "materialName") {
-        const selectedMaterial = createMaterialOptions.find(
-          (item) => safeStr(item.materialName) === safeStr(value)
-        );
-        next.unit = selectedMaterial?.unit || "";
+        const selectedMaterial = safeStr(value);
+        next.unit = selectedMaterial === "Thinner" ? "ltr" : "kg";
       }
 
       if (field === "packSizeOptions") {
@@ -1339,11 +1350,8 @@ export default function StockManagement({
                     disabled={!createForm.category}
                   >
                     {createMaterialOptions.map((item) => (
-                      <MenuItem
-                        key={`${item.materialName}-${item.unit}`}
-                        value={item.materialName}
-                      >
-                        {item.materialName}
+                      <MenuItem key={item} value={item}>
+                        {item}
                       </MenuItem>
                     ))}
                   </Select>

@@ -295,17 +295,6 @@ export default function StockManagement({
     );
   }, [validation]);
 
-  // ✅ Add Material modal should reflect the raw validation dropdown values exactly
-  const createCategoryOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        (materialValidationRows || [])
-          .map((row) => safeStr(row.category))
-          .filter(Boolean)
-      )
-    );
-  }, [materialValidationRows]);
-
   // ✅ Material Name dropdown should filter by exact selected validation category
   const createMaterialOptions = useMemo(() => {
     if (!safeStr(createForm.category)) return [];

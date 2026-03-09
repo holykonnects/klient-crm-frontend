@@ -261,7 +261,7 @@ export default function StockManagement({
     }
 
     const categories =
-      validation?.["Categories"] ||
+      validation?.["Category"] ||
       [];
     const materials = validation?.["Material Name"] || [];
     const units = validation?.["Unit"] || [];
@@ -288,7 +288,7 @@ export default function StockManagement({
 
   const categoryOptions = useMemo(() => {
     const fromValidation =
-      validation?.["Categories"] ||
+      validation?.["Category"] ||
       [];
 
     const normalized = Array.from(

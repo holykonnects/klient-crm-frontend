@@ -249,58 +249,51 @@ export default function StockManagement({
       validation?.["Inventory Material Rows"] ||
       validation?.inventoryMaterialValidation ||
       [];
-
+  
     if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
       return rowWise
         .map((row) => ({
-          category: safeStr(row.category || row.Category || row.Categories),
+          category: safeStr(row.category || row.Category),
           materialName: safeStr(row.materialName || row["Material Name"]),
           unit: safeStr(row.unit || row.Unit),
         }))
         .filter((row) => row.category && row.materialName);
     }
-
-    const categories =
-      validation?.["Category"] ||
-      [];
-    const materials = validation?.["Material Name"] || [];
-    const units = validation?.["Unit"] || [];
-
-    const maxLen = Math.max(categories.length, materials.length, units.length);
+  
+    // ✅ STRICTLY use Category, not Categories
+    const categoryList = validation?.["Category"] || [];
+    const materialList = validation?.["Material Name"] || [];
+    const unitList = validation?.["Unit"] || [];
+  
+    const maxLen = Math.max(categoryList.length, materialList.length, unitList.length);
     const rows = [];
-
+  
     for (let i = 0; i < maxLen; i++) {
-      const validationCategory = safeStr(categories[i]);
-      const materialName = safeStr(materials[i]);
-      const unit = safeStr(units[i]);
-
-      if (!validationCategory || !materialName) continue;
-
+      const category = safeStr(categoryList[i]);
+      const materialName = safeStr(materialList[i]);
+      const unit = safeStr(unitList[i]);
+  
+      if (!category || !materialName) continue;
+  
       rows.push({
-        category: validationCategory,
+        category,
         materialName,
         unit,
       });
     }
-
+  
     return rows;
   }, [validation]);
 
-  const categoryOptions = useMemo(() => {
-    const fromValidation =
-      validation?.["Category"] ||
-      [];
-
-    const normalized = Array.from(
-      new Set((fromValidation || []).map((v) => safeStr(v)).filter(Boolean))
+  const createCategoryOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        (validation?.["Category"] || [])
+          .map((v) => safeStr(v))
+          .filter(Boolean)
+      )
     );
-
-    const fromRows = Array.from(
-      new Set(stockRows.map((r) => safeStr(r.category)).filter(Boolean))
-    );
-
-    return Array.from(new Set([...normalized, ...fromRows]));
-  }, [validation, stockRows]);
+  }, [validation]);
 
   // ✅ Add Material modal should reflect the raw validation dropdown values exactly
   const createCategoryOptions = useMemo(() => {
@@ -316,14 +309,14 @@ export default function StockManagement({
   // ✅ Material Name dropdown should filter by exact selected validation category
   const createMaterialOptions = useMemo(() => {
     if (!safeStr(createForm.category)) return [];
-
+  
     const filtered = materialValidationRows.filter(
       (row) => safeStr(row.category) === safeStr(createForm.category)
     );
-
+  
     const deduped = [];
     const seen = new Set();
-
+  
     filtered.forEach((row) => {
       const key = `${safeStr(row.materialName)}__${safeStr(row.unit)}`;
       if (!seen.has(key)) {
@@ -331,8 +324,10 @@ export default function StockManagement({
         deduped.push(row);
       }
     });
-
-    return deduped.sort((a, b) => a.materialName.localeCompare(b.materialName));
+  
+    return deduped.sort((a, b) =>
+      safeStr(a.materialName).localeCompare(safeStr(b.materialName))
+    );
   }, [materialValidationRows, createForm.category]);
 
   // Pack size validation fallback from validation sheet if available

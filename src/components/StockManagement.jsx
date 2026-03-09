@@ -241,15 +241,15 @@ export default function StockManagement({
 
   // ---------- Validation Mapping ----------
   // Supports either:
-  // 1) current column-wise getValidation() response
-  // 2) future row-wise response under validation.inventoryMaterialRows / validation.Inventory Material Rows
+  // 1) row-wise response under validation.inventoryMaterialRows / validation.Inventory Material Rows
+  // 2) column-wise getValidation() response using strict Category / Material Name / Unit
   const materialValidationRows = useMemo(() => {
     const rowWise =
       validation?.inventoryMaterialRows ||
       validation?.["Inventory Material Rows"] ||
       validation?.inventoryMaterialValidation ||
       [];
-  
+
     if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
       return rowWise
         .map((row) => ({
@@ -259,32 +259,53 @@ export default function StockManagement({
         }))
         .filter((row) => row.category && row.materialName);
     }
-  
-    // ✅ STRICTLY use Category, not Categories
+
     const categoryList = validation?.["Category"] || [];
     const materialList = validation?.["Material Name"] || [];
     const unitList = validation?.["Unit"] || [];
-  
+
     const maxLen = Math.max(categoryList.length, materialList.length, unitList.length);
     const rows = [];
-  
+
     for (let i = 0; i < maxLen; i++) {
-      const category = safeStr(categoryList[i]);
+      const categoryValue = safeStr(categoryList[i]);
       const materialName = safeStr(materialList[i]);
       const unit = safeStr(unitList[i]);
-  
-      if (!category || !materialName) continue;
-  
+
+      if (!categoryValue || !materialName) continue;
+
       rows.push({
-        category,
+        category: categoryValue,
         materialName,
         unit,
       });
     }
-  
+
     return rows;
   }, [validation]);
 
+  // Main page category filter
+  const categoryOptions = useMemo(() => {
+    const fromValidation = Array.from(
+      new Set(
+        (validation?.["Category"] || [])
+          .map((v) => safeStr(v))
+          .filter(Boolean)
+      )
+    );
+
+    const fromRows = Array.from(
+      new Set(
+        (stockRows || [])
+          .map((r) => safeStr(r.category))
+          .filter(Boolean)
+      )
+    );
+
+    return Array.from(new Set([...fromValidation, ...fromRows]));
+  }, [validation, stockRows]);
+
+  // Add Material modal category dropdown: strict Category only
   const createCategoryOptions = useMemo(() => {
     return Array.from(
       new Set(
@@ -295,17 +316,17 @@ export default function StockManagement({
     );
   }, [validation]);
 
-  // ✅ Material Name dropdown should filter by exact selected validation category
+  // Add Material modal material dropdown: filtered by selected Category
   const createMaterialOptions = useMemo(() => {
     if (!safeStr(createForm.category)) return [];
-  
+
     const filtered = materialValidationRows.filter(
       (row) => safeStr(row.category) === safeStr(createForm.category)
     );
-  
+
     const deduped = [];
     const seen = new Set();
-  
+
     filtered.forEach((row) => {
       const key = `${safeStr(row.materialName)}__${safeStr(row.unit)}`;
       if (!seen.has(key)) {
@@ -313,7 +334,7 @@ export default function StockManagement({
         deduped.push(row);
       }
     });
-  
+
     return deduped.sort((a, b) =>
       safeStr(a.materialName).localeCompare(safeStr(b.materialName))
     );
@@ -337,6 +358,7 @@ export default function StockManagement({
 
   const filteredRows = useMemo(() => {
     const q = toUpper(search);
+
     return (stockRows || []).filter((row) => {
       const matchesCategory =
         category === "ALL" || toUpper(row.category) === toUpper(category);
@@ -353,6 +375,7 @@ export default function StockManagement({
   const fetchValidation = async () => {
     if (!apiUrl) return;
     setValidationLoading(true);
+
     try {
       const data = await apiGet(apiUrl, { action: "getValidation" });
       setValidation(data || {});
@@ -424,8 +447,9 @@ export default function StockManagement({
 
     const mergedPackSizes = Array.from(
       new Set(
-        [...existingPackSizes, ...validationPackSizes, asNum(row.packSize)]
-          .filter((n) => Number.isFinite(n) && n > 0)
+        [...existingPackSizes, ...validationPackSizes, asNum(row.packSize)].filter(
+          (n) => Number.isFinite(n) && n > 0
+        )
       )
     ).sort((a, b) => a - b);
 
@@ -458,7 +482,9 @@ export default function StockManagement({
         const freeTextOptions = parsePackSizeOptions(value);
         const merged = Array.from(
           new Set(
-            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0)
+            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter(
+              (n) => n > 0
+            )
           )
         ).sort((a, b) => a - b);
 
@@ -468,9 +494,12 @@ export default function StockManagement({
       if (field === "packSize") {
         const merged = Array.from(
           new Set(
-            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0)
+            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter(
+              (n) => n > 0
+            )
           )
         ).sort((a, b) => a - b);
+
         next.packSizeOptionsList = merged;
       }
 
@@ -571,7 +600,9 @@ export default function StockManagement({
         const freeTextOptions = parsePackSizeOptions(value);
         const merged = Array.from(
           new Set(
-            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter((n) => n > 0)
+            [...freeTextOptions, ...approvedPackSizes, asNum(next.packSize)].filter(
+              (n) => n > 0
+            )
           )
         ).sort((a, b) => a - b);
 
@@ -581,7 +612,9 @@ export default function StockManagement({
       if (field === "packSize") {
         const merged = Array.from(
           new Set(
-            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter((n) => n > 0)
+            [...(next.packSizeOptionsList || []), ...approvedPackSizes, asNum(value)].filter(
+              (n) => n > 0
+            )
           )
         ).sort((a, b) => a - b);
 
@@ -607,10 +640,12 @@ export default function StockManagement({
       setCreateError("Category is required.");
       return;
     }
+
     if (!safeStr(createForm.materialName)) {
       setCreateError("Material Name is required.");
       return;
     }
+
     if (!safeStr(createForm.unit)) {
       setCreateError("Unit is required.");
       return;
@@ -625,7 +660,6 @@ export default function StockManagement({
         action: "createStockItem",
         data: {
           role: user.role || "",
-          // ✅ user sees raw validation category and backend receives the same selection
           category: createForm.category,
           materialName: createForm.materialName,
           unit: createForm.unit,
@@ -733,11 +767,24 @@ export default function StockManagement({
           border: "1px solid rgba(100,149,237,0.25)",
         }}
       >
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+        <Box
+          display="flex"
+          alignItems="center"
+          justifyContent="space-between"
+          gap={2}
+          flexWrap="wrap"
+        >
           <Box display="flex" alignItems="center" gap={2}>
-            <img src={logoSrc} alt="Klient Konnect" style={{ height: 56, objectFit: "contain" }} />
+            <img
+              src={logoSrc}
+              alt="Klient Konnect"
+              style={{ height: 56, objectFit: "contain" }}
+            />
             <Box>
-              <Typography variant="h5" sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
+              <Typography
+                variant="h5"
+                sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}
+              >
                 {title}
               </Typography>
               <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
@@ -765,7 +812,8 @@ export default function StockManagement({
                 <RefreshIcon />
               </IconButton>
             </Tooltip>
-            {(stockLoading || validationLoading) ? <CircularProgress size={18} /> : null}
+
+            {stockLoading || validationLoading ? <CircularProgress size={18} /> : null}
           </Box>
         </Box>
       </Paper>
@@ -812,7 +860,12 @@ export default function StockManagement({
           </Grid>
 
           <Grid item xs={12} md={4}>
-            <Box display="flex" justifyContent={{ xs: "flex-start", md: "flex-end" }} gap={1} flexWrap="wrap">
+            <Box
+              display="flex"
+              justifyContent={{ xs: "flex-start", md: "flex-end" }}
+              gap={1}
+              flexWrap="wrap"
+            >
               <Chip
                 icon={<Inventory2Icon />}
                 label={`Rows: ${totalRows}`}
@@ -880,18 +933,38 @@ export default function StockManagement({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Pack Size</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Packaged Qty</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Loose Qty</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Packaged</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Loose</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Available Packaged</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Available Loose</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Min Stock</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Pack Size
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Packaged Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Packaged
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Loose
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Packaged
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Loose
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Min Stock
+                  </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Updated By</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">Update</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">Deactivate</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
+                    Update
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
+                    Deactivate
+                  </TableCell>
                 </TableRow>
               </TableHead>
 
@@ -909,11 +982,21 @@ export default function StockManagement({
                       <TableCell sx={{ fontFamily }}>{row.category}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.materialName}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.packSize)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.packagedStockQty)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.looseStockQty)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.reservedPackagedQty)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.reservedLooseQty)}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packSize)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagedStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.looseStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedPackagedQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedLooseQty)}
+                      </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         <Chip
                           size="small"
@@ -922,8 +1005,12 @@ export default function StockManagement({
                           sx={{ fontFamily }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.availableLooseQty)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(row.minStockLevel)}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.availableLooseQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.minStockLevel)}
+                      </TableCell>
                       <TableCell sx={{ fontFamily }}>
                         <Chip
                           size="small"
@@ -932,7 +1019,9 @@ export default function StockManagement({
                           sx={{ fontFamily }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontFamily, fontSize: 12 }}>{row.updatedBy || "-"}</TableCell>
+                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
+                        {row.updatedBy || "-"}
+                      </TableCell>
                       <TableCell align="center">
                         <Tooltip title="Update Stock">
                           <IconButton onClick={() => handleOpenModal(row)}>
@@ -968,16 +1057,30 @@ export default function StockManagement({
             <Box>
               <Grid container spacing={2}>
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Category</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.category}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Category
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {modalForm.category}
+                  </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Material Name</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.materialName}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Material Name
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {modalForm.materialName}
+                  </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Unit</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.unit}</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                    Unit
+                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {modalForm.unit}
+                  </Typography>
                 </Grid>
 
                 <Grid item xs={12} md={4}>
@@ -994,7 +1097,7 @@ export default function StockManagement({
                 </Grid>
 
                 <Grid item xs={12} md={4}>
-                  {(modalForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
+                  {modalForm.packSizeOptionsList?.length || approvedPackSizes.length ? (
                     <FormControl fullWidth size="small">
                       <InputLabel>Pack Size</InputLabel>
                       <Select
@@ -1004,7 +1107,9 @@ export default function StockManagement({
                         sx={{ fontFamily }}
                       >
                         {(modalForm.packSizeOptionsList || []).map((ps) => (
-                          <MenuItem key={ps} value={ps}>{ps}</MenuItem>
+                          <MenuItem key={ps} value={ps}>
+                            {ps}
+                          </MenuItem>
                         ))}
                       </Select>
                     </FormControl>
@@ -1076,7 +1181,9 @@ export default function StockManagement({
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
+                <Grid item xs={12}>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
 
                 <Grid item xs={12} md={4}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
@@ -1086,6 +1193,7 @@ export default function StockManagement({
                     {round2(modalForm.reservedPackagedQty)}
                   </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={4}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                     Reserved Loose Qty
@@ -1094,6 +1202,7 @@ export default function StockManagement({
                     {round2(modalForm.reservedLooseQty)}
                   </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={4}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                     Derived Packaged Stock Qty
@@ -1102,6 +1211,7 @@ export default function StockManagement({
                     {round2(modalForm.packagedStockQty)}
                   </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                     Derived Available Packaged Qty
@@ -1110,6 +1220,7 @@ export default function StockManagement({
                     {round2(modalForm.availablePackagedQty)}
                   </Typography>
                 </Grid>
+
                 <Grid item xs={12} md={6}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                     Derived Available Loose Qty
@@ -1127,6 +1238,7 @@ export default function StockManagement({
                   </Alert>
                 </Box>
               ) : null}
+
               {modalError ? (
                 <Box mt={2}>
                   <Alert severity="error" sx={{ fontFamily }}>
@@ -1137,6 +1249,7 @@ export default function StockManagement({
             </Box>
           ) : null}
         </DialogContent>
+
         <DialogActions>
           <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>
             Close
@@ -1224,7 +1337,7 @@ export default function StockManagement({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                {(createForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
+                {createForm.packSizeOptionsList?.length || approvedPackSizes.length ? (
                   <FormControl fullWidth size="small">
                     <InputLabel>Pack Size</InputLabel>
                     <Select
@@ -1234,7 +1347,9 @@ export default function StockManagement({
                       sx={{ fontFamily }}
                     >
                       {(createForm.packSizeOptionsList || []).map((ps) => (
-                        <MenuItem key={ps} value={ps}>{ps}</MenuItem>
+                        <MenuItem key={ps} value={ps}>
+                          {ps}
+                        </MenuItem>
                       ))}
                     </Select>
                   </FormControl>
@@ -1306,7 +1421,9 @@ export default function StockManagement({
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
@@ -1316,6 +1433,7 @@ export default function StockManagement({
                   {round2(createForm.packagedStockQty)}
                 </Typography>
               </Grid>
+
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                   Derived Available Packaged Qty
@@ -1324,6 +1442,7 @@ export default function StockManagement({
                   {round2(createForm.availablePackagedQty)}
                 </Typography>
               </Grid>
+
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
                   Derived Available Loose Qty
@@ -1341,6 +1460,7 @@ export default function StockManagement({
                 </Alert>
               </Box>
             ) : null}
+
             {createError ? (
               <Box mt={2}>
                 <Alert severity="error" sx={{ fontFamily }}>
@@ -1350,6 +1470,7 @@ export default function StockManagement({
             ) : null}
           </Box>
         </DialogContent>
+
         <DialogActions>
           <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>
             Close
@@ -1373,6 +1494,7 @@ export default function StockManagement({
             ? "Deactivate Material"
             : "Reactivate Material"}
         </DialogTitle>
+
         <DialogContent dividers>
           {toggleRow ? (
             <Box>
@@ -1401,6 +1523,7 @@ export default function StockManagement({
             </Box>
           ) : null}
         </DialogContent>
+
         <DialogActions>
           <Button onClick={handleCloseToggleModal} sx={{ textTransform: "none", fontFamily }}>
             Close

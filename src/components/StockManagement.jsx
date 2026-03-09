@@ -249,7 +249,7 @@ export default function StockManagement({
       validation?.["Inventory Material Rows"] ||
       validation?.inventoryMaterialValidation ||
       [];
-
+  
     if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
       return rowWise
         .map((row) => ({
@@ -259,29 +259,67 @@ export default function StockManagement({
         }))
         .filter((row) => row.category && row.materialName);
     }
-
-    const categoryList = validation?.["Category"] || [];
-    const materialList = validation?.["Material Name"] || [];
-    const unitList = validation?.["Unit"] || [];
-
-    const maxLen = Math.max(categoryList.length, materialList.length, unitList.length);
-    const rows = [];
-
+  
+    const normalizedCategoryList = validation?.["Category"] || [];
+    const normalizedMaterialList = validation?.["Material Name"] || [];
+    const normalizedUnitList = validation?.["Unit"] || [];
+  
+    const normalizedRows = [];
+    const maxLen = Math.max(
+      normalizedCategoryList.length,
+      normalizedMaterialList.length,
+      normalizedUnitList.length
+    );
+  
     for (let i = 0; i < maxLen; i++) {
-      const categoryValue = safeStr(categoryList[i]);
-      const materialName = safeStr(materialList[i]);
-      const unit = safeStr(unitList[i]);
-
-      if (!categoryValue || !materialName) continue;
-
-      rows.push({
-        category: categoryValue,
-        materialName,
-        unit,
-      });
+      const category = safeStr(normalizedCategoryList[i]);
+      const materialName = safeStr(normalizedMaterialList[i]);
+      const unit = safeStr(normalizedUnitList[i]);
+  
+      if (category && materialName) {
+        normalizedRows.push({
+          category,
+          materialName,
+          unit,
+        });
+      }
     }
-
-    return rows;
+  
+    if (normalizedRows.length > 0) {
+      return normalizedRows;
+    }
+  
+    const acrylicMaterials = validation?.["Acrylic Material"] || [];
+    const acrylicOrPuMaterials = validation?.["Acrylic or PU Material"] || [];
+    const puMaterials = validation?.["PU Material"] || [];
+  
+    const groupedRows = [
+      ...acrylicMaterials
+        .map((item) => ({
+          category: "Acrylic Material",
+          materialName: safeStr(item),
+          unit: "kg",
+        }))
+        .filter((row) => row.materialName),
+  
+      ...acrylicOrPuMaterials
+        .map((item) => ({
+          category: "Acrylic or PU Material",
+          materialName: safeStr(item),
+          unit: safeStr(item) === "Thinner" ? "ltr" : "kg",
+        }))
+        .filter((row) => row.materialName),
+  
+      ...puMaterials
+        .map((item) => ({
+          category: "PU Material",
+          materialName: safeStr(item),
+          unit: "kg",
+        }))
+        .filter((row) => row.materialName),
+    ];
+  
+    return groupedRows;
   }, [validation]);
 
   // Main page category filter

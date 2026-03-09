@@ -34,6 +34,8 @@ import Inventory2Icon from "@mui/icons-material/Inventory2";
 import EditIcon from "@mui/icons-material/Edit";
 import SaveIcon from "@mui/icons-material/Save";
 import AddIcon from "@mui/icons-material/Add";
+import ToggleOffIcon from "@mui/icons-material/ToggleOff";
+import ToggleOnIcon from "@mui/icons-material/ToggleOn";
 
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
@@ -221,7 +223,6 @@ export default function StockManagement({
   const [globalNotice, setGlobalNotice] = useState("");
 
   const [openModal, setOpenModal] = useState(false);
-  const [selectedRow, setSelectedRow] = useState(null);
   const [modalForm, setModalForm] = useState(null);
   const [saving, setSaving] = useState(false);
   const [modalNotice, setModalNotice] = useState("");
@@ -232,6 +233,11 @@ export default function StockManagement({
   const [creating, setCreating] = useState(false);
   const [createNotice, setCreateNotice] = useState("");
   const [createError, setCreateError] = useState("");
+
+  const [openToggleModal, setOpenToggleModal] = useState(false);
+  const [toggleRow, setToggleRow] = useState(null);
+  const [toggleLoading, setToggleLoading] = useState(false);
+  const [toggleError, setToggleError] = useState("");
 
   const categoryOptions = useMemo(() => {
     const fromValidation =
@@ -332,7 +338,6 @@ export default function StockManagement({
   }, [apiUrl, category]);
 
   const handleOpenModal = (row) => {
-    setSelectedRow(row);
     setModalForm(
       deriveModalState({
         ...row,
@@ -349,7 +354,6 @@ export default function StockManagement({
 
   const handleCloseModal = () => {
     setOpenModal(false);
-    setSelectedRow(null);
     setModalForm(null);
     setModalNotice("");
     setModalError("");
@@ -410,8 +414,6 @@ export default function StockManagement({
           notes: "Row-wise stock update from Stock Management modal",
         },
       };
-
-      console.log("setStock payload =>", payload);
 
       await apiPostNoCors(apiUrl, payload);
 
@@ -505,8 +507,6 @@ export default function StockManagement({
         },
       };
 
-      console.log("createStockItem payload =>", payload);
-
       await apiPostNoCors(apiUrl, payload);
 
       setCreateNotice("✅ Material created successfully.");
@@ -524,6 +524,63 @@ export default function StockManagement({
     }
   };
 
+  const handleOpenToggleModal = (row) => {
+    setToggleRow(row);
+    setToggleError("");
+    setOpenToggleModal(true);
+  };
+
+  const handleCloseToggleModal = () => {
+    setOpenToggleModal(false);
+    setToggleRow(null);
+    setToggleError("");
+    setToggleLoading(false);
+  };
+
+  const handleToggleActive = async () => {
+    if (!toggleRow) return;
+
+    setToggleLoading(true);
+    setToggleError("");
+
+    try {
+      const nextActive = toUpper(toggleRow.active) === "TRUE" ? "FALSE" : "TRUE";
+
+      const payload = {
+        action: "toggleStockItemActive",
+        data: {
+          role: user.role || "",
+          category: toggleRow.category,
+          materialName: toggleRow.materialName,
+          active: nextActive,
+          doneBy: user.username || "",
+          notes:
+            nextActive === "FALSE"
+              ? "Stock item deactivated from Stock Management"
+              : "Stock item reactivated from Stock Management",
+        },
+      };
+
+      await apiPostNoCors(apiUrl, payload);
+
+      setGlobalNotice(
+        nextActive === "FALSE"
+          ? "✅ Material deactivated successfully."
+          : "✅ Material reactivated successfully."
+      );
+
+      setTimeout(() => {
+        handleCloseToggleModal();
+        fetchStock();
+      }, 800);
+    } catch (e) {
+      console.error("toggleStockItemActive error:", e);
+      setToggleError(`Action failed: ${e.message || e}`);
+    } finally {
+      setToggleLoading(false);
+    }
+  };
+
   const totalRows = filteredRows.length;
   const lowStockCount = filteredRows.filter(
     (row) =>
@@ -533,7 +590,6 @@ export default function StockManagement({
 
   return (
     <Box sx={{ p: 2, fontFamily }}>
-      {/* Header */}
       <Paper
         elevation={0}
         sx={{
@@ -580,7 +636,6 @@ export default function StockManagement({
         </Box>
       </Paper>
 
-      {/* Filters */}
       <Paper
         elevation={0}
         sx={{
@@ -657,7 +712,6 @@ export default function StockManagement({
         ) : null}
       </Paper>
 
-      {/* Stock Table */}
       <Paper
         elevation={0}
         sx={{
@@ -692,35 +746,18 @@ export default function StockManagement({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Pack Size
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaged Qty
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Loose Qty
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Reserved Packaged
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Reserved Loose
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Packaged
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Loose
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Min Stock
-                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Pack Size</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Packaged Qty</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Loose Qty</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Packaged</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Loose</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Available Packaged</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Available Loose</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Min Stock</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Updated By</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
-                    Action
-                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">Update</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">Deactivate</TableCell>
                 </TableRow>
               </TableHead>
 
@@ -731,6 +768,7 @@ export default function StockManagement({
                   );
                   const isLowStock =
                     asNum(row.minStockLevel) > 0 && totalAvailable <= asNum(row.minStockLevel);
+                  const isActive = toUpper(row.active) === "TRUE";
 
                   return (
                     <TableRow key={row.id}>
@@ -752,12 +790,30 @@ export default function StockManagement({
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{round2(row.availableLooseQty)}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{round2(row.minStockLevel)}</TableCell>
-                      <TableCell sx={{ fontFamily }}>{row.active || "TRUE"}</TableCell>
+                      <TableCell sx={{ fontFamily }}>
+                        <Chip
+                          size="small"
+                          label={isActive ? "TRUE" : "FALSE"}
+                          color={isActive ? "success" : "default"}
+                          sx={{ fontFamily }}
+                        />
+                      </TableCell>
                       <TableCell sx={{ fontFamily, fontSize: 12 }}>{row.updatedBy || "-"}</TableCell>
                       <TableCell align="center">
                         <Tooltip title="Update Stock">
                           <IconButton onClick={() => handleOpenModal(row)}>
                             <EditIcon sx={{ color: cornflowerBlue }} />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Tooltip title={isActive ? "Deactivate Material" : "Reactivate Material"}>
+                          <IconButton onClick={() => handleOpenToggleModal(row)}>
+                            {isActive ? (
+                              <ToggleOffIcon sx={{ color: "#d97706" }} />
+                            ) : (
+                              <ToggleOnIcon sx={{ color: "green" }} />
+                            )}
                           </IconButton>
                         </Tooltip>
                       </TableCell>
@@ -773,7 +829,6 @@ export default function StockManagement({
       {/* Update Stock Modal */}
       <Dialog open={openModal} onClose={handleCloseModal} fullWidth maxWidth="md">
         <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Update Stock</DialogTitle>
-
         <DialogContent dividers>
           {modalForm ? (
             <Box>
@@ -782,12 +837,10 @@ export default function StockManagement({
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Category</Typography>
                   <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.category}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Material Name</Typography>
                   <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.materialName}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Unit</Typography>
                   <Typography sx={{ fontFamily, fontWeight: 600 }}>{modalForm.unit}</Typography>
@@ -817,9 +870,7 @@ export default function StockManagement({
                         sx={{ fontFamily }}
                       >
                         {modalForm.packSizeOptionsList.map((ps) => (
-                          <MenuItem key={ps} value={ps}>
-                            {ps}
-                          </MenuItem>
+                          <MenuItem key={ps} value={ps}>{ps}</MenuItem>
                         ))}
                       </Select>
                     </FormControl>
@@ -891,89 +942,43 @@ export default function StockManagement({
                   </FormControl>
                 </Grid>
 
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 1 }} />
-                </Grid>
+                <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
 
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Reserved Packaged Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.reservedPackagedQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Reserved Packaged Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.reservedPackagedQty)}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Reserved Loose Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.reservedLooseQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Reserved Loose Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.reservedLooseQty)}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Packaged Stock Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.packagedStockQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Packaged Stock Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.packagedStockQty)}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Available Packaged Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.availablePackagedQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Packaged Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.availablePackagedQty)}</Typography>
                 </Grid>
-
                 <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Available Loose Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.availableLooseQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Loose Qty</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(modalForm.availableLooseQty)}</Typography>
                 </Grid>
               </Grid>
 
-              {modalNotice ? (
-                <Box mt={2}>
-                  <Alert severity="success" sx={{ fontFamily }}>
-                    {modalNotice}
-                  </Alert>
-                </Box>
-              ) : null}
-
-              {modalError ? (
-                <Box mt={2}>
-                  <Alert severity="error" sx={{ fontFamily }}>
-                    {modalError}
-                  </Alert>
-                </Box>
-              ) : null}
+              {modalNotice ? <Box mt={2}><Alert severity="success" sx={{ fontFamily }}>{modalNotice}</Alert></Box> : null}
+              {modalError ? <Box mt={2}><Alert severity="error" sx={{ fontFamily }}>{modalError}</Alert></Box> : null}
             </Box>
           ) : null}
         </DialogContent>
-
         <DialogActions>
-          <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>
-            Close
-          </Button>
+          <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>Close</Button>
           <Button
             variant="contained"
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
             onClick={handleSaveStock}
             disabled={!modalForm || saving}
-            sx={{
-              textTransform: "none",
-              fontFamily,
-              backgroundColor: cornflowerBlue,
-            }}
+            sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
           >
             Save Stock
           </Button>
@@ -983,210 +988,151 @@ export default function StockManagement({
       {/* Create Material Modal */}
       <Dialog open={openCreateModal} onClose={handleCloseCreateModal} fullWidth maxWidth="md">
         <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Add Material</DialogTitle>
-
         <DialogContent dividers>
           <Box>
             <Grid container spacing={2}>
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Category"
-                  value={createForm.category}
-                  onChange={(e) => handleCreateChange("category", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                <TextField fullWidth size="small" label="Category" value={createForm.category} onChange={(e) => handleCreateChange("category", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField fullWidth size="small" label="Material Name" value={createForm.materialName} onChange={(e) => handleCreateChange("materialName", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField fullWidth size="small" label="Unit" value={createForm.unit} onChange={(e) => handleCreateChange("unit", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Material Name"
-                  value={createForm.materialName}
-                  onChange={(e) => handleCreateChange("materialName", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Unit"
-                  value={createForm.unit}
-                  onChange={(e) => handleCreateChange("unit", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
-              </Grid>
-
-              <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Pack Size Options"
-                  value={createForm.packSizeOptions}
-                  onChange={(e) => handleCreateChange("packSizeOptions", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                  placeholder="25|50|100"
-                />
+                <TextField fullWidth size="small" label="Pack Size Options" value={createForm.packSizeOptions} onChange={(e) => handleCreateChange("packSizeOptions", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} placeholder="25|50|100" />
               </Grid>
 
               <Grid item xs={12} md={4}>
                 {createForm.packSizeOptionsList?.length ? (
                   <FormControl fullWidth size="small">
                     <InputLabel>Pack Size</InputLabel>
-                    <Select
-                      label="Pack Size"
-                      value={createForm.packSize}
-                      onChange={(e) => handleCreateChange("packSize", e.target.value)}
-                      sx={{ fontFamily }}
-                    >
+                    <Select label="Pack Size" value={createForm.packSize} onChange={(e) => handleCreateChange("packSize", e.target.value)} sx={{ fontFamily }}>
                       {createForm.packSizeOptionsList.map((ps) => (
-                        <MenuItem key={ps} value={ps}>
-                          {ps}
-                        </MenuItem>
+                        <MenuItem key={ps} value={ps}>{ps}</MenuItem>
                       ))}
                     </Select>
                   </FormControl>
                 ) : (
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Pack Size"
-                    value={createForm.packSize}
-                    onChange={(e) => handleCreateChange("packSize", e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                  />
+                  <TextField fullWidth size="small" type="number" label="Pack Size" value={createForm.packSize} onChange={(e) => handleCreateChange("packSize", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
                 )}
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  type="number"
-                  label="Ready Packs Count"
-                  value={createForm.readyPacksCount}
-                  onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                <TextField fullWidth size="small" type="number" label="Ready Packs Count" value={createForm.readyPacksCount} onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  type="number"
-                  label="Loose Stock Qty"
-                  value={createForm.looseStockQty}
-                  onChange={(e) => handleCreateChange("looseStockQty", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                <TextField fullWidth size="small" type="number" label="Loose Stock Qty" value={createForm.looseStockQty} onChange={(e) => handleCreateChange("looseStockQty", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  type="number"
-                  label="Min Stock Level"
-                  value={createForm.minStockLevel}
-                  onChange={(e) => handleCreateChange("minStockLevel", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                <TextField fullWidth size="small" type="number" label="Min Stock Level" value={createForm.minStockLevel} onChange={(e) => handleCreateChange("minStockLevel", e.target.value)} sx={{ fontFamily }} inputProps={{ style: { fontFamily } }} />
               </Grid>
 
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Active</InputLabel>
-                  <Select
-                    label="Active"
-                    value={createForm.active}
-                    onChange={(e) => handleCreateChange("active", e.target.value)}
-                    sx={{ fontFamily }}
-                  >
+                  <Select label="Active" value={createForm.active} onChange={(e) => handleCreateChange("active", e.target.value)} sx={{ fontFamily }}>
                     <MenuItem value="TRUE">TRUE</MenuItem>
                     <MenuItem value="FALSE">FALSE</MenuItem>
                   </Select>
                 </FormControl>
               </Grid>
 
-              <Grid item xs={12}>
-                <Divider sx={{ my: 1 }} />
-              </Grid>
+              <Grid item xs={12}><Divider sx={{ my: 1 }} /></Grid>
 
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Packaged Stock Qty
-                </Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                  {round2(createForm.packagedStockQty)}
-                </Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Packaged Stock Qty</Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.packagedStockQty)}</Typography>
               </Grid>
-
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Packaged Qty
-                </Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                  {round2(createForm.availablePackagedQty)}
-                </Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Packaged Qty</Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.availablePackagedQty)}</Typography>
               </Grid>
-
               <Grid item xs={12} md={4}>
-                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Loose Qty
-                </Typography>
-                <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                  {round2(createForm.availableLooseQty)}
-                </Typography>
+                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Derived Available Loose Qty</Typography>
+                <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(createForm.availableLooseQty)}</Typography>
               </Grid>
             </Grid>
 
-            {createNotice ? (
-              <Box mt={2}>
-                <Alert severity="success" sx={{ fontFamily }}>
-                  {createNotice}
-                </Alert>
-              </Box>
-            ) : null}
-
-            {createError ? (
-              <Box mt={2}>
-                <Alert severity="error" sx={{ fontFamily }}>
-                  {createError}
-                </Alert>
-              </Box>
-            ) : null}
+            {createNotice ? <Box mt={2}><Alert severity="success" sx={{ fontFamily }}>{createNotice}</Alert></Box> : null}
+            {createError ? <Box mt={2}><Alert severity="error" sx={{ fontFamily }}>{createError}</Alert></Box> : null}
           </Box>
         </DialogContent>
-
         <DialogActions>
-          <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>
-            Close
-          </Button>
+          <Button onClick={handleCloseCreateModal} sx={{ textTransform: "none", fontFamily }}>Close</Button>
           <Button
             variant="contained"
             startIcon={creating ? <CircularProgress size={16} /> : <SaveIcon />}
             onClick={handleCreateMaterial}
             disabled={creating}
+            sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
+          >
+            Create Material
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Toggle Active Modal */}
+      <Dialog open={openToggleModal} onClose={handleCloseToggleModal} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>
+          {toggleRow && toUpper(toggleRow.active) === "TRUE" ? "Deactivate Material" : "Reactivate Material"}
+        </DialogTitle>
+        <DialogContent dividers>
+          {toggleRow ? (
+            <Box>
+              <Typography sx={{ fontFamily, mb: 1 }}>
+                <b>Category:</b> {toggleRow.category}
+              </Typography>
+              <Typography sx={{ fontFamily, mb: 1 }}>
+                <b>Material Name:</b> {toggleRow.materialName}
+              </Typography>
+              <Typography sx={{ fontFamily, mb: 1 }}>
+                <b>Current Active Status:</b> {toggleRow.active}
+              </Typography>
+              <Typography sx={{ fontFamily, fontSize: 13, opacity: 0.85 }}>
+                {toUpper(toggleRow.active) === "TRUE"
+                  ? "This will deactivate the material so it stops appearing in active stock usage flows."
+                  : "This will reactivate the material and make it available again in active stock usage flows."}
+              </Typography>
+
+              {toggleError ? (
+                <Box mt={2}>
+                  <Alert severity="error" sx={{ fontFamily }}>
+                    {toggleError}
+                  </Alert>
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={handleCloseToggleModal} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={
+              toggleLoading ? (
+                <CircularProgress size={16} />
+              ) : toggleRow && toUpper(toggleRow.active) === "TRUE" ? (
+                <ToggleOffIcon />
+              ) : (
+                <ToggleOnIcon />
+              )
+            }
+            onClick={handleToggleActive}
+            disabled={!toggleRow || toggleLoading}
             sx={{
               textTransform: "none",
               fontFamily,
-              backgroundColor: cornflowerBlue,
+              backgroundColor: toUpper(toggleRow?.active) === "TRUE" ? "#d97706" : "green",
             }}
           >
-            Create Material
+            {toggleRow && toUpper(toggleRow.active) === "TRUE" ? "Deactivate" : "Reactivate"}
           </Button>
         </DialogActions>
       </Dialog>

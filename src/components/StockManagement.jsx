@@ -184,9 +184,34 @@ function deriveModalState(row) {
   };
 }
 
+function mapCreateCategoryToStoredCategory(category) {
+    const value = safeStr(category);
+  
+    if (value === "Acrylic Material") return "Acrylic";
+    if (value === "PU Material") return "PU";
+    if (value === "Acrylic or PU Material") return "Acrylic or PU";
+  
+    return value;
+  }
+  
+  function mapStoredCategoryToCreateCategory(category) {
+    const value = safeStr(category);
+  
+    if (value === "Acrylic") return "Acrylic Material";
+    if (value === "PU") return "PU Material";
+    if (value === "Acrylic or PU") return "Acrylic or PU Material";
+  
+    return value;
+  }
+
 function buildNewMaterialState(defaultCategory = "") {
+  const mappedDefaultCategory =
+    defaultCategory && defaultCategory !== "ALL"
+      ? mapStoredCategoryToCreateCategory(defaultCategory)
+      : "";
+
   return {
-    category: defaultCategory && defaultCategory !== "ALL" ? defaultCategory : "",
+    category: mappedDefaultCategory,
     materialName: "",
     unit: "",
     packSize: 0,
@@ -710,11 +735,13 @@ export default function StockManagement({
     setCreateError("");
 
     try {
+      const storedCategory = mapCreateCategoryToStoredCategory(createForm.category);
+
       const payload = {
         action: "createStockItem",
         data: {
           role: user.role || "",
-          category: createForm.category,
+          category: storedCategory,
           materialName: createForm.materialName,
           unit: createForm.unit,
           packSize: asNum(createForm.packSize),
@@ -728,7 +755,7 @@ export default function StockManagement({
           notes: "New stock item created from Stock Management",
         },
       };
-
+      
       console.log("createStockItem payload =>", payload);
 
       await apiPostNoCors(apiUrl, payload);

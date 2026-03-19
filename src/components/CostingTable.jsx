@@ -515,25 +515,22 @@ export default function CostingTable() {
     }
   }, [openExtract, extractForm.exportType, extractForm.subtotalBy, financeSubtotalOptions]);
 
-  function triggerExtraction() {
+  async function triggerExtraction() {
     const isSheetMode = String(extractForm.costSheetId || "").trim();
-
-    // ✅ Choose export action
-    // - costing: existing action=exportCosting
-    // - finance: new action=exportFinance
-    const exportAction = extractForm.exportType === "finance" ? "exportFinance" : "exportCosting";
-
+  
+    const exportAction =
+      extractForm.exportType === "finance" ? "exportFinance" : "exportCosting";
+  
     const baseParams = {
       action: exportAction,
       mergeBy: extractForm.mergeBy,
-
-      // ✅ Finance subtotal grouping (UI-driven)
+  
       ...(extractForm.exportType === "finance"
         ? {
             subtotalBy: String(extractForm.subtotalBy || "none"),
           }
         : {}),
-
+  
       ...(isSheetMode
         ? { costSheetId: extractForm.costSheetId }
         : Object.fromEntries(
@@ -547,8 +544,7 @@ export default function CostingTable() {
               format: extractForm.format,
             }).filter(([_, v]) => String(v || "").trim())
           )),
-
-      // keep these always allowed
+  
       ...Object.fromEntries(
         Object.entries({
           particular: extractForm.particular,
@@ -557,20 +553,52 @@ export default function CostingTable() {
         }).filter(([_, v]) => String(v || "").trim())
       ),
     };
-
+  
     const allCount = (extractAllColumns || []).length;
     const selCount = selectedExtractFields.length;
-
+  
     const params = new URLSearchParams(baseParams);
-
-    // ✅ Column filtering (backend can ignore if not implemented for finance yet)
+  
     if (selCount > 0 && selCount < allCount) {
       params.set("fields", JSON.stringify(selectedExtractFields));
     }
-
+  
     const url = `${BACKEND}?${params.toString()}`;
-    window.open(url, "_blank");
-    setOpenExtract(false);
+  
+    if (String(extractForm.format || "").toLowerCase() !== "xlsx") {
+      window.open(url, "_blank");
+      setOpenExtract(false);
+      return;
+    }
+  
+    try {
+      setLoading(true);
+  
+      const res = await fetch(url, { method: "GET" });
+      const text = await res.text();
+  
+      let data = null;
+      try {
+        data = JSON.parse(text);
+      } catch (parseErr) {
+        console.error("XLSX_EXPORT_NON_JSON_RESPONSE", text);
+        throw new Error("Backend did not return valid JSON for XLSX export.");
+      }
+  
+      if (data?.success && data?.downloadUrl) {
+        window.open(data.downloadUrl, "_blank");
+        setOpenExtract(false);
+        return;
+      }
+  
+      console.error("XLSX_EXPORT_BAD_RESPONSE", data);
+      alert(data?.error || "Excel export failed.");
+    } catch (e) {
+      console.error("XLSX_EXPORT_ERROR", e);
+      alert("Failed to generate Excel export.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   // Create cost sheet form

@@ -319,6 +319,7 @@ export default function CostingTable() {
   const isAdmin = String(role || "").toLowerCase() === "admin";
 
   const [loading, setLoading] = useState(false);
+  const [detailsLoading, setDetailsLoading] = useState(false);
   const [submitProgress, setSubmitProgress] = useState(null); // { done, total, label }
 
   const [validation, setValidation] = useState({
@@ -790,41 +791,43 @@ export default function CostingTable() {
 
   async function openEditModal(row) {
     await ensureValidationLoaded();
-
+  
     setActiveSheet(row);
     setOpenEdit(true);
-    setLoading(true);
-
+    setLineItems([]);
+    setLineItemHeaders(fallbackLineItemHeaders);
+    setDetailsLoading(true);
+  
     try {
       const id = row["Cost Sheet ID"];
       const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
       );
+  
       const arr = Array.isArray(items) ? items : [];
-
+  
       const activeOnly = arr.filter((x) => {
         const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
         return a !== "no";
       });
-
+  
       const withKeys = activeOnly.map((x) => ({
         ...x,
         __lineKey: makeLineItemKey(id, x),
       }));
-
+  
       setLineItems(withKeys);
-
+  
       const headers = withKeys.length
         ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
         : fallbackLineItemHeaders;
-
+  
       setLineItemHeaders(headers);
-
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert("Failed to open cost sheet details.");
     } finally {
-      setLoading(false);
+      setDetailsLoading(false);
     }
   }
 
@@ -2786,7 +2789,7 @@ export default function CostingTable() {
                   variant="contained"
                   startIcon={<AddIcon />}
                   sx={{ bgcolor: cornflowerBlue }}
-                  disabled={loading}
+                  disabled={false}
                   onClick={() => openDrawerAdd("")}
                 >
                   Add Line Item

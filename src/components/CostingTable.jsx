@@ -613,56 +613,61 @@ export default function CostingTable() {
    * GAS now recomputes totals when line items are added/updated (batch endpoints),
    * so the UI should NOT JSONP fan-out per cost sheet anymore.
    */
-  async function refreshFast() {
-    const seq = ++loadSeq.current;
-    setLoading(true);
-    try {
+ async function refreshFast(options = {}) {
+  const { refreshValidation = false } = options;
+  const seq = ++loadSeq.current;
+  setLoading(true);
+
+  try {
+    const needsValidation =
+      refreshValidation ||
+      !(validation.heads?.length ||
+        validation.paymentStatus?.length ||
+        Object.keys(validation.subcategories || {}).length);
+
+    let parsedValidation = validation;
+
+    if (needsValidation) {
       const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
       if (seq !== loadSeq.current) return;
-
-      const parsed = normalizeValidationResponse(rawV);
-      setValidation(parsed);
-
-      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
-      if (seq !== loadSeq.current) return;
-
-      const arr = Array.isArray(sheets) ? sheets : [];
-      setCostSheets(arr);
-
-      if (arr.length) {
-        const keys = Object.keys(arr[0]);
-        const initial = {};
-        keys.forEach((k) => (initial[k] = true));
-        setVisibleCols((prev) => (prev && Object.keys(prev).length ? prev : initial));
-      }
-
-      // ✅ Keep activeSheet in sync (so computed columns refresh visibly)
-      if (activeSheet?.["Cost Sheet ID"]) {
-        const id = String(activeSheet["Cost Sheet ID"]);
-        const fresh = arr.find((x) => String(x?.["Cost Sheet ID"]) === id) || null;
-        if (fresh) setActiveSheet(fresh);
-      }
-    } catch (e) {
-      console.error("COSTING_REFRESH_FAST_ERROR", e);
-      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
-    } finally {
-      if (seq === loadSeq.current) setLoading(false);
+      parsedValidation = normalizeValidationResponse(rawV);
+      setValidation(parsedValidation);
     }
+
+    const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
+    if (seq !== loadSeq.current) return;
+
+    const arr = Array.isArray(sheets) ? sheets : [];
+    setCostSheets(arr);
+
+    if (arr.length) {
+      const keys = Object.keys(arr[0]);
+      const initial = {};
+      keys.forEach((k) => (initial[k] = true));
+      setVisibleCols((prev) => (prev && Object.keys(prev).length ? prev : initial));
+    }
+
+    if (activeSheet?.["Cost Sheet ID"]) {
+      const id = String(activeSheet["Cost Sheet ID"]);
+      const fresh = arr.find((x) => String(x?.["Cost Sheet ID"]) === id) || null;
+      if (fresh) setActiveSheet(fresh);
+    }
+  } catch (e) {
+    console.error("COSTING_REFRESH_FAST_ERROR", e);
+    alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+  } finally {
+    if (seq === loadSeq.current) setLoading(false);
   }
+}
 
   // ✅ Slightly more robust post-mutation refresh (helps when GAS recompute is async)
-  async function refreshAfterMutation() {
-    // 1st refresh quickly
-    await refreshFast();
-    // 2nd refresh after a short delay (to catch recompute + sheet flush)
-    setTimeout(() => {
-      refreshFast();
-    }, 900);
+  async function refreshAfterMutation({ refreshValidation = false } = {}) {
+    await refreshFast({ refreshValidation });
   }
 
   // On first mount, run FAST refresh
   useEffect(() => {
-    refreshFast();
+    refreshFast({ refreshValidation: true });
   }, []);
 
   async function ensureValidationLoaded() {
@@ -815,16 +820,24 @@ export default function CostingTable() {
 
       setLineItemHeaders(headers);
 
-      // keep sheet row (and computed totals columns) fresh in header
-      setTimeout(() => {
-        refreshFast();
-      }, 200);
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert("Failed to open cost sheet details.");
     } finally {
       setLoading(false);
     }
+  }
+
+  async function openEditModalById(costSheetId) {
+    const row =
+      (costSheets || []).find((x) => String(x["Cost Sheet ID"]) === String(costSheetId)) || null;
+  
+    if (!row) {
+      alert("Could not find the selected Cost Sheet. Please refresh and try again.");
+      return;
+    }
+  
+    await openEditModal(row);
   }
 
   async function refreshLineItemsForActiveSheet(costSheetId) {
@@ -899,9 +912,11 @@ export default function CostingTable() {
       });
 
       setTimeout(async () => {
-        await refreshLineItemsForActiveSheet(costSheetId);
-        await refreshAfterMutation();
-      }, 350);
+        await Promise.all([
+          refreshLineItemsForActiveSheet(costSheetId),
+          refreshAfterMutation(),
+        ]);  
+      }, 150);
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
       alert("Failed to add line item.");
@@ -944,9 +959,11 @@ export default function CostingTable() {
       setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== lineKey));
 
       setTimeout(async () => {
-        await refreshLineItemsForActiveSheet(costSheetId);
-        await refreshAfterMutation();
-      }, 350);
+        await Promise.all([
+          refreshLineItemsForActiveSheet(costSheetId),
+          refreshAfterMutation(),
+        ]);
+      }, 150);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
       alert(
@@ -1138,9 +1155,9 @@ export default function CostingTable() {
 
         setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== oldKey));
 
-        await addLineItemRow(drawerDraft);
-
         setDrawerOpen(false);
+        await addLineItemRow(drawerDraft);
+        
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
         alert(
@@ -1152,8 +1169,9 @@ export default function CostingTable() {
       return;
     }
 
-    await addLineItemRow(drawerDraft);
     setDrawerOpen(false);
+    await addLineItemRow(drawerDraft);
+    
   }
 
   async function saveDrawerAndNew() {
@@ -1709,7 +1727,7 @@ export default function CostingTable() {
 
               <TableBody>
                 {filtered.map((r, idx) => (
-                  <TableRow key={idx} hover>
+                  <TableRow key={String(r["Cost Sheet ID"] || idx)} hover>
                     {costSheetColumns
                       .filter((c) => visibleCols[c] !== false)
                       .map((c) => (
@@ -1718,7 +1736,7 @@ export default function CostingTable() {
                         </TableCell>
                       ))}
                     <TableCell>
-                      <IconButton onClick={() => openEditModal(r)}>
+                      <IconButton onClick={() => openEditModalById(r["Cost Sheet ID"])}>
                         <EditIcon sx={{ color: cornflowerBlue }} />
                       </IconButton>
 

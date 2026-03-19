@@ -376,6 +376,7 @@ export default function CostingTable() {
     from: "",
     to: "",
     format: "csv",
+    mergeBy: "none",
   });
 
   const [extractColumnsAnchor, setExtractColumnsAnchor] = useState(null);
@@ -524,6 +525,7 @@ export default function CostingTable() {
 
     const baseParams = {
       action: exportAction,
+      mergeBy: extractForm.mergeBy,
 
       // ✅ Finance subtotal grouping (UI-driven)
       ...(extractForm.exportType === "finance"
@@ -1777,7 +1779,6 @@ export default function CostingTable() {
           <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
-              {/* ✅ FIXED: Paper properly closed + Export Type / Subtotal By are proper Grid items */}
               <Grid item xs={12}>
                 <Paper
                   variant="outlined"
@@ -1800,7 +1801,7 @@ export default function CostingTable() {
                           : `All (${extractAllColumns.length})`}
                       </Typography>
                     </Box>
-
+        
                     <Button
                       variant="outlined"
                       size="small"
@@ -1811,7 +1812,7 @@ export default function CostingTable() {
                       Select Columns
                     </Button>
                   </Box>
-
+        
                   <Popover
                     open={Boolean(extractColumnsAnchor)}
                     anchorEl={extractColumnsAnchor}
@@ -1828,7 +1829,7 @@ export default function CostingTable() {
                         }}
                       >
                         <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Export Columns</Typography>
-
+        
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button
                             size="small"
@@ -1854,9 +1855,9 @@ export default function CostingTable() {
                           </Button>
                         </Box>
                       </Box>
-
+        
                       <Divider sx={{ mb: 1 }} />
-
+        
                       <FormGroup>
                         {(extractAllColumns || []).map((c) => (
                           <FormControlLabel
@@ -1867,8 +1868,7 @@ export default function CostingTable() {
                                 checked={extractVisibleCols[c] !== false}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-
-                                  // ✅ FIX: write the correct snapshot to localStorage
+        
                                   setExtractVisibleCols((prev) => {
                                     const next = { ...(prev || {}), [c]: checked };
                                     const userKey = String(loggedInName || "").trim();
@@ -1878,7 +1878,7 @@ export default function CostingTable() {
                                     } catch {}
                                     return next;
                                   });
-
+        
                                   setExtractColsTouched(true);
                                 }}
                               />
@@ -1887,9 +1887,9 @@ export default function CostingTable() {
                           />
                         ))}
                       </FormGroup>
-
+        
                       <Divider sx={{ mt: 1 }} />
-
+        
                       <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
                         If you keep all selected, export will behave as “export all columns”.
                       </Typography>
@@ -1897,8 +1897,7 @@ export default function CostingTable() {
                   </Popover>
                 </Paper>
               </Grid>
-
-              {/* ✅ Export Type */}
+        
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Export Type</InputLabel>
@@ -1919,8 +1918,7 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
-
-              {/* ✅ NEW: Subtotal By (finance only) — options derived from the selected export columns */}
+        
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" disabled={extractForm.exportType !== "finance"}>
                   <InputLabel>Subtotal By</InputLabel>
@@ -1943,7 +1941,7 @@ export default function CostingTable() {
                   </Typography>
                 ) : null}
               </Grid>
-
+        
               <Grid item xs={12}>
                 <Autocomplete
                   size="small"
@@ -1964,14 +1962,14 @@ export default function CostingTable() {
                   }}
                   renderInput={(params) => <TextField {...params} label="Existing Cost Sheet (Search)" />}
                 />
-
+        
                 {extractForm.costSheetId ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 0.5 }}>
                     Extract will be generated only for the selected cost sheet. Date/entity filters are disabled.
                   </Typography>
                 ) : null}
               </Grid>
-
+        
               {!extractForm.costSheetId ? (
                 <>
                   <Grid item xs={12}>
@@ -1991,7 +1989,7 @@ export default function CostingTable() {
                       </Select>
                     </FormControl>
                   </Grid>
-
+        
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -2003,7 +2001,7 @@ export default function CostingTable() {
                   </Grid>
                 </>
               ) : null}
-
+        
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -2013,7 +2011,7 @@ export default function CostingTable() {
                   onChange={(e) => setExtractForm((p) => ({ ...p, particular: e.target.value }))}
                 />
               </Grid>
-
+        
               <Grid item xs={12}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Payment Status</InputLabel>
@@ -2031,7 +2029,7 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
-
+        
               {!extractForm.costSheetId ? (
                 <>
                   <Grid item xs={6}>
@@ -2045,7 +2043,7 @@ export default function CostingTable() {
                       onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
                     />
                   </Grid>
-
+        
                   <Grid item xs={6}>
                     <TextField
                       fullWidth
@@ -2059,8 +2057,8 @@ export default function CostingTable() {
                   </Grid>
                 </>
               ) : null}
-
-              <Grid item xs={12}>
+        
+              <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Format</InputLabel>
                   <Select
@@ -2074,9 +2072,29 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small" disabled={extractForm.format === "csv"}>
+                  <InputLabel>Merge By</InputLabel>
+                  <Select
+                    label="Merge By"
+                    value={extractForm.mergeBy}
+                    onChange={(e) => setExtractForm((p) => ({ ...p, mergeBy: e.target.value }))}
+                  >
+                    <MenuItem value="none">None</MenuItem>
+                    <MenuItem value="Particular">Particular</MenuItem>
+                    <MenuItem value="Head Name">Head Name</MenuItem>
+                    <MenuItem value="Subcategory">Subcategory</MenuItem>
+                    <MenuItem value="Linked Entity Name">Linked Entity Name</MenuItem>
+                  </Select>
+                </FormControl>
+                <Typography sx={{ fontSize: 11, opacity: 0.72, mt: 0.5 }}>
+                  Merge is available for Excel and PDF exports only. CSV does not support merged cells or borders.
+                </Typography>
+              </Grid>
             </Grid>
           </DialogContent>
-
+        
           <DialogActions>
             <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
             <Button

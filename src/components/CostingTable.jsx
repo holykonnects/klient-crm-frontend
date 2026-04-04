@@ -483,12 +483,9 @@ export default function CostingTable() {
 
   // ✅ Finance subtotal dropdown options MUST come from the user-selected export columns
   const financeSubtotalOptions = useMemo(() => {
-    // If user has explicitly chosen some columns, use those.
-    // If all are selected (default), this still returns all (since all are true).
     const cols = Array.isArray(selectedExtractFields) && selectedExtractFields.length
       ? selectedExtractFields
       : (extractAllColumns || []);
-    // Keep stable order as per extractAllColumns
     const order = new Map((extractAllColumns || []).map((c, i) => [c, i]));
     return [...cols].sort((a, b) => (order.get(a) ?? 999999) - (order.get(b) ?? 999999));
   }, [selectedExtractFields, extractAllColumns]);
@@ -497,7 +494,6 @@ export default function CostingTable() {
   useEffect(() => {
     if (!openExtract) return;
 
-    // If not finance, force none (so backend params remain clean)
     if (extractForm.exportType !== "finance") {
       if (extractForm.subtotalBy !== "none") {
         setExtractForm((p) => ({ ...p, subtotalBy: "none" }));
@@ -505,7 +501,6 @@ export default function CostingTable() {
       return;
     }
 
-    // Finance export: if subtotalBy is set to a column not in the selected export columns, reset.
     const current = String(extractForm.subtotalBy || "none");
     if (current === "none") return;
 
@@ -517,20 +512,20 @@ export default function CostingTable() {
 
   async function triggerExtraction() {
     const isSheetMode = String(extractForm.costSheetId || "").trim();
-  
+
     const exportAction =
       extractForm.exportType === "finance" ? "exportFinance" : "exportCosting";
-  
+
     const baseParams = {
       action: exportAction,
       mergeBy: extractForm.mergeBy,
-  
+
       ...(extractForm.exportType === "finance"
         ? {
             subtotalBy: String(extractForm.subtotalBy || "none"),
           }
         : {}),
-  
+
       ...(isSheetMode
         ? { costSheetId: extractForm.costSheetId }
         : Object.fromEntries(
@@ -544,7 +539,7 @@ export default function CostingTable() {
               format: extractForm.format,
             }).filter(([_, v]) => String(v || "").trim())
           )),
-  
+
       ...Object.fromEntries(
         Object.entries({
           particular: extractForm.particular,
@@ -553,30 +548,30 @@ export default function CostingTable() {
         }).filter(([_, v]) => String(v || "").trim())
       ),
     };
-  
+
     const allCount = (extractAllColumns || []).length;
     const selCount = selectedExtractFields.length;
-  
+
     const params = new URLSearchParams(baseParams);
-  
+
     if (selCount > 0 && selCount < allCount) {
       params.set("fields", JSON.stringify(selectedExtractFields));
     }
-  
+
     const url = `${BACKEND}?${params.toString()}`;
-  
+
     if (String(extractForm.format || "").toLowerCase() !== "xlsx") {
       window.open(url, "_blank");
       setOpenExtract(false);
       return;
     }
-  
+
     try {
       setLoading(true);
-  
+
       const res = await fetch(url, { method: "GET" });
       const text = await res.text();
-  
+
       let data = null;
       try {
         data = JSON.parse(text);
@@ -584,13 +579,13 @@ export default function CostingTable() {
         console.error("XLSX_EXPORT_NON_JSON_RESPONSE", text);
         throw new Error("Backend did not return valid JSON for XLSX export.");
       }
-  
+
       if (data?.success && data?.downloadUrl) {
         window.open(data.downloadUrl, "_blank");
         setOpenExtract(false);
         return;
       }
-  
+
       console.error("XLSX_EXPORT_BAD_RESPONSE", data);
       alert(data?.error || "Excel export failed.");
     } catch (e) {
@@ -644,52 +639,52 @@ export default function CostingTable() {
    * GAS now recomputes totals when line items are added/updated (batch endpoints),
    * so the UI should NOT JSONP fan-out per cost sheet anymore.
    */
- async function refreshFast(options = {}) {
-  const { refreshValidation = false } = options;
-  const seq = ++loadSeq.current;
-  setLoading(true);
+  async function refreshFast(options = {}) {
+    const { refreshValidation = false } = options;
+    const seq = ++loadSeq.current;
+    setLoading(true);
 
-  try {
-    const needsValidation =
-      refreshValidation ||
-      !(validation.heads?.length ||
-        validation.paymentStatus?.length ||
-        Object.keys(validation.subcategories || {}).length);
+    try {
+      const needsValidation =
+        refreshValidation ||
+        !(validation.heads?.length ||
+          validation.paymentStatus?.length ||
+          Object.keys(validation.subcategories || {}).length);
 
-    let parsedValidation = validation;
+      let parsedValidation = validation;
 
-    if (needsValidation) {
-      const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+      if (needsValidation) {
+        const rawV = await jsonpGet(`${BACKEND}?action=getValidation`);
+        if (seq !== loadSeq.current) return;
+        parsedValidation = normalizeValidationResponse(rawV);
+        setValidation(parsedValidation);
+      }
+
+      const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
       if (seq !== loadSeq.current) return;
-      parsedValidation = normalizeValidationResponse(rawV);
-      setValidation(parsedValidation);
+
+      const arr = Array.isArray(sheets) ? sheets : [];
+      setCostSheets(arr);
+
+      if (arr.length) {
+        const keys = Object.keys(arr[0]);
+        const initial = {};
+        keys.forEach((k) => (initial[k] = true));
+        setVisibleCols((prev) => (prev && Object.keys(prev).length ? prev : initial));
+      }
+
+      if (activeSheet?.["Cost Sheet ID"]) {
+        const id = String(activeSheet["Cost Sheet ID"]);
+        const fresh = arr.find((x) => String(x?.["Cost Sheet ID"]) === id) || null;
+        if (fresh) setActiveSheet(fresh);
+      }
+    } catch (e) {
+      console.error("COSTING_REFRESH_FAST_ERROR", e);
+      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+    } finally {
+      if (seq === loadSeq.current) setLoading(false);
     }
-
-    const sheets = await jsonpGet(`${BACKEND}?action=getCostSheets`);
-    if (seq !== loadSeq.current) return;
-
-    const arr = Array.isArray(sheets) ? sheets : [];
-    setCostSheets(arr);
-
-    if (arr.length) {
-      const keys = Object.keys(arr[0]);
-      const initial = {};
-      keys.forEach((k) => (initial[k] = true));
-      setVisibleCols((prev) => (prev && Object.keys(prev).length ? prev : initial));
-    }
-
-    if (activeSheet?.["Cost Sheet ID"]) {
-      const id = String(activeSheet["Cost Sheet ID"]);
-      const fresh = arr.find((x) => String(x?.["Cost Sheet ID"]) === id) || null;
-      if (fresh) setActiveSheet(fresh);
-    }
-  } catch (e) {
-    console.error("COSTING_REFRESH_FAST_ERROR", e);
-    alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
-  } finally {
-    if (seq === loadSeq.current) setLoading(false);
   }
-}
 
   // ✅ Slightly more robust post-mutation refresh (helps when GAS recompute is async)
   async function refreshAfterMutation({ refreshValidation = false } = {}) {
@@ -821,74 +816,128 @@ export default function CostingTable() {
 
   async function openEditModal(row) {
     await ensureValidationLoaded();
-  
+
     setActiveSheet(row);
     setOpenEdit(true);
     setLineItems([]);
     setLineItemHeaders(fallbackLineItemHeaders);
     setDetailsLoading(true);
-  
+
     try {
-      const id = row["Cost Sheet ID"];
+      const id = String(row?.["Cost Sheet ID"] || "").trim();
+      console.log("OPENING COST SHEET ID:", JSON.stringify(id));
+
       const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
       );
-  
-      const arr = Array.isArray(items) ? items : [];
-  
-      const activeOnly = arr.filter((x) => {
+
+      console.log("DETAIL RESPONSE:", items);
+
+      if (!Array.isArray(items)) {
+        console.error("DETAILS_NOT_ARRAY", items);
+        alert("This cost sheet returned invalid detail data. Please check the backend response.");
+        setLineItems([]);
+        setLineItemHeaders(fallbackLineItemHeaders);
+        return;
+      }
+
+      const activeOnly = items.filter((x) => {
         const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
         return a !== "no";
       });
-  
-      const withKeys = activeOnly.map((x) => ({
+
+      const withKeys = activeOnly.map((x, idx) => ({
         ...x,
-        __lineKey: makeLineItemKey(id, x),
+        __lineKey: makeLineItemKey(id, x) || `${id}__fallback__${idx}`,
       }));
-  
+
+      const keys = withKeys.map((x) => x.__lineKey);
+      const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);
+      if (dupes.length) {
+        console.warn("DUPLICATE_LINE_KEYS", dupes);
+      }
+
       setLineItems(withKeys);
-  
-      const headers = withKeys.length
-        ? Object.keys(withKeys[0]).filter((h) => h !== "__lineKey")
-        : fallbackLineItemHeaders;
-  
-      setLineItemHeaders(headers);
+
+      const mergedHeaders = Array.from(
+        new Set(
+          withKeys.flatMap((x) => Object.keys(x || {})).filter((h) => h !== "__lineKey")
+        )
+      );
+
+      setLineItemHeaders(mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders);
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert("Failed to open cost sheet details.");
+      setLineItems([]);
+      setLineItemHeaders(fallbackLineItemHeaders);
     } finally {
       setDetailsLoading(false);
     }
   }
 
   async function openEditModalById(costSheetId) {
+    const list = costSheets || [];
+
     const row =
-      (costSheets || []).find((x) => String(x["Cost Sheet ID"]) === String(costSheetId)) || null;
-  
+      list.find(
+        (x) =>
+          String(x?.["Cost Sheet ID"] || "").trim() ===
+          String(costSheetId || "").trim()
+      ) || null;
+
     if (!row) {
+      console.error("OPEN_EDIT_FAIL", {
+        requestedId: costSheetId,
+        availableIds: list.map((x) => x?.["Cost Sheet ID"]),
+      });
       alert("Could not find the selected Cost Sheet. Please refresh and try again.");
       return;
     }
-  
+
     await openEditModal(row);
   }
 
   async function refreshLineItemsForActiveSheet(costSheetId) {
-    const items = await jsonpGet(
-      `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-    );
-    const arr = Array.isArray(items) ? items : [];
-    const activeOnly = arr.filter((x) => {
-      const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
-      return a !== "no";
-    });
+    setDetailsLoading(true);
+    try {
+      const items = await jsonpGet(
+        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+      );
 
-    const withKeys = activeOnly.map((x) => ({
-      ...x,
-      __lineKey: makeLineItemKey(costSheetId, x),
-    }));
+      if (!Array.isArray(items)) {
+        console.error("REFRESH_DETAILS_NOT_ARRAY", items);
+        setLineItems([]);
+        setLineItemHeaders(fallbackLineItemHeaders);
+        return;
+      }
 
-    setLineItems(withKeys);
+      const activeOnly = items.filter((x) => {
+        const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
+        return a !== "no";
+      });
+
+      const withKeys = activeOnly.map((x, idx) => ({
+        ...x,
+        __lineKey: makeLineItemKey(costSheetId, x) || `${costSheetId}__fallback__${idx}`,
+      }));
+
+      setLineItems(withKeys);
+
+      const mergedHeaders = Array.from(
+        new Set(
+          withKeys.flatMap((x) => Object.keys(x || {})).filter((h) => h !== "__lineKey")
+        )
+      );
+
+      setLineItemHeaders(mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders);
+    } catch (e) {
+      console.error("REFRESH_LINE_ITEMS_ERROR", e);
+      setLineItems([]);
+      setLineItemHeaders(fallbackLineItemHeaders);
+    } finally {
+      setDetailsLoading(false);
+    }
   }
 
   /**
@@ -948,7 +997,7 @@ export default function CostingTable() {
         await Promise.all([
           refreshLineItemsForActiveSheet(costSheetId),
           refreshAfterMutation(),
-        ]);  
+        ]);
       }, 150);
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
@@ -1190,7 +1239,6 @@ export default function CostingTable() {
 
         setDrawerOpen(false);
         await addLineItemRow(drawerDraft);
-        
       } catch (e) {
         console.error("EDIT_SAVE_ERROR", e);
         alert(
@@ -1204,7 +1252,6 @@ export default function CostingTable() {
 
     setDrawerOpen(false);
     await addLineItemRow(drawerDraft);
-    
   }
 
   async function saveDrawerAndNew() {
@@ -1829,7 +1876,7 @@ export default function CostingTable() {
                           : `All (${extractAllColumns.length})`}
                       </Typography>
                     </Box>
-        
+
                     <Button
                       variant="outlined"
                       size="small"
@@ -1840,7 +1887,7 @@ export default function CostingTable() {
                       Select Columns
                     </Button>
                   </Box>
-        
+
                   <Popover
                     open={Boolean(extractColumnsAnchor)}
                     anchorEl={extractColumnsAnchor}
@@ -1857,7 +1904,7 @@ export default function CostingTable() {
                         }}
                       >
                         <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Export Columns</Typography>
-        
+
                         <Box sx={{ display: "flex", gap: 1 }}>
                           <Button
                             size="small"
@@ -1883,9 +1930,9 @@ export default function CostingTable() {
                           </Button>
                         </Box>
                       </Box>
-        
+
                       <Divider sx={{ mb: 1 }} />
-        
+
                       <FormGroup>
                         {(extractAllColumns || []).map((c) => (
                           <FormControlLabel
@@ -1896,7 +1943,7 @@ export default function CostingTable() {
                                 checked={extractVisibleCols[c] !== false}
                                 onChange={(e) => {
                                   const checked = e.target.checked;
-        
+
                                   setExtractVisibleCols((prev) => {
                                     const next = { ...(prev || {}), [c]: checked };
                                     const userKey = String(loggedInName || "").trim();
@@ -1906,7 +1953,7 @@ export default function CostingTable() {
                                     } catch {}
                                     return next;
                                   });
-        
+
                                   setExtractColsTouched(true);
                                 }}
                               />
@@ -1915,9 +1962,9 @@ export default function CostingTable() {
                           />
                         ))}
                       </FormGroup>
-        
+
                       <Divider sx={{ mt: 1 }} />
-        
+
                       <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
                         If you keep all selected, export will behave as “export all columns”.
                       </Typography>
@@ -1925,7 +1972,7 @@ export default function CostingTable() {
                   </Popover>
                 </Paper>
               </Grid>
-        
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Export Type</InputLabel>
@@ -1946,7 +1993,7 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
-        
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" disabled={extractForm.exportType !== "finance"}>
                   <InputLabel>Subtotal By</InputLabel>
@@ -1969,7 +2016,7 @@ export default function CostingTable() {
                   </Typography>
                 ) : null}
               </Grid>
-        
+
               <Grid item xs={12}>
                 <Autocomplete
                   size="small"
@@ -1990,14 +2037,14 @@ export default function CostingTable() {
                   }}
                   renderInput={(params) => <TextField {...params} label="Existing Cost Sheet (Search)" />}
                 />
-        
+
                 {extractForm.costSheetId ? (
                   <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 0.5 }}>
                     Extract will be generated only for the selected cost sheet. Date/entity filters are disabled.
                   </Typography>
                 ) : null}
               </Grid>
-        
+
               {!extractForm.costSheetId ? (
                 <>
                   <Grid item xs={12}>
@@ -2017,7 +2064,7 @@ export default function CostingTable() {
                       </Select>
                     </FormControl>
                   </Grid>
-        
+
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
@@ -2029,7 +2076,7 @@ export default function CostingTable() {
                   </Grid>
                 </>
               ) : null}
-        
+
               <Grid item xs={12}>
                 <TextField
                   fullWidth
@@ -2039,7 +2086,7 @@ export default function CostingTable() {
                   onChange={(e) => setExtractForm((p) => ({ ...p, particular: e.target.value }))}
                 />
               </Grid>
-        
+
               <Grid item xs={12}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Payment Status</InputLabel>
@@ -2057,7 +2104,7 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
-        
+
               {!extractForm.costSheetId ? (
                 <>
                   <Grid item xs={6}>
@@ -2071,7 +2118,7 @@ export default function CostingTable() {
                       onChange={(e) => setExtractForm((p) => ({ ...p, from: e.target.value }))}
                     />
                   </Grid>
-        
+
                   <Grid item xs={6}>
                     <TextField
                       fullWidth
@@ -2085,7 +2132,7 @@ export default function CostingTable() {
                   </Grid>
                 </>
               ) : null}
-        
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Format</InputLabel>
@@ -2100,7 +2147,7 @@ export default function CostingTable() {
                   </Select>
                 </FormControl>
               </Grid>
-        
+
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" disabled={extractForm.format === "csv"}>
                   <InputLabel>Merge By</InputLabel>
@@ -2122,7 +2169,7 @@ export default function CostingTable() {
               </Grid>
             </Grid>
           </DialogContent>
-        
+
           <DialogActions>
             <Button onClick={() => setOpenExtract(false)}>Cancel</Button>
             <Button
@@ -2140,7 +2187,6 @@ export default function CostingTable() {
         <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
-            {/* (UNCHANGED from your shared code) */}
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small">
@@ -2763,7 +2809,6 @@ export default function CostingTable() {
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
         <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
-          {/* (UNCHANGED from your shared code) */}
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -2827,15 +2872,19 @@ export default function CostingTable() {
                   flexWrap: "wrap",
                 }}
               >
-                <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                  Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
-                </Typography>
+                <Box>
+                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                    Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
+                  </Typography>
+                  <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                    {detailsLoading ? "Loading line items…" : `${lineItems.length} active line item(s)`}
+                  </Typography>
+                </Box>
 
                 <Button
                   variant="contained"
                   startIcon={<AddIcon />}
                   sx={{ bgcolor: cornflowerBlue }}
-                  disabled={false}
                   onClick={() => openDrawerAdd("")}
                 >
                   Add Line Item
@@ -2853,35 +2902,50 @@ export default function CostingTable() {
                           {c}
                         </TableCell>
                       ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>Actions</TableCell>
+                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                        Actions
+                      </TableCell>
                     </TableRow>
                   </TableHead>
 
                   <TableBody>
-                    {(lineItems || []).map((it, idx) => (
-                      <TableRow key={it.__lineKey || idx} hover>
-                        {lineItemCols.map((c) => (
-                          <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
-                            {String(it[c] ?? "")}
-                          </TableCell>
-                        ))}
-                        <TableCell sx={{ whiteSpace: "nowrap" }}>
-                          <IconButton
-                            title="Edit (will mark old row inactive and append updated row)"
-                            onClick={() => openDrawerEdit(it)}
-                            disabled={loading}
-                          >
-                            <EditIcon sx={{ color: cornflowerBlue }} />
-                          </IconButton>
-
-                          <IconButton onClick={() => softDeleteLineItem(it)} disabled={loading} title="Delete">
-                            <DeleteOutlineIcon sx={{ color: "#c62828" }} />
-                          </IconButton>
+                    {detailsLoading ? (
+                      <TableRow>
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                          Loading line items…
                         </TableCell>
                       </TableRow>
-                    ))}
+                    ) : null}
 
-                    {!lineItems.length ? (
+                    {!detailsLoading &&
+                      (lineItems || []).map((it, idx) => (
+                        <TableRow key={it.__lineKey || idx} hover>
+                          {lineItemCols.map((c) => (
+                            <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
+                              {String(it[c] ?? "")}
+                            </TableCell>
+                          ))}
+                          <TableCell sx={{ whiteSpace: "nowrap" }}>
+                            <IconButton
+                              title="Edit (will mark old row inactive and append updated row)"
+                              onClick={() => openDrawerEdit(it)}
+                              disabled={loading}
+                            >
+                              <EditIcon sx={{ color: cornflowerBlue }} />
+                            </IconButton>
+
+                            <IconButton
+                              onClick={() => softDeleteLineItem(it)}
+                              disabled={loading}
+                              title="Delete"
+                            >
+                              <DeleteOutlineIcon sx={{ color: "#c62828" }} />
+                            </IconButton>
+                          </TableCell>
+                        </TableRow>
+                      ))}
+
+                    {!detailsLoading && !lineItems.length ? (
                       <TableRow>
                         <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No line items found for this cost sheet.

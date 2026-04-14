@@ -23,6 +23,7 @@ import ExistenceCheckPage from './components/ExistenceCheckPage';
 import CostingTable from './components/CostingTable';
 import InventoryModule from './components/InventoryModule';
 import StockManagement from './components/StockManagement';
+import ExpenseRequestTable from './components/ExpenseRequestTable';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -48,6 +49,16 @@ const AppRoutes = () => {
             </ProtectedPage>
           }
         />
+
+        <Route
+          path="expense-requests"
+          element={
+            <ProtectedPage pageKey="Expense Requests">
+              <ExpenseRequestTable />
+            </ProtectedPage>
+          }
+        />
+  
         <Route
           path="inventory"
           element={

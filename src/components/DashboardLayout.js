@@ -67,6 +67,7 @@ function DashboardLayout({ children }) {
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Costing', icon: <CurrencyRupee />, route: '/costing', access: 'Costing' },
+    { label: 'Expense Requests', icon: <CurrencyRupee />, route: '/expense-requests', access: 'Expense Requests' },
 
     // ✅ NEW: Inventory
     { label: 'Inventory', icon: <Inventory2 />, route: '/inventory', access: 'Inventory' },

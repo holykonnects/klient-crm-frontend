@@ -172,6 +172,7 @@ export default function ExpenseRequestTable() {
 
   const [openAddModal, setOpenAddModal] = useState(false);
   const [openApprovalModal, setOpenApprovalModal] = useState(false);
+  const [openAccountsModal, setOpenAccountsModal] =  useState(false);
 
   const [expenseRows, setExpenseRows] = useState([makeBlankExpenseRow()]);
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -187,6 +188,18 @@ export default function ExpenseRequestTable() {
     "Operations Remarks": "",
     "Rejection Remarks": "",
     "Hold Remarks": "",
+  });
+
+  const [accountsForm, setAccountsForm] = useState({
+    requestId: "",
+    headName: "Miscellaneous",
+    subcategory: "",
+    amount: "",
+    gstPct: "",
+    expenseDate: "",
+    details: "",
+    paymentStatus: "Pending",
+    voucherNo: ""
   });
 
   const selectedCostSheetOption = useMemo(() => {
@@ -354,6 +367,62 @@ export default function ExpenseRequestTable() {
       "Hold Remarks": toStr(row?.["Hold Remarks"]),
     });
     setOpenApprovalModal(true);
+  }
+
+  function openAccountsEdit(row) {
+    setSelectedRequest(row || null);
+    setAccountsForm({
+      requestId: row["Request ID"] || "",
+      headName: "Miscellaneous",
+      subcategory: "",
+      amount: row["Amount"] || "",
+      gstPct: "",
+      expenseDate: "",
+      details: row["Description"] || "",
+      paymentStatus: "Pending",
+      voucherNo: ""
+    });
+    setOpenAccountsModal(true);
+  }
+  
+  async function handleAccountsSync() {
+    if (!accountsForm.requestId) {
+      alert("Request ID missing.");
+      return;
+    }
+  
+    setSaving(true);
+    try {
+      await apiPost({
+        action: "syncExpenseRequestToCostLine",
+        data: {
+          requestId: accountsForm.requestId,
+          syncedBy: loggedInName,
+          headName: accountsForm.headName,
+          subcategory: accountsForm.subcategory,
+          amount: Number(accountsForm.amount || 0),
+          gstPct: Number(accountsForm.gstPct || 0),
+          expenseDate: accountsForm.expenseDate,
+          details: accountsForm.details,
+          paymentStatus: accountsForm.paymentStatus,
+          voucherNo: accountsForm.voucherNo
+        }
+      });
+  
+      setOpenAccountsModal(false);
+      setSelectedRequest(null);
+  
+      setTimeout(async () => {
+        await refreshAll();
+      }, 250);
+  
+      alert("Expense request synced to Cost Line Items.");
+    } catch (e) {
+      console.error("HANDLE_ACCOUNTS_SYNC_ERROR", e);
+      alert("Failed to sync expense request.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function saveApproval() {
@@ -806,7 +875,7 @@ export default function ExpenseRequestTable() {
                         </TableCell>
                         <TableCell>
                           <IconButton
-                            onClick={() => syncRequestToCostLine(r)}
+                            onClick={() => openAccountsEdit(r)}
                             title="Sync to Cost Line"
                             disabled={saving || alreadySynced}
                           >
@@ -1156,6 +1225,167 @@ export default function ExpenseRequestTable() {
               disabled={saving}
             >
               {saving ? "Saving…" : "Save"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+        {/* ================= ACCOUNTS EDIT & SYNC MODAL ================= */}
+        <Dialog
+          open={openAccountsModal}
+          onClose={() => setOpenAccountsModal(false)}
+          maxWidth="md"
+          fullWidth
+        >
+          <DialogTitle sx={{ fontWeight: 800 }}>Edit & Sync Expense</DialogTitle>
+        
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Request ID"
+                  value={selectedRequest?.["Request ID"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Raised By"
+                  value={selectedRequest?.["Raised By"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+        
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Particular"
+                  value={selectedRequest?.["Particular"] || ""}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+        
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Head Name"
+                  value={accountsForm.headName}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, headName: e.target.value }))
+                  }
+                />
+              </Grid>
+        
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Subcategory"
+                  value={accountsForm.subcategory}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, subcategory: e.target.value }))
+                  }
+                />
+              </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Amount"
+                  value={accountsForm.amount}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, amount: e.target.value }))
+                  }
+                />
+              </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="GST %"
+                  value={accountsForm.gstPct}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, gstPct: e.target.value }))
+                  }
+                />
+              </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Expense Date"
+                  type="date"
+                  InputLabelProps={{ shrink: true }}
+                  value={accountsForm.expenseDate}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, expenseDate: e.target.value }))
+                  }
+                />
+              </Grid>
+        
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Payment Status</InputLabel>
+                  <Select
+                    label="Payment Status"
+                    value={accountsForm.paymentStatus}
+                    onChange={(e) =>
+                      setAccountsForm((p) => ({ ...p, paymentStatus: e.target.value }))
+                    }
+                  >
+                    <MenuItem value="Pending">Pending</MenuItem>
+                    <MenuItem value="Partially Paid">Partially Paid</MenuItem>
+                    <MenuItem value="Paid">Paid</MenuItem>
+                    <MenuItem value="Hold/Disputed">Hold/Disputed</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+        
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Details"
+                  value={accountsForm.details}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, details: e.target.value }))
+                  }
+                  multiline
+                  minRows={2}
+                />
+              </Grid>
+        
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Voucher / Invoice No"
+                  value={accountsForm.voucherNo}
+                  onChange={(e) =>
+                    setAccountsForm((p) => ({ ...p, voucherNo: e.target.value }))
+                  }
+                />
+              </Grid>
+            </Grid>
+          </DialogContent>
+        
+          <DialogActions>
+            <Button onClick={() => setOpenAccountsModal(false)}>Cancel</Button>
+            <Button
+              variant="contained"
+              onClick={handleAccountsSync}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={saving}
+            >
+              {saving ? "Syncing…" : "Sync"}
             </Button>
           </DialogActions>
         </Dialog>

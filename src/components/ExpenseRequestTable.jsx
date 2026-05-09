@@ -24,6 +24,7 @@ import {
   TableContainer,
   Paper,
   Chip,
+  Checkbox,
   useMediaQuery,
   useTheme,
 } from "@mui/material";
@@ -36,6 +37,7 @@ import CurrencyRupeeIcon from "@mui/icons-material/CurrencyRupee";
 import EditIcon from "@mui/icons-material/Edit";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
 import CloseIcon from "@mui/icons-material/Close";
+import DoneAllIcon from "@mui/icons-material/DoneAll";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -214,6 +216,10 @@ export default function ExpenseRequestTable() {
   const [expenseRows, setExpenseRows] = useState([makeBlankExpenseRow()]);
   const [selectedRequest, setSelectedRequest] = useState(null);
 
+  // Bulk selections for approval/accounts queues
+  const [selectedApprovalRows, setSelectedApprovalRows] = useState([]);
+  const [selectedAccountsRows, setSelectedAccountsRows] = useState([]);
+
   const [approvalForm, setApprovalForm] = useState({
     requestId: "",
     approvalStatus: "Approved",
@@ -380,6 +386,95 @@ export default function ExpenseRequestTable() {
     });
   }
 
+  function toggleApprovalSelection(requestId) {
+    const id = toStr(requestId);
+    if (!id) return;
+
+    setSelectedApprovalRows((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function toggleAccountsSelection(requestId) {
+    const id = toStr(requestId);
+    if (!id) return;
+
+    setSelectedAccountsRows((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  }
+
+  function selectAllApprovalVisible() {
+    setSelectedApprovalRows(
+      (filteredApprovalQueue || []).map((r) => toStr(r["Request ID"])).filter(Boolean)
+    );
+  }
+
+  function clearApprovalSelection() {
+    setSelectedApprovalRows([]);
+  }
+
+  function selectAllAccountsVisible() {
+    setSelectedAccountsRows(
+      (filteredAccountsQueue || [])
+        .filter((r) => toStr(r["Synced To Cost Line"]).toLowerCase() !== "yes")
+        .map((r) => toStr(r["Request ID"]))
+        .filter(Boolean)
+    );
+  }
+
+  function clearAccountsSelection() {
+    setSelectedAccountsRows([]);
+  }
+
+  function openBulkApprovalModal() {
+    if (!selectedApprovalRows.length) {
+      alert("Please select at least one approval request.");
+      return;
+    }
+
+    setSelectedRequest(null);
+    setApprovalForm({
+      requestId: "",
+      approvalStatus: "Approved",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+      "Existing Cost Sheet ID": "",
+      "Existing Cost Sheet Name": "",
+      "Operations Remarks": "",
+      "Rejection Remarks": "",
+      "Hold Remarks": "",
+    });
+    setOpenApprovalModal(true);
+  }
+
+  function openBulkAccountsModal() {
+    if (!selectedAccountsRows.length) {
+      alert("Please select at least one accounts request.");
+      return;
+    }
+
+    setSelectedRequest(null);
+    setAccountsForm({
+      requestId: "",
+      headName: validation.heads?.[0] || "Miscellaneous",
+      subcategory: "",
+      amount: "",
+      gstPct: "",
+      expenseDate: "",
+      details: "",
+      paymentStatus: "Pending",
+      voucherNo: "",
+      "Linked Entity Type": "",
+      "Linked Entity ID": "",
+      "Linked Entity Name": "",
+      "Existing Cost Sheet ID": "",
+      "Existing Cost Sheet Name": "",
+    });
+    setOpenAccountsModal(true);
+  }
+
   async function submitExpenseRequestBatch() {
     const cleanedRows = (expenseRows || [])
       .map((r) => ({
@@ -443,6 +538,55 @@ export default function ExpenseRequestTable() {
     setOpenApprovalModal(true);
   }
 
+  async function handleBulkApproval() {
+    if (!selectedApprovalRows.length) {
+      alert("Please select at least one request.");
+      return;
+    }
+
+    if (!approvalForm.approvalStatus) {
+      alert("Please select Approval Status.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await apiPost({
+        action: "bulkUpdateExpenseRequestApproval",
+        data: {
+          requestIds: selectedApprovalRows,
+          approvalStatus: approvalForm.approvalStatus,
+          actionBy: loggedInName,
+          actionByEmail: loggedInEmail,
+          actionByRole: role,
+          "Linked Entity Type": approvalForm["Linked Entity Type"],
+          "Linked Entity ID": approvalForm["Linked Entity ID"],
+          "Linked Entity Name": approvalForm["Linked Entity Name"],
+          "Existing Cost Sheet ID": approvalForm["Existing Cost Sheet ID"],
+          "Existing Cost Sheet Name": approvalForm["Existing Cost Sheet Name"],
+          "Operations Remarks": approvalForm["Operations Remarks"],
+          "Rejection Remarks": approvalForm["Rejection Remarks"],
+          "Hold Remarks": approvalForm["Hold Remarks"],
+        },
+      });
+
+      setOpenApprovalModal(false);
+      setSelectedRequest(null);
+      clearApprovalSelection();
+
+      setTimeout(async () => {
+        await refreshAll();
+      }, 250);
+
+      alert(`${selectedApprovalRows.length} expense requests updated.`);
+    } catch (e) {
+      console.error("BULK_APPROVAL_ERROR", e);
+      alert("Failed to bulk update expense requests.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function saveApproval() {
     if (!approvalForm.requestId) {
       alert("Request ID missing.");
@@ -462,6 +606,8 @@ export default function ExpenseRequestTable() {
           requestId: approvalForm.requestId,
           approvalStatus: approvalForm.approvalStatus,
           actionBy: loggedInName,
+          actionByEmail: loggedInEmail,
+          actionByRole: role,
           "Linked Entity Type": approvalForm["Linked Entity Type"],
           "Linked Entity ID": approvalForm["Linked Entity ID"],
           "Linked Entity Name": approvalForm["Linked Entity Name"],
@@ -510,6 +656,63 @@ export default function ExpenseRequestTable() {
     setOpenAccountsModal(true);
   }
 
+  async function handleBulkAccountsSync() {
+    if (!selectedAccountsRows.length) {
+      alert("Please select at least one request.");
+      return;
+    }
+
+    const hasMapping =
+      toStr(accountsForm["Existing Cost Sheet ID"]) ||
+      toStr(accountsForm["Linked Entity ID"]) ||
+      toStr(accountsForm["Linked Entity Name"]);
+
+    if (!hasMapping) {
+      alert("Please select either an Existing Cost Sheet or a Linked Entity before bulk sync.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await apiPost({
+        action: "bulkSyncExpenseRequestsToCostLine",
+        data: {
+          requestIds: selectedAccountsRows,
+          syncedBy: loggedInName,
+          syncedByEmail: loggedInEmail,
+          syncedByRole: role,
+          headName: accountsForm.headName,
+          subcategory: accountsForm.subcategory,
+          gstPct: Number(accountsForm.gstPct || 0),
+          expenseDate: accountsForm.expenseDate,
+          details: accountsForm.details,
+          paymentStatus: accountsForm.paymentStatus,
+          voucherNo: accountsForm.voucherNo,
+          "Linked Entity Type": accountsForm["Linked Entity Type"],
+          "Linked Entity ID": accountsForm["Linked Entity ID"],
+          "Linked Entity Name": accountsForm["Linked Entity Name"],
+          "Existing Cost Sheet ID": accountsForm["Existing Cost Sheet ID"],
+          "Existing Cost Sheet Name": accountsForm["Existing Cost Sheet Name"],
+        },
+      });
+
+      setOpenAccountsModal(false);
+      setSelectedRequest(null);
+      clearAccountsSelection();
+
+      setTimeout(async () => {
+        await refreshAll();
+      }, 250);
+
+      alert(`${selectedAccountsRows.length} expense requests synced to Cost Line Items.`);
+    } catch (e) {
+      console.error("BULK_ACCOUNTS_SYNC_ERROR", e);
+      alert("Failed to bulk sync expense requests.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleAccountsSync() {
     if (!accountsForm.requestId) {
       alert("Request ID missing.");
@@ -523,6 +726,8 @@ export default function ExpenseRequestTable() {
         data: {
           requestId: accountsForm.requestId,
           syncedBy: loggedInName,
+          syncedByEmail: loggedInEmail,
+          syncedByRole: role,
           headName: accountsForm.headName,
           subcategory: accountsForm.subcategory,
           amount: Number(accountsForm.amount || 0),
@@ -891,7 +1096,42 @@ export default function ExpenseRequestTable() {
         {/* OPERATIONS QUEUE */}
         {isOperations ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
-            <Typography sx={{ fontWeight: 900, fontSize: 14, mb: 1 }}>Approval Queue</Typography>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1,
+                gap: 1,
+                flexWrap: "wrap",
+              }}
+            >
+              <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Approval Queue</Typography>
+
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+                <Chip
+                  label={`${selectedApprovalRows.length} selected`}
+                  size="small"
+                  sx={{ fontWeight: 700 }}
+                />
+                <Button size="small" variant="outlined" onClick={selectAllApprovalVisible}>
+                  Select All Visible
+                </Button>
+                <Button size="small" variant="outlined" onClick={clearApprovalSelection}>
+                  Clear
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<DoneAllIcon />}
+                  onClick={openBulkApprovalModal}
+                  disabled={!selectedApprovalRows.length || saving}
+                  sx={{ bgcolor: cornflowerBlue }}
+                >
+                  Bulk Review
+                </Button>
+              </Box>
+            </Box>
 
             {isMobile ? (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -903,9 +1143,16 @@ export default function ExpenseRequestTable() {
                       key={toStr(r["Request ID"]) || idx}
                       sx={{ p: 1.25, borderRadius: 2, border: "1px solid #eee" }}
                     >
-                      <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
-                        {toStr(r["Particular"]) || "-"}
-                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Checkbox
+                          size="small"
+                          checked={selectedApprovalRows.includes(toStr(r["Request ID"]))}
+                          onChange={() => toggleApprovalSelection(toStr(r["Request ID"]))}
+                        />
+                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                          {toStr(r["Particular"]) || "-"}
+                        </Typography>
+                      </Box>
                       <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.25 }}>
                         Request ID: {toStr(r["Request ID"]) || "-"}
                       </Typography>
@@ -962,6 +1209,22 @@ export default function ExpenseRequestTable() {
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={
+                            filteredApprovalQueue.length > 0 &&
+                            selectedApprovalRows.length === filteredApprovalQueue.length
+                          }
+                          indeterminate={
+                            selectedApprovalRows.length > 0 &&
+                            selectedApprovalRows.length < filteredApprovalQueue.length
+                          }
+                          onChange={(e) => {
+                            if (e.target.checked) selectAllApprovalVisible();
+                            else clearApprovalSelection();
+                          }}
+                        />
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
@@ -980,6 +1243,12 @@ export default function ExpenseRequestTable() {
 
                       return (
                         <TableRow key={toStr(r["Request ID"]) || idx} hover>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedApprovalRows.includes(toStr(r["Request ID"]))}
+                              onChange={() => toggleApprovalSelection(toStr(r["Request ID"]))}
+                            />
+                          </TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
@@ -1014,7 +1283,7 @@ export default function ExpenseRequestTable() {
 
                     {!filteredApprovalQueue.length ? (
                       <TableRow>
-                        <TableCell colSpan={9} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell colSpan={10} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No approval items found.
                         </TableCell>
                       </TableRow>
@@ -1029,7 +1298,42 @@ export default function ExpenseRequestTable() {
         {/* ACCOUNTS QUEUE */}
         {isAccounts ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
-            <Typography sx={{ fontWeight: 900, fontSize: 14, mb: 1 }}>Accounts Queue</Typography>
+            <Box
+              sx={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                mb: 1,
+                gap: 1,
+                flexWrap: "wrap",
+              }}
+            >
+              <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Accounts Queue</Typography>
+
+              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+                <Chip
+                  label={`${selectedAccountsRows.length} selected`}
+                  size="small"
+                  sx={{ fontWeight: 700 }}
+                />
+                <Button size="small" variant="outlined" onClick={selectAllAccountsVisible}>
+                  Select All Visible
+                </Button>
+                <Button size="small" variant="outlined" onClick={clearAccountsSelection}>
+                  Clear
+                </Button>
+                <Button
+                  size="small"
+                  variant="contained"
+                  startIcon={<SyncAltIcon />}
+                  onClick={openBulkAccountsModal}
+                  disabled={!selectedAccountsRows.length || saving}
+                  sx={{ bgcolor: cornflowerBlue }}
+                >
+                  Bulk Sync
+                </Button>
+              </Box>
+            </Box>
 
             {isMobile ? (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -1043,9 +1347,17 @@ export default function ExpenseRequestTable() {
                       key={toStr(r["Request ID"]) || idx}
                       sx={{ p: 1.25, borderRadius: 2, border: "1px solid #eee" }}
                     >
-                      <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
-                        {toStr(r["Particular"]) || "-"}
-                      </Typography>
+                      <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
+                        <Checkbox
+                          size="small"
+                          checked={selectedAccountsRows.includes(toStr(r["Request ID"]))}
+                          onChange={() => toggleAccountsSelection(toStr(r["Request ID"]))}
+                          disabled={alreadySynced}
+                        />
+                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                          {toStr(r["Particular"]) || "-"}
+                        </Typography>
+                      </Box>
                       <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.25 }}>
                         Request ID: {toStr(r["Request ID"]) || "-"}
                       </Typography>
@@ -1099,6 +1411,30 @@ export default function ExpenseRequestTable() {
                 <Table size="small">
                   <TableHead>
                     <TableRow sx={{ background: "#f6f9ff" }}>
+                      <TableCell padding="checkbox">
+                        <Checkbox
+                          checked={
+                            filteredAccountsQueue.filter(
+                              (r) => toStr(r["Synced To Cost Line"]).toLowerCase() !== "yes"
+                            ).length > 0 &&
+                            selectedAccountsRows.length ===
+                              filteredAccountsQueue.filter(
+                                (r) => toStr(r["Synced To Cost Line"]).toLowerCase() !== "yes"
+                              ).length
+                          }
+                          indeterminate={
+                            selectedAccountsRows.length > 0 &&
+                            selectedAccountsRows.length <
+                              filteredAccountsQueue.filter(
+                                (r) => toStr(r["Synced To Cost Line"]).toLowerCase() !== "yes"
+                              ).length
+                          }
+                          onChange={(e) => {
+                            if (e.target.checked) selectAllAccountsVisible();
+                            else clearAccountsSelection();
+                          }}
+                        />
+                      </TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
                       <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
@@ -1118,6 +1454,13 @@ export default function ExpenseRequestTable() {
 
                       return (
                         <TableRow key={toStr(r["Request ID"]) || idx} hover>
+                          <TableCell padding="checkbox">
+                            <Checkbox
+                              checked={selectedAccountsRows.includes(toStr(r["Request ID"]))}
+                              onChange={() => toggleAccountsSelection(toStr(r["Request ID"]))}
+                              disabled={alreadySynced}
+                            />
+                          </TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
@@ -1153,7 +1496,7 @@ export default function ExpenseRequestTable() {
 
                     {!filteredAccountsQueue.length ? (
                       <TableRow>
-                        <TableCell colSpan={8} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell colSpan={9} sx={{ fontSize: 12, opacity: 0.7 }}>
                           No approved account items found.
                         </TableCell>
                       </TableRow>
@@ -1325,7 +1668,7 @@ export default function ExpenseRequestTable() {
           fullWidth
           fullScreen={isMobile}
         >
-          <DialogTitle sx={{ fontWeight: 800 }}>Review Expense Request</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>{selectedApprovalRows.length && !selectedRequest ? `Bulk Review ${selectedApprovalRows.length} Requests` : "Review Expense Request"}</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12} md={6}>
@@ -1333,7 +1676,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Request ID"
-                  value={selectedRequest?.["Request ID"] || ""}
+                  value={selectedRequest?.["Request ID"] || (selectedApprovalRows.length ? `${selectedApprovalRows.length} selected` : "")}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1343,7 +1686,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Raised By"
-                  value={selectedRequest?.["Raised By"] || ""}
+                  value={selectedRequest?.["Raised By"] || (selectedApprovalRows.length ? "Bulk selection" : "")}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1519,7 +1862,7 @@ export default function ExpenseRequestTable() {
             </Button>
             <Button
               variant="contained"
-              onClick={saveApproval}
+              onClick={selectedApprovalRows.length && !selectedRequest ? handleBulkApproval : saveApproval}
               sx={{ bgcolor: cornflowerBlue }}
               disabled={saving}
               fullWidth={isMobile}
@@ -1537,7 +1880,7 @@ export default function ExpenseRequestTable() {
           fullWidth
           fullScreen={isMobile}
         >
-          <DialogTitle sx={{ fontWeight: 800 }}>Edit & Sync Expense</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>{selectedAccountsRows.length && !selectedRequest ? `Bulk Sync ${selectedAccountsRows.length} Requests` : "Edit & Sync Expense"}</DialogTitle>
 
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -1546,7 +1889,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Request ID"
-                  value={selectedRequest?.["Request ID"] || ""}
+                  value={selectedRequest?.["Request ID"] || (selectedAccountsRows.length ? `${selectedAccountsRows.length} selected` : "")}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1556,7 +1899,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Raised By"
-                  value={selectedRequest?.["Raised By"] || ""}
+                  value={selectedRequest?.["Raised By"] || (selectedAccountsRows.length ? "Bulk selection" : "")}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1761,7 +2104,7 @@ export default function ExpenseRequestTable() {
             </Button>
             <Button
               variant="contained"
-              onClick={handleAccountsSync}
+              onClick={selectedAccountsRows.length && !selectedRequest ? handleBulkAccountsSync : handleAccountsSync}
               sx={{ bgcolor: cornflowerBlue }}
               disabled={saving}
               fullWidth={isMobile}

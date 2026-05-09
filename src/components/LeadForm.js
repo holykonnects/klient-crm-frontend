@@ -12,6 +12,23 @@ function doGet() {
   return ContentService.createTextOutput(JSON.stringify(jsonData)).setMimeType(ContentService.MimeType.JSON);
 }
 
+function sanitizeLeadMobile_(value) {
+  const raw = String(value || '').trim();
+  let digits = raw.replace(/\D/g, '');
+
+  if (raw.indexOf('+91') === 0) {
+    digits = digits.slice(2);
+  } else if (digits.length > 10 && digits.indexOf('91') === 0) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length > 10) {
+    digits = digits.slice(-10);
+  }
+
+  return digits;
+}
+
 function doPost(e) {
   try {
     Logger.log('✅ doPost triggered');
@@ -38,6 +55,9 @@ function doPost(e) {
     fields.forEach(field => {
       if (field === 'Timestamp') {
         newRow.push(timestamp);
+      } else if (String(field).trim().toLowerCase() === 'mobile number') {
+        const mobile = sanitizeLeadMobile_(body[field]);
+        newRow.push(mobile ? "'" + mobile : '');
       } else {
         newRow.push(body[field] || '');
       }
@@ -58,7 +78,8 @@ function doPost(e) {
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, TextField, Button, Grid, MenuItem,
-  createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl
+  createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl,
+  InputAdornment
 } from '@mui/material';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
@@ -69,6 +90,35 @@ const theme = createTheme({
   }
 });
 
+const isMobileField = (field = '') =>
+  String(field).trim().toLowerCase() === 'mobile number';
+
+const normalizeLeadMobile = (value = '') => {
+  const raw = String(value || '').trim();
+  let digits = raw.replace(/\D/g, '');
+
+  if (raw.startsWith('+91')) {
+    digits = digits.slice(2);
+  } else if (digits.length > 10 && digits.startsWith('91')) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length > 10) {
+    digits = digits.slice(-10);
+  }
+
+  return digits.slice(0, 10);
+};
+
+const sanitizeMobileFields = (values = {}) => {
+  const cleaned = { ...values };
+  Object.keys(cleaned).forEach((key) => {
+    if (isMobileField(key)) {
+      cleaned[key] = normalizeLeadMobile(cleaned[key]);
+    }
+  });
+  return cleaned;
+};
 
 function LeadForm() {
   const [fields, setFields] = useState([]);
@@ -126,7 +176,7 @@ function LeadForm() {
     const { name, value } = e.target;
     setFormValues(prev => ({
       ...prev,
-      [name]: value
+      [name]: isMobileField(name) ? normalizeLeadMobile(value) : value
     }));
   };
 
@@ -138,9 +188,9 @@ function LeadForm() {
   const isBlank = (v) => v == null || String(v).trim() === '';
 
   // Trim everything first
-  const trimmedValues = Object.fromEntries(
+  const trimmedValues = sanitizeMobileFields(Object.fromEntries(
     Object.entries(formValues).map(([k, v]) => [k, isBlank(v) ? '' : String(v).trim()])
-  );
+  ));
 
   // 1) Block completely empty submissions (ignores "Timestamp" if present)
   const keysExclTimestamp = Object.keys(trimmedValues).filter(
@@ -159,6 +209,13 @@ function LeadForm() {
   const leadOwnerVal = trimmedValues[leadOwnerKey];
   if (isBlank(leadOwnerVal)) {
     alert('⚠️ Lead Owner is required.');
+    setSubmitting(false);
+    return;
+  }
+
+  const mobileKey = fields.find((h) => isMobileField(h));
+  if (mobileKey && !isBlank(trimmedValues[mobileKey]) && trimmedValues[mobileKey].length !== 10) {
+    alert('⚠️ Please enter a valid 10 digit mobile number. Do not include +91.');
     setSubmitting(false);
     return;
   }
@@ -236,6 +293,16 @@ function LeadForm() {
                     value={formValues[field]}
                     onChange={handleChange}
                     size="small"
+                    type={isMobileField(field) ? 'tel' : 'text'}
+                    helperText={isMobileField(field) ? 'Enter 10 digit mobile number. +91 is removed automatically.' : ''}
+                    InputProps={isMobileField(field) ? {
+                      startAdornment: <InputAdornment position="start">+91</InputAdornment>
+                    } : undefined}
+                    inputProps={isMobileField(field) ? {
+                      maxLength: 10,
+                      inputMode: 'numeric',
+                      pattern: '[0-9]*'
+                    } : undefined}
                   />
                 )}
               </Grid>

@@ -36,6 +36,7 @@ import { useAuth } from "./AuthContext"; // adjust path if needed
 import "@fontsource/montserrat";
 import LoadingOverlay from "./LoadingOverlay"; // Adjust path if needed
 import CalendarView from "./CalendarView"; // adjust path if needed
+import MobileActionMenu from "./MobileActionMenu";
 
 const theme = createTheme({
   typography: {
@@ -47,6 +48,11 @@ const theme = createTheme({
 const selectorStyle = {
   fontFamily: "Montserrat, sans-serif",
   fontSize: 8,
+};
+
+const isMobileColumn = (key = "") => {
+  const normalizedKey = String(key || "").toLowerCase();
+  return normalizedKey.includes("mobile") || normalizedKey.includes("phone");
 };
 
 /**
@@ -88,7 +94,13 @@ const AccountsGrid = React.memo(function AccountsGrid({
         {rows.map((acc, index) => (
           <TableRow key={index}>
             {visibleColumns.map((col, i) => (
-              <TableCell key={i}>{acc[col]}</TableCell>
+              <TableCell key={i}>
+                {isMobileColumn(col) ? (
+                  <MobileActionMenu mobile={acc[col]} />
+                ) : (
+                  acc[col]
+                )}
+              </TableCell>
             ))}
 
             <TableCell>

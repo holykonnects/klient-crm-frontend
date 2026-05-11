@@ -28,6 +28,7 @@ import { useAuth } from './AuthContext';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import CalendarView from './CalendarView';
+import MobileActionMenu from './MobileActionMenu';
 
 /* ---------- small debounce helper (no extra deps) ---------- */
 function useDebouncedValue(value, delay = 250) {
@@ -49,6 +50,11 @@ const normalizeUrl = (val = '') => {
   return /^https?:\/\//i.test(v) ? v : `https://${v}`;
 };
 const displayUrl = (val = '') => String(val).trim().replace(/^https?:\/\//i, '');
+
+const isMobileColumn = (key = '') => {
+  const normalizedKey = String(key || '').toLowerCase();
+  return normalizedKey.includes('mobile') || normalizedKey.includes('phone');
+};
 
 /* ---------- date/sort helpers ---------- */
 const safeDate = (v) => {
@@ -498,6 +504,13 @@ const LeadsTable = () => {
                 </TableCell>
               );
             }
+            if (isMobileColumn(key)) {
+              return (
+                <TableCell key={i}>
+                  <MobileActionMenu mobile={value} />
+                </TableCell>
+              );
+            }
             return <TableCell key={i}>{value}</TableCell>;
           })}
           <TableCell>
@@ -655,7 +668,16 @@ const LeadsTable = () => {
             <Grid container spacing={2}>
               {viewRow && Object.entries(viewRow).map(([key, value]) => (
                 <Grid item xs={6} key={key}>
-                  {key === 'Quotation Link' && looksLikeUrl(value) ? (
+                  {isMobileColumn(key) ? (
+                    <Box>
+                      <Typography variant="caption" sx={{ fontFamily: 'Montserrat, sans-serif', color: 'text.secondary' }}>
+                        {key}
+                      </Typography>
+                      <Box mt={0.75}>
+                        <MobileActionMenu mobile={value} />
+                      </Box>
+                    </Box>
+                  ) : key === 'Quotation Link' && looksLikeUrl(value) ? (
                     <MUILink
                       href={normalizeUrl(value)}
                       target="_blank"
@@ -719,6 +741,13 @@ const LeadsTable = () => {
                               >
                                 {displayUrl(val)}
                               </MUILink>
+                            </TableCell>
+                          );
+                        }
+                        if (isMobileColumn(col)) {
+                          return (
+                            <TableCell key={col}>
+                              <MobileActionMenu mobile={val} />
                             </TableCell>
                           );
                         }

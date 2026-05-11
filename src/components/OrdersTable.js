@@ -39,6 +39,7 @@ import "@fontsource/montserrat";
 
 import LoadingOverlay from "./LoadingOverlay";
 import { useAuth } from "./AuthContext";
+import MobileActionMenu from "./MobileActionMenu";
 
 const theme = createTheme({
   typography: {
@@ -53,6 +54,11 @@ const selectorStyle = {
 };
 
 const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
+
+const isMobileColumn = (key = "") => {
+  const normalizedKey = String(key || "").toLowerCase();
+  return normalizedKey.includes("mobile") || normalizedKey.includes("phone");
+};
 
 /**
  * ✅ DealsTable-style robust timestamp parser.
@@ -330,6 +336,9 @@ function OrdersTable() {
           Open
         </a>
       );
+    }
+    if (isMobileColumn(col)) {
+      return <MobileActionMenu mobile={value} />;
     }
     return value || "";
   };

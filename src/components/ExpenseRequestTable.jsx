@@ -321,8 +321,8 @@ export default function ExpenseRequestTable() {
   }, [approvalQueue, accountsQueue, requests]);
 
   const compactCellSx = {
-    fontSize: 12,
-    maxWidth: 260,
+    fontSize: 11,
+    maxWidth: 240,
     whiteSpace: "nowrap",
     overflow: "hidden",
     textOverflow: "ellipsis",
@@ -339,10 +339,19 @@ export default function ExpenseRequestTable() {
 
   const sectionActionBarSx = {
     display: "flex",
-    gap: 1,
+    gap: 0.75,
     flexWrap: "wrap",
     alignItems: "center",
-    justifyContent: isMobile ? "stretch" : "flex-end",
+    justifyContent: isMobile ? "flex-start" : "flex-end",
+    ml: "auto",
+  };
+
+  const collapseIconSx = {
+    border: "1px solid #d9e4ff",
+    bgcolor: "#fff",
+    width: 30,
+    height: 30,
+    "&:hover": { bgcolor: "#f6f9ff" },
   };
 
   const sectionFilterBarSx = {
@@ -1027,7 +1036,7 @@ export default function ExpenseRequestTable() {
               </Typography>
 
               {loading ? (
-                <Typography sx={{ fontSize: 12, opacity: 0.7, ml: 1 }}>Loading…</Typography>
+                <Typography sx={{ fontSize: 11, opacity: 0.7, ml: 1 }}>Loading…</Typography>
               ) : null}
             </Box>
           </Box>
@@ -1076,15 +1085,21 @@ export default function ExpenseRequestTable() {
         {/* MY REQUESTS */}
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
           <Box sx={sectionHeaderSx}>
-            <Typography sx={{ fontWeight: 900, fontSize: 14 }}>My Requests</Typography>
-            <Button
-              size="small"
-              variant="text"
-              startIcon={isMyRequestsCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
-              onClick={() => setIsMyRequestsCollapsed((v) => !v)}
-            >
-              {isMyRequestsCollapsed ? "Maximize" : "Minimize"}
-            </Button>
+            <Typography sx={{ fontWeight: 900, fontSize: 13 }}>My Requests</Typography>
+            <Box sx={{ ml: "auto" }}>
+              <IconButton
+                size="small"
+                onClick={() => setIsMyRequestsCollapsed((v) => !v)}
+                sx={collapseIconSx}
+                title={isMyRequestsCollapsed ? "Expand section" : "Collapse section"}
+              >
+                {isMyRequestsCollapsed ? (
+                  <KeyboardArrowDownIcon fontSize="small" />
+                ) : (
+                  <KeyboardArrowUpIcon fontSize="small" />
+                )}
+              </IconButton>
+            </Box>
           </Box>
 
           <Box sx={{ display: isMyRequestsCollapsed ? "none" : "block" }}>
@@ -1129,23 +1144,23 @@ export default function ExpenseRequestTable() {
                       border: "1px solid #eee",
                     }}
                   >
-                    <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                    <Typography sx={{ fontWeight: 800, fontSize: 11 }}>
                       {toStr(r["Particular"]) || "-"}
                     </Typography>
 
-                    <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.25 }}>
+                    <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.25 }}>
                       Request ID: {toStr(r["Request ID"]) || "-"}
                     </Typography>
 
-                    <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                    <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                       Batch ID: {toStr(r["Batch ID"]) || "-"}
                     </Typography>
 
-                    <Typography sx={{ fontSize: 12, mt: 0.5 }}>
+                    <Typography sx={{ fontSize: 11, mt: 0.5 }}>
                       ₹ {fmtINR(safeNum(r["Amount"]))}
                     </Typography>
 
-                    <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
+                    <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
                       {compactDescription(r["Description"])}
                     </Typography>
 
@@ -1180,7 +1195,7 @@ export default function ExpenseRequestTable() {
               })}
 
               {!filteredMyRequests.length ? (
-                <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                   No expense requests found.
                 </Typography>
               ) : null}
@@ -1190,15 +1205,15 @@ export default function ExpenseRequestTable() {
               <Table size="small">
                 <TableHead>
                   <TableRow sx={{ background: "#f6f9ff" }}>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Batch ID</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Description</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Amount</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Approval</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Attribution</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Synced</TableCell>
-                    <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Timestamp</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Batch ID</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Request ID</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Particular</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Description</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Amount</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Approval</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Attribution</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Synced</TableCell>
+                    <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Timestamp</TableCell>
                   </TableRow>
                 </TableHead>
 
@@ -1209,12 +1224,12 @@ export default function ExpenseRequestTable() {
 
                     return (
                       <TableRow key={toStr(r["Request ID"]) || idx} hover>
-                        <TableCell sx={{ fontSize: 12 }}>{toStr(r["Batch ID"])}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>{toStr(r["Batch ID"])}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>{toStr(r["Request ID"])}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>{toStr(r["Particular"])}</TableCell>
                         <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>
+                        <TableCell sx={{ fontSize: 11 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>
                           <Chip
                             size="small"
                             label={toStr(r["Approval Status"]) || "-"}
@@ -1226,8 +1241,8 @@ export default function ExpenseRequestTable() {
                             }}
                           />
                         </TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>{toStr(r["Attribution Status"]) || "-"}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>
+                        <TableCell sx={{ fontSize: 11 }}>{toStr(r["Attribution Status"]) || "-"}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>
                           <Chip
                             size="small"
                             label={toStr(r["Synced To Cost Line"]) || "-"}
@@ -1239,14 +1254,14 @@ export default function ExpenseRequestTable() {
                             }}
                           />
                         </TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>{String(r["Timestamp"] || "")}</TableCell>
+                        <TableCell sx={{ fontSize: 11 }}>{String(r["Timestamp"] || "")}</TableCell>
                       </TableRow>
                     );
                   })}
 
                   {!filteredMyRequests.length ? (
                     <TableRow>
-                      <TableCell colSpan={9} sx={{ fontSize: 12, opacity: 0.7 }}>
+                      <TableCell colSpan={9} sx={{ fontSize: 11, opacity: 0.7 }}>
                         No expense requests found.
                       </TableCell>
                     </TableRow>
@@ -1262,17 +1277,10 @@ export default function ExpenseRequestTable() {
         {isOperations ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
             <Box sx={sectionHeaderSx}>
-              <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Approval Queue</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: 13 }}>Approval Queue</Typography>
 
               <Box sx={sectionActionBarSx}>
-                <Button
-                  size="small"
-                  variant="text"
-                  startIcon={isApprovalQueueCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
-                  onClick={() => setIsApprovalQueueCollapsed((v) => !v)}
-                >
-                  {isApprovalQueueCollapsed ? "Maximize" : "Minimize"}
-                </Button>
+
                 <Chip
                   label={`${selectedApprovalRows.length} selected`}
                   size="small"
@@ -1294,6 +1302,18 @@ export default function ExpenseRequestTable() {
                 >
                   Bulk Review
                 </Button>
+                <IconButton
+                  size="small"
+                  onClick={() => setIsApprovalQueueCollapsed((v) => !v)}
+                  sx={collapseIconSx}
+                  title={isApprovalQueueCollapsed ? "Expand section" : "Collapse section"}
+                >
+                  {isApprovalQueueCollapsed ? (
+                    <KeyboardArrowDownIcon fontSize="small" />
+                  ) : (
+                    <KeyboardArrowUpIcon fontSize="small" />
+                  )}
+                </IconButton>
               </Box>
             </Box>
 
@@ -1340,26 +1360,26 @@ export default function ExpenseRequestTable() {
                           checked={selectedApprovalRows.includes(toStr(r["Request ID"]))}
                           onChange={() => toggleApprovalSelection(toStr(r["Request ID"]))}
                         />
-                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                        <Typography sx={{ fontWeight: 800, fontSize: 11 }}>
                           {toStr(r["Particular"]) || "-"}
                         </Typography>
                       </Box>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.25 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.25 }}>
                         Request ID: {toStr(r["Request ID"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                         Raised By: {toStr(r["Raised By"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, mt: 0.5 }}>
+                      <Typography sx={{ fontSize: 11, mt: 0.5 }}>
                         ₹ {fmtINR(safeNum(r["Amount"]))}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
                         {compactDescription(r["Description"])}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.5 }}>
                         Linked Entity: {toStr(r["Linked Entity Name"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                         Cost Sheet: {toStr(r["Existing Cost Sheet Name"]) || "-"}
                       </Typography>
 
@@ -1390,7 +1410,7 @@ export default function ExpenseRequestTable() {
                 })}
 
                 {!filteredApprovalQueue.length ? (
-                  <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                  <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                     No approval items found.
                   </Typography>
                 ) : null}
@@ -1416,15 +1436,15 @@ export default function ExpenseRequestTable() {
                           }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Description</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Amount</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Approval</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Linked Entity</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Cost Sheet</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Request ID</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Raised By</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Particular</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Description</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Amount</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Approval</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Linked Entity</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Cost Sheet</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Action</TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1440,12 +1460,12 @@ export default function ExpenseRequestTable() {
                               onChange={() => toggleApprovalSelection(toStr(r["Request ID"]))}
                             />
                           </TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Request ID"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Raised By"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Particular"])}</TableCell>
                           <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>
+                          <TableCell sx={{ fontSize: 11 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>
                             <Chip
                               size="small"
                               label={toStr(r["Approval Status"]) || "-"}
@@ -1457,8 +1477,8 @@ export default function ExpenseRequestTable() {
                               }}
                             />
                           </TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
                           <TableCell>
                             <IconButton
                               onClick={() => openApprovalForRow(r)}
@@ -1474,7 +1494,7 @@ export default function ExpenseRequestTable() {
 
                     {!filteredApprovalQueue.length ? (
                       <TableRow>
-                        <TableCell colSpan={10} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell colSpan={10} sx={{ fontSize: 11, opacity: 0.7 }}>
                           No approval items found.
                         </TableCell>
                       </TableRow>
@@ -1491,17 +1511,10 @@ export default function ExpenseRequestTable() {
         {isAccounts ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
             <Box sx={sectionHeaderSx}>
-              <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Accounts Queue</Typography>
+              <Typography sx={{ fontWeight: 900, fontSize: 13 }}>Accounts Queue</Typography>
 
               <Box sx={sectionActionBarSx}>
-                <Button
-                  size="small"
-                  variant="text"
-                  startIcon={isAccountsQueueCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
-                  onClick={() => setIsAccountsQueueCollapsed((v) => !v)}
-                >
-                  {isAccountsQueueCollapsed ? "Maximize" : "Minimize"}
-                </Button>
+
                 <Chip
                   label={`${selectedAccountsRows.length} selected`}
                   size="small"
@@ -1523,6 +1536,18 @@ export default function ExpenseRequestTable() {
                 >
                   Bulk Sync
                 </Button>
+                <IconButton
+                  size="small"
+                  onClick={() => setIsAccountsQueueCollapsed((v) => !v)}
+                  sx={collapseIconSx}
+                  title={isAccountsQueueCollapsed ? "Expand section" : "Collapse section"}
+                >
+                  {isAccountsQueueCollapsed ? (
+                    <KeyboardArrowDownIcon fontSize="small" />
+                  ) : (
+                    <KeyboardArrowUpIcon fontSize="small" />
+                  )}
+                </IconButton>
               </Box>
             </Box>
 
@@ -1572,23 +1597,23 @@ export default function ExpenseRequestTable() {
                           onChange={() => toggleAccountsSelection(toStr(r["Request ID"]))}
                           disabled={alreadySynced}
                         />
-                        <Typography sx={{ fontWeight: 800, fontSize: 13 }}>
+                        <Typography sx={{ fontWeight: 800, fontSize: 11 }}>
                           {toStr(r["Particular"]) || "-"}
                         </Typography>
                       </Box>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.25 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.25 }}>
                         Request ID: {toStr(r["Request ID"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                         Raised By: {toStr(r["Raised By"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, mt: 0.5 }}>
+                      <Typography sx={{ fontSize: 11, mt: 0.5 }}>
                         ₹ {fmtINR(safeNum(r["Amount"]))}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8, mt: 0.5 }}>
                         Linked Entity: {toStr(r["Linked Entity Name"]) || "-"}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                         Cost Sheet: {toStr(r["Existing Cost Sheet Name"]) || "-"}
                       </Typography>
 
@@ -1619,7 +1644,7 @@ export default function ExpenseRequestTable() {
                 })}
 
                 {!filteredAccountsQueue.length ? (
-                  <Typography sx={{ fontSize: 12, opacity: 0.7 }}>
+                  <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                     No approved account items found.
                   </Typography>
                 ) : null}
@@ -1653,14 +1678,14 @@ export default function ExpenseRequestTable() {
                           }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Amount</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Linked Entity</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Cost Sheet</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Synced</TableCell>
-                      <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Request ID</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Raised By</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Particular</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Amount</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Linked Entity</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Cost Sheet</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Synced</TableCell>
+                      <TableCell sx={{ fontWeight: 800, fontSize: 11 }}>Action</TableCell>
                     </TableRow>
                   </TableHead>
 
@@ -1679,13 +1704,13 @@ export default function ExpenseRequestTable() {
                               disabled={alreadySynced}
                             />
                           </TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Request ID"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Raised By"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Particular"])}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
+                          <TableCell sx={{ fontSize: 11 }}>
                             <Chip
                               size="small"
                               label={toStr(r["Synced To Cost Line"]) || "-"}
@@ -1714,7 +1739,7 @@ export default function ExpenseRequestTable() {
 
                     {!filteredAccountsQueue.length ? (
                       <TableRow>
-                        <TableCell colSpan={9} sx={{ fontSize: 12, opacity: 0.7 }}>
+                        <TableCell colSpan={9} sx={{ fontSize: 11, opacity: 0.7 }}>
                           No approved account items found.
                         </TableCell>
                       </TableRow>
@@ -1748,8 +1773,8 @@ export default function ExpenseRequestTable() {
                     bgcolor: "#fbfcff",
                   }}
                 >
-                  <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Batch Summary</Typography>
-                  <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                  <Typography sx={{ fontWeight: 900, fontSize: 11 }}>Batch Summary</Typography>
+                  <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                     Line items: {expenseRows.length} | Total: ₹ {fmtINR(expenseTotal)}
                   </Typography>
                 </Paper>
@@ -1777,7 +1802,7 @@ export default function ExpenseRequestTable() {
                           mb: 1,
                         }}
                       >
-                        <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                        <Typography sx={{ fontWeight: 900, fontSize: 11 }}>
                           Item #{idx + 1}
                         </Typography>
 
@@ -1910,10 +1935,10 @@ export default function ExpenseRequestTable() {
                     }}
                   >
                     <Box>
-                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                      <Typography sx={{ fontWeight: 900, fontSize: 11 }}>
                         Selected Requests: {bulkApprovalRows.length}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                      <Typography sx={{ fontSize: 11, opacity: 0.8 }}>
                         Total selected value: ₹ {fmtINR(bulkApprovalTotal)}
                       </Typography>
                     </Box>
@@ -1949,7 +1974,7 @@ export default function ExpenseRequestTable() {
                         sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc" }}
                       >
                         <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, mb: 1 }}>
-                          <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                          <Typography sx={{ fontWeight: 900, fontSize: 11 }}>
                             {row.requestId} | {row.raisedBy || "-"}
                           </Typography>
                           <IconButton size="small" onClick={() => removeBulkApprovalRow(row.requestId)}>
@@ -2017,21 +2042,21 @@ export default function ExpenseRequestTable() {
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow sx={{ background: "#f6f9ff" }}>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 120 }}>Request ID</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 130 }}>Raised By</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 140 }}>Action</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 190 }}>Particular</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 260 }}>Description</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 110 }}>Amount</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 190 }}>Row Remarks</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 130 }}>Remove</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 120 }}>Request ID</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 130 }}>Raised By</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 140 }}>Action</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 190 }}>Particular</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 260 }}>Description</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 110 }}>Amount</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 190 }}>Row Remarks</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 11, minWidth: 130 }}>Remove</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
                         {(bulkApprovalRows || []).map((row) => (
                           <TableRow key={row.requestId} hover>
-                            <TableCell sx={{ fontSize: 12 }}>{row.requestId}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{row.raisedBy || "-"}</TableCell>
+                            <TableCell sx={{ fontSize: 11 }}>{row.requestId}</TableCell>
+                            <TableCell sx={{ fontSize: 11 }}>{row.raisedBy || "-"}</TableCell>
                             <TableCell>
                               <FormControl fullWidth size="small">
                                 <Select
@@ -2091,7 +2116,7 @@ export default function ExpenseRequestTable() {
                         ))}
                         {!bulkApprovalRows.length ? (
                           <TableRow>
-                            <TableCell colSpan={8} sx={{ fontSize: 12, opacity: 0.7 }}>
+                            <TableCell colSpan={8} sx={{ fontSize: 11, opacity: 0.7 }}>
                               No selected requests found.
                             </TableCell>
                           </TableRow>
@@ -2104,7 +2129,7 @@ export default function ExpenseRequestTable() {
 
               <Grid item xs={12}>
                 <Divider sx={{ my: 1 }} />
-                <Typography sx={{ fontWeight: 900, fontSize: 13, mb: 1 }}>
+                <Typography sx={{ fontWeight: 900, fontSize: 11, mb: 1 }}>
                   Common Mapping / Attribution
                 </Typography>
               </Grid>

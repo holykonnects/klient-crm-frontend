@@ -208,9 +208,11 @@ export default function ExpenseRequestTable() {
   const [search, setSearch] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("");
   const [syncFilter, setSyncFilter] = useState("");
+  const [raisedByFilter, setRaisedByFilter] = useState("");
 
   const [openAddModal, setOpenAddModal] = useState(false);
   const [openApprovalModal, setOpenApprovalModal] = useState(false);
+  const [openBulkApprovalReviewModal, setOpenBulkApprovalReviewModal] = useState(false);
   const [openAccountsModal, setOpenAccountsModal] = useState(false);
 
   const [expenseRows, setExpenseRows] = useState([makeBlankExpenseRow()]);
@@ -295,6 +297,17 @@ export default function ExpenseRequestTable() {
   const expenseTotal = useMemo(() => {
     return (expenseRows || []).reduce((acc, r) => acc + safeNum(r.amount), 0);
   }, [expenseRows]);
+
+  const raisedByOptions = useMemo(() => {
+    const rows = [...(approvalQueue || []), ...(accountsQueue || []), ...(requests || [])];
+    return Array.from(new Set(rows.map((r) => toStr(r["Raised By"])).filter(Boolean))).sort();
+  }, [approvalQueue, accountsQueue, requests]);
+
+  const selectedApprovalRequestRows = useMemo(() => {
+    return (approvalQueue || []).filter((r) =>
+      selectedApprovalRows.includes(toStr(r["Request ID"]))
+    );
+  }, [approvalQueue, selectedApprovalRows]);
 
   function subcatsForHead(head) {
     const m = validation.subcategories || {};
@@ -446,7 +459,7 @@ export default function ExpenseRequestTable() {
       "Rejection Remarks": "",
       "Hold Remarks": "",
     });
-    setOpenApprovalModal(true);
+    setOpenBulkApprovalReviewModal(true);
   }
 
   function openBulkAccountsModal() {
@@ -570,7 +583,7 @@ export default function ExpenseRequestTable() {
         },
       });
 
-      setOpenApprovalModal(false);
+      setOpenBulkApprovalReviewModal(false);
       setSelectedRequest(null);
       clearApprovalSelection();
 
@@ -798,6 +811,10 @@ export default function ExpenseRequestTable() {
         !approvalStatusFilter ||
         toStr(r["Approval Status"]).toLowerCase() === approvalStatusFilter.toLowerCase();
 
+      const raisedByOk =
+        !raisedByFilter ||
+        toStr(r["Raised By"]).toLowerCase() === raisedByFilter.toLowerCase();
+
       const hay = [
         r["Request ID"],
         r["Raised By"],
@@ -811,9 +828,9 @@ export default function ExpenseRequestTable() {
         .toLowerCase();
 
       const qOk = !q || hay.includes(q);
-      return approvalOk && qOk;
+      return approvalOk && raisedByOk && qOk;
     });
-  }, [approvalQueue, search, approvalStatusFilter]);
+  }, [approvalQueue, search, approvalStatusFilter, raisedByFilter]);
 
   const filteredAccountsQueue = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -822,6 +839,10 @@ export default function ExpenseRequestTable() {
       const syncOk =
         !syncFilter ||
         toStr(r["Synced To Cost Line"]).toLowerCase() === syncFilter.toLowerCase();
+
+      const raisedByOk =
+        !raisedByFilter ||
+        toStr(r["Raised By"]).toLowerCase() === raisedByFilter.toLowerCase();
 
       const hay = [
         r["Request ID"],
@@ -836,9 +857,9 @@ export default function ExpenseRequestTable() {
         .toLowerCase();
 
       const qOk = !q || hay.includes(q);
-      return syncOk && qOk;
+      return syncOk && raisedByOk && qOk;
     });
-  }, [accountsQueue, search, syncFilter]);
+  }, [accountsQueue, search, syncFilter, raisedByFilter]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -903,6 +924,26 @@ export default function ExpenseRequestTable() {
               onChange={(e) => setSearch(e.target.value)}
               sx={{ minWidth: isMobile ? "100%" : 240 }}
             />
+
+            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 180 }}>
+              <InputLabel>Raised By</InputLabel>
+              <Select
+                value={raisedByFilter}
+                label="Raised By"
+                onChange={(e) => {
+                  setRaisedByFilter(e.target.value);
+                  clearApprovalSelection();
+                  clearAccountsSelection();
+                }}
+              >
+                <MenuItem value="">All</MenuItem>
+                {raisedByOptions.map((name) => (
+                  <MenuItem key={name} value={name}>
+                    {name}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 180 }}>
               <InputLabel>Approval Status</InputLabel>
@@ -1660,6 +1701,278 @@ export default function ExpenseRequestTable() {
           </DialogActions>
         </Dialog>
 
+        {/* ================= BULK APPROVAL REVIEW MODAL ================= */}
+        <Dialog
+          open={openBulkApprovalReviewModal}
+          onClose={() => setOpenBulkApprovalReviewModal(false)}
+          maxWidth="lg"
+          fullWidth
+          fullScreen={isMobile}
+        >
+          <DialogTitle sx={{ fontWeight: 800 }}>
+            Bulk Review Expense Requests
+          </DialogTitle>
+
+          <DialogContent dividers>
+            <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
+              <Grid item xs={12}>
+                <Paper
+                  variant="outlined"
+                  sx={{ p: 1.25, borderRadius: 2, bgcolor: "#fbfcff", borderColor: "#e9eefc" }}
+                >
+                  <Typography sx={{ fontWeight: 900, fontSize: 13 }}>
+                    Selected Requests: {selectedApprovalRequestRows.length}
+                  </Typography>
+                  <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
+                    Review the selected requests below, then apply one common action and mapping.
+                  </Typography>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                {isMobile ? (
+                  <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
+                    {selectedApprovalRequestRows.map((r) => {
+                      const approvalChip = statusChipColor(r["Approval Status"]);
+                      return (
+                        <Paper
+                          key={toStr(r["Request ID"])}
+                          variant="outlined"
+                          sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc" }}
+                        >
+                          <Typography sx={{ fontWeight: 900, fontSize: 13 }}>
+                            {toStr(r["Particular"]) || "-"}
+                          </Typography>
+                          <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                            Request ID: {toStr(r["Request ID"]) || "-"}
+                          </Typography>
+                          <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                            Raised By: {toStr(r["Raised By"]) || "-"}
+                          </Typography>
+                          <Typography sx={{ fontSize: 12 }}>
+                            ₹ {fmtINR(safeNum(r["Amount"]))}
+                          </Typography>
+                          <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
+                            {toStr(r["Description"]) || "-"}
+                          </Typography>
+                          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 1 }}>
+                            <Chip
+                              size="small"
+                              label={toStr(r["Approval Status"]) || "-"}
+                              sx={{
+                                bgcolor: approvalChip.bg,
+                                color: approvalChip.color,
+                                border: `1px solid ${approvalChip.border}`,
+                                fontWeight: 700,
+                              }}
+                            />
+                            <Chip size="small" label={`Linked: ${toStr(r["Linked Entity Name"]) || "-"}`} />
+                            <Chip size="small" label={`Cost Sheet: ${toStr(r["Existing Cost Sheet Name"]) || "-"}`} />
+                          </Box>
+                        </Paper>
+                      );
+                    })}
+                  </Box>
+                ) : (
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow sx={{ background: "#f6f9ff" }}>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Description</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Amount</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Current Status</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Linked Entity</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Cost Sheet</TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {selectedApprovalRequestRows.map((r) => (
+                          <TableRow key={toStr(r["Request ID"])} hover>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Description"])}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Approval Status"]) || "-"}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
+                          </TableRow>
+                        ))}
+                        {!selectedApprovalRequestRows.length ? (
+                          <TableRow>
+                            <TableCell colSpan={8} sx={{ fontSize: 12, opacity: 0.7 }}>
+                              No selected requests found.
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                )}
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small">
+                  <InputLabel>Bulk Action</InputLabel>
+                  <Select
+                    label="Bulk Action"
+                    value={approvalForm.approvalStatus}
+                    onChange={(e) =>
+                      setApprovalForm((p) => ({ ...p, approvalStatus: e.target.value }))
+                    }
+                  >
+                    {["Approved", "Rejected", "On Hold"].map((s) => (
+                      <MenuItem key={s} value={s}>
+                        {s}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Selected Count"
+                  value={selectedApprovalRequestRows.length}
+                  InputProps={{ readOnly: true }}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Autocomplete
+                  size="small"
+                  options={linkedEntityOptions}
+                  value={selectedApprovalLinkedEntityOption}
+                  isOptionEqualToValue={(a, b) =>
+                    toStr(a?.linkedEntityType) === toStr(b?.linkedEntityType) &&
+                    toStr(a?.linkedEntityId) === toStr(b?.linkedEntityId) &&
+                    toStr(a?.linkedEntityName) === toStr(b?.linkedEntityName)
+                  }
+                  getOptionLabel={getLinkedEntityDisplayLabel}
+                  onChange={(_, picked) => {
+                    setApprovalForm((p) => ({
+                      ...p,
+                      "Linked Entity Type": picked?.linkedEntityType || "",
+                      "Linked Entity ID": picked?.linkedEntityId || "",
+                      "Linked Entity Name": picked?.linkedEntityName || "",
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Linked Entity / Site (Search)" />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Autocomplete
+                  size="small"
+                  options={costSheetOptions}
+                  value={selectedApprovalCostSheetOption}
+                  isOptionEqualToValue={(a, b) =>
+                    toStr(a?.costSheetId) === toStr(b?.costSheetId)
+                  }
+                  getOptionLabel={getCostSheetDisplayLabel}
+                  onChange={(_, picked) => {
+                    setApprovalForm((p) => ({
+                      ...p,
+                      "Existing Cost Sheet ID": picked?.costSheetId || "",
+                      "Existing Cost Sheet Name": picked?.display || "",
+                    }));
+                  }}
+                  renderInput={(params) => (
+                    <TextField {...params} label="Existing Cost Sheet (Search)" />
+                  )}
+                />
+              </Grid>
+
+              <Grid item xs={12}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Operations Remarks"
+                  value={approvalForm["Operations Remarks"] || ""}
+                  onChange={(e) =>
+                    setApprovalForm((p) => ({
+                      ...p,
+                      "Operations Remarks": e.target.value,
+                    }))
+                  }
+                  multiline
+                  minRows={2}
+                />
+              </Grid>
+
+              {approvalForm.approvalStatus === "Rejected" ? (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Rejection Remarks"
+                    value={approvalForm["Rejection Remarks"] || ""}
+                    onChange={(e) =>
+                      setApprovalForm((p) => ({
+                        ...p,
+                        "Rejection Remarks": e.target.value,
+                      }))
+                    }
+                    multiline
+                    minRows={2}
+                  />
+                </Grid>
+              ) : null}
+
+              {approvalForm.approvalStatus === "On Hold" ? (
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Hold Remarks"
+                    value={approvalForm["Hold Remarks"] || ""}
+                    onChange={(e) =>
+                      setApprovalForm((p) => ({
+                        ...p,
+                        "Hold Remarks": e.target.value,
+                      }))
+                    }
+                    multiline
+                    minRows={2}
+                  />
+                </Grid>
+              ) : null}
+            </Grid>
+          </DialogContent>
+
+          <DialogActions
+            sx={{
+              position: isMobile ? "sticky" : "static",
+              bottom: 0,
+              background: "#fff",
+              borderTop: isMobile ? "1px solid #eee" : "none",
+              p: isMobile ? 1.5 : undefined,
+              flexDirection: isMobile ? "column" : "row",
+              gap: isMobile ? 1 : 0,
+            }}
+          >
+            <Button onClick={() => setOpenBulkApprovalReviewModal(false)} fullWidth={isMobile}>
+              Cancel
+            </Button>
+            <Button
+              variant="contained"
+              onClick={handleBulkApproval}
+              sx={{ bgcolor: cornflowerBlue }}
+              disabled={saving || !selectedApprovalRequestRows.length}
+              fullWidth={isMobile}
+            >
+              {saving ? "Saving…" : "Apply Bulk Action"}
+            </Button>
+          </DialogActions>
+        </Dialog>
+
         {/* ================= APPROVAL MODAL ================= */}
         <Dialog
           open={openApprovalModal}
@@ -1668,7 +1981,7 @@ export default function ExpenseRequestTable() {
           fullWidth
           fullScreen={isMobile}
         >
-          <DialogTitle sx={{ fontWeight: 800 }}>{selectedApprovalRows.length && !selectedRequest ? `Bulk Review ${selectedApprovalRows.length} Requests` : "Review Expense Request"}</DialogTitle>
+          <DialogTitle sx={{ fontWeight: 800 }}>Review Expense Request</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12} md={6}>
@@ -1676,7 +1989,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Request ID"
-                  value={selectedRequest?.["Request ID"] || (selectedApprovalRows.length ? `${selectedApprovalRows.length} selected` : "")}
+                  value={selectedRequest?.["Request ID"] || ""}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1686,7 +1999,7 @@ export default function ExpenseRequestTable() {
                   fullWidth
                   size="small"
                   label="Raised By"
-                  value={selectedRequest?.["Raised By"] || (selectedApprovalRows.length ? "Bulk selection" : "")}
+                  value={selectedRequest?.["Raised By"] || ""}
                   InputProps={{ readOnly: true }}
                 />
               </Grid>
@@ -1862,7 +2175,7 @@ export default function ExpenseRequestTable() {
             </Button>
             <Button
               variant="contained"
-              onClick={selectedApprovalRows.length && !selectedRequest ? handleBulkApproval : saveApproval}
+              onClick={saveApproval}
               sx={{ bgcolor: cornflowerBlue }}
               disabled={saving}
               fullWidth={isMobile}

@@ -41,6 +41,7 @@ import LoadingOverlay from "./LoadingOverlay";
 import EventIcon from "@mui/icons-material/Event";
 import CalendarView from "./CalendarView";
 import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
+import MobileActionMenu from "./MobileActionMenu";
 
 const theme = createTheme({
   typography: {
@@ -52,6 +53,15 @@ const theme = createTheme({
 const selectorStyle = {
   fontFamily: "Montserrat, sans-serif",
   fontSize: 8,
+};
+
+const isMobileColumn = (key = "") => {
+  const normalizedKey = String(key || "").toLowerCase();
+
+  return (
+    normalizedKey.includes("mobile") ||
+    normalizedKey.includes("phone")
+  );
 };
 
 // ✅ Drive Folder (your shared link folder)
@@ -808,7 +818,13 @@ function DealsTable() {
             {filteredDeals.map((deal, index) => (
               <TableRow key={index}>
                 {visibleColumns.map((col, i) => (
-                  <TableCell key={i}>{deal?.[col] ?? ""}</TableCell>
+                  <TableCell key={i}>
+                    {isMobileColumn(col) ? (
+                      <MobileActionMenu mobile={deal?.[col]} />
+                    ) : (
+                      deal?.[col] ?? ""
+                    )}
+                  </TableCell>
                 ))}
                 <TableCell>
                   <IconButton onClick={() => handleEditClick(deal)} title="Edit Deal">
@@ -1104,7 +1120,13 @@ function DealsTable() {
                   {dealLogs.map((log, idx) => (
                     <TableRow key={idx}>
                       {logHeaders.map((h) => (
-                        <TableCell key={h}>{log?.[h] ?? ""}</TableCell>
+                        <TableCell key={h}>
+                          {isMobileColumn(h) ? (
+                            <MobileActionMenu mobile={log?.[h]} />
+                          ) : (
+                            log?.[h] ?? ""
+                          )}
+                        </TableCell>
                       ))}
                     </TableRow>
                   ))}

@@ -1,18 +1,15 @@
 import React, { useState } from 'react';
 import {
   Box,
-  IconButton,
   Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Snackbar,
-  Tooltip
+  Snackbar
 } from '@mui/material';
 import PhoneIcon from '@mui/icons-material/Phone';
 import WhatsAppIcon from '@mui/icons-material/WhatsApp';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
-import MoreVertIcon from '@mui/icons-material/MoreVert';
 import {
   getCallUrl,
   getWhatsAppUrl,
@@ -30,8 +27,7 @@ const MobileActionMenu = ({
   mobile,
   label,
   whatsappMessage = '',
-  showValue = true,
-  compact = true
+  showValue = true
 }) => {
   const [anchorEl, setAnchorEl] = useState(null);
   const [copied, setCopied] = useState(false);
@@ -80,38 +76,30 @@ const MobileActionMenu = ({
       sx={{
         display: 'inline-flex',
         alignItems: 'center',
-        gap: compact ? 0.25 : 0.75,
         fontFamily: 'Montserrat, sans-serif'
       }}
       onClick={(event) => event.stopPropagation()}
     >
-      {showValue && (
-        <Box
-          component="button"
-          type="button"
-          onClick={handleOpen}
-          sx={{
-            border: 'none',
-            background: 'transparent',
-            padding: 0,
-            margin: 0,
-            color: '#1976d2',
-            textDecoration: 'underline',
-            cursor: 'pointer',
-            fontFamily: 'Montserrat, sans-serif',
-            fontSize: 'inherit'
-          }}
-          title={label || 'Contact actions'}
-        >
-          {displayMobile}
-        </Box>
-      )}
-
-      <Tooltip title="Contact actions">
-        <IconButton size="small" onClick={handleOpen} sx={{ padding: compact ? '2px' : '4px' }}>
-          {showValue ? <MoreVertIcon sx={{ fontSize: 16 }} /> : <PhoneIcon sx={{ fontSize: 16 }} />}
-        </IconButton>
-      </Tooltip>
+      <Box
+        component="button"
+        type="button"
+        onClick={handleOpen}
+        sx={{
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          margin: 0,
+          color: '#1976d2',
+          textDecoration: 'underline',
+          cursor: 'pointer',
+          fontFamily: 'Montserrat, sans-serif',
+          fontSize: 'inherit',
+          lineHeight: 'inherit'
+        }}
+        title={label || 'Contact actions'}
+      >
+        {showValue ? displayMobile : 'Contact'}
+      </Box>
 
       <Menu
         anchorEl={anchorEl}

@@ -38,6 +38,8 @@ import EditIcon from "@mui/icons-material/Edit";
 import SyncAltIcon from "@mui/icons-material/SyncAlt";
 import CloseIcon from "@mui/icons-material/Close";
 import DoneAllIcon from "@mui/icons-material/DoneAll";
+import KeyboardArrowDownIcon from "@mui/icons-material/KeyboardArrowDown";
+import KeyboardArrowUpIcon from "@mui/icons-material/KeyboardArrowUp";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -231,6 +233,11 @@ export default function ExpenseRequestTable() {
   // Bulk selections for approval/accounts queues
   const [selectedApprovalRows, setSelectedApprovalRows] = useState([]);
   const [selectedAccountsRows, setSelectedAccountsRows] = useState([]);
+  const [bulkApprovalRows, setBulkApprovalRows] = useState([]);
+
+  const [isMyRequestsCollapsed, setIsMyRequestsCollapsed] = useState(false);
+  const [isApprovalQueueCollapsed, setIsApprovalQueueCollapsed] = useState(false);
+  const [isAccountsQueueCollapsed, setIsAccountsQueueCollapsed] = useState(false);
 
   const [approvalForm, setApprovalForm] = useState({
     requestId: "",
@@ -321,6 +328,31 @@ export default function ExpenseRequestTable() {
     textOverflow: "ellipsis",
   };
 
+  const sectionHeaderSx = {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    mb: 1,
+    gap: 1,
+    flexWrap: "wrap",
+  };
+
+  const sectionActionBarSx = {
+    display: "flex",
+    gap: 1,
+    flexWrap: "wrap",
+    alignItems: "center",
+    justifyContent: isMobile ? "stretch" : "flex-end",
+  };
+
+  const sectionFilterBarSx = {
+    display: "grid",
+    gridTemplateColumns: isMobile ? "1fr" : "minmax(220px, 1.4fr) repeat(3, minmax(150px, 1fr))",
+    gap: 1,
+    alignItems: "center",
+    mb: 1.5,
+  };
+
   function compactDescription(value, maxLength = 120) {
     const text = toStr(value);
     if (!text) return "-";
@@ -332,6 +364,54 @@ export default function ExpenseRequestTable() {
       selectedApprovalRows.includes(toStr(r["Request ID"]))
     );
   }, [approvalQueue, selectedApprovalRows]);
+
+  const bulkApprovalTotal = useMemo(() => {
+    return (bulkApprovalRows || []).reduce((sum, r) => sum + safeNum(r.amount), 0);
+  }, [bulkApprovalRows]);
+
+  function buildBulkApprovalRow(row) {
+    return {
+      requestId: toStr(row?.["Request ID"]),
+      raisedBy: toStr(row?.["Raised By"]),
+      particular: toStr(row?.["Particular"]),
+      description: toStr(row?.["Description"]),
+      amount: toStr(row?.["Amount"]),
+      approvalStatus: toStr(row?.["Approval Status"]) || "Approved",
+      currentApprovalStatus: toStr(row?.["Approval Status"]),
+      linkedEntityType: toStr(row?.["Linked Entity Type"]),
+      linkedEntityId: toStr(row?.["Linked Entity ID"]),
+      linkedEntityName: toStr(row?.["Linked Entity Name"]),
+      existingCostSheetId: toStr(row?.["Existing Cost Sheet ID"]),
+      existingCostSheetName: toStr(row?.["Existing Cost Sheet Name"]),
+      operationsRemarks: toStr(row?.["Operations Remarks"]),
+      rejectionRemarks: toStr(row?.["Rejection Remarks"]),
+      holdRemarks: toStr(row?.["Hold Remarks"]),
+    };
+  }
+
+  function updateBulkApprovalRow(requestId, key, value) {
+    const id = toStr(requestId);
+    setBulkApprovalRows((prev) =>
+      (prev || []).map((row) =>
+        toStr(row.requestId) === id ? { ...row, [key]: value } : row
+      )
+    );
+  }
+
+  function removeBulkApprovalRow(requestId) {
+    const id = toStr(requestId);
+    setBulkApprovalRows((prev) => (prev || []).filter((row) => toStr(row.requestId) !== id));
+    setSelectedApprovalRows((prev) => (prev || []).filter((x) => toStr(x) !== id));
+  }
+
+  function applyBulkStatusToRows(status) {
+    const nextStatus = toStr(status);
+    if (!nextStatus) return;
+    setApprovalForm((p) => ({ ...p, approvalStatus: nextStatus }));
+    setBulkApprovalRows((prev) =>
+      (prev || []).map((row) => ({ ...row, approvalStatus: nextStatus }))
+    );
+  }
 
   function subcatsForHead(head) {
     const m = validation.subcategories || {};
@@ -470,7 +550,17 @@ export default function ExpenseRequestTable() {
       return;
     }
 
+    const rowsForReview = (approvalQueue || [])
+      .filter((r) => selectedApprovalRows.includes(toStr(r["Request ID"])))
+      .map(buildBulkApprovalRow);
+
+    if (!rowsForReview.length) {
+      alert("Selected requests could not be found in the approval queue. Please refresh and try again.");
+      return;
+    }
+
     setSelectedRequest(null);
+    setBulkApprovalRows(rowsForReview);
     setApprovalForm({
       requestId: "",
       approvalStatus: "Approved",
@@ -576,49 +666,65 @@ export default function ExpenseRequestTable() {
   }
 
   async function handleBulkApproval() {
-    if (!selectedApprovalRows.length) {
-      alert("Please select at least one request.");
+    const rowsToSave = (bulkApprovalRows || []).filter((row) => toStr(row.requestId));
+
+    if (!rowsToSave.length) {
+      alert("Please keep at least one request in the bulk review list.");
       return;
     }
 
-    if (!approvalForm.approvalStatus) {
-      alert("Please select Approval Status.");
+    const invalidRow = rowsToSave.find((row) => !toStr(row.approvalStatus));
+    if (invalidRow) {
+      alert(`Please select an action for request ${invalidRow.requestId}.`);
       return;
     }
 
     setSaving(true);
     try {
       await apiPost({
-        action: "bulkUpdateExpenseRequestApproval",
+        action: "bulkReviewExpenseRequests",
         data: {
-          requestIds: selectedApprovalRows,
-          approvalStatus: approvalForm.approvalStatus,
+          requestIds: rowsToSave.map((row) => row.requestId),
+          rows: rowsToSave.map((row) => ({
+            requestId: row.requestId,
+            approvalStatus: row.approvalStatus,
+            particular: row.particular,
+            description: row.description,
+            amount: Number(row.amount || 0),
+            operationsRemarks: row.operationsRemarks,
+            rejectionRemarks: row.rejectionRemarks,
+            holdRemarks: row.holdRemarks,
+            "Linked Entity Type": approvalForm["Linked Entity Type"] || row.linkedEntityType,
+            "Linked Entity ID": approvalForm["Linked Entity ID"] || row.linkedEntityId,
+            "Linked Entity Name": approvalForm["Linked Entity Name"] || row.linkedEntityName,
+            "Existing Cost Sheet ID": approvalForm["Existing Cost Sheet ID"] || row.existingCostSheetId,
+            "Existing Cost Sheet Name": approvalForm["Existing Cost Sheet Name"] || row.existingCostSheetName,
+          })),
           actionBy: loggedInName,
           actionByEmail: loggedInEmail,
           actionByRole: role,
+          commonApprovalStatus: approvalForm.approvalStatus,
           "Linked Entity Type": approvalForm["Linked Entity Type"],
           "Linked Entity ID": approvalForm["Linked Entity ID"],
           "Linked Entity Name": approvalForm["Linked Entity Name"],
           "Existing Cost Sheet ID": approvalForm["Existing Cost Sheet ID"],
           "Existing Cost Sheet Name": approvalForm["Existing Cost Sheet Name"],
-          "Operations Remarks": approvalForm["Operations Remarks"],
-          "Rejection Remarks": approvalForm["Rejection Remarks"],
-          "Hold Remarks": approvalForm["Hold Remarks"],
         },
       });
 
       setOpenBulkApprovalReviewModal(false);
       setSelectedRequest(null);
+      setBulkApprovalRows([]);
       clearApprovalSelection();
 
       setTimeout(async () => {
         await refreshAll();
       }, 250);
 
-      alert(`${selectedApprovalRows.length} expense requests updated.`);
+      alert(`${rowsToSave.length} expense requests reviewed.`);
     } catch (e) {
-      console.error("BULK_APPROVAL_ERROR", e);
-      alert("Failed to bulk update expense requests.");
+      console.error("BULK_REVIEW_ERROR", e);
+      alert("Failed to bulk review expense requests.");
     } finally {
       setSaving(false);
     }
@@ -969,9 +1075,20 @@ export default function ExpenseRequestTable() {
 
         {/* MY REQUESTS */}
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
-          <Typography sx={{ fontWeight: 900, fontSize: 14, mb: 1 }}>My Requests</Typography>
+          <Box sx={sectionHeaderSx}>
+            <Typography sx={{ fontWeight: 900, fontSize: 14 }}>My Requests</Typography>
+            <Button
+              size="small"
+              variant="text"
+              startIcon={isMyRequestsCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+              onClick={() => setIsMyRequestsCollapsed((v) => !v)}
+            >
+              {isMyRequestsCollapsed ? "Maximize" : "Minimize"}
+            </Button>
+          </Box>
 
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
+          <Box sx={{ display: isMyRequestsCollapsed ? "none" : "block" }}>
+          <Box sx={sectionFilterBarSx}>
             <TextField size="small" label="Search My Requests" value={mySearch} onChange={(e) => setMySearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
             <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
               <InputLabel>Raised By</InputLabel>
@@ -1138,24 +1255,24 @@ export default function ExpenseRequestTable() {
               </Table>
             </TableContainer>
           )}
+          </Box>
         </Paper>
 
         {/* OPERATIONS QUEUE */}
         {isOperations ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 1,
-                gap: 1,
-                flexWrap: "wrap",
-              }}
-            >
+            <Box sx={sectionHeaderSx}>
               <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Approval Queue</Typography>
 
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+              <Box sx={sectionActionBarSx}>
+                <Button
+                  size="small"
+                  variant="text"
+                  startIcon={isApprovalQueueCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+                  onClick={() => setIsApprovalQueueCollapsed((v) => !v)}
+                >
+                  {isApprovalQueueCollapsed ? "Maximize" : "Minimize"}
+                </Button>
                 <Chip
                   label={`${selectedApprovalRows.length} selected`}
                   size="small"
@@ -1180,8 +1297,9 @@ export default function ExpenseRequestTable() {
               </Box>
             </Box>
 
-            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
-              <TextField size="small" label="Search Approval Queue" value={approvalSearch} onChange={(e) => setApprovalSearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
+            <Box sx={{ display: isApprovalQueueCollapsed ? "none" : "block" }}>
+            <Box sx={sectionFilterBarSx}>
+              <TextField size="small" label="Search Approval Queue" value={approvalSearch} onChange={(e) => setApprovalSearch(e.target.value)} fullWidth />
               <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
                 <InputLabel>Raised By</InputLabel>
                 <Select value={approvalRaisedByFilter} label="Raised By" onChange={(e) => { setApprovalRaisedByFilter(e.target.value); clearApprovalSelection(); }}>
@@ -1365,25 +1483,25 @@ export default function ExpenseRequestTable() {
                 </Table>
               </TableContainer>
             )}
+          </Box>
           </Paper>
         ) : null}
 
         {/* ACCOUNTS QUEUE */}
         {isAccounts ? (
           <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
-            <Box
-              sx={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                mb: 1,
-                gap: 1,
-                flexWrap: "wrap",
-              }}
-            >
+            <Box sx={sectionHeaderSx}>
               <Typography sx={{ fontWeight: 900, fontSize: 14 }}>Accounts Queue</Typography>
 
-              <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+              <Box sx={sectionActionBarSx}>
+                <Button
+                  size="small"
+                  variant="text"
+                  startIcon={isAccountsQueueCollapsed ? <KeyboardArrowDownIcon /> : <KeyboardArrowUpIcon />}
+                  onClick={() => setIsAccountsQueueCollapsed((v) => !v)}
+                >
+                  {isAccountsQueueCollapsed ? "Maximize" : "Minimize"}
+                </Button>
                 <Chip
                   label={`${selectedAccountsRows.length} selected`}
                   size="small"
@@ -1408,8 +1526,9 @@ export default function ExpenseRequestTable() {
               </Box>
             </Box>
 
-            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
-              <TextField size="small" label="Search Accounts Queue" value={accountsSearch} onChange={(e) => setAccountsSearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
+            <Box sx={{ display: isAccountsQueueCollapsed ? "none" : "block" }}>
+            <Box sx={sectionFilterBarSx}>
+              <TextField size="small" label="Search Accounts Queue" value={accountsSearch} onChange={(e) => setAccountsSearch(e.target.value)} fullWidth />
               <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
                 <InputLabel>Raised By</InputLabel>
                 <Select value={accountsRaisedByFilter} label="Raised By" onChange={(e) => { setAccountsRaisedByFilter(e.target.value); clearAccountsSelection(); }}>
@@ -1604,6 +1723,7 @@ export default function ExpenseRequestTable() {
                 </Table>
               </TableContainer>
             )}
+          </Box>
           </Paper>
         ) : null}
 
@@ -1763,103 +1883,213 @@ export default function ExpenseRequestTable() {
         <Dialog
           open={openBulkApprovalReviewModal}
           onClose={() => setOpenBulkApprovalReviewModal(false)}
-          maxWidth="lg"
+          maxWidth="xl"
           fullWidth
           fullScreen={isMobile}
         >
-          <DialogTitle sx={{ fontWeight: 800 }}>
-            Bulk Review Expense Requests
-          </DialogTitle>
-
+          <DialogTitle sx={{ fontWeight: 800 }}>Bulk Review Expense Requests</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
               <Grid item xs={12}>
                 <Paper
                   variant="outlined"
-                  sx={{ p: 1.25, borderRadius: 2, bgcolor: "#fbfcff", borderColor: "#e9eefc" }}
+                  sx={{
+                    p: 1.2,
+                    borderRadius: 2,
+                    borderColor: "#e9eefc",
+                    bgcolor: "#fbfcff",
+                  }}
                 >
-                  <Typography sx={{ fontWeight: 900, fontSize: 13 }}>
-                    Selected Requests: {selectedApprovalRequestRows.length}
-                  </Typography>
-                  <Typography sx={{ fontSize: 12, opacity: 0.75 }}>
-                    Review the selected requests below, then apply one common action and mapping.
-                  </Typography>
+                  <Box
+                    sx={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      alignItems: "center",
+                      gap: 1,
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <Box>
+                      <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                        Selected Requests: {bulkApprovalRows.length}
+                      </Typography>
+                      <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
+                        Total selected value: ₹ {fmtINR(bulkApprovalTotal)}
+                      </Typography>
+                    </Box>
+
+                    <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+                      {[
+                        "Approved",
+                        "On Hold",
+                        "Rejected",
+                      ].map((status) => (
+                        <Button
+                          key={status}
+                          size="small"
+                          variant={approvalForm.approvalStatus === status ? "contained" : "outlined"}
+                          onClick={() => applyBulkStatusToRows(status)}
+                          sx={approvalForm.approvalStatus === status ? { bgcolor: cornflowerBlue } : undefined}
+                        >
+                          Mark all {status}
+                        </Button>
+                      ))}
+                    </Box>
+                  </Box>
                 </Paper>
               </Grid>
 
               <Grid item xs={12}>
                 {isMobile ? (
                   <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
-                    {selectedApprovalRequestRows.map((r) => {
-                      const approvalChip = statusChipColor(r["Approval Status"]);
-                      return (
-                        <Paper
-                          key={toStr(r["Request ID"])}
-                          variant="outlined"
-                          sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc" }}
-                        >
-                          <Typography sx={{ fontWeight: 900, fontSize: 13 }}>
-                            {toStr(r["Particular"]) || "-"}
+                    {(bulkApprovalRows || []).map((row) => (
+                      <Paper
+                        key={row.requestId}
+                        variant="outlined"
+                        sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc" }}
+                      >
+                        <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, mb: 1 }}>
+                          <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                            {row.requestId} | {row.raisedBy || "-"}
                           </Typography>
-                          <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
-                            Request ID: {toStr(r["Request ID"]) || "-"}
-                          </Typography>
-                          <Typography sx={{ fontSize: 12, opacity: 0.8 }}>
-                            Raised By: {toStr(r["Raised By"]) || "-"}
-                          </Typography>
-                          <Typography sx={{ fontSize: 12 }}>
-                            ₹ {fmtINR(safeNum(r["Amount"]))}
-                          </Typography>
-                          <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
-                            {toStr(r["Description"]) || "-"}
-                          </Typography>
-                          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", mt: 1 }}>
-                            <Chip
+                          <IconButton size="small" onClick={() => removeBulkApprovalRow(row.requestId)}>
+                            <CloseIcon sx={{ color: "#c62828" }} />
+                          </IconButton>
+                        </Box>
+
+                        <Grid container spacing={1}>
+                          <Grid item xs={12}>
+                            <FormControl fullWidth size="small">
+                              <InputLabel>Action</InputLabel>
+                              <Select
+                                label="Action"
+                                value={row.approvalStatus || "Approved"}
+                                onChange={(e) => updateBulkApprovalRow(row.requestId, "approvalStatus", e.target.value)}
+                              >
+                                {["Approved", "On Hold", "Rejected"].map((status) => (
+                                  <MenuItem key={status} value={status}>{status}</MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
                               size="small"
-                              label={toStr(r["Approval Status"]) || "-"}
-                              sx={{
-                                bgcolor: approvalChip.bg,
-                                color: approvalChip.color,
-                                border: `1px solid ${approvalChip.border}`,
-                                fontWeight: 700,
-                              }}
+                              label="Particular"
+                              value={row.particular || ""}
+                              onChange={(e) => updateBulkApprovalRow(row.requestId, "particular", e.target.value)}
                             />
-                            <Chip size="small" label={`Linked: ${toStr(r["Linked Entity Name"]) || "-"}`} />
-                            <Chip size="small" label={`Cost Sheet: ${toStr(r["Existing Cost Sheet Name"]) || "-"}`} />
-                          </Box>
-                        </Paper>
-                      );
-                    })}
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Description"
+                              value={row.description || ""}
+                              onChange={(e) => updateBulkApprovalRow(row.requestId, "description", e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Amount"
+                              value={row.amount || ""}
+                              onChange={(e) => updateBulkApprovalRow(row.requestId, "amount", e.target.value)}
+                            />
+                          </Grid>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Row Remarks"
+                              value={row.operationsRemarks || ""}
+                              onChange={(e) => updateBulkApprovalRow(row.requestId, "operationsRemarks", e.target.value)}
+                            />
+                          </Grid>
+                        </Grid>
+                      </Paper>
+                    ))}
                   </Box>
                 ) : (
-                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 360 }}>
+                  <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 420 }}>
                     <Table size="small" stickyHeader>
                       <TableHead>
                         <TableRow sx={{ background: "#f6f9ff" }}>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Request ID</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Raised By</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Particular</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Description</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Amount</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Current Status</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Linked Entity</TableCell>
-                          <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Cost Sheet</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 120 }}>Request ID</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 130 }}>Raised By</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 140 }}>Action</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 190 }}>Particular</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 260 }}>Description</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 110 }}>Amount</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 190 }}>Row Remarks</TableCell>
+                          <TableCell sx={{ fontWeight: 800, fontSize: 12, minWidth: 130 }}>Remove</TableCell>
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {selectedApprovalRequestRows.map((r) => (
-                          <TableRow key={toStr(r["Request ID"])} hover>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
-                            <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Approval Status"]) || "-"}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Existing Cost Sheet Name"]) || "-"}</TableCell>
+                        {(bulkApprovalRows || []).map((row) => (
+                          <TableRow key={row.requestId} hover>
+                            <TableCell sx={{ fontSize: 12 }}>{row.requestId}</TableCell>
+                            <TableCell sx={{ fontSize: 12 }}>{row.raisedBy || "-"}</TableCell>
+                            <TableCell>
+                              <FormControl fullWidth size="small">
+                                <Select
+                                  value={row.approvalStatus || "Approved"}
+                                  onChange={(e) => updateBulkApprovalRow(row.requestId, "approvalStatus", e.target.value)}
+                                >
+                                  {["Approved", "On Hold", "Rejected"].map((status) => (
+                                    <MenuItem key={status} value={status}>{status}</MenuItem>
+                                  ))}
+                                </Select>
+                              </FormControl>
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                value={row.particular || ""}
+                                onChange={(e) => updateBulkApprovalRow(row.requestId, "particular", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                value={row.description || ""}
+                                onChange={(e) => updateBulkApprovalRow(row.requestId, "description", e.target.value)}
+                                inputProps={{ title: row.description || "" }}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                value={row.amount || ""}
+                                onChange={(e) => updateBulkApprovalRow(row.requestId, "amount", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <TextField
+                                fullWidth
+                                size="small"
+                                value={row.operationsRemarks || ""}
+                                onChange={(e) => updateBulkApprovalRow(row.requestId, "operationsRemarks", e.target.value)}
+                              />
+                            </TableCell>
+                            <TableCell>
+                              <Button
+                                size="small"
+                                variant="outlined"
+                                color="error"
+                                onClick={() => removeBulkApprovalRow(row.requestId)}
+                              >
+                                Remove
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         ))}
-                        {!selectedApprovalRequestRows.length ? (
+                        {!bulkApprovalRows.length ? (
                           <TableRow>
                             <TableCell colSpan={8} sx={{ fontSize: 12, opacity: 0.7 }}>
                               No selected requests found.
@@ -1872,36 +2102,14 @@ export default function ExpenseRequestTable() {
                 )}
               </Grid>
 
-              <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Bulk Action</InputLabel>
-                  <Select
-                    label="Bulk Action"
-                    value={approvalForm.approvalStatus}
-                    onChange={(e) =>
-                      setApprovalForm((p) => ({ ...p, approvalStatus: e.target.value }))
-                    }
-                  >
-                    {["Approved", "Rejected", "On Hold"].map((s) => (
-                      <MenuItem key={s} value={s}>
-                        {s}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
-
-              <Grid item xs={12} md={6}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Selected Count"
-                  value={selectedApprovalRequestRows.length}
-                  InputProps={{ readOnly: true }}
-                />
-              </Grid>
-
               <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+                <Typography sx={{ fontWeight: 900, fontSize: 13, mb: 1 }}>
+                  Common Mapping / Attribution
+                </Typography>
+              </Grid>
+
+              <Grid item xs={12} md={6}>
                 <Autocomplete
                   size="small"
                   options={linkedEntityOptions}
@@ -1926,7 +2134,7 @@ export default function ExpenseRequestTable() {
                 />
               </Grid>
 
-              <Grid item xs={12}>
+              <Grid item xs={12} md={6}>
                 <Autocomplete
                   size="small"
                   options={costSheetOptions}
@@ -1947,61 +2155,6 @@ export default function ExpenseRequestTable() {
                   )}
                 />
               </Grid>
-
-              <Grid item xs={12}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Operations Remarks"
-                  value={approvalForm["Operations Remarks"] || ""}
-                  onChange={(e) =>
-                    setApprovalForm((p) => ({
-                      ...p,
-                      "Operations Remarks": e.target.value,
-                    }))
-                  }
-                  multiline
-                  minRows={2}
-                />
-              </Grid>
-
-              {approvalForm.approvalStatus === "Rejected" ? (
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Rejection Remarks"
-                    value={approvalForm["Rejection Remarks"] || ""}
-                    onChange={(e) =>
-                      setApprovalForm((p) => ({
-                        ...p,
-                        "Rejection Remarks": e.target.value,
-                      }))
-                    }
-                    multiline
-                    minRows={2}
-                  />
-                </Grid>
-              ) : null}
-
-              {approvalForm.approvalStatus === "On Hold" ? (
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Hold Remarks"
-                    value={approvalForm["Hold Remarks"] || ""}
-                    onChange={(e) =>
-                      setApprovalForm((p) => ({
-                        ...p,
-                        "Hold Remarks": e.target.value,
-                      }))
-                    }
-                    multiline
-                    minRows={2}
-                  />
-                </Grid>
-              ) : null}
             </Grid>
           </DialogContent>
 
@@ -2023,10 +2176,10 @@ export default function ExpenseRequestTable() {
               variant="contained"
               onClick={handleBulkApproval}
               sx={{ bgcolor: cornflowerBlue }}
-              disabled={saving || !selectedApprovalRequestRows.length}
+              disabled={saving || !bulkApprovalRows.length}
               fullWidth={isMobile}
             >
-              {saving ? "Saving…" : "Apply Bulk Action"}
+              {saving ? "Saving…" : "Save Bulk Review"}
             </Button>
           </DialogActions>
         </Dialog>

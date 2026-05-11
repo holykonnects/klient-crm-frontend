@@ -205,10 +205,20 @@ export default function ExpenseRequestTable() {
   const [costSheetOptions, setCostSheetOptions] = useState([]);
   const [linkedEntityOptions, setLinkedEntityOptions] = useState([]);
 
-  const [search, setSearch] = useState("");
+  const [mySearch, setMySearch] = useState("");
+  const [myRaisedByFilter, setMyRaisedByFilter] = useState("");
+  const [myApprovalStatusFilter, setMyApprovalStatusFilter] = useState("");
+  const [mySyncFilter, setMySyncFilter] = useState("");
+
+  const [approvalSearch, setApprovalSearch] = useState("");
+  const [approvalRaisedByFilter, setApprovalRaisedByFilter] = useState("");
   const [approvalStatusFilter, setApprovalStatusFilter] = useState("");
-  const [syncFilter, setSyncFilter] = useState("");
-  const [raisedByFilter, setRaisedByFilter] = useState("");
+  const [approvalSyncFilter, setApprovalSyncFilter] = useState("");
+
+  const [accountsSearch, setAccountsSearch] = useState("");
+  const [accountsRaisedByFilter, setAccountsRaisedByFilter] = useState("");
+  const [accountsApprovalStatusFilter, setAccountsApprovalStatusFilter] = useState("");
+  const [accountsSyncFilter, setAccountsSyncFilter] = useState("");
 
   const [openAddModal, setOpenAddModal] = useState(false);
   const [openApprovalModal, setOpenApprovalModal] = useState(false);
@@ -302,6 +312,20 @@ export default function ExpenseRequestTable() {
     const rows = [...(approvalQueue || []), ...(accountsQueue || []), ...(requests || [])];
     return Array.from(new Set(rows.map((r) => toStr(r["Raised By"])).filter(Boolean))).sort();
   }, [approvalQueue, accountsQueue, requests]);
+
+  const compactCellSx = {
+    fontSize: 12,
+    maxWidth: 260,
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  };
+
+  function compactDescription(value, maxLength = 120) {
+    const text = toStr(value);
+    if (!text) return "-";
+    return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
+  }
 
   const selectedApprovalRequestRows = useMemo(() => {
     return (approvalQueue || []).filter((r) =>
@@ -774,16 +798,20 @@ export default function ExpenseRequestTable() {
   }
 
   const filteredMyRequests = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = mySearch.trim().toLowerCase();
 
     return (requests || []).filter((r) => {
+      const raisedByOk =
+        !myRaisedByFilter ||
+        toStr(r["Raised By"]).toLowerCase() === myRaisedByFilter.toLowerCase();
+
       const approvalOk =
-        !approvalStatusFilter ||
-        toStr(r["Approval Status"]).toLowerCase() === approvalStatusFilter.toLowerCase();
+        !myApprovalStatusFilter ||
+        toStr(r["Approval Status"]).toLowerCase() === myApprovalStatusFilter.toLowerCase();
 
       const syncOk =
-        !syncFilter ||
-        toStr(r["Synced To Cost Line"]).toLowerCase() === syncFilter.toLowerCase();
+        !mySyncFilter ||
+        toStr(r["Synced To Cost Line"]).toLowerCase() === mySyncFilter.toLowerCase();
 
       const hay = [
         r["Batch ID"],
@@ -799,21 +827,25 @@ export default function ExpenseRequestTable() {
         .toLowerCase();
 
       const qOk = !q || hay.includes(q);
-      return approvalOk && syncOk && qOk;
+      return raisedByOk && approvalOk && syncOk && qOk;
     });
-  }, [requests, search, approvalStatusFilter, syncFilter]);
+  }, [requests, mySearch, myRaisedByFilter, myApprovalStatusFilter, mySyncFilter]);
 
   const filteredApprovalQueue = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = approvalSearch.trim().toLowerCase();
 
     return (approvalQueue || []).filter((r) => {
+      const raisedByOk =
+        !approvalRaisedByFilter ||
+        toStr(r["Raised By"]).toLowerCase() === approvalRaisedByFilter.toLowerCase();
+
       const approvalOk =
         !approvalStatusFilter ||
         toStr(r["Approval Status"]).toLowerCase() === approvalStatusFilter.toLowerCase();
 
-      const raisedByOk =
-        !raisedByFilter ||
-        toStr(r["Raised By"]).toLowerCase() === raisedByFilter.toLowerCase();
+      const syncOk =
+        !approvalSyncFilter ||
+        toStr(r["Synced To Cost Line"]).toLowerCase() === approvalSyncFilter.toLowerCase();
 
       const hay = [
         r["Request ID"],
@@ -828,26 +860,31 @@ export default function ExpenseRequestTable() {
         .toLowerCase();
 
       const qOk = !q || hay.includes(q);
-      return approvalOk && raisedByOk && qOk;
+      return raisedByOk && approvalOk && syncOk && qOk;
     });
-  }, [approvalQueue, search, approvalStatusFilter, raisedByFilter]);
+  }, [approvalQueue, approvalSearch, approvalRaisedByFilter, approvalStatusFilter, approvalSyncFilter]);
 
   const filteredAccountsQueue = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = accountsSearch.trim().toLowerCase();
 
     return (accountsQueue || []).filter((r) => {
-      const syncOk =
-        !syncFilter ||
-        toStr(r["Synced To Cost Line"]).toLowerCase() === syncFilter.toLowerCase();
-
       const raisedByOk =
-        !raisedByFilter ||
-        toStr(r["Raised By"]).toLowerCase() === raisedByFilter.toLowerCase();
+        !accountsRaisedByFilter ||
+        toStr(r["Raised By"]).toLowerCase() === accountsRaisedByFilter.toLowerCase();
+
+      const approvalOk =
+        !accountsApprovalStatusFilter ||
+        toStr(r["Approval Status"]).toLowerCase() === accountsApprovalStatusFilter.toLowerCase();
+
+      const syncOk =
+        !accountsSyncFilter ||
+        toStr(r["Synced To Cost Line"]).toLowerCase() === accountsSyncFilter.toLowerCase();
 
       const hay = [
         r["Request ID"],
         r["Raised By"],
         r["Particular"],
+        r["Description"],
         r["Existing Cost Sheet Name"],
         r["Linked Entity Name"],
         r["Approval Status"],
@@ -857,9 +894,9 @@ export default function ExpenseRequestTable() {
         .toLowerCase();
 
       const qOk = !q || hay.includes(q);
-      return syncOk && raisedByOk && qOk;
+      return raisedByOk && approvalOk && syncOk && qOk;
     });
-  }, [accountsQueue, search, syncFilter, raisedByFilter]);
+  }, [accountsQueue, accountsSearch, accountsRaisedByFilter, accountsApprovalStatusFilter, accountsSyncFilter]);
 
   return (
     <ThemeProvider theme={theme}>
@@ -914,66 +951,9 @@ export default function ExpenseRequestTable() {
           </Box>
         </Box>
 
-        {/* FILTERS */}
+        {/* USER CONTEXT */}
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
-            <TextField
-              size="small"
-              label="Search"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              sx={{ minWidth: isMobile ? "100%" : 240 }}
-            />
-
-            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 180 }}>
-              <InputLabel>Raised By</InputLabel>
-              <Select
-                value={raisedByFilter}
-                label="Raised By"
-                onChange={(e) => {
-                  setRaisedByFilter(e.target.value);
-                  clearApprovalSelection();
-                  clearAccountsSelection();
-                }}
-              >
-                <MenuItem value="">All</MenuItem>
-                {raisedByOptions.map((name) => (
-                  <MenuItem key={name} value={name}>
-                    {name}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 180 }}>
-              <InputLabel>Approval Status</InputLabel>
-              <Select
-                value={approvalStatusFilter}
-                label="Approval Status"
-                onChange={(e) => setApprovalStatusFilter(e.target.value)}
-              >
-                <MenuItem value="">All</MenuItem>
-                {["Pending", "Approved", "Rejected", "On Hold"].map((s) => (
-                  <MenuItem key={s} value={s}>
-                    {s}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 160 }}>
-              <InputLabel>Synced</InputLabel>
-              <Select
-                value={syncFilter}
-                label="Synced"
-                onChange={(e) => setSyncFilter(e.target.value)}
-              >
-                <MenuItem value="">All</MenuItem>
-                <MenuItem value="Yes">Yes</MenuItem>
-                <MenuItem value="No">No</MenuItem>
-              </Select>
-            </FormControl>
-
             <Chip
               label={`Role: ${role || "User"}`}
               size="small"
@@ -990,6 +970,32 @@ export default function ExpenseRequestTable() {
         {/* MY REQUESTS */}
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee", mb: 2 }}>
           <Typography sx={{ fontWeight: 900, fontSize: 14, mb: 1 }}>My Requests</Typography>
+
+          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
+            <TextField size="small" label="Search My Requests" value={mySearch} onChange={(e) => setMySearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
+            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+              <InputLabel>Raised By</InputLabel>
+              <Select value={myRaisedByFilter} label="Raised By" onChange={(e) => setMyRaisedByFilter(e.target.value)}>
+                <MenuItem value="">All</MenuItem>
+                {raisedByOptions.map((name) => (<MenuItem key={name} value={name}>{name}</MenuItem>))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+              <InputLabel>Approval Status</InputLabel>
+              <Select value={myApprovalStatusFilter} label="Approval Status" onChange={(e) => setMyApprovalStatusFilter(e.target.value)}>
+                <MenuItem value="">All</MenuItem>
+                {["Pending", "Approved", "Rejected", "On Hold"].map((status) => (<MenuItem key={status} value={status}>{status}</MenuItem>))}
+              </Select>
+            </FormControl>
+            <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 150 }}>
+              <InputLabel>Synced</InputLabel>
+              <Select value={mySyncFilter} label="Synced" onChange={(e) => setMySyncFilter(e.target.value)}>
+                <MenuItem value="">All</MenuItem>
+                <MenuItem value="Yes">Yes</MenuItem>
+                <MenuItem value="No">No</MenuItem>
+              </Select>
+            </FormControl>
+          </Box>
 
           {isMobile ? (
             <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
@@ -1022,8 +1028,8 @@ export default function ExpenseRequestTable() {
                       ₹ {fmtINR(safeNum(r["Amount"]))}
                     </Typography>
 
-                    <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
-                      {toStr(r["Description"]) || "-"}
+                    <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
+                      {compactDescription(r["Description"])}
                     </Typography>
 
                     <Typography sx={{ fontSize: 11, opacity: 0.7, mt: 0.5 }}>
@@ -1089,7 +1095,7 @@ export default function ExpenseRequestTable() {
                         <TableCell sx={{ fontSize: 12 }}>{toStr(r["Batch ID"])}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
-                        <TableCell sx={{ fontSize: 12 }}>{toStr(r["Description"])}</TableCell>
+                        <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
                         <TableCell sx={{ fontSize: 12 }}>
                           <Chip
@@ -1174,6 +1180,32 @@ export default function ExpenseRequestTable() {
               </Box>
             </Box>
 
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
+              <TextField size="small" label="Search Approval Queue" value={approvalSearch} onChange={(e) => setApprovalSearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+                <InputLabel>Raised By</InputLabel>
+                <Select value={approvalRaisedByFilter} label="Raised By" onChange={(e) => { setApprovalRaisedByFilter(e.target.value); clearApprovalSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  {raisedByOptions.map((name) => (<MenuItem key={name} value={name}>{name}</MenuItem>))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+                <InputLabel>Approval Status</InputLabel>
+                <Select value={approvalStatusFilter} label="Approval Status" onChange={(e) => { setApprovalStatusFilter(e.target.value); clearApprovalSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  {["Pending", "Approved", "Rejected", "On Hold"].map((status) => (<MenuItem key={status} value={status}>{status}</MenuItem>))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 150 }}>
+                <InputLabel>Synced</InputLabel>
+                <Select value={approvalSyncFilter} label="Synced" onChange={(e) => { setApprovalSyncFilter(e.target.value); clearApprovalSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="Yes">Yes</MenuItem>
+                  <MenuItem value="No">No</MenuItem>
+                </Select>
+              </FormControl>
+            </Box>
+
             {isMobile ? (
               <Box sx={{ display: "flex", flexDirection: "column", gap: 1 }}>
                 {filteredApprovalQueue.map((r, idx) => {
@@ -1203,8 +1235,8 @@ export default function ExpenseRequestTable() {
                       <Typography sx={{ fontSize: 12, mt: 0.5 }}>
                         ₹ {fmtINR(safeNum(r["Amount"]))}
                       </Typography>
-                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
-                        {toStr(r["Description"]) || "-"}
+                      <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }} noWrap title={toStr(r["Description"])}>
+                        {compactDescription(r["Description"])}
                       </Typography>
                       <Typography sx={{ fontSize: 12, opacity: 0.8, mt: 0.5 }}>
                         Linked Entity: {toStr(r["Linked Entity Name"]) || "-"}
@@ -1293,7 +1325,7 @@ export default function ExpenseRequestTable() {
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
-                          <TableCell sx={{ fontSize: 12 }}>{toStr(r["Description"])}</TableCell>
+                          <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
                           <TableCell sx={{ fontSize: 12 }}>
                             <Chip
@@ -1374,6 +1406,32 @@ export default function ExpenseRequestTable() {
                   Bulk Sync
                 </Button>
               </Box>
+            </Box>
+
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center", mb: 1.5 }}>
+              <TextField size="small" label="Search Accounts Queue" value={accountsSearch} onChange={(e) => setAccountsSearch(e.target.value)} sx={{ minWidth: isMobile ? "100%" : 220 }} />
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+                <InputLabel>Raised By</InputLabel>
+                <Select value={accountsRaisedByFilter} label="Raised By" onChange={(e) => { setAccountsRaisedByFilter(e.target.value); clearAccountsSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  {raisedByOptions.map((name) => (<MenuItem key={name} value={name}>{name}</MenuItem>))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 170 }}>
+                <InputLabel>Approval Status</InputLabel>
+                <Select value={accountsApprovalStatusFilter} label="Approval Status" onChange={(e) => { setAccountsApprovalStatusFilter(e.target.value); clearAccountsSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  {["Pending", "Approved", "Rejected", "On Hold"].map((status) => (<MenuItem key={status} value={status}>{status}</MenuItem>))}
+                </Select>
+              </FormControl>
+              <FormControl size="small" sx={{ minWidth: isMobile ? "100%" : 150 }}>
+                <InputLabel>Synced</InputLabel>
+                <Select value={accountsSyncFilter} label="Synced" onChange={(e) => { setAccountsSyncFilter(e.target.value); clearAccountsSelection(); }}>
+                  <MenuItem value="">All</MenuItem>
+                  <MenuItem value="Yes">Yes</MenuItem>
+                  <MenuItem value="No">No</MenuItem>
+                </Select>
+              </FormControl>
             </Box>
 
             {isMobile ? (
@@ -1794,7 +1852,7 @@ export default function ExpenseRequestTable() {
                             <TableCell sx={{ fontSize: 12 }}>{toStr(r["Request ID"])}</TableCell>
                             <TableCell sx={{ fontSize: 12 }}>{toStr(r["Raised By"])}</TableCell>
                             <TableCell sx={{ fontSize: 12 }}>{toStr(r["Particular"])}</TableCell>
-                            <TableCell sx={{ fontSize: 12 }}>{toStr(r["Description"])}</TableCell>
+                            <TableCell sx={compactCellSx} title={toStr(r["Description"])}>{compactDescription(r["Description"])}</TableCell>
                             <TableCell sx={{ fontSize: 12 }}>₹ {fmtINR(safeNum(r["Amount"]))}</TableCell>
                             <TableCell sx={{ fontSize: 12 }}>{toStr(r["Approval Status"]) || "-"}</TableCell>
                             <TableCell sx={{ fontSize: 12 }}>{toStr(r["Linked Entity Name"]) || "-"}</TableCell>

@@ -52,6 +52,57 @@ const asNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
+const BOOKING_HOLD_DAYS = 2;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const STATUS_APPROVED = "APPROVED";
+const STATUS_DECLINED = "DECLINED";
+const STATUS_RELEASED = "RELEASED";
+
+function normalizeStatus(value) {
+  return normalizeKey(value || "PENDING");
+}
+
+function parseBookingDate(value) {
+  const raw = safeStr(value);
+  if (!raw) return null;
+  const direct = new Date(raw);
+  if (!Number.isNaN(direct.getTime())) return direct;
+
+  const parts = raw.match(/^(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/);
+  if (!parts) return null;
+
+  const [, dd, mm, yyyy, hh = "0", min = "0", sec = "0"] = parts;
+  const fullYear = yyyy.length === 2 ? `20${yyyy}` : yyyy;
+  const parsed = new Date(
+    Number(fullYear),
+    Number(mm) - 1,
+    Number(dd),
+    Number(hh),
+    Number(min),
+    Number(sec)
+  );
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getBookingHoldInfo(booking) {
+  const createdAt = parseBookingDate(
+    pickFirst(booking, ["timestamp", "Timestamp", "Created At", "createdAt"])
+  );
+  if (!createdAt) return { createdAt: null, expiresAt: null, isExpired: false, daysRemaining: null };
+
+  const expiresAt = new Date(createdAt.getTime() + BOOKING_HOLD_DAYS * MS_PER_DAY);
+  const msRemaining = expiresAt.getTime() - Date.now();
+  return {
+    createdAt,
+    expiresAt,
+    isExpired: msRemaining <= 0,
+    daysRemaining: Math.max(0, Math.ceil(msRemaining / MS_PER_DAY)),
+  };
+}
+
+function isReleasedStatus(status) {
+  return [STATUS_DECLINED, STATUS_RELEASED, "CANCELLED", "CANCELED"].includes(normalizeStatus(status));
+}
 
 function getUserFromLocalStorage() {
   // Adjust keys if your CRM uses different storage format
@@ -308,7 +359,95 @@ function evalFormula(formula, area, computedByMaterialName) {
   }
 }
 
-function computeLocally({ category, variant, inputs, configRows, stockRows, packSizeOverride }) {
+function buildFixedPackSizeMap(validation, selectedCategory) {
+  const out = {};
+  const canonicalCategory = (value) => {
+    const cat = toUpper(value);
+    if (cat.includes("ACRYLIC OR PU")) return "";
+    if (cat.includes("PU")) return "PU";
+    if (cat.includes("ACRYLIC")) return "ACRYLIC";
+    return cat;
+  };
+
+  const add = (materialName, packSize, category = "") => {
+    const size = asNum(packSize);
+    if (!materialName || size <= 0) return;
+    const cat = canonicalCategory(category);
+    if (cat && cat !== canonicalCategory(selectedCategory)) return;
+    out[normalizeKey(materialName)] = size;
+  };
+
+  const rowWise =
+    validation?.inventoryMaterialRows ||
+    validation?.["Inventory Material Rows"] ||
+    validation?.inventoryMaterialValidation ||
+    [];
+
+  if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
+    rowWise.forEach((row) => {
+      add(
+        pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
+        pickFirst(row, ["Fixed Pack Size", "fixedPackSize", "Pack Size", "packSize", "Package Size", "Packaging Size"]),
+        pickFirst(row, ["Category", "category"])
+      );
+    });
+  }
+
+  const materialList = validation?.["Material Name"] || [];
+  const categoryList = validation?.["Category"] || [];
+  const packSizeList =
+    validation?.["Fixed Pack Size"] ||
+    validation?.["Pack Size"] ||
+    validation?.["Package Size"] ||
+    validation?.["Packaging Size"] ||
+    [];
+
+  materialList.forEach((materialName, idx) => {
+    add(materialName, packSizeList[idx], categoryList[idx]);
+  });
+
+  [
+    "PU Material",
+    "Acrylic Material",
+    "Acrylic or PU Material",
+  ].forEach((materialHeader) => {
+    const materials = validation?.[materialHeader] || [];
+    const sizeHeaders = [
+      `${materialHeader} Fixed Pack Size`,
+      `${materialHeader} Pack Size`,
+      `${materialHeader} Package Size`,
+      `${materialHeader} Packaging Size`,
+      materialHeader.replace("Material", "Fixed Pack Size"),
+      materialHeader.replace("Material", "Pack Size"),
+      materialHeader.replace("Material", "Package Size"),
+      materialHeader.replace("Material", "Packaging Size"),
+    ];
+
+    const sizes = sizeHeaders.map((header) => validation?.[header]).find(Array.isArray) || [];
+    const storedCategory =
+      materialHeader === "PU Material"
+        ? "PU"
+        : materialHeader === "Acrylic Material"
+          ? "ACRYLIC"
+          : "";
+
+    materials.forEach((materialName, idx) => {
+      add(materialName, sizes[idx], storedCategory);
+    });
+  });
+
+  return out;
+}
+
+function computeLocally({
+  category,
+  variant,
+  inputs,
+  configRows,
+  stockRows,
+  packSizeOverride,
+  fixedPackSizeByMaterial,
+}) {
   const cat = toUpper(category);
   const varr = toUpper(variant);
 
@@ -318,7 +457,7 @@ function computeLocally({ category, variant, inputs, configRows, stockRows, pack
   // Build stock map by Material Name
   const stockMap = {};
   (stockRows || []).forEach((s) => {
-    stockMap[s.materialName] = s;
+    stockMap[normalizeKey(s.materialName)] = s;
   });
 
   const computed = {}; // materialName -> qty
@@ -386,15 +525,21 @@ function computeLocally({ category, variant, inputs, configRows, stockRows, pack
 
   // 3) Packaging + availability (pack size from stock sheet OR user override)
   const withStock = items.map((it) => {
-    const s = stockMap[it.materialName];
+    const materialKey = normalizeKey(it.materialName);
+    const s = stockMap[materialKey];
 
     const stockPackSize = s ? asNum(s.packSize) : 0;
+    const fixedPackSize = fixedPackSizeByMaterial ? asNum(fixedPackSizeByMaterial[materialKey]) : 0;
     const overridePackSize =
       packSizeOverride && packSizeOverride[it.materialName]
         ? asNum(packSizeOverride[it.materialName])
         : 0;
 
-    const packSize = overridePackSize > 0 ? overridePackSize : stockPackSize;
+    const packSize = fixedPackSize > 0
+      ? fixedPackSize
+      : overridePackSize > 0
+        ? overridePackSize
+        : stockPackSize;
 
     const packsNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
     const packagingQty = packSize > 0 ? packsNeeded * packSize : asNum(it.requiredQty);
@@ -414,6 +559,7 @@ function computeLocally({ category, variant, inputs, configRows, stockRows, pack
     return {
       ...it,
       packSize,
+      isFixedPackSize: fixedPackSize > 0,
       packsNeeded,
       packagingQty: round2(packagingQty),
       availablePackagedQty: round2(availPack),
@@ -506,6 +652,11 @@ export default function InventoryModule({
     return Array.from(new Set(nums)).sort((a, b) => a - b);
   }, [validation]);
 
+  const fixedPackSizeByMaterial = useMemo(
+    () => buildFixedPackSizeMap(validation, category),
+    [validation, category]
+  );
+
   // ✅ Booking status options from validation sheet
   const bookingStatusOptions = useMemo(() => {
     const raw =
@@ -543,6 +694,11 @@ export default function InventoryModule({
     if (!selectedParentRow) return "";
     return safeStr(selectedParentRow["Inputs JSON"]);
   }, [selectedParentRow]);
+
+  const selectedBookingHoldInfo = useMemo(
+    () => getBookingHoldInfo(selectedBooking || {}),
+    [selectedBooking]
+  );
 
   // Load validation (JSONP)
   useEffect(() => {
@@ -676,6 +832,7 @@ export default function InventoryModule({
         configRows,
         stockRows,
         packSizeOverride,
+        fixedPackSizeByMaterial,
       });
       setCalcResult(result);
     } catch (e) {
@@ -737,6 +894,8 @@ export default function InventoryModule({
           inputs: normalizedInputs,
           totalRequiredQty: totals.totalRequired,
           totalShortageQty: totals.totalShort,
+          bookingHoldDays: BOOKING_HOLD_DAYS,
+          holdExpiresAt: new Date(Date.now() + BOOKING_HOLD_DAYS * MS_PER_DAY).toISOString(),
           allocationPackageQty: 0,
           allocationLooseQty: 0,
           items: (calcResult.items || []).map((it) => ({
@@ -785,18 +944,27 @@ export default function InventoryModule({
     setStatusNotice("");
   };
 
-  const handleSaveBookingStatus = async () => {
-    if (!selectedBooking?.bookingId) return;
+  const handleBookingDecision = async (nextStatus, bookingAction = "statusUpdate") => {
+    if (!selectedBooking?.bookingId || !nextStatus) return;
 
     setStatusUpdateLoading(true);
     setStatusNotice("");
 
     try {
+      const holdInfo = getBookingHoldInfo(selectedBooking);
+      const releaseStock =
+        normalizeStatus(nextStatus) === STATUS_RELEASED ||
+        normalizeStatus(nextStatus) === STATUS_DECLINED ||
+        (bookingAction === "releaseExpiredHold" && holdInfo.isExpired);
+
       const payload = {
         action: "updateBookingStatus",
         data: {
           bookingId: selectedBooking.bookingId,
-          status: selectedBookingStatus,
+          status: nextStatus,
+          bookingAction,
+          releaseStock,
+          bookingHoldDays: BOOKING_HOLD_DAYS,
           updatedBy: user.username || "",
         },
       };
@@ -813,9 +981,9 @@ export default function InventoryModule({
           if (rowBookingId !== selectedBooking.bookingId) return row;
           return {
             ...row,
-            Status: selectedBookingStatus,
-            status: selectedBookingStatus,
-            "Booking Status": selectedBookingStatus,
+            Status: nextStatus,
+            status: nextStatus,
+            "Booking Status": nextStatus,
           };
         })
       );
@@ -824,16 +992,17 @@ export default function InventoryModule({
         prev
           ? {
               ...prev,
-              status: selectedBookingStatus,
+              status: nextStatus,
               rows: (prev.rows || []).map((row) => ({
                 ...row,
-                Status: selectedBookingStatus,
-                status: selectedBookingStatus,
-                "Booking Status": selectedBookingStatus,
+                Status: nextStatus,
+                status: nextStatus,
+                "Booking Status": nextStatus,
               })),
             }
           : prev
       );
+      setSelectedBookingStatus(nextStatus);
 
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
@@ -842,6 +1011,12 @@ export default function InventoryModule({
     } finally {
       setStatusUpdateLoading(false);
     }
+  };
+
+  const handleSaveBookingStatus = async () => {
+    if (!selectedBooking?.bookingId) return;
+
+    await handleBookingDecision(selectedBookingStatus, "manualStatusUpdate");
   };
 
   const busy =
@@ -1083,6 +1258,13 @@ export default function InventoryModule({
               <TableBody>
                 {calcResult.items.map((it) => {
                   const ok = asNum(it.shortageQty) <= 0;
+                  const packSizeOptions = Array.from(
+                    new Set([
+                      ...(it.packSize ? [it.packSize] : []),
+                      ...approvedPackSizes,
+                    ])
+                  ).sort((a, b) => a - b);
+
                   return (
                     <TableRow key={`${it.materialName}-${it.calcType}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
@@ -1091,12 +1273,15 @@ export default function InventoryModule({
                         {round2(it.requiredQty)}
                       </TableCell>
 
-                      {/* ✅ Editable Pack Size (validation-approved) */}
+                      {/* ✅ Editable Pack Size (validation-approved, locked when fixed by validation) */}
                       <TableCell sx={{ fontFamily }} align="right">
                         <Select
                           size="small"
-                          value={packSizeOverride[it.materialName] ?? (it.packSize ? it.packSize : "")}
+                          value={it.isFixedPackSize
+                            ? (it.packSize || "")
+                            : packSizeOverride[it.materialName] ?? (it.packSize ? it.packSize : "")}
                           displayEmpty
+                          disabled={it.isFixedPackSize}
                           onChange={(e) => {
                             const val = e.target.value === "" ? "" : Number(e.target.value);
 
@@ -1117,6 +1302,7 @@ export default function InventoryModule({
                                   ...packSizeOverride,
                                   [it.materialName]: val,
                                 },
+                                fixedPackSizeByMaterial,
                               });
                               setCalcResult(result);
                             } catch (err) {
@@ -1128,7 +1314,7 @@ export default function InventoryModule({
                           <MenuItem value="">
                             <em>-</em>
                           </MenuItem>
-                          {approvedPackSizes.map((ps) => (
+                          {packSizeOptions.map((ps) => (
                             <MenuItem key={ps} value={ps}>
                               {ps}
                             </MenuItem>
@@ -1208,6 +1394,7 @@ export default function InventoryModule({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Child Items
                   </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Hold</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Remarks</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
@@ -1216,31 +1403,51 @@ export default function InventoryModule({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {bookingSummaryRows.map((b, idx) => (
-                  <TableRow key={b.bookingId || idx}>
-                    <TableCell sx={{ fontFamily, fontSize: 12 }}>
-                      {formatDisplayDate(b.timestamp)}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.bookingId)}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.requestedBy)}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.category)}</TableCell>
-                    <TableCell sx={{ fontFamily }}>{safeStr(b.variant)}</TableCell>
-                    <TableCell sx={{ fontFamily }} align="right">
-                      {b.totalItems || 0}
-                    </TableCell>
-                    <TableCell sx={{ fontFamily }}>
-                      <Chip size="small" label={safeStr(b.status) || "-"} sx={{ fontFamily }} />
-                    </TableCell>
-                    <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b.remarks)}</TableCell>
-                    <TableCell align="center">
-                      <Tooltip title="View booking items">
-                        <IconButton onClick={() => handleOpenBookingDetail(b)}>
-                          <VisibilityIcon sx={{ color: cornflowerBlue }} />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {bookingSummaryRows.map((b, idx) => {
+                  const holdInfo = getBookingHoldInfo(b);
+                  const released = isReleasedStatus(b.status);
+                  const holdLabel = !holdInfo.expiresAt
+                    ? "-"
+                    : released
+                      ? "Released"
+                      : holdInfo.isExpired
+                        ? "Expired"
+                        : `${holdInfo.daysRemaining}d left`;
+
+                  return (
+                    <TableRow key={b.bookingId || idx}>
+                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
+                        {formatDisplayDate(b.timestamp)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }}>{safeStr(b.bookingId)}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{safeStr(b.requestedBy)}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{safeStr(b.category)}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{safeStr(b.variant)}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {b.totalItems || 0}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }}>
+                        <Chip
+                          size="small"
+                          label={holdLabel}
+                          color={!released && holdInfo.isExpired ? "warning" : "default"}
+                          sx={{ fontFamily }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }}>
+                        <Chip size="small" label={safeStr(b.status) || "PENDING"} sx={{ fontFamily }} />
+                      </TableCell>
+                      <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b.remarks)}</TableCell>
+                      <TableCell align="center">
+                        <Tooltip title="View booking items">
+                          <IconButton onClick={() => handleOpenBookingDetail(b)}>
+                            <VisibilityIcon sx={{ color: cornflowerBlue }} />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
               </TableBody>
             </Table>
           </TableContainer>
@@ -1266,6 +1473,15 @@ export default function InventoryModule({
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Timestamp</Typography>
                   <Typography sx={{ fontFamily, fontWeight: 600 }}>
                     {formatDisplayDate(selectedBooking.timestamp)}
+                  </Typography>
+                </Grid>
+
+                <Grid item xs={12} md={3}>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Hold Until</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
+                    {selectedBookingHoldInfo.expiresAt
+                      ? formatDisplayDate(selectedBookingHoldInfo.expiresAt.toISOString())
+                      : "-"}
                   </Typography>
                 </Grid>
 
@@ -1355,6 +1571,38 @@ export default function InventoryModule({
                 <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                   {isAdmin ? (
                     <>
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleBookingDecision(STATUS_APPROVED, "approveBooking")}
+                        disabled={statusUpdateLoading || normalizeStatus(selectedBooking.status) === STATUS_APPROVED}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: "#15803d" }}
+                      >
+                        Approve
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleBookingDecision(STATUS_DECLINED, "declineBooking")}
+                        disabled={statusUpdateLoading || isReleasedStatus(selectedBooking.status)}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: "#b91c1c" }}
+                      >
+                        Decline
+                      </Button>
+
+                      {selectedBookingHoldInfo.isExpired && !isReleasedStatus(selectedBooking.status) ? (
+                        <Button
+                          size="small"
+                          variant="contained"
+                          onClick={() => handleBookingDecision(STATUS_RELEASED, "releaseExpiredHold")}
+                          disabled={statusUpdateLoading}
+                          sx={{ textTransform: "none", fontFamily, backgroundColor: "#d97706" }}
+                        >
+                          Release Stock
+                        </Button>
+                      ) : null}
+
                       <FormControl size="small" sx={{ minWidth: 220 }}>
                         <InputLabel>Booking Status</InputLabel>
                         <Select
@@ -1399,6 +1647,14 @@ export default function InventoryModule({
                 <Box mb={2}>
                   <Alert severity="success" sx={{ fontFamily }}>
                     {statusNotice}
+                  </Alert>
+                </Box>
+              ) : null}
+
+              {selectedBookingHoldInfo.isExpired && !isReleasedStatus(selectedBooking.status) ? (
+                <Box mb={2}>
+                  <Alert severity="warning" sx={{ fontFamily }}>
+                    This booking has crossed the {BOOKING_HOLD_DAYS}-day hold period. Release stock to return reserved quantities to availability.
                   </Alert>
                 </Box>
               ) : null}

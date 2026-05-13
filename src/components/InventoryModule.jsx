@@ -227,15 +227,10 @@ function getAllocationKey(item, index) {
   return `${index}__${normalizeKey(item?.materialName)}`;
 }
 
-function parsePackSizeOptions(value) {
-  return Array.from(
-    new Set(
-      safeStr(value)
-        .split(/[|,]/)
-        .map((v) => asNum(v))
-        .filter((n) => n > 0)
-    )
-  ).sort((a, b) => a - b);
+function normalizeValidationList(value) {
+  if (Array.isArray(value)) return value;
+  if (value == null) return [];
+  return [value];
 }
 
 function deriveAllocationFromPackSize(requiredQty, packSize) {
@@ -645,13 +640,14 @@ export default function InventoryModule({
   const approvedPackSizes = useMemo(() => {
     const raw =
       validation?.["Approved Pack Sizes"] ||
+      validation?.["Approved Package Sizes"] ||
       validation?.["Pack Sizes"] ||
       validation?.["Package Sizes"] ||
       [];
 
     return Array.from(
       new Set(
-        (raw || [])
+        normalizeValidationList(raw)
           .flatMap((v) => safeStr(v).split(/[|,]/))
           .map((v) => asNum(v))
           .filter((n) => n > 0)
@@ -681,14 +677,6 @@ export default function InventoryModule({
     () => getBookingHoldInfo(selectedBooking || {}),
     [selectedBooking]
   );
-
-  const stockByMaterial = useMemo(() => {
-    const out = {};
-    (stockRows || []).forEach((row) => {
-      out[normalizeKey(row.materialName)] = row;
-    });
-    return out;
-  }, [stockRows]);
 
   const normalizedInputs = useMemo(() => {
     const out = { ...(inputs || {}) };
@@ -934,8 +922,9 @@ export default function InventoryModule({
     setSelectedBookingStatus(safeStr(booking?.status) || STATUS_PENDING_REVIEW);
     setBookingAllocations(
       (booking?.childItems || []).reduce((acc, item, index) => {
-        const stockRow = stockByMaterial[normalizeKey(item.materialName)] || {};
-        const selectedPackSize = asNum(item.selectedPackSize || item.packSize || stockRow.packSize);
+        const selectedPackSize = asNum(
+          item.selectedPackSize || item.packSize || approvedPackSizes[0]
+        );
         const derived = deriveAllocationFromPackSize(item.requiredQty, selectedPackSize);
         const allocatedPackQty = asNum(item.allocatedPackQty || item.packsNeeded || derived.allocatedPackQty);
         const allocatedLooseQty = asNum(item.allocatedLooseQty || derived.allocatedLooseQty);
@@ -1633,9 +1622,8 @@ export default function InventoryModule({
                       {selectedBooking.childItems.map((item, index) => {
                         const allocationKey = getAllocationKey(item, index);
                         const allocation = bookingAllocations[allocationKey] || {};
-                        const stockRow = stockByMaterial[normalizeKey(item.materialName)] || {};
                         const selectedPackSize = asNum(
-                          allocation.selectedPackSize || item.selectedPackSize || item.packSize || stockRow.packSize
+                          allocation.selectedPackSize || item.selectedPackSize || item.packSize || approvedPackSizes[0]
                         );
                         const derivedAllocation = deriveAllocationFromPackSize(item.requiredQty, selectedPackSize);
                         const allocatedPackQty = asNum(
@@ -1649,9 +1637,6 @@ export default function InventoryModule({
                         const packSizeOptions = Array.from(
                           new Set([
                             ...approvedPackSizes,
-                            ...parsePackSizeOptions(stockRow.packSizeOptions),
-                            asNum(stockRow.packSize),
-                            selectedPackSize,
                           ].filter((n) => n > 0))
                         ).sort((a, b) => a - b);
                         const itemStatus = safeStr(item.itemStatus || item.status) || (mappedStockQty > 0 ? "Allocated" : "Pending Allocation");

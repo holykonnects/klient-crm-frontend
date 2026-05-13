@@ -43,6 +43,7 @@ const INVENTORY_API_URL =
   "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
 
 const BOOKING_HOLD_DAYS = 2;
+const JSONP_TIMEOUT_MS = 60000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const STATUS_PENDING_REVIEW = "Pending Review";
@@ -187,14 +188,29 @@ function isChildItemRow(row) {
 function mapRowToChildItem(row) {
   if (!isChildItemRow(row)) return null;
 
+  const selectedPackSize = asNum(
+    pickFirst(row, ["Selected Pack Size", "selectedPackSize", "Pack Size", "packSize"])
+  );
+  const allocatedPackQty = asNum(
+    pickFirst(row, ["Allocated Pack Qty", "allocatedPackQty", "Packs Needed", "packsNeeded"])
+  );
+  const mappedStockQty = asNum(
+    pickFirst(row, ["Mapped Stock Qty", "mappedStockQty", "Packaging Qty", "packagingQty"])
+  );
+  const allocatedLooseQty = asNum(pickFirst(row, ["Allocated Loose Qty", "allocatedLooseQty"]));
+  const itemStatus = pickFirst(row, ["Item Status", "itemStatus", "Status", "status"]);
+
   return {
     materialName: pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
     unit: pickFirst(row, ["Unit", "unit"]),
     requiredQty: asNum(pickFirst(row, ["Required Qty", "requiredQty", "Requirement Qty", "Qty Required"])),
-    packSize: asNum(pickFirst(row, ["Pack Size", "packSize", "Selected Pack Size", "selectedPackSize"])),
-    packsNeeded: asNum(pickFirst(row, ["Packs Needed", "packsNeeded", "Allocated Pack Qty", "allocatedPackQty"])),
-    packagingQty: asNum(pickFirst(row, ["Packaging Qty", "packagingQty", "Mapped Stock Qty", "mappedStockQty"])),
-    allocatedLooseQty: asNum(pickFirst(row, ["Allocated Loose Qty", "allocatedLooseQty"])),
+    selectedPackSize,
+    allocatedPackQty,
+    allocatedLooseQty,
+    mappedStockQty,
+    packSize: selectedPackSize,
+    packsNeeded: allocatedPackQty,
+    packagingQty: mappedStockQty,
     reservedQty: asNum(pickFirst(row, ["Reserved Qty", "reservedQty"])),
     dispatchedQty: asNum(pickFirst(row, ["Dispatched Qty", "dispatchedQty"])),
     availableTotalQty: asNum(
@@ -202,8 +218,24 @@ function mapRowToChildItem(row) {
     ),
     shortageQty: asNum(pickFirst(row, ["Shortage Qty", "shortageQty"])),
     canFulfill: toUpper(pickFirst(row, ["Can Fulfill", "canFulfill"])) === "YES",
-    status: pickFirst(row, ["Item Status", "itemStatus", "Status", "status"]),
+    itemStatus,
+    status: itemStatus,
   };
+}
+
+function getAllocationKey(item, index) {
+  return `${index}__${normalizeKey(item?.materialName)}`;
+}
+
+function parsePackSizeOptions(value) {
+  return Array.from(
+    new Set(
+      safeStr(value)
+        .split(/[|,]/)
+        .map((v) => asNum(v))
+        .filter((n) => n > 0)
+    )
+  ).sort((a, b) => a - b);
 }
 
 function groupBookingsForSummary(rows = []) {
@@ -268,7 +300,15 @@ function groupBookingsForSummary(rows = []) {
   });
 }
 
-function jsonp(url, timeoutMs = 20000) {
+let jsonpQueue = Promise.resolve();
+
+function enqueueJsonp(task) {
+  const next = jsonpQueue.catch(() => {}).then(task);
+  jsonpQueue = next.catch(() => {});
+  return next;
+}
+
+function jsonp(url, timeoutMs = JSONP_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const script = document.createElement("script");
@@ -294,7 +334,7 @@ function jsonp(url, timeoutMs = 20000) {
     };
 
     const sep = url.includes("?") ? "&" : "?";
-    script.src = `${url}${sep}callback=${cb}`;
+    script.src = `${url}${sep}callback=${encodeURIComponent(cb)}`;
     script.async = true;
 
     script.onerror = () => {
@@ -307,8 +347,11 @@ function jsonp(url, timeoutMs = 20000) {
 }
 
 async function apiGet(apiUrl, params) {
-  const qs = new URLSearchParams(params);
-  const payload = await jsonp(`${apiUrl}?${qs.toString()}`);
+  const qs = new URLSearchParams({
+    ...params,
+    _: String(Date.now()),
+  });
+  const payload = await enqueueJsonp(() => jsonp(`${apiUrl}?${qs.toString()}`));
   if (!payload?.ok) throw new Error(payload?.error || "Request failed");
   return payload.data;
 }
@@ -524,6 +567,7 @@ export default function InventoryModule({
   const [bookingDetailOpen, setBookingDetailOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedBookingStatus, setSelectedBookingStatus] = useState("");
+  const [bookingAllocations, setBookingAllocations] = useState({});
   const [statusUpdateLoading, setStatusUpdateLoading] = useState(false);
   const [statusNotice, setStatusNotice] = useState("");
 
@@ -596,6 +640,14 @@ export default function InventoryModule({
     () => getBookingHoldInfo(selectedBooking || {}),
     [selectedBooking]
   );
+
+  const stockByMaterial = useMemo(() => {
+    const out = {};
+    (stockRows || []).forEach((row) => {
+      out[normalizeKey(row.materialName)] = row;
+    });
+    return out;
+  }, [stockRows]);
 
   const normalizedInputs = useMemo(() => {
     const out = { ...(inputs || {}) };
@@ -839,6 +891,21 @@ export default function InventoryModule({
   const handleOpenBookingDetail = (booking) => {
     setSelectedBooking(booking);
     setSelectedBookingStatus(safeStr(booking?.status) || STATUS_PENDING_REVIEW);
+    setBookingAllocations(
+      (booking?.childItems || []).reduce((acc, item, index) => {
+        const stockRow = stockByMaterial[normalizeKey(item.materialName)] || {};
+        const selectedPackSize = asNum(item.selectedPackSize || item.packSize || stockRow.packSize);
+        const allocatedPackQty = asNum(item.allocatedPackQty || item.packsNeeded);
+        const allocatedLooseQty = asNum(item.allocatedLooseQty);
+
+        acc[getAllocationKey(item, index)] = {
+          selectedPackSize,
+          allocatedPackQty,
+          allocatedLooseQty,
+        };
+        return acc;
+      }, {})
+    );
     setStatusNotice("");
     setBookingDetailOpen(true);
   };
@@ -847,8 +914,43 @@ export default function InventoryModule({
     setBookingDetailOpen(false);
     setSelectedBooking(null);
     setSelectedBookingStatus("");
+    setBookingAllocations({});
     setStatusNotice("");
   };
+
+  const handleAllocationChange = (item, index, field, value) => {
+    const key = getAllocationKey(item, index);
+    setBookingAllocations((prev) => ({
+      ...prev,
+      [key]: {
+        ...(prev[key] || {}),
+        [field]: value,
+      },
+    }));
+  };
+
+  const buildBookingAllocationItems = () =>
+    (selectedBooking?.childItems || []).map((item, index) => {
+      const key = getAllocationKey(item, index);
+      const allocation = bookingAllocations[key] || {};
+      const selectedPackSize = asNum(allocation.selectedPackSize || item.selectedPackSize || item.packSize);
+      const allocatedPackQty = asNum(allocation.allocatedPackQty || item.allocatedPackQty);
+      const allocatedLooseQty = asNum(allocation.allocatedLooseQty || item.allocatedLooseQty);
+      const mappedStockQty = round2(selectedPackSize * allocatedPackQty + allocatedLooseQty);
+      const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
+
+      return {
+        materialName: item.materialName || "",
+        unit: item.unit || "",
+        requiredQty: asNum(item.requiredQty),
+        selectedPackSize,
+        allocatedPackQty,
+        allocatedLooseQty,
+        mappedStockQty,
+        shortageQty,
+        itemStatus: shortageQty > 0 ? "Short" : "Allocated",
+      };
+    });
 
   const handleBookingDecision = async (nextStatus, bookingAction = "statusUpdate") => {
     if (!selectedBooking?.bookingId || !nextStatus) return;
@@ -872,6 +974,7 @@ export default function InventoryModule({
           reserveStock: shouldReserve,
           releaseStock: shouldRelease,
           dispatchStock: shouldDispatch,
+          items: buildBookingAllocationItems(),
           updatedBy: user.username || "",
         },
       };
@@ -1479,27 +1582,106 @@ export default function InventoryModule({
                       </TableRow>
                     </TableHead>
                     <TableBody>
-                      {selectedBooking.childItems.map((item, index) => (
-                        <TableRow key={`${item.materialName || "item"}-${index}`}>
-                          <TableCell sx={{ fontFamily }}>{safeStr(item.materialName)}</TableCell>
-                          <TableCell sx={{ fontFamily }}>{safeStr(item.unit)}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{item.packSize ? round2(item.packSize) : "Pending"}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{item.packsNeeded ? round2(item.packsNeeded) : "-"}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{item.allocatedLooseQty ? round2(item.allocatedLooseQty) : "-"}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{item.reservedQty ? round2(item.reservedQty) : "-"}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{item.dispatchedQty ? round2(item.dispatchedQty) : "-"}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">{round2(item.shortageQty)}</TableCell>
-                          <TableCell sx={{ fontFamily }}>
-                            <Chip
-                              size="small"
-                              label={safeStr(item.status) || "Pending Allocation"}
-                              color={item.canFulfill || asNum(item.shortageQty) <= 0 ? "success" : "warning"}
-                              sx={{ fontFamily }}
-                            />
-                          </TableCell>
-                        </TableRow>
-                      ))}
+                      {selectedBooking.childItems.map((item, index) => {
+                        const allocationKey = getAllocationKey(item, index);
+                        const allocation = bookingAllocations[allocationKey] || {};
+                        const stockRow = stockByMaterial[normalizeKey(item.materialName)] || {};
+                        const selectedPackSize = asNum(
+                          allocation.selectedPackSize || item.selectedPackSize || item.packSize || stockRow.packSize
+                        );
+                        const allocatedPackQty = asNum(allocation.allocatedPackQty || item.allocatedPackQty);
+                        const allocatedLooseQty = asNum(allocation.allocatedLooseQty || item.allocatedLooseQty);
+                        const mappedStockQty = round2(selectedPackSize * allocatedPackQty + allocatedLooseQty);
+                        const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
+                        const packSizeOptions = Array.from(
+                          new Set([
+                            ...parsePackSizeOptions(stockRow.packSizeOptions),
+                            asNum(stockRow.packSize),
+                            selectedPackSize,
+                          ].filter((n) => n > 0))
+                        ).sort((a, b) => a - b);
+                        const itemStatus = safeStr(item.itemStatus || item.status) || (mappedStockQty > 0 ? "Allocated" : "Pending Allocation");
+
+                        return (
+                          <TableRow key={`${item.materialName || "item"}-${index}`}>
+                            <TableCell sx={{ fontFamily }}>{safeStr(item.materialName)}</TableCell>
+                            <TableCell sx={{ fontFamily }}>{safeStr(item.unit)}</TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">
+                              {isAdmin ? (
+                                packSizeOptions.length ? (
+                                  <FormControl size="small" sx={{ minWidth: 110 }}>
+                                    <Select
+                                      value={selectedPackSize || ""}
+                                      onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
+                                      sx={{ fontFamily }}
+                                    >
+                                      <MenuItem value="" disabled>
+                                        Select
+                                      </MenuItem>
+                                      {packSizeOptions.map((ps) => (
+                                        <MenuItem key={ps} value={ps}>
+                                          {ps}
+                                        </MenuItem>
+                                      ))}
+                                    </Select>
+                                  </FormControl>
+                                ) : (
+                                  <TextField
+                                    size="small"
+                                    type="number"
+                                    value={selectedPackSize || ""}
+                                    onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
+                                    sx={{ width: 110, fontFamily }}
+                                    inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                                  />
+                                )
+                              ) : (
+                                selectedPackSize ? round2(selectedPackSize) : "Pending"
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">
+                              {isAdmin ? (
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  value={allocatedPackQty || ""}
+                                  onChange={(e) => handleAllocationChange(item, index, "allocatedPackQty", e.target.value)}
+                                  sx={{ width: 100, fontFamily }}
+                                  inputProps={{ min: 0, style: { fontFamily, textAlign: "right" } }}
+                                />
+                              ) : (
+                                allocatedPackQty ? round2(allocatedPackQty) : "-"
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">
+                              {isAdmin ? (
+                                <TextField
+                                  size="small"
+                                  type="number"
+                                  value={allocatedLooseQty || ""}
+                                  onChange={(e) => handleAllocationChange(item, index, "allocatedLooseQty", e.target.value)}
+                                  sx={{ width: 100, fontFamily }}
+                                  inputProps={{ min: 0, style: { fontFamily, textAlign: "right" } }}
+                                />
+                              ) : (
+                                allocatedLooseQty ? round2(allocatedLooseQty) : "-"
+                              )}
+                            </TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">{item.reservedQty ? round2(item.reservedQty) : "-"}</TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">{item.dispatchedQty ? round2(item.dispatchedQty) : "-"}</TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">{round2(shortageQty)}</TableCell>
+                            <TableCell sx={{ fontFamily }}>
+                              <Chip
+                                size="small"
+                                label={shortageQty > 0 ? "Short" : itemStatus}
+                                color={shortageQty <= 0 ? "success" : "warning"}
+                                sx={{ fontFamily }}
+                              />
+                            </TableCell>
+                          </TableRow>
+                        );
+                      })}
                     </TableBody>
                   </Table>
                 </TableContainer>

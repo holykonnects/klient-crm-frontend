@@ -39,11 +39,19 @@ import SaveIcon from "@mui/icons-material/Save";
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
 
-// ✅ Inventory Apps Script Web App URL
 const INVENTORY_API_URL =
   "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
 
-// ---------- Helpers ----------
+const BOOKING_HOLD_DAYS = 2;
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+const STATUS_PENDING_REVIEW = "Pending Review";
+const STATUS_HOLD = "Hold";
+const STATUS_APPROVED = "Approved";
+const STATUS_DECLINED = "Declined";
+const STATUS_RELEASED = "Released";
+const STATUS_DISPATCHED = "Dispatched";
+
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
 const normalizeKey = (v) => safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
@@ -52,19 +60,30 @@ const asNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
-const BOOKING_HOLD_DAYS = 2;
-const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const STATUS_APPROVED = "APPROVED";
-const STATUS_DECLINED = "DECLINED";
-const STATUS_RELEASED = "RELEASED";
 
 function normalizeStatus(value) {
-  return normalizeKey(value || "PENDING");
+  return normalizeKey(value || STATUS_PENDING_REVIEW);
+}
+
+function isReleasedStatus(status) {
+  return [
+    normalizeKey(STATUS_DECLINED),
+    normalizeKey(STATUS_RELEASED),
+    "CANCELLED",
+    "CANCELED",
+  ].includes(normalizeStatus(status));
+}
+
+function isReservedStatus(status) {
+  return [normalizeKey(STATUS_HOLD), normalizeKey(STATUS_APPROVED)].includes(
+    normalizeStatus(status)
+  );
 }
 
 function parseBookingDate(value) {
   const raw = safeStr(value);
   if (!raw) return null;
+
   const direct = new Date(raw);
   if (!Number.isNaN(direct.getTime())) return direct;
 
@@ -81,17 +100,47 @@ function parseBookingDate(value) {
     Number(min),
     Number(sec)
   );
+
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function pickFirst(row, keys = []) {
+  for (const key of keys) {
+    const val = row?.[key];
+    if (safeStr(val) !== "") return val;
+  }
+  return "";
+}
+
 function getBookingHoldInfo(booking) {
+  const explicitExpiry = parseBookingDate(
+    pickFirst(booking, [
+      "Hold Expiry",
+      "Hold Expires At",
+      "holdExpiresAt",
+      "holdExpiry",
+      "Reservation Expiry",
+    ])
+  );
+
   const createdAt = parseBookingDate(
     pickFirst(booking, ["timestamp", "Timestamp", "Created At", "createdAt"])
   );
-  if (!createdAt) return { createdAt: null, expiresAt: null, isExpired: false, daysRemaining: null };
 
-  const expiresAt = new Date(createdAt.getTime() + BOOKING_HOLD_DAYS * MS_PER_DAY);
+  const expiresAt = explicitExpiry ||
+    (createdAt ? new Date(createdAt.getTime() + BOOKING_HOLD_DAYS * MS_PER_DAY) : null);
+
+  if (!expiresAt) {
+    return {
+      createdAt,
+      expiresAt: null,
+      isExpired: false,
+      daysRemaining: null,
+    };
+  }
+
   const msRemaining = expiresAt.getTime() - Date.now();
+
   return {
     createdAt,
     expiresAt,
@@ -100,15 +149,11 @@ function getBookingHoldInfo(booking) {
   };
 }
 
-function isReleasedStatus(status) {
-  return [STATUS_DECLINED, STATUS_RELEASED, "CANCELLED", "CANCELED"].includes(normalizeStatus(status));
-}
-
 function getUserFromLocalStorage() {
-  // Adjust keys if your CRM uses different storage format
   try {
     const raw = localStorage.getItem("crmUser");
     if (!raw) return { username: "", role: "" };
+
     const parsed = JSON.parse(raw);
     return {
       username: parsed?.loginUsername || parsed?.username || parsed?.name || "",
@@ -122,8 +167,10 @@ function getUserFromLocalStorage() {
 function formatDisplayDate(value) {
   const raw = safeStr(value);
   if (!raw) return "";
+
   const d = new Date(raw);
   if (Number.isNaN(d.getTime())) return raw;
+
   return d.toLocaleString("en-IN", {
     year: "numeric",
     month: "short",
@@ -133,28 +180,23 @@ function formatDisplayDate(value) {
   });
 }
 
-function pickFirst(row, keys = []) {
-  for (const key of keys) {
-    const val = row?.[key];
-    if (safeStr(val) !== "") return val;
-  }
-  return "";
-}
-
-function isTruthyItemRow(row) {
+function isChildItemRow(row) {
   return safeStr(row?.["Row Type"]).toUpperCase() === "CHILD";
 }
 
 function mapRowToChildItem(row) {
-  if (safeStr(row?.["Row Type"]).toUpperCase() !== "CHILD") return null;
+  if (!isChildItemRow(row)) return null;
 
   return {
     materialName: pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
     unit: pickFirst(row, ["Unit", "unit"]),
     requiredQty: asNum(pickFirst(row, ["Required Qty", "requiredQty", "Requirement Qty", "Qty Required"])),
-    packSize: asNum(pickFirst(row, ["Pack Size", "packSize"])),
-    packsNeeded: asNum(pickFirst(row, ["Packs Needed", "packsNeeded"])),
-    packagingQty: asNum(pickFirst(row, ["Packaging Qty", "packagingQty"])),
+    packSize: asNum(pickFirst(row, ["Pack Size", "packSize", "Selected Pack Size", "selectedPackSize"])),
+    packsNeeded: asNum(pickFirst(row, ["Packs Needed", "packsNeeded", "Allocated Pack Qty", "allocatedPackQty"])),
+    packagingQty: asNum(pickFirst(row, ["Packaging Qty", "packagingQty", "Mapped Stock Qty", "mappedStockQty"])),
+    allocatedLooseQty: asNum(pickFirst(row, ["Allocated Loose Qty", "allocatedLooseQty"])),
+    reservedQty: asNum(pickFirst(row, ["Reserved Qty", "reservedQty"])),
+    dispatchedQty: asNum(pickFirst(row, ["Dispatched Qty", "dispatchedQty"])),
     availableTotalQty: asNum(
       pickFirst(row, ["Available Total Qty", "availableTotalQty", "Available Qty", "availableQty"])
     ),
@@ -179,6 +221,7 @@ function groupBookingsForSummary(rows = []) {
         category: pickFirst(row, ["Category", "category"]),
         variant: pickFirst(row, ["Variant / Base Type", "variant", "Variant"]),
         status: pickFirst(row, ["Status", "status", "Booking Status"]),
+        holdExpiresAt: pickFirst(row, ["Hold Expiry", "Hold Expires At", "holdExpiresAt", "holdExpiry"]),
         remarks: pickFirst(row, ["Remarks", "remarks"]),
         rows: [],
         childItems: [],
@@ -194,13 +237,12 @@ function groupBookingsForSummary(rows = []) {
       group.category = pickFirst(row, ["Category", "category"]) || group.category;
       group.variant = pickFirst(row, ["Variant / Base Type", "variant", "Variant"]) || group.variant;
       group.status = pickFirst(row, ["Status", "status", "Booking Status"]) || group.status;
+      group.holdExpiresAt = pickFirst(row, ["Hold Expiry", "Hold Expires At", "holdExpiresAt", "holdExpiry"]) || group.holdExpiresAt;
       group.remarks = pickFirst(row, ["Remarks", "remarks"]) || group.remarks;
     }
 
-    if (isTruthyItemRow(row)) {
-      const item = mapRowToChildItem(row);
-      if (item) group.childItems.push(item);
-    }
+    const item = mapRowToChildItem(row);
+    if (item) group.childItems.push(item);
   });
 
   return Array.from(grouped.values()).map((g) => {
@@ -226,15 +268,6 @@ function groupBookingsForSummary(rows = []) {
   });
 }
 
-/**
- * ✅ JSONP helper (fixes CORS for GET calls to Apps Script Web App)
- * We will use this for:
- * - getValidation
- * - getInputs
- * - getCalcConfig
- * - getStock
- * - getBookings
- */
 function jsonp(url, timeoutMs = 20000) {
   return new Promise((resolve, reject) => {
     const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
@@ -273,10 +306,6 @@ function jsonp(url, timeoutMs = 20000) {
   });
 }
 
-/**
- * ✅ GET via JSONP (returns json.data)
- * Requires GAS doGet to support ?callback=...
- */
 async function apiGet(apiUrl, params) {
   const qs = new URLSearchParams(params);
   const payload = await jsonp(`${apiUrl}?${qs.toString()}`);
@@ -284,10 +313,6 @@ async function apiGet(apiUrl, params) {
   return payload.data;
 }
 
-/**
- * ✅ POST with no-cors (opaque response; cannot read JSON)
- * Use for createBooking submission to avoid preflight/CORS blocks.
- */
 async function apiPostNoCors(apiUrl, body) {
   await fetch(apiUrl, {
     method: "POST",
@@ -295,13 +320,12 @@ async function apiPostNoCors(apiUrl, body) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-  // no-cors response is opaque → cannot read bookingId from response
 }
 
-// ---------- Local Calculation Engine ----------
 function evalRate(expr) {
   if (!expr) return 0;
   const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
+
   try {
     // eslint-disable-next-line no-new-func
     const val = Function(`"use strict"; return (${cleaned});`)();
@@ -326,12 +350,9 @@ function buildAliasMap(computedByMaterialName) {
 
     if (n === "SBR") out.SBR = qty;
     if (n.includes("SBR/R GRADE")) out.SBR = qty;
-
     if (n === "COLOR" || n.includes("ACRYLIC COLOR")) out.Color = qty;
-
     if (n.includes("RESURFACER")) out.Resurfacer = qty;
     if (n.includes("CUSHION")) out.Cushion = qty;
-
     if (n.includes("EPDM GRANULE")) out.EPDM = qty;
   });
 
@@ -350,6 +371,7 @@ function evalFormula(formula, area, computedByMaterialName) {
   });
 
   const cleaned = expr.replace(/[^0-9+\-*/(). ]/g, "");
+
   try {
     // eslint-disable-next-line no-new-func
     const val = Function(`"use strict"; return (${cleaned});`)();
@@ -359,108 +381,19 @@ function evalFormula(formula, area, computedByMaterialName) {
   }
 }
 
-function buildFixedPackSizeMap(validation, selectedCategory) {
-  const out = {};
-  const canonicalCategory = (value) => {
-    const cat = toUpper(value);
-    if (cat.includes("ACRYLIC OR PU")) return "";
-    if (cat.includes("PU")) return "PU";
-    if (cat.includes("ACRYLIC")) return "ACRYLIC";
-    return cat;
-  };
-
-  const add = (materialName, packSize, category = "") => {
-    const size = asNum(packSize);
-    if (!materialName || size <= 0) return;
-    const cat = canonicalCategory(category);
-    if (cat && cat !== canonicalCategory(selectedCategory)) return;
-    out[normalizeKey(materialName)] = size;
-  };
-
-  const rowWise =
-    validation?.inventoryMaterialRows ||
-    validation?.["Inventory Material Rows"] ||
-    validation?.inventoryMaterialValidation ||
-    [];
-
-  if (Array.isArray(rowWise) && rowWise.length > 0 && typeof rowWise[0] === "object") {
-    rowWise.forEach((row) => {
-      add(
-        pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
-        pickFirst(row, ["Fixed Pack Size", "fixedPackSize", "Pack Size", "packSize", "Package Size", "Packaging Size"]),
-        pickFirst(row, ["Category", "category"])
-      );
-    });
-  }
-
-  const materialList = validation?.["Material Name"] || [];
-  const categoryList = validation?.["Category"] || [];
-  const packSizeList =
-    validation?.["Fixed Pack Size"] ||
-    validation?.["Pack Size"] ||
-    validation?.["Package Size"] ||
-    validation?.["Packaging Size"] ||
-    [];
-
-  materialList.forEach((materialName, idx) => {
-    add(materialName, packSizeList[idx], categoryList[idx]);
-  });
-
-  [
-    "PU Material",
-    "Acrylic Material",
-    "Acrylic or PU Material",
-  ].forEach((materialHeader) => {
-    const materials = validation?.[materialHeader] || [];
-    const sizeHeaders = [
-      `${materialHeader} Fixed Pack Size`,
-      `${materialHeader} Pack Size`,
-      `${materialHeader} Package Size`,
-      `${materialHeader} Packaging Size`,
-      materialHeader.replace("Material", "Fixed Pack Size"),
-      materialHeader.replace("Material", "Pack Size"),
-      materialHeader.replace("Material", "Package Size"),
-      materialHeader.replace("Material", "Packaging Size"),
-    ];
-
-    const sizes = sizeHeaders.map((header) => validation?.[header]).find(Array.isArray) || [];
-    const storedCategory =
-      materialHeader === "PU Material"
-        ? "PU"
-        : materialHeader === "Acrylic Material"
-          ? "ACRYLIC"
-          : "";
-
-    materials.forEach((materialName, idx) => {
-      add(materialName, sizes[idx], storedCategory);
-    });
-  });
-
-  return out;
-}
-
-function computeLocally({
-  category,
-  variant,
-  inputs,
-  configRows,
-  stockRows,
-  packSizeOverride,
-  fixedPackSizeByMaterial,
-}) {
+function computeLocally({ category, variant, inputs, configRows, stockRows }) {
   const cat = toUpper(category);
   const varr = toUpper(variant);
 
   const area = cat === "PU" ? asNum(inputs.areaSqm || 0) : asNum(inputs.areaSqf || 0);
   const wearCoatType = toUpper(inputs.wearCoatType || "SD");
 
-  // Build stock map by Material Name
   const stockMap = {};
   (stockRows || []).forEach((s) => {
     stockMap[normalizeKey(s.materialName)] = s;
   });
 
-  const computed = {}; // materialName -> qty
+  const computed = {};
   const items = [];
 
   const filteredCfg = (configRows || []).filter(
@@ -470,11 +403,9 @@ function computeLocally({
       toUpper(r.active) !== "FALSE"
   );
 
-  // 1) Non-FORMULA first
   filteredCfg.forEach((row) => {
     if (row.calcType === "FORMULA") return;
 
-    // Wear coat conditional rows
     if (row.calcType === "AREA_X_RATE_IF") {
       const should = toUpper(row.formula || "");
       if (should && should !== wearCoatType) return;
@@ -507,7 +438,6 @@ function computeLocally({
     });
   });
 
-  // 2) FORMULA pass
   filteredCfg
     .filter((r) => r.calcType === "FORMULA")
     .forEach((row) => {
@@ -523,48 +453,32 @@ function computeLocally({
       });
     });
 
-  // 3) Packaging + availability (pack size from stock sheet OR user override)
   const withStock = items.map((it) => {
     const materialKey = normalizeKey(it.materialName);
     const s = stockMap[materialKey];
 
-    const stockPackSize = s ? asNum(s.packSize) : 0;
-    const fixedPackSize = fixedPackSizeByMaterial ? asNum(fixedPackSizeByMaterial[materialKey]) : 0;
-    const overridePackSize =
-      packSizeOverride && packSizeOverride[it.materialName]
-        ? asNum(packSizeOverride[it.materialName])
-        : 0;
-
-    const packSize = fixedPackSize > 0
-      ? fixedPackSize
-      : overridePackSize > 0
-        ? overridePackSize
-        : stockPackSize;
-
-    const packsNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
-    const packagingQty = packSize > 0 ? packsNeeded * packSize : asNum(it.requiredQty);
-
-    // Availability computed from stock qty - reserved qty (ignore available columns)
+    const packSize = s ? asNum(s.packSize) : 0;
     const packaged = s ? asNum(s.packagedStockQty) : 0;
     const loose = s ? asNum(s.looseStockQty) : 0;
     const resPack = s ? asNum(s.reservedPackagedQty) : 0;
     const resLoose = s ? asNum(s.reservedLooseQty) : 0;
 
-    const availPack = Math.max(0, packaged - resPack);
-    const availLoose = Math.max(0, loose - resLoose);
-    const availTotal = availPack + availLoose;
+    const availablePackagedQty = Math.max(0, packaged - resPack);
+    const availableLooseQty = Math.max(0, loose - resLoose);
+    const availableTotalQty = availablePackagedQty + availableLooseQty;
+    const shortageQty = Math.max(0, asNum(it.requiredQty) - availableTotalQty);
 
-    const shortageQty = Math.max(0, asNum(it.requiredQty) - availTotal);
+    const estimatedPacksNeeded = packSize > 0 ? Math.ceil(it.requiredQty / packSize) : 0;
+    const estimatedPackagingQty = packSize > 0 ? estimatedPacksNeeded * packSize : 0;
 
     return {
       ...it,
       packSize,
-      isFixedPackSize: fixedPackSize > 0,
-      packsNeeded,
-      packagingQty: round2(packagingQty),
-      availablePackagedQty: round2(availPack),
-      availableLooseQty: round2(availLoose),
-      availableTotalQty: round2(availTotal),
+      estimatedPacksNeeded,
+      estimatedPackagingQty: round2(estimatedPackagingQty),
+      availablePackagedQty: round2(availablePackagedQty),
+      availableLooseQty: round2(availableLooseQty),
+      availableTotalQty: round2(availableTotalQty),
       shortageQty: round2(shortageQty),
       canFulfill: shortageQty <= 0,
     };
@@ -573,7 +487,6 @@ function computeLocally({
   return { category: cat, variant: varr, area, wearCoatType, items: withStock };
 }
 
-// ---------- Component ----------
 export default function InventoryModule({
   apiUrl = INVENTORY_API_URL,
   logoSrc = "/assets/kk-logo.png",
@@ -608,10 +521,6 @@ export default function InventoryModule({
   const [bookingsLoading, setBookingsLoading] = useState(false);
   const [bookingsError, setBookingsError] = useState("");
 
-  // ✅ User-selected pack size overrides (materialName -> packSize)
-  const [packSizeOverride, setPackSizeOverride] = useState({});
-
-  // ✅ Booking detail modal states
   const [bookingDetailOpen, setBookingDetailOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
   const [selectedBookingStatus, setSelectedBookingStatus] = useState("");
@@ -620,44 +529,22 @@ export default function InventoryModule({
 
   const isAdmin = toUpper(user?.role) === "ADMIN";
 
-  // Variants from validation sheet (adjust header names if your validation uses different column headers)
   const variantsList = useMemo(() => {
     const acrylicVariants =
       validation?.["Acrylic Sub Base"] ||
       validation?.["Acrylic Variants"] ||
       validation?.["Acrylic"] ||
       [];
+
     const puVariants =
-      validation?.["PU Type"] || validation?.["PU Variants"] || validation?.["PU"] || [];
+      validation?.["PU Type"] ||
+      validation?.["PU Variants"] ||
+      validation?.["PU"] ||
+      [];
+
     return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
 
-  useEffect(() => {
-    if (variantsList?.length && !variant) setVariant(variantsList[0]);
-  }, [variantsList, variant]);
-
-  // ✅ Pack sizes from validation (supports either "Pack Sizes" or "Approved Pack Sizes")
-  const approvedPackSizes = useMemo(() => {
-    const raw =
-      validation?.["Pack Sizes"] ||
-      validation?.["Approved Pack Sizes"] ||
-      validation?.["Packaging Sizes"] ||
-      [];
-
-    const nums = (raw || [])
-      .flatMap((v) => safeStr(v).split(/[|,]/))
-      .map((v) => Number(safeStr(v)))
-      .filter((n) => Number.isFinite(n) && n > 0);
-
-    return Array.from(new Set(nums)).sort((a, b) => a - b);
-  }, [validation]);
-
-  const fixedPackSizeByMaterial = useMemo(
-    () => buildFixedPackSizeMap(validation, category),
-    [validation, category]
-  );
-
-  // ✅ Booking status options from validation sheet
   const bookingStatusOptions = useMemo(() => {
     const raw =
       validation?.["Booking Status"] ||
@@ -666,7 +553,7 @@ export default function InventoryModule({
       validation?.["Status"] ||
       [];
 
-    return Array.from(
+    const fromValidation = Array.from(
       new Set(
         (raw || [])
           .flatMap((v) => safeStr(v).split(/[|,]/))
@@ -674,9 +561,19 @@ export default function InventoryModule({
           .filter(Boolean)
       )
     );
+
+    return fromValidation.length
+      ? fromValidation
+      : [
+          STATUS_PENDING_REVIEW,
+          STATUS_HOLD,
+          STATUS_APPROVED,
+          STATUS_DECLINED,
+          STATUS_RELEASED,
+          STATUS_DISPATCHED,
+        ];
   }, [validation]);
 
-  // ✅ Frontend summary grouping of bookings
   const bookingSummaryRows = useMemo(() => {
     return groupBookingsForSummary(bookings || []);
   }, [bookings]);
@@ -692,7 +589,7 @@ export default function InventoryModule({
 
   const selectedInputsJson = useMemo(() => {
     if (!selectedParentRow) return "";
-    return safeStr(selectedParentRow["Inputs JSON"]);
+    return safeStr(selectedParentRow["Inputs JSON"] || selectedParentRow["inputsJson"]);
   }, [selectedParentRow]);
 
   const selectedBookingHoldInfo = useMemo(
@@ -700,11 +597,60 @@ export default function InventoryModule({
     [selectedBooking]
   );
 
-  // Load validation (JSONP)
+  const normalizedInputs = useMemo(() => {
+    const out = { ...(inputs || {}) };
+
+    (inputDefs || []).forEach((d) => {
+      const key = d.inputKey;
+      if (!key) return;
+
+      if (key === "wearCoatType") {
+        out[key] = safeStr(out[key] || "SD");
+        return;
+      }
+
+      const val = out[key];
+      if (val === "" || val == null) {
+        out[key] = 0;
+      } else {
+        const n = Number(val);
+        out[key] = Number.isFinite(n) ? n : val;
+      }
+    });
+
+    return out;
+  }, [inputs, inputDefs]);
+
+  const totals = useMemo(() => {
+    const items = calcResult?.items || [];
+    const totalRequired = items.reduce((s, it) => s + asNum(it.requiredQty), 0);
+    const totalShort = items.reduce((s, it) => s + asNum(it.shortageQty), 0);
+    const allFulfillable = items.every((it) => !!it.canFulfill);
+
+    return {
+      totalRequired: round2(totalRequired),
+      totalShort: round2(totalShort),
+      allFulfillable,
+    };
+  }, [calcResult]);
+
+  const busy =
+    validationLoading ||
+    inputsLoading ||
+    configLoading ||
+    stockLoading ||
+    calcLoading ||
+    bookingLoading;
+
+  useEffect(() => {
+    if (variantsList?.length && !variant) setVariant(variantsList[0]);
+  }, [variantsList, variant]);
+
   useEffect(() => {
     const run = async () => {
       if (!apiUrl) return;
       setValidationLoading(true);
+
       try {
         const data = await apiGet(apiUrl, { action: "getValidation" });
         setValidation(data || {});
@@ -714,10 +660,10 @@ export default function InventoryModule({
         setValidationLoading(false);
       }
     };
+
     run();
   }, [apiUrl]);
 
-  // Load inputs for category/variant (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category || !variant) return;
@@ -745,13 +691,14 @@ export default function InventoryModule({
         setInputsLoading(false);
       }
     };
+
     run();
   }, [apiUrl, category, variant]);
 
-  // Load calc config (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category || !variant) return;
+
       setConfigLoading(true);
       try {
         const cfg = await apiGet(apiUrl, { action: "getCalcConfig", category, variant });
@@ -763,13 +710,14 @@ export default function InventoryModule({
         setConfigLoading(false);
       }
     };
+
     run();
   }, [apiUrl, category, variant]);
 
-  // Load stock for category (JSONP)
   useEffect(() => {
     const run = async () => {
       if (!apiUrl || !category) return;
+
       setStockLoading(true);
       try {
         const st = await apiGet(apiUrl, { action: "getStock", category });
@@ -781,49 +729,24 @@ export default function InventoryModule({
         setStockLoading(false);
       }
     };
+
     run();
   }, [apiUrl, category]);
 
-  const normalizedInputs = useMemo(() => {
-    const out = { ...(inputs || {}) };
-    (inputDefs || []).forEach((d) => {
-      const key = d.inputKey;
-      if (!key) return;
-
-      if (key === "wearCoatType") {
-        out[key] = safeStr(out[key] || "SD");
-        return;
-      }
-
-      const val = out[key];
-      if (val === "" || val == null) out[key] = 0;
-      else {
-        const n = Number(val);
-        out[key] = Number.isFinite(n) ? n : val;
-      }
-    });
-    return out;
-  }, [inputs, inputDefs]);
+  useEffect(() => {
+    if (!apiUrl) return;
+    fetchBookings();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [apiUrl]);
 
   const handleChangeInput = (key, value) => {
     setInputs((prev) => ({ ...prev, [key]: value }));
   };
 
-  const totals = useMemo(() => {
-    const items = calcResult?.items || [];
-    const totalRequired = items.reduce((s, it) => s + asNum(it.requiredQty), 0);
-    const totalShort = items.reduce((s, it) => s + asNum(it.shortageQty), 0);
-    const allFulfillable = items.every((it) => !!it.canFulfill);
-    return {
-      totalRequired: round2(totalRequired),
-      totalShort: round2(totalShort),
-      allFulfillable,
-    };
-  }, [calcResult]);
-
   const handleCalculate = () => {
     setCalcLoading(true);
     setBookingNotice("");
+
     try {
       const result = computeLocally({
         category,
@@ -831,8 +754,6 @@ export default function InventoryModule({
         inputs: normalizedInputs,
         configRows,
         stockRows,
-        packSizeOverride,
-        fixedPackSizeByMaterial,
       });
       setCalcResult(result);
     } catch (e) {
@@ -844,10 +765,12 @@ export default function InventoryModule({
     }
   };
 
-  const fetchBookings = async () => {
+  async function fetchBookings() {
     if (!apiUrl) return;
+
     setBookingsLoading(true);
     setBookingsError("");
+
     try {
       const data = await apiGet(apiUrl, {
         action: "getBookings",
@@ -855,24 +778,17 @@ export default function InventoryModule({
         role: user.role || "",
       });
 
-      console.log("getBookings raw response =>", data);
-
       setBookings(Array.isArray(data) ? data : []);
     } catch (e) {
       console.error("getBookings error:", e);
       setBookings([]);
       setBookingsError(
-        "Bookings list endpoint is not enabled yet. Please add GAS action=getBookings."
+        "Bookings list endpoint is not enabled yet. Please add Apps Script action=getBookings."
       );
     } finally {
       setBookingsLoading(false);
     }
-  };
-
-  useEffect(() => {
-    if (!apiUrl) return;
-    fetchBookings();
-  }, [apiUrl]);
+  }
 
   const handleCreateBooking = async () => {
     if (!calcResult?.items?.length) {
@@ -891,23 +807,14 @@ export default function InventoryModule({
           variant,
           requestedBy: user.username || "End User",
           remarks: remarks || "",
+          status: STATUS_PENDING_REVIEW,
           inputs: normalizedInputs,
           totalRequiredQty: totals.totalRequired,
           totalShortageQty: totals.totalShort,
-          bookingHoldDays: BOOKING_HOLD_DAYS,
-          holdExpiresAt: new Date(Date.now() + BOOKING_HOLD_DAYS * MS_PER_DAY).toISOString(),
-          allocationPackageQty: 0,
-          allocationLooseQty: 0,
           items: (calcResult.items || []).map((it) => ({
             materialName: it.materialName || "",
             unit: it.unit || "",
             requiredQty: asNum(it.requiredQty),
-            packSize: asNum(it.packSize),
-            packsNeeded: asNum(it.packsNeeded),
-            packagingQty: asNum(it.packagingQty),
-            availableTotalQty: asNum(it.availableTotalQty),
-            shortageQty: asNum(it.shortageQty),
-            canFulfill: !!it.canFulfill,
             calcType: it.calcType || "",
             formula: it.formula || "",
           })),
@@ -919,8 +826,7 @@ export default function InventoryModule({
       await apiPostNoCors(apiUrl, payload);
 
       setRemarks("");
-      setBookingNotice("✅ Booking submitted successfully. Refreshing bookings…");
-
+      setBookingNotice("✅ Requirement submitted for admin review. Refreshing bookings…");
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("createBooking error:", e);
@@ -932,7 +838,7 @@ export default function InventoryModule({
 
   const handleOpenBookingDetail = (booking) => {
     setSelectedBooking(booking);
-    setSelectedBookingStatus(safeStr(booking?.status));
+    setSelectedBookingStatus(safeStr(booking?.status) || STATUS_PENDING_REVIEW);
     setStatusNotice("");
     setBookingDetailOpen(true);
   };
@@ -951,11 +857,10 @@ export default function InventoryModule({
     setStatusNotice("");
 
     try {
-      const holdInfo = getBookingHoldInfo(selectedBooking);
-      const releaseStock =
-        normalizeStatus(nextStatus) === STATUS_RELEASED ||
-        normalizeStatus(nextStatus) === STATUS_DECLINED ||
-        (bookingAction === "releaseExpiredHold" && holdInfo.isExpired);
+      const normalized = normalizeStatus(nextStatus);
+      const shouldReserve = [normalizeKey(STATUS_HOLD), normalizeKey(STATUS_APPROVED)].includes(normalized);
+      const shouldRelease = [normalizeKey(STATUS_RELEASED), normalizeKey(STATUS_DECLINED)].includes(normalized);
+      const shouldDispatch = normalized === normalizeKey(STATUS_DISPATCHED);
 
       const payload = {
         action: "updateBookingStatus",
@@ -963,8 +868,10 @@ export default function InventoryModule({
           bookingId: selectedBooking.bookingId,
           status: nextStatus,
           bookingAction,
-          releaseStock,
           bookingHoldDays: BOOKING_HOLD_DAYS,
+          reserveStock: shouldReserve,
+          releaseStock: shouldRelease,
+          dispatchStock: shouldDispatch,
           updatedBy: user.username || "",
         },
       };
@@ -973,7 +880,7 @@ export default function InventoryModule({
 
       await apiPostNoCors(apiUrl, payload);
 
-      setStatusNotice("✅ Booking status updated successfully.");
+      setStatusNotice("✅ Booking status update submitted.");
 
       setBookings((prev) =>
         (prev || []).map((row) => {
@@ -1002,8 +909,8 @@ export default function InventoryModule({
             }
           : prev
       );
-      setSelectedBookingStatus(nextStatus);
 
+      setSelectedBookingStatus(nextStatus);
       setTimeout(() => fetchBookings(), 1200);
     } catch (e) {
       console.error("updateBookingStatus error:", e);
@@ -1015,21 +922,11 @@ export default function InventoryModule({
 
   const handleSaveBookingStatus = async () => {
     if (!selectedBooking?.bookingId) return;
-
     await handleBookingDecision(selectedBookingStatus, "manualStatusUpdate");
   };
 
-  const busy =
-    validationLoading ||
-    inputsLoading ||
-    configLoading ||
-    stockLoading ||
-    calcLoading ||
-    bookingLoading;
-
   return (
     <Box sx={{ p: 2, fontFamily }}>
-      {/* Header */}
       <Paper
         elevation={0}
         sx={{
@@ -1047,7 +944,7 @@ export default function InventoryModule({
                 {title}
               </Typography>
               <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.8 }}>
-                Calculate material requirement, check stock availability, and book.
+                Calculate material requirements and submit them for stock admin review.
               </Typography>
             </Box>
           </Box>
@@ -1063,7 +960,6 @@ export default function InventoryModule({
         </Box>
       </Paper>
 
-      {/* Controls */}
       <Paper
         elevation={0}
         sx={{
@@ -1146,7 +1042,9 @@ export default function InventoryModule({
 
         <Divider sx={{ my: 2 }} />
 
-        <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>Inputs</Typography>
+        <Typography sx={{ fontFamily, fontWeight: 700, mb: 1, color: "#1f2a44" }}>
+          Inputs
+        </Typography>
 
         {inputsLoading ? (
           <Box display="flex" alignItems="center" gap={1}>
@@ -1197,9 +1095,8 @@ export default function InventoryModule({
         ) : null}
       </Paper>
 
-      {/* Results */}
       <Paper elevation={0} sx={{ p: 2, mb: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1} gap={2}>
+        <Box display="flex" alignItems="center" justifyContent="space-between" mb={1} gap={2} flexWrap="wrap">
           <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
             Requirement & Availability
           </Typography>
@@ -1214,7 +1111,7 @@ export default function InventoryModule({
                 color={totals.totalShort > 0 ? "warning" : "success"}
               />
               <Chip
-                label={totals.allFulfillable ? "Fully Available" : "Partial / Short"}
+                label={totals.allFulfillable ? "Available as per current stock" : "Partial / Short"}
                 size="small"
                 sx={{ fontFamily }}
                 color={totals.allFulfillable ? "success" : "warning"}
@@ -1225,7 +1122,7 @@ export default function InventoryModule({
 
         {!calcResult?.items?.length ? (
           <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
-            Run <b>Calculate</b> to view materials and availability.
+            Run <b>Calculate</b> to view material requirement and stock availability.
           </Typography>
         ) : (
           <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
@@ -1234,106 +1131,27 @@ export default function InventoryModule({
                 <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Required
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Pack Size
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packs
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaging Qty
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available (Total)
-                  </TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Shortage
-                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Required</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Current Pack Size</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Estimated Packs</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Current Available</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Shortage</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {calcResult.items.map((it) => {
                   const ok = asNum(it.shortageQty) <= 0;
-                  const packSizeOptions = Array.from(
-                    new Set([
-                      ...(it.packSize ? [it.packSize] : []),
-                      ...approvedPackSizes,
-                    ])
-                  ).sort((a, b) => a - b);
 
                   return (
                     <TableRow key={`${it.materialName}-${it.calcType}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
                       <TableCell sx={{ fontFamily }}>{it.unit}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(it.requiredQty)}
-                      </TableCell>
-
-                      {/* ✅ Editable Pack Size (validation-approved, locked when fixed by validation) */}
-                      <TableCell sx={{ fontFamily }} align="right">
-                        <Select
-                          size="small"
-                          value={it.isFixedPackSize
-                            ? (it.packSize || "")
-                            : packSizeOverride[it.materialName] ?? (it.packSize ? it.packSize : "")}
-                          displayEmpty
-                          disabled={it.isFixedPackSize}
-                          onChange={(e) => {
-                            const val = e.target.value === "" ? "" : Number(e.target.value);
-
-                            setPackSizeOverride((prev) => ({
-                              ...prev,
-                              [it.materialName]: val,
-                            }));
-
-                            // ✅ Re-run calc immediately so Packs + Packaging Qty update
-                            try {
-                              const result = computeLocally({
-                                category,
-                                variant,
-                                inputs: normalizedInputs,
-                                configRows,
-                                stockRows,
-                                packSizeOverride: {
-                                  ...packSizeOverride,
-                                  [it.materialName]: val,
-                                },
-                                fixedPackSizeByMaterial,
-                              });
-                              setCalcResult(result);
-                            } catch (err) {
-                              console.error("recalc after pack size change failed:", err);
-                            }
-                          }}
-                          sx={{ fontFamily, minWidth: 90 }}
-                        >
-                          <MenuItem value="">
-                            <em>-</em>
-                          </MenuItem>
-                          {packSizeOptions.map((ps) => (
-                            <MenuItem key={ps} value={ps}>
-                              {ps}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </TableCell>
-
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {it.packsNeeded ?? "-"}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(it.packagingQty)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(it.availableTotalQty)}
-                      </TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {round2(it.shortageQty)}
-                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{round2(it.requiredQty)}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{it.packSize ? round2(it.packSize) : "-"}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{it.estimatedPacksNeeded || "-"}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{round2(it.availableTotalQty)}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{round2(it.shortageQty)}</TableCell>
                       <TableCell sx={{ fontFamily }}>
                         <Chip
                           size="small"
@@ -1349,9 +1167,14 @@ export default function InventoryModule({
             </Table>
           </TableContainer>
         )}
+
+        {calcResult?.items?.length ? (
+          <Alert severity="info" sx={{ mt: 2, fontFamily }}>
+            Pack sizes shown here are read-only estimates from current stock. Final package allocation is handled by the stock admin during booking review.
+          </Alert>
+        ) : null}
       </Paper>
 
-      {/* Bookings */}
       <Paper elevation={0} sx={{ p: 2, borderRadius: 2, border: "1px solid rgba(0,0,0,0.08)" }}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
           <Box display="flex" alignItems="center" gap={1}>
@@ -1391,51 +1214,46 @@ export default function InventoryModule({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Requested By</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Variant</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Child Items
-                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Items</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Hold</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Remarks</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
-                    Action
-                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">Action</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
                 {bookingSummaryRows.map((b, idx) => {
                   const holdInfo = getBookingHoldInfo(b);
                   const released = isReleasedStatus(b.status);
-                  const holdLabel = !holdInfo.expiresAt
+                  const reserved = isReservedStatus(b.status);
+                  const holdLabel = !reserved
                     ? "-"
-                    : released
-                      ? "Released"
-                      : holdInfo.isExpired
-                        ? "Expired"
-                        : `${holdInfo.daysRemaining}d left`;
+                    : !holdInfo.expiresAt
+                      ? "Active"
+                      : released
+                        ? "Released"
+                        : holdInfo.isExpired
+                          ? "Expired"
+                          : `${holdInfo.daysRemaining}d left`;
 
                   return (
                     <TableRow key={b.bookingId || idx}>
-                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
-                        {formatDisplayDate(b.timestamp)}
-                      </TableCell>
+                      <TableCell sx={{ fontFamily, fontSize: 12 }}>{formatDisplayDate(b.timestamp)}</TableCell>
                       <TableCell sx={{ fontFamily }}>{safeStr(b.bookingId)}</TableCell>
                       <TableCell sx={{ fontFamily }}>{safeStr(b.requestedBy)}</TableCell>
                       <TableCell sx={{ fontFamily }}>{safeStr(b.category)}</TableCell>
                       <TableCell sx={{ fontFamily }}>{safeStr(b.variant)}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">
-                        {b.totalItems || 0}
-                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">{b.totalItems || 0}</TableCell>
                       <TableCell sx={{ fontFamily }}>
                         <Chip
                           size="small"
                           label={holdLabel}
-                          color={!released && holdInfo.isExpired ? "warning" : "default"}
+                          color={reserved && holdInfo.isExpired ? "warning" : "default"}
                           sx={{ fontFamily }}
                         />
                       </TableCell>
                       <TableCell sx={{ fontFamily }}>
-                        <Chip size="small" label={safeStr(b.status) || "PENDING"} sx={{ fontFamily }} />
+                        <Chip size="small" label={safeStr(b.status) || STATUS_PENDING_REVIEW} sx={{ fontFamily }} />
                       </TableCell>
                       <TableCell sx={{ fontFamily, fontSize: 12 }}>{safeStr(b.remarks)}</TableCell>
                       <TableCell align="center">
@@ -1454,7 +1272,6 @@ export default function InventoryModule({
         )}
       </Paper>
 
-      {/* Booking Detail Modal */}
       <Dialog open={bookingDetailOpen} onClose={handleCloseBookingDetail} fullWidth maxWidth="lg">
         <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Booking Details</DialogTitle>
 
@@ -1464,16 +1281,12 @@ export default function InventoryModule({
               <Grid container spacing={2} sx={{ mb: 2 }}>
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Booking ID</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {safeStr(selectedBooking.bookingId)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{safeStr(selectedBooking.bookingId)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Timestamp</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {formatDisplayDate(selectedBooking.timestamp)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{formatDisplayDate(selectedBooking.timestamp)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
@@ -1487,55 +1300,41 @@ export default function InventoryModule({
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Requested By</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {safeStr(selectedBooking.requestedBy)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{safeStr(selectedBooking.requestedBy)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Category</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {safeStr(selectedBooking.category)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{safeStr(selectedBooking.category)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Variant</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {safeStr(selectedBooking.variant)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{safeStr(selectedBooking.variant)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Child Items</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {selectedBooking.totalItems || 0}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Items</Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{selectedBooking.totalItems || 0}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Required Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(selectedBooking.totalRequiredQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(selectedBooking.totalRequiredQty)}</Typography>
                 </Grid>
 
                 <Grid item xs={12} md={3}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Total Shortage Qty</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(selectedBooking.totalShortageQty)}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 600 }}>{round2(selectedBooking.totalShortageQty)}</Typography>
                 </Grid>
 
                 <Grid item xs={12}>
                   <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Remarks</Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 500 }}>
-                    {safeStr(selectedBooking.remarks) || "-"}
-                  </Typography>
+                  <Typography sx={{ fontFamily, fontWeight: 500 }}>{safeStr(selectedBooking.remarks) || "-"}</Typography>
                 </Grid>
 
                 <Grid item xs={12}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Requirement</Typography>
+                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>Requirement Inputs</Typography>
                   <Box
                     sx={{
                       mt: 0.5,
@@ -1556,17 +1355,8 @@ export default function InventoryModule({
 
               <Divider sx={{ my: 2 }} />
 
-              <Box
-                display="flex"
-                alignItems="center"
-                justifyContent="space-between"
-                gap={2}
-                flexWrap="wrap"
-                mb={1}
-              >
-                <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
-                  Child Items
-                </Typography>
+              <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap" mb={1}>
+                <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>Child Items</Typography>
 
                 <Box display="flex" alignItems="center" gap={1} flexWrap="wrap">
                   {isAdmin ? (
@@ -1574,8 +1364,18 @@ export default function InventoryModule({
                       <Button
                         size="small"
                         variant="contained"
+                        onClick={() => handleBookingDecision(STATUS_HOLD, "holdBooking")}
+                        disabled={statusUpdateLoading}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: "#d97706" }}
+                      >
+                        Hold
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="contained"
                         onClick={() => handleBookingDecision(STATUS_APPROVED, "approveBooking")}
-                        disabled={statusUpdateLoading || normalizeStatus(selectedBooking.status) === STATUS_APPROVED}
+                        disabled={statusUpdateLoading}
                         sx={{ textTransform: "none", fontFamily, backgroundColor: "#15803d" }}
                       >
                         Approve
@@ -1584,24 +1384,32 @@ export default function InventoryModule({
                       <Button
                         size="small"
                         variant="contained"
+                        onClick={() => handleBookingDecision(STATUS_DISPATCHED, "dispatchBooking")}
+                        disabled={statusUpdateLoading}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: "#2563eb" }}
+                      >
+                        Dispatch
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="contained"
+                        onClick={() => handleBookingDecision(STATUS_RELEASED, "releaseBooking")}
+                        disabled={statusUpdateLoading}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: "#6b7280" }}
+                      >
+                        Release
+                      </Button>
+
+                      <Button
+                        size="small"
+                        variant="contained"
                         onClick={() => handleBookingDecision(STATUS_DECLINED, "declineBooking")}
-                        disabled={statusUpdateLoading || isReleasedStatus(selectedBooking.status)}
+                        disabled={statusUpdateLoading}
                         sx={{ textTransform: "none", fontFamily, backgroundColor: "#b91c1c" }}
                       >
                         Decline
                       </Button>
-
-                      {selectedBookingHoldInfo.isExpired && !isReleasedStatus(selectedBooking.status) ? (
-                        <Button
-                          size="small"
-                          variant="contained"
-                          onClick={() => handleBookingDecision(STATUS_RELEASED, "releaseExpiredHold")}
-                          disabled={statusUpdateLoading}
-                          sx={{ textTransform: "none", fontFamily, backgroundColor: "#d97706" }}
-                        >
-                          Release Stock
-                        </Button>
-                      ) : null}
 
                       <FormControl size="small" sx={{ minWidth: 220 }}>
                         <InputLabel>Booking Status</InputLabel>
@@ -1624,11 +1432,7 @@ export default function InventoryModule({
                         startIcon={statusUpdateLoading ? <CircularProgress size={16} /> : <SaveIcon />}
                         onClick={handleSaveBookingStatus}
                         disabled={!selectedBookingStatus || statusUpdateLoading}
-                        sx={{
-                          textTransform: "none",
-                          fontFamily,
-                          backgroundColor: cornflowerBlue,
-                        }}
+                        sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
                       >
                         Save Status
                       </Button>
@@ -1636,7 +1440,7 @@ export default function InventoryModule({
                   ) : (
                     <Chip
                       size="small"
-                      label={`Status: ${safeStr(selectedBooking.status) || "-"}`}
+                      label={`Status: ${safeStr(selectedBooking.status) || STATUS_PENDING_REVIEW}`}
                       sx={{ fontFamily }}
                     />
                   )}
@@ -1645,13 +1449,11 @@ export default function InventoryModule({
 
               {statusNotice ? (
                 <Box mb={2}>
-                  <Alert severity="success" sx={{ fontFamily }}>
-                    {statusNotice}
-                  </Alert>
+                  <Alert severity="success" sx={{ fontFamily }}>{statusNotice}</Alert>
                 </Box>
               ) : null}
 
-              {selectedBookingHoldInfo.isExpired && !isReleasedStatus(selectedBooking.status) ? (
+              {selectedBookingHoldInfo.isExpired && isReservedStatus(selectedBooking.status) ? (
                 <Box mb={2}>
                   <Alert severity="warning" sx={{ fontFamily }}>
                     This booking has crossed the {BOOKING_HOLD_DAYS}-day hold period. Release stock to return reserved quantities to availability.
@@ -1666,24 +1468,13 @@ export default function InventoryModule({
                       <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Required Qty
-                        </TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Pack Size
-                        </TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Packs Needed
-                        </TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Packaging Qty
-                        </TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Available Qty
-                        </TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                          Shortage Qty
-                        </TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Required Qty</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Admin Pack Size</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Allocated Packs</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Allocated Loose</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Qty</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Dispatched Qty</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Shortage Qty</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Status</TableCell>
                       </TableRow>
                     </TableHead>
@@ -1692,31 +1483,17 @@ export default function InventoryModule({
                         <TableRow key={`${item.materialName || "item"}-${index}`}>
                           <TableCell sx={{ fontFamily }}>{safeStr(item.materialName)}</TableCell>
                           <TableCell sx={{ fontFamily }}>{safeStr(item.unit)}</TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {round2(item.requiredQty)}
-                          </TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {item.packSize ? round2(item.packSize) : "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {item.packsNeeded ? round2(item.packsNeeded) : "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {item.packagingQty ? round2(item.packagingQty) : "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {item.availableTotalQty ? round2(item.availableTotalQty) : "-"}
-                          </TableCell>
-                          <TableCell sx={{ fontFamily }} align="right">
-                            {item.shortageQty ? round2(item.shortageQty) : 0}
-                          </TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{item.packSize ? round2(item.packSize) : "Pending"}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{item.packsNeeded ? round2(item.packsNeeded) : "-"}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{item.allocatedLooseQty ? round2(item.allocatedLooseQty) : "-"}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{item.reservedQty ? round2(item.reservedQty) : "-"}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{item.dispatchedQty ? round2(item.dispatchedQty) : "-"}</TableCell>
+                          <TableCell sx={{ fontFamily }} align="right">{round2(item.shortageQty)}</TableCell>
                           <TableCell sx={{ fontFamily }}>
                             <Chip
                               size="small"
-                              label={
-                                safeStr(item.status) ||
-                                (item.canFulfill || asNum(item.shortageQty) <= 0 ? "Available" : "Short")
-                              }
+                              label={safeStr(item.status) || "Pending Allocation"}
                               color={item.canFulfill || asNum(item.shortageQty) <= 0 ? "success" : "warning"}
                               sx={{ fontFamily }}
                             />
@@ -1729,8 +1506,7 @@ export default function InventoryModule({
               ) : (
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
                   No child items were returned for this booking. If items exist in the backend, ensure
-                  <b> getBookings </b>
-                  returns line-level rows against the same Booking ID.
+                  <b> getBookings </b>returns line-level rows against the same Booking ID.
                 </Typography>
               )}
             </Box>

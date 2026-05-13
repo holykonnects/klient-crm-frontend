@@ -43,6 +43,13 @@ const fontFamily = "Montserrat, sans-serif";
 const INVENTORY_API_URL =
   "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
 
+const JSONP_TIMEOUT_MS = 60000;
+const DEFAULT_PACK_SIZES = {
+  "PORE SEALER": 23.2,
+  "WEAR COAT": 21.4,
+  "ADHESIVE": 15,
+};
+
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
@@ -51,6 +58,15 @@ const asNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
+
+function getDefaultPackSize(materialName) {
+  const normalized = safeStr(materialName).toUpperCase();
+  return (
+    DEFAULT_PACK_SIZES[normalized] ||
+    Object.entries(DEFAULT_PACK_SIZES).find(([key]) => normalized.includes(key))?.[1] ||
+    0
+  );
+}
 
 function getUserFromLocalStorage() {
   try {
@@ -66,7 +82,15 @@ function getUserFromLocalStorage() {
   }
 }
 
-function jsonp(url, timeoutMs = 20000) {
+let jsonpQueue = Promise.resolve();
+
+function enqueueJsonp(task) {
+  const next = jsonpQueue.catch(() => {}).then(task);
+  jsonpQueue = next.catch(() => {});
+  return next;
+}
+
+function jsonp(url, timeoutMs = JSONP_TIMEOUT_MS) {
   return new Promise((resolve, reject) => {
     const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
     const script = document.createElement("script");
@@ -92,7 +116,7 @@ function jsonp(url, timeoutMs = 20000) {
     };
 
     const sep = url.includes("?") ? "&" : "?";
-    script.src = `${url}${sep}callback=${cb}`;
+    script.src = `${url}${sep}callback=${encodeURIComponent(cb)}`;
     script.async = true;
 
     script.onerror = () => {
@@ -105,8 +129,11 @@ function jsonp(url, timeoutMs = 20000) {
 }
 
 async function apiGet(apiUrl, params) {
-  const qs = new URLSearchParams(params);
-  const payload = await jsonp(`${apiUrl}?${qs.toString()}`);
+  const qs = new URLSearchParams({
+    ...params,
+    _: String(Date.now()),
+  });
+  const payload = await enqueueJsonp(() => jsonp(`${apiUrl}?${qs.toString()}`));
   if (!payload?.ok) throw new Error(payload?.error || "Request failed");
   return payload.data;
 }
@@ -577,6 +604,7 @@ export default function StockManagement({
         ).sort((a, b) => a - b);
 
         next.packSizeOptionsList = merged;
+        next.packSizeOptions = merged.join(", ");
       }
 
       const derived = deriveModalState({
@@ -667,7 +695,19 @@ export default function StockManagement({
 
       if (field === "materialName") {
         const selectedMaterial = safeStr(value);
-        next.unit = selectedMaterial === "Thinner" ? "ltr" : "kg";
+        next.unit = toUpper(selectedMaterial) === "THINNER" ? "ltr" : "kg";
+
+        const defaultPack = getDefaultPackSize(selectedMaterial);
+
+        if (defaultPack > 0 && asNum(next.packSize) <= 0) {
+          next.packSize = defaultPack;
+
+          next.packSizeOptionsList = Array.from(
+            new Set([...(next.packSizeOptionsList || []), defaultPack])
+          ).sort((a, b) => a - b);
+
+          next.packSizeOptions = next.packSizeOptionsList.join(", ");
+        }
       }
 
       if (field === "packSizeOptions") {

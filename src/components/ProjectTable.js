@@ -47,6 +47,13 @@ import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
 import LoadingOverlay from "./LoadingOverlay";
 
+import MobileActionMenu from "./MobileActionMenu";
+import {
+  LINKED_CLIENT_FIELD,
+  getLinkedClientDisplay,
+  extractMobileFromLinkedClient,
+} from "../utils/linkedClientContact";
+
 const WEB_APP_BASE =
   "https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec";
 
@@ -575,8 +582,22 @@ export default function ProjectTable() {
         </a>
       );
     }
-    if (header === "Client (Linked Deal/Account ID)" && typeof value === "string" && value.includes("|")) {
-      return value.split("|").slice(1).join("|");
+  
+    if (header === LINKED_CLIENT_FIELD) {
+      const mobile = extractMobileFromLinkedClient(value);
+      const display = getLinkedClientDisplay(value);
+    
+      if (mobile) {
+        return (
+          <MobileActionMenu
+            mobile={mobile}
+            label={display}
+            showValue={false}
+          />
+        );
+      }
+    
+      return display;
     }
     if (isMulti(header)) {
       const arr = toStringArray(value);

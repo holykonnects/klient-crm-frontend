@@ -618,6 +618,23 @@ export default function InventoryModule({
         ];
   }, [validation]);
 
+  const approvedPackSizes = useMemo(() => {
+    const raw =
+      validation?.["Approved Pack Sizes"] ||
+      validation?.["Pack Sizes"] ||
+      validation?.["Package Sizes"] ||
+      [];
+
+    return Array.from(
+      new Set(
+        (raw || [])
+          .flatMap((v) => safeStr(v).split(/[|,]/))
+          .map((v) => asNum(v))
+          .filter((n) => n > 0)
+      )
+    ).sort((a, b) => a - b);
+  }, [validation]);
+
   const bookingSummaryRows = useMemo(() => {
     return groupBookingsForSummary(bookings || []);
   }, [bookings]);
@@ -1572,7 +1589,7 @@ export default function InventoryModule({
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Required Qty</TableCell>
-                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Admin Pack Size</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Package Size</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Allocated Packs</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Allocated Loose</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Reserved Qty</TableCell>
@@ -1595,6 +1612,7 @@ export default function InventoryModule({
                         const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
                         const packSizeOptions = Array.from(
                           new Set([
+                            ...approvedPackSizes,
                             ...parsePackSizeOptions(stockRow.packSizeOptions),
                             asNum(stockRow.packSize),
                             selectedPackSize,
@@ -1609,33 +1627,34 @@ export default function InventoryModule({
                             <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">
                               {isAdmin ? (
-                                packSizeOptions.length ? (
-                                  <FormControl size="small" sx={{ minWidth: 110 }}>
-                                    <Select
-                                      value={selectedPackSize || ""}
-                                      onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
-                                      sx={{ fontFamily }}
-                                    >
-                                      <MenuItem value="" disabled>
-                                        Select
-                                      </MenuItem>
-                                      {packSizeOptions.map((ps) => (
-                                        <MenuItem key={ps} value={ps}>
-                                          {ps}
+                                <Box display="flex" gap={1} justifyContent="flex-end" alignItems="center">
+                                  {packSizeOptions.length ? (
+                                    <FormControl size="small" sx={{ minWidth: 105 }}>
+                                      <Select
+                                        value={selectedPackSize || ""}
+                                        onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
+                                        sx={{ fontFamily }}
+                                      >
+                                        <MenuItem value="" disabled>
+                                          Select
                                         </MenuItem>
-                                      ))}
-                                    </Select>
-                                  </FormControl>
-                                ) : (
+                                        {packSizeOptions.map((ps) => (
+                                          <MenuItem key={ps} value={ps}>
+                                            {ps}
+                                          </MenuItem>
+                                        ))}
+                                      </Select>
+                                    </FormControl>
+                                  ) : null}
                                   <TextField
                                     size="small"
                                     type="number"
                                     value={selectedPackSize || ""}
                                     onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
-                                    sx={{ width: 110, fontFamily }}
+                                    sx={{ width: 92, fontFamily }}
                                     inputProps={{ style: { fontFamily, textAlign: "right" } }}
                                   />
-                                )
+                                </Box>
                               ) : (
                                 selectedPackSize ? round2(selectedPackSize) : "Pending"
                               )}

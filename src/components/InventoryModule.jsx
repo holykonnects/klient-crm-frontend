@@ -1,6 +1,7 @@
 // src/components/InventoryModule.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
+  Autocomplete,
   Box,
   Typography,
   Paper,
@@ -1640,7 +1641,7 @@ export default function InventoryModule({
                           ].filter((n) => n > 0))
                         ).sort((a, b) => a - b);
                         const itemStatus = safeStr(item.itemStatus || item.status) || (mappedStockQty > 0 ? "Allocated" : "Pending Allocation");
-                        const packageSizeListId = `package-size-options-${index}`;
+                        const packSizeOptionLabels = packSizeOptions.map((ps) => String(ps));
 
                         return (
                           <TableRow key={`${item.materialName || "item"}-${index}`}>
@@ -1649,26 +1650,31 @@ export default function InventoryModule({
                             <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">
                               {isAdmin ? (
-                                <>
-                                  <TextField
-                                    size="small"
-                                    type="number"
-                                    value={selectedPackSize || ""}
-                                    onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
-                                    sx={{ width: 116, fontFamily }}
-                                    inputProps={{
-                                      list: packageSizeListId,
-                                      style: { fontFamily, textAlign: "right" },
-                                    }}
-                                  />
-                                  {packSizeOptions.length ? (
-                                    <datalist id={packageSizeListId}>
-                                      {packSizeOptions.map((ps) => (
-                                        <option key={ps} value={ps} />
-                                      ))}
-                                    </datalist>
-                                  ) : null}
-                                </>
+                                <Autocomplete
+                                  freeSolo
+                                  size="small"
+                                  options={packSizeOptionLabels}
+                                  value={selectedPackSize ? String(selectedPackSize) : ""}
+                                  onChange={(event, value) => {
+                                    handleAllocationChange(item, index, "selectedPackSize", value || "");
+                                  }}
+                                  onInputChange={(event, value, reason) => {
+                                    if (reason === "input" || reason === "clear") {
+                                      handleAllocationChange(item, index, "selectedPackSize", value || "");
+                                    }
+                                  }}
+                                  renderInput={(params) => (
+                                    <TextField
+                                      {...params}
+                                      placeholder="Select"
+                                      inputProps={{
+                                        ...params.inputProps,
+                                        style: { fontFamily, textAlign: "right" },
+                                      }}
+                                    />
+                                  )}
+                                  sx={{ width: 132, fontFamily }}
+                                />
                               ) : (
                                 selectedPackSize ? round2(selectedPackSize) : "Pending"
                               )}

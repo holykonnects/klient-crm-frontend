@@ -98,7 +98,7 @@ const MobileActionMenu = ({
         }}
         title={label || 'Contact actions'}
       >
-        {showValue ? displayMobile : 'Contact'}
+        {showValue ? displayMobile : label || displayMobile}
       </Box>
 
       <Menu

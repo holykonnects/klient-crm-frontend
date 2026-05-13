@@ -238,6 +238,30 @@ function parsePackSizeOptions(value) {
   ).sort((a, b) => a - b);
 }
 
+function deriveAllocationFromPackSize(requiredQty, packSize) {
+  const required = asNum(requiredQty);
+  const size = asNum(packSize);
+  if (required <= 0 || size <= 0) {
+    return {
+      allocatedPackQty: 0,
+      allocatedLooseQty: required,
+      mappedStockQty: required,
+      shortageQty: 0,
+    };
+  }
+
+  const allocatedPackQty = Math.floor(required / size);
+  const allocatedLooseQty = round2(required - allocatedPackQty * size);
+  const mappedStockQty = round2(allocatedPackQty * size + allocatedLooseQty);
+
+  return {
+    allocatedPackQty,
+    allocatedLooseQty,
+    mappedStockQty,
+    shortageQty: round2(Math.max(0, required - mappedStockQty)),
+  };
+}
+
 function groupBookingsForSummary(rows = []) {
   const grouped = new Map();
 
@@ -912,8 +936,9 @@ export default function InventoryModule({
       (booking?.childItems || []).reduce((acc, item, index) => {
         const stockRow = stockByMaterial[normalizeKey(item.materialName)] || {};
         const selectedPackSize = asNum(item.selectedPackSize || item.packSize || stockRow.packSize);
-        const allocatedPackQty = asNum(item.allocatedPackQty || item.packsNeeded);
-        const allocatedLooseQty = asNum(item.allocatedLooseQty);
+        const derived = deriveAllocationFromPackSize(item.requiredQty, selectedPackSize);
+        const allocatedPackQty = asNum(item.allocatedPackQty || item.packsNeeded || derived.allocatedPackQty);
+        const allocatedLooseQty = asNum(item.allocatedLooseQty || derived.allocatedLooseQty);
 
         acc[getAllocationKey(item, index)] = {
           selectedPackSize,
@@ -941,7 +966,12 @@ export default function InventoryModule({
       ...prev,
       [key]: {
         ...(prev[key] || {}),
-        [field]: value,
+        ...(field === "selectedPackSize"
+          ? {
+              selectedPackSize: value,
+              ...deriveAllocationFromPackSize(item.requiredQty, value),
+            }
+          : { [field]: value }),
       },
     }));
   };
@@ -951,8 +981,9 @@ export default function InventoryModule({
       const key = getAllocationKey(item, index);
       const allocation = bookingAllocations[key] || {};
       const selectedPackSize = asNum(allocation.selectedPackSize || item.selectedPackSize || item.packSize);
-      const allocatedPackQty = asNum(allocation.allocatedPackQty || item.allocatedPackQty);
-      const allocatedLooseQty = asNum(allocation.allocatedLooseQty || item.allocatedLooseQty);
+      const derived = deriveAllocationFromPackSize(item.requiredQty, selectedPackSize);
+      const allocatedPackQty = asNum(allocation.allocatedPackQty ?? item.allocatedPackQty ?? derived.allocatedPackQty);
+      const allocatedLooseQty = asNum(allocation.allocatedLooseQty ?? item.allocatedLooseQty ?? derived.allocatedLooseQty);
       const mappedStockQty = round2(selectedPackSize * allocatedPackQty + allocatedLooseQty);
       const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
 
@@ -1606,8 +1637,13 @@ export default function InventoryModule({
                         const selectedPackSize = asNum(
                           allocation.selectedPackSize || item.selectedPackSize || item.packSize || stockRow.packSize
                         );
-                        const allocatedPackQty = asNum(allocation.allocatedPackQty || item.allocatedPackQty);
-                        const allocatedLooseQty = asNum(allocation.allocatedLooseQty || item.allocatedLooseQty);
+                        const derivedAllocation = deriveAllocationFromPackSize(item.requiredQty, selectedPackSize);
+                        const allocatedPackQty = asNum(
+                          allocation.allocatedPackQty ?? item.allocatedPackQty ?? derivedAllocation.allocatedPackQty
+                        );
+                        const allocatedLooseQty = asNum(
+                          allocation.allocatedLooseQty ?? item.allocatedLooseQty ?? derivedAllocation.allocatedLooseQty
+                        );
                         const mappedStockQty = round2(selectedPackSize * allocatedPackQty + allocatedLooseQty);
                         const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
                         const packSizeOptions = Array.from(
@@ -1619,6 +1655,7 @@ export default function InventoryModule({
                           ].filter((n) => n > 0))
                         ).sort((a, b) => a - b);
                         const itemStatus = safeStr(item.itemStatus || item.status) || (mappedStockQty > 0 ? "Allocated" : "Pending Allocation");
+                        const packageSizeListId = `package-size-options-${index}`;
 
                         return (
                           <TableRow key={`${item.materialName || "item"}-${index}`}>
@@ -1627,65 +1664,35 @@ export default function InventoryModule({
                             <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">
                               {isAdmin ? (
-                                <Box display="flex" gap={1} justifyContent="flex-end" alignItems="center">
-                                  {packSizeOptions.length ? (
-                                    <FormControl size="small" sx={{ minWidth: 105 }}>
-                                      <Select
-                                        value={selectedPackSize || ""}
-                                        onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
-                                        sx={{ fontFamily }}
-                                      >
-                                        <MenuItem value="" disabled>
-                                          Select
-                                        </MenuItem>
-                                        {packSizeOptions.map((ps) => (
-                                          <MenuItem key={ps} value={ps}>
-                                            {ps}
-                                          </MenuItem>
-                                        ))}
-                                      </Select>
-                                    </FormControl>
-                                  ) : null}
+                                <>
                                   <TextField
                                     size="small"
                                     type="number"
                                     value={selectedPackSize || ""}
                                     onChange={(e) => handleAllocationChange(item, index, "selectedPackSize", e.target.value)}
-                                    sx={{ width: 92, fontFamily }}
-                                    inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                                    sx={{ width: 116, fontFamily }}
+                                    inputProps={{
+                                      list: packageSizeListId,
+                                      style: { fontFamily, textAlign: "right" },
+                                    }}
                                   />
-                                </Box>
+                                  {packSizeOptions.length ? (
+                                    <datalist id={packageSizeListId}>
+                                      {packSizeOptions.map((ps) => (
+                                        <option key={ps} value={ps} />
+                                      ))}
+                                    </datalist>
+                                  ) : null}
+                                </>
                               ) : (
                                 selectedPackSize ? round2(selectedPackSize) : "Pending"
                               )}
                             </TableCell>
                             <TableCell sx={{ fontFamily }} align="right">
-                              {isAdmin ? (
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  value={allocatedPackQty || ""}
-                                  onChange={(e) => handleAllocationChange(item, index, "allocatedPackQty", e.target.value)}
-                                  sx={{ width: 100, fontFamily }}
-                                  inputProps={{ min: 0, style: { fontFamily, textAlign: "right" } }}
-                                />
-                              ) : (
-                                allocatedPackQty ? round2(allocatedPackQty) : "-"
-                              )}
+                              {allocatedPackQty ? round2(allocatedPackQty) : "-"}
                             </TableCell>
                             <TableCell sx={{ fontFamily }} align="right">
-                              {isAdmin ? (
-                                <TextField
-                                  size="small"
-                                  type="number"
-                                  value={allocatedLooseQty || ""}
-                                  onChange={(e) => handleAllocationChange(item, index, "allocatedLooseQty", e.target.value)}
-                                  sx={{ width: 100, fontFamily }}
-                                  inputProps={{ min: 0, style: { fontFamily, textAlign: "right" } }}
-                                />
-                              ) : (
-                                allocatedLooseQty ? round2(allocatedLooseQty) : "-"
-                              )}
+                              {allocatedLooseQty ? round2(allocatedLooseQty) : "-"}
                             </TableCell>
                             <TableCell sx={{ fontFamily }} align="right">{item.reservedQty ? round2(item.reservedQty) : "-"}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">{item.dispatchedQty ? round2(item.dispatchedQty) : "-"}</TableCell>

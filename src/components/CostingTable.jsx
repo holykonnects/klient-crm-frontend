@@ -121,22 +121,6 @@ async function apiPost(payload) {
 }
 
 /**
- * ✅ Concurrency helper (kept; now used mainly for JSONP fan-out if needed)
- */
-async function runWithConcurrency(items, worker, concurrency = 5) {
-  const arr = Array.isArray(items) ? items : [];
-  const limit = Math.max(1, Math.floor(concurrency || 1));
-  let i = 0;
-  const runners = new Array(Math.min(limit, arr.length)).fill(0).map(async () => {
-    while (i < arr.length) {
-      const idx = i++;
-      await worker(arr[idx], idx);
-    }
-  });
-  await Promise.all(runners);
-}
-
-/**
  * ✅ AUTO CALC FIX (single source of truth)
  *
  * Rules:
@@ -406,10 +390,17 @@ export default function CostingTable() {
 
   const [mainTab, setMainTab] = useState("sheets");
   const [lineSearchRows, setLineSearchRows] = useState([]);
+  const [lineSearchTotalCount, setLineSearchTotalCount] = useState(0);
+  const [lineSearchServerTotals, setLineSearchServerTotals] = useState({
+    qty: 0,
+    amount: 0,
+    gst: 0,
+    total: 0,
+  });
+  const [lineSearchServerGroupedTotals, setLineSearchServerGroupedTotals] = useState([]);
   const [lineSearchLoading, setLineSearchLoading] = useState(false);
   const [lineSearchLoaded, setLineSearchLoaded] = useState(false);
   const [lineSearch, setLineSearch] = useState("");
-  const [appliedLineSearch, setAppliedLineSearch] = useState("");
   const [lineSearchSubmitted, setLineSearchSubmitted] = useState(false);
   const [lineSearchColumn, setLineSearchColumn] = useState("all");
   const [lineSearchMatchMode, setLineSearchMatchMode] = useState("contains");
@@ -848,66 +839,37 @@ export default function CostingTable() {
   }
 
   async function loadLineItemSearchData() {
-    const sheets = Array.isArray(costSheets) ? costSheets : [];
-    if (!sheets.length) {
-      setLineSearchRows([]);
-      setLineSearchLoaded(false);
-      return;
-    }
-
     setLineSearchLoading(true);
     try {
-      const rows = [];
-
-      await runWithConcurrency(
-        sheets,
-        async (sheet) => {
-          const costSheetId = String(sheet?.["Cost Sheet ID"] || "").trim();
-          if (!costSheetId) return;
-
-          try {
-            const items = await jsonpGet(
-              `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-            );
-
-            if (!Array.isArray(items)) {
-              console.error("LINE_SEARCH_DETAILS_NOT_ARRAY", { costSheetId, items });
-              return;
-            }
-
-            items.forEach((item, idx) => {
-              const active = String(item?.["Active"] ?? "Yes").trim().toLowerCase();
-              if (active === "no") return;
-
-              rows.push(withLineSearchIndex({
-                ...item,
-                "Cost Sheet ID": item?.["Cost Sheet ID"] || costSheetId,
-                Owner: item?.["Owner"] || sheet?.["Owner"] || "",
-                "Linked Entity Type":
-                  item?.["Linked Entity Type"] || sheet?.["Linked Entity Type"] || "",
-                "Linked Entity ID":
-                  item?.["Linked Entity ID"] || sheet?.["Linked Entity ID"] || "",
-                "Linked Entity Name":
-                  item?.["Linked Entity Name"] || sheet?.["Linked Entity Name"] || "",
-                "Client Name": item?.["Client Name"] || sheet?.["Client Name"] || "",
-                "Project Type": item?.["Project Type"] || sheet?.["Project Type"] || "",
-                __lineKey: makeLineItemKey(costSheetId, item) || `${costSheetId}__search__${idx}`,
-              }));
-            });
-          } catch (e) {
-            console.error("LINE_SEARCH_COST_SHEET_ERROR", { costSheetId, error: e });
-          }
-        },
-        4
-      );
-
-      rows.sort((a, b) => {
-        const aDate = new Date(a?.["Expense Date"] || a?.["Entry Timestamp"] || 0).getTime() || 0;
-        const bDate = new Date(b?.["Expense Date"] || b?.["Entry Timestamp"] || 0).getTime() || 0;
-        return bDate - aDate;
+      const params = new URLSearchParams({
+        action: "searchCostLineItems",
+        q: lineSearch,
+        searchColumn: lineSearchColumn,
+        matchMode: lineSearchMatchMode,
+        groupBy: lineSearchGroupBy,
+        limit: "500",
+        offset: "0",
       });
 
-      setLineSearchRows(rows);
+      if (lineSearchEntityType) params.set("entityType", lineSearchEntityType);
+      if (lineSearchPaymentStatus) params.set("paymentStatus", lineSearchPaymentStatus);
+      if (lineSearchHead) params.set("head", lineSearchHead);
+
+      const data = await jsonpGet(`${BACKEND}?${params.toString()}`);
+      if (!data?.success) {
+        console.error("LINE_SEARCH_BACKEND_ERROR", data);
+        throw new Error(data?.error || "Line item search failed.");
+      }
+
+      setLineSearchRows(Array.isArray(data.rows) ? data.rows.map(withLineSearchIndex) : []);
+      setLineSearchTotalCount(safeNum(data.totalCount));
+      setLineSearchServerTotals({
+        qty: safeNum(data?.totals?.qty),
+        amount: safeNum(data?.totals?.amount),
+        gst: safeNum(data?.totals?.gst),
+        total: safeNum(data?.totals?.totalAmount ?? data?.totals?.total),
+      });
+      setLineSearchServerGroupedTotals(Array.isArray(data.groupedTotals) ? data.groupedTotals : []);
       setLineSearchLoaded(true);
     } catch (e) {
       console.error("LINE_SEARCH_LOAD_ERROR", e);
@@ -927,12 +889,8 @@ export default function CostingTable() {
       return;
     }
 
-    setAppliedLineSearch(lineSearch);
     setLineSearchSubmitted(true);
-
-    if (!lineSearchLoaded) {
-      await loadLineItemSearchData();
-    }
+    await loadLineItemSearchData();
   }
 
   // On first mount, run FAST refresh
@@ -1783,107 +1741,25 @@ export default function CostingTable() {
 
   const filteredLineSearchRows = useMemo(() => {
     if (!lineSearchSubmitted) return [];
-
-    const q = normalizeSearchText(appliedLineSearch);
-    const looseQ = normalizeLooseSearchText(appliedLineSearch);
-    const isExact = lineSearchMatchMode === "exact";
-    const matches = (text, looseText) => {
-      if (!q && !looseQ) return true;
-      if (isExact) {
-        return Boolean((q && text === q) || (looseQ && looseText === looseQ));
-      }
-      return Boolean((q && text.includes(q)) || (looseQ && looseText.includes(looseQ)));
-    };
-
-    return (lineSearchRows || []).filter((row) => {
-      if (
-        lineSearchEntityType &&
-        String(getLineSearchValue(row, "Linked Entity Type") || "").trim() !== lineSearchEntityType
-      ) {
-        return false;
-      }
-
-      if (
-        lineSearchPaymentStatus &&
-        String(getLineSearchValue(row, "Payment Status") || "").trim() !== lineSearchPaymentStatus
-      ) {
-        return false;
-      }
-
-      if (lineSearchHead && String(getLineSearchValue(row, "Head Name") || "").trim() !== lineSearchHead) {
-        return false;
-      }
-
-      if (!q) return true;
-
-      if (lineSearchColumn !== "all") {
-        const canonical = canonicalColumnName(lineSearchColumn);
-        const fieldText =
-          row?.__fieldText?.[canonical] ?? normalizeSearchText(getLineSearchValue(row, lineSearchColumn));
-        const fieldLooseText =
-          row?.__fieldLooseText?.[canonical] ??
-          normalizeLooseSearchText(getLineSearchValue(row, lineSearchColumn));
-        return matches(fieldText, fieldLooseText);
-      }
-
-      if (isExact) {
-        const textValues = Object.values(row?.__fieldText || {});
-        const looseValues = Object.values(row?.__fieldLooseText || {});
-        return textValues.some((text) => matches(text, normalizeLooseSearchText(text))) ||
-          looseValues.some((text) => matches(text, text));
-      }
-
-      return matches(String(row?.__allText || ""), String(row?.__allLooseText || ""));
-    });
-  }, [
-    lineSearchRows,
-    appliedLineSearch,
-    lineSearchSubmitted,
-    lineSearchColumn,
-    lineSearchMatchMode,
-    lineSearchEntityType,
-    lineSearchPaymentStatus,
-    lineSearchHead,
-  ]);
+    return lineSearchRows || [];
+  }, [lineSearchRows, lineSearchSubmitted]);
 
   const lineSearchTotals = useMemo(() => {
-    return filteredLineSearchRows.reduce(
-      (acc, row) => ({
-        count: acc.count + 1,
-        qty: acc.qty + safeNum(getLineSearchValue(row, "QTY")),
-        amount: acc.amount + safeNum(getLineSearchValue(row, "Amount")),
-        gst: acc.gst + safeNum(getLineSearchValue(row, "GST Amount")),
-        total: acc.total + safeNum(getLineSearchValue(row, "Total Amount")),
-      }),
-      { count: 0, qty: 0, amount: 0, gst: 0, total: 0 }
-    );
-  }, [filteredLineSearchRows]);
+    return {
+      count: lineSearchSubmitted ? lineSearchTotalCount : 0,
+      qty: lineSearchServerTotals.qty,
+      amount: lineSearchServerTotals.amount,
+      gst: lineSearchServerTotals.gst,
+      total: lineSearchServerTotals.total,
+    };
+  }, [lineSearchSubmitted, lineSearchTotalCount, lineSearchServerTotals]);
 
   const lineSearchGroupedTotals = useMemo(() => {
-    const map = new Map();
-
-    filteredLineSearchRows.forEach((row) => {
-      const rawKey = String(getLineSearchValue(row, lineSearchGroupBy) || "").trim();
-      const key = rawKey || "Unassigned";
-      const current = map.get(key) || {
-        key,
-        count: 0,
-        qty: 0,
-        amount: 0,
-        gst: 0,
-        total: 0,
-      };
-
-      current.count += 1;
-      current.qty += safeNum(getLineSearchValue(row, "QTY"));
-      current.amount += safeNum(getLineSearchValue(row, "Amount"));
-      current.gst += safeNum(getLineSearchValue(row, "GST Amount"));
-      current.total += safeNum(getLineSearchValue(row, "Total Amount"));
-      map.set(key, current);
-    });
-
-    return Array.from(map.values()).sort((a, b) => b.total - a.total);
-  }, [filteredLineSearchRows, lineSearchGroupBy]);
+    return (lineSearchServerGroupedTotals || []).map((row) => ({
+      ...row,
+      total: safeNum(row.totalAmount ?? row.total),
+    }));
+  }, [lineSearchServerGroupedTotals]);
 
   const visibleLineSearchRows = useMemo(() => {
     return filteredLineSearchRows.slice(0, 500);
@@ -2040,9 +1916,11 @@ export default function CostingTable() {
                 await refreshFast();
                 if (mainTab === "lineSearch") {
                   setLineSearchRows([]);
+                  setLineSearchTotalCount(0);
+                  setLineSearchServerTotals({ qty: 0, amount: 0, gst: 0, total: 0 });
+                  setLineSearchServerGroupedTotals([]);
                   setLineSearchLoaded(false);
                   setLineSearchSubmitted(false);
-                  setAppliedLineSearch("");
                 }
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
@@ -2500,11 +2378,7 @@ export default function CostingTable() {
                         ? "Loading line items..."
                         : !lineSearchSubmitted
                         ? "Enter a value or select filters, then click Search"
-                        : `${filteredLineSearchRows.length} of ${lineSearchRows.length} item(s)${
-                            filteredLineSearchRows.length > visibleLineSearchRows.length
-                              ? ` | showing first ${visibleLineSearchRows.length}`
-                              : ""
-                          }`}
+                        : `${lineSearchTotalCount} match(es) | showing ${visibleLineSearchRows.length}`}
                     </Typography>
                   </Box>
 

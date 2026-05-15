@@ -312,6 +312,55 @@ function makeLineItemKey(costSheetId, item) {
   return [csid || "-", ts || "-", part || "-"].join("|");
 }
 
+function normalizeSearchText(v) {
+  return String(v ?? "").replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+function canonicalColumnName(v) {
+  return normalizeSearchText(v).replace(/[^a-z0-9]/g, "");
+}
+
+function getLineSearchValue(row, column) {
+  if (!row || !column) return "";
+  if (Object.prototype.hasOwnProperty.call(row, column)) return row[column] ?? "";
+
+  const canonical = canonicalColumnName(column);
+  if (row.__fieldText && Object.prototype.hasOwnProperty.call(row.__fieldText, canonical)) {
+    return row.__fieldRaw?.[canonical] ?? "";
+  }
+
+  const foundKey = Object.keys(row).find((k) => !k.startsWith("__") && canonicalColumnName(k) === canonical);
+  return foundKey ? row[foundKey] ?? "" : "";
+}
+
+function withLineSearchIndex(row) {
+  const fieldText = {};
+  const fieldRaw = {};
+
+  Object.keys(row || {}).forEach((key) => {
+    if (key.startsWith("__")) return;
+
+    const cleanKey = String(key || "").trim();
+    const canonical = canonicalColumnName(cleanKey);
+    if (!canonical) return;
+
+    const value = row[key] ?? "";
+    fieldRaw[canonical] = value;
+    fieldText[canonical] = normalizeSearchText(value);
+
+    if (cleanKey && cleanKey !== key && !(cleanKey in row)) {
+      row[cleanKey] = value;
+    }
+  });
+
+  return {
+    ...row,
+    __fieldRaw: fieldRaw,
+    __fieldText: fieldText,
+    __allText: Object.values(fieldText).join(" "),
+  };
+}
+
 /* ===================== Component ===================== */
 
 export default function CostingTable() {
@@ -352,7 +401,9 @@ export default function CostingTable() {
   const [lineSearchLoading, setLineSearchLoading] = useState(false);
   const [lineSearchLoaded, setLineSearchLoaded] = useState(false);
   const [lineSearch, setLineSearch] = useState("");
+  const [debouncedLineSearch, setDebouncedLineSearch] = useState("");
   const [lineSearchColumn, setLineSearchColumn] = useState("all");
+  const [lineSearchMatchMode, setLineSearchMatchMode] = useState("contains");
   const [lineSearchEntityType, setLineSearchEntityType] = useState("");
   const [lineSearchPaymentStatus, setLineSearchPaymentStatus] = useState("");
   const [lineSearchHead, setLineSearchHead] = useState("");
@@ -530,6 +581,11 @@ export default function CostingTable() {
       setLineSearchGroupBy(lineSearchGroupOptions[0]);
     }
   }, [lineSearchGroupBy, lineSearchGroupOptions]);
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedLineSearch(lineSearch), 250);
+    return () => clearTimeout(t);
+  }, [lineSearch]);
 
   const selectedExtractCostSheetOption = useMemo(() => {
     const id = String(extractForm?.costSheetId || "").trim();
@@ -819,7 +875,7 @@ export default function CostingTable() {
               const active = String(item?.["Active"] ?? "Yes").trim().toLowerCase();
               if (active === "no") return;
 
-              rows.push({
+              rows.push(withLineSearchIndex({
                 ...item,
                 "Cost Sheet ID": item?.["Cost Sheet ID"] || costSheetId,
                 Owner: item?.["Owner"] || sheet?.["Owner"] || "",
@@ -832,7 +888,7 @@ export default function CostingTable() {
                 "Client Name": item?.["Client Name"] || sheet?.["Client Name"] || "",
                 "Project Type": item?.["Project Type"] || sheet?.["Project Type"] || "",
                 __lineKey: makeLineItemKey(costSheetId, item) || `${costSheetId}__search__${idx}`,
-              });
+              }));
             });
           } catch (e) {
             console.error("LINE_SEARCH_COST_SHEET_ERROR", { costSheetId, error: e });
@@ -1711,55 +1767,65 @@ export default function CostingTable() {
   }, [lineItemHeaders]);
 
   const filteredLineSearchRows = useMemo(() => {
-    const q = lineSearch.trim().toLowerCase();
+    const q = normalizeSearchText(debouncedLineSearch);
+    const isExact = lineSearchMatchMode === "exact";
+    const matches = (text) => {
+      if (!q) return true;
+      return isExact ? text === q : text.includes(q);
+    };
 
     return (lineSearchRows || []).filter((row) => {
       if (
         lineSearchEntityType &&
-        String(row?.["Linked Entity Type"] || "").trim() !== lineSearchEntityType
+        String(getLineSearchValue(row, "Linked Entity Type") || "").trim() !== lineSearchEntityType
       ) {
         return false;
       }
 
       if (
         lineSearchPaymentStatus &&
-        String(row?.["Payment Status"] || "").trim() !== lineSearchPaymentStatus
+        String(getLineSearchValue(row, "Payment Status") || "").trim() !== lineSearchPaymentStatus
       ) {
         return false;
       }
 
-      if (lineSearchHead && String(row?.["Head Name"] || "").trim() !== lineSearchHead) {
+      if (lineSearchHead && String(getLineSearchValue(row, "Head Name") || "").trim() !== lineSearchHead) {
         return false;
       }
 
       if (!q) return true;
 
       if (lineSearchColumn !== "all") {
-        return String(row?.[lineSearchColumn] ?? "").toLowerCase().includes(q);
+        const canonical = canonicalColumnName(lineSearchColumn);
+        const fieldText =
+          row?.__fieldText?.[canonical] ?? normalizeSearchText(getLineSearchValue(row, lineSearchColumn));
+        return matches(fieldText);
       }
 
-      return lineSearchAllColumns.some((c) =>
-        String(row?.[c] ?? "").toLowerCase().includes(q)
-      );
+      if (isExact) {
+        return Object.values(row?.__fieldText || {}).some((text) => matches(text));
+      }
+
+      return String(row?.__allText || "").includes(q);
     });
   }, [
     lineSearchRows,
-    lineSearch,
+    debouncedLineSearch,
     lineSearchColumn,
+    lineSearchMatchMode,
     lineSearchEntityType,
     lineSearchPaymentStatus,
     lineSearchHead,
-    lineSearchAllColumns,
   ]);
 
   const lineSearchTotals = useMemo(() => {
     return filteredLineSearchRows.reduce(
       (acc, row) => ({
         count: acc.count + 1,
-        qty: acc.qty + safeNum(row?.["QTY"]),
-        amount: acc.amount + safeNum(row?.["Amount"]),
-        gst: acc.gst + safeNum(row?.["GST Amount"]),
-        total: acc.total + safeNum(row?.["Total Amount"]),
+        qty: acc.qty + safeNum(getLineSearchValue(row, "QTY")),
+        amount: acc.amount + safeNum(getLineSearchValue(row, "Amount")),
+        gst: acc.gst + safeNum(getLineSearchValue(row, "GST Amount")),
+        total: acc.total + safeNum(getLineSearchValue(row, "Total Amount")),
       }),
       { count: 0, qty: 0, amount: 0, gst: 0, total: 0 }
     );
@@ -1769,7 +1835,7 @@ export default function CostingTable() {
     const map = new Map();
 
     filteredLineSearchRows.forEach((row) => {
-      const rawKey = String(row?.[lineSearchGroupBy] || "").trim();
+      const rawKey = String(getLineSearchValue(row, lineSearchGroupBy) || "").trim();
       const key = rawKey || "Unassigned";
       const current = map.get(key) || {
         key,
@@ -1781,15 +1847,19 @@ export default function CostingTable() {
       };
 
       current.count += 1;
-      current.qty += safeNum(row?.["QTY"]);
-      current.amount += safeNum(row?.["Amount"]);
-      current.gst += safeNum(row?.["GST Amount"]);
-      current.total += safeNum(row?.["Total Amount"]);
+      current.qty += safeNum(getLineSearchValue(row, "QTY"));
+      current.amount += safeNum(getLineSearchValue(row, "Amount"));
+      current.gst += safeNum(getLineSearchValue(row, "GST Amount"));
+      current.total += safeNum(getLineSearchValue(row, "Total Amount"));
       map.set(key, current);
     });
 
     return Array.from(map.values()).sort((a, b) => b.total - a.total);
   }, [filteredLineSearchRows, lineSearchGroupBy]);
+
+  const visibleLineSearchRows = useMemo(() => {
+    return filteredLineSearchRows.slice(0, 500);
+  }, [filteredLineSearchRows]);
 
   /* ===================== Keyboard Shortcuts ===================== */
 
@@ -1941,8 +2011,8 @@ export default function CostingTable() {
               onClick={async () => {
                 await refreshFast();
                 if (mainTab === "lineSearch") {
+                  setLineSearchRows([]);
                   setLineSearchLoaded(false);
-                  await loadLineItemSearchData();
                 }
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
@@ -2166,6 +2236,18 @@ export default function CostingTable() {
                 </Select>
               </FormControl>
 
+              <FormControl size="small" sx={{ minWidth: 150 }}>
+                <InputLabel>Match</InputLabel>
+                <Select
+                  value={lineSearchMatchMode}
+                  label="Match"
+                  onChange={(e) => setLineSearchMatchMode(e.target.value)}
+                >
+                  <MenuItem value="contains">Contains</MenuItem>
+                  <MenuItem value="exact">Exact</MenuItem>
+                </Select>
+              </FormControl>
+
               <FormControl size="small" sx={{ minWidth: 180 }}>
                 <InputLabel>Entity Type</InputLabel>
                 <Select
@@ -2304,7 +2386,7 @@ export default function CostingTable() {
 
             <Grid container spacing={1} sx={{ mt: 1 }}>
               {[
-                ["Rows", lineSearchTotals.count],
+                ["Matches", lineSearchTotals.count],
                 ["QTY", fmtINR(lineSearchTotals.qty)],
                 ["Amount", `₹ ${fmtINR(lineSearchTotals.amount)}`],
                 ["GST", `₹ ${fmtINR(lineSearchTotals.gst)}`],
@@ -2380,7 +2462,11 @@ export default function CostingTable() {
                     <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                       {lineSearchLoading
                         ? "Loading line items..."
-                        : `${filteredLineSearchRows.length} of ${lineSearchRows.length} item(s)`}
+                        : `${filteredLineSearchRows.length} of ${lineSearchRows.length} item(s)${
+                            filteredLineSearchRows.length > visibleLineSearchRows.length
+                              ? ` | showing first ${visibleLineSearchRows.length}`
+                              : ""
+                          }`}
                     </Typography>
                   </Box>
 
@@ -2400,18 +2486,18 @@ export default function CostingTable() {
                       </TableHead>
 
                       <TableBody>
-                        {filteredLineSearchRows.map((row, idx) => (
+                        {visibleLineSearchRows.map((row, idx) => (
                           <TableRow key={row.__lineKey || idx} hover>
                             {lineSearchDisplayCols.map((c) => (
                               <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
-                                {String(row?.[c] ?? "")}
+                                {String(getLineSearchValue(row, c) ?? "")}
                               </TableCell>
                             ))}
                             <TableCell sx={{ whiteSpace: "nowrap" }}>
                               <IconButton
                                 size="small"
                                 title="Open Cost Sheet"
-                                onClick={() => openEditModalById(row?.["Cost Sheet ID"])}
+                                onClick={() => openEditModalById(getLineSearchValue(row, "Cost Sheet ID"))}
                               >
                                 <EditIcon sx={{ color: cornflowerBlue }} fontSize="small" />
                               </IconButton>

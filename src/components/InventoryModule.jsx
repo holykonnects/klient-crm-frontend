@@ -288,14 +288,6 @@ function getStockAvailability(row) {
   };
 }
 
-function findStockRowByMaterial(stockRows, materialName) {
-  const key = normalizeKey(materialName);
-  if (!key) return null;
-  return (
-    (stockRows || []).find((row) => normalizeKey(getStockMaterialName(row)) === key) || null
-  );
-}
-
 function normalizeValidationList(value) {
   if (Array.isArray(value)) return value;
   if (value == null) return [];
@@ -1488,6 +1480,7 @@ export default function InventoryModule({
               <TableHead>
                 <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700, minWidth: 240 }}>Stock Variant</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Required</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Current Pack Size</TableCell>
@@ -1498,12 +1491,61 @@ export default function InventoryModule({
                 </TableRow>
               </TableHead>
               <TableBody>
-                {calcResult.items.map((it) => {
+                {calcDisplayItems.map((it, index) => {
                   const ok = asNum(it.shortageQty) <= 0;
 
                   return (
-                    <TableRow key={`${it.materialName}-${it.calcType}`}>
+                    <TableRow key={`${it.materialName}-${it.calcType}-${index}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
+                      <TableCell sx={{ fontFamily }}>
+                        {it.requiresAcrylicColor && acrylicColorOptions.length ? (
+                          <FormControl size="small" fullWidth>
+                            <Select
+                              displayEmpty
+                              value={selectedAcrylicColors[it.colorKey] || ""}
+                              onChange={(e) =>
+                                setSelectedAcrylicColors((prev) => ({
+                                  ...prev,
+                                  [it.colorKey]: e.target.value,
+                                }))
+                              }
+                              sx={{
+                                fontFamily,
+                                fontSize: 12,
+                                minWidth: 220,
+                                "& .MuiSelect-select": {
+                                  py: 0.7,
+                                  whiteSpace: "normal",
+                                },
+                              }}
+                            >
+                              <MenuItem value="">
+                                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
+                                  Select acrylic color
+                                </Typography>
+                              </MenuItem>
+                              {acrylicColorOptions.map((colorName) => {
+                                const colorStock = stockByMaterial[normalizeKey(colorName)] || null;
+                                const colorStockInfo = getStockAvailability(colorStock);
+                                return (
+                                  <MenuItem key={colorName} value={colorName}>
+                                    <Typography sx={{ fontFamily, fontSize: 12 }}>
+                                      {colorName} - Avl {round2(colorStockInfo.availableTotalQty)}
+                                      {it.unit ? ` ${it.unit}` : ""}
+                                    </Typography>
+                                  </MenuItem>
+                                );
+                              })}
+                            </Select>
+                          </FormControl>
+                        ) : it.requiresAcrylicColor ? (
+                          <Typography sx={{ fontFamily, fontSize: 12, color: "#c62828" }}>
+                            Add Acrylic Color options in validation
+                          </Typography>
+                        ) : (
+                          <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.65 }}>-</Typography>
+                        )}
+                      </TableCell>
                       <TableCell sx={{ fontFamily }}>{it.unit}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{round2(it.requiredQty)}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{it.packSize ? round2(it.packSize) : "-"}</TableCell>

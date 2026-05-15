@@ -1173,194 +1173,348 @@ export default function StockManagement({
       </Paper>
 
       {/* Update Stock Modal */}
-      <Dialog open={openModal} onClose={handleCloseModal} fullWidth maxWidth="md">
-        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Update Stock</DialogTitle>
-        <DialogContent dividers>
+      <Dialog
+        open={openModal}
+        onClose={handleCloseModal}
+        fullWidth
+        maxWidth="md"
+        PaperProps={{
+          sx: {
+            borderRadius: 2,
+            overflow: "hidden",
+          },
+        }}
+      >
+        <DialogTitle
+          sx={{
+            fontFamily,
+            px: 3,
+            py: 2,
+            borderBottom: "1px solid rgba(0,0,0,0.08)",
+            backgroundColor: "rgba(100,149,237,0.08)",
+          }}
+        >
+          <Box display="flex" alignItems="flex-start" justifyContent="space-between" gap={2}>
+            <Box>
+              <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                Update Stock
+              </Typography>
+              <Typography sx={{ fontFamily, fontSize: 12, color: "rgba(31,42,68,0.72)", mt: 0.3 }}>
+                {modalForm?.materialName || "Selected material"}
+                {modalForm?.category ? ` | ${modalForm.category}` : ""}
+              </Typography>
+            </Box>
+
+            {modalForm ? (
+              <Chip
+                size="small"
+                label={toUpper(modalForm.active) === "TRUE" ? "Active" : "Inactive"}
+                color={toUpper(modalForm.active) === "TRUE" ? "success" : "default"}
+                sx={{ fontFamily, fontWeight: 600 }}
+              />
+            ) : null}
+          </Box>
+        </DialogTitle>
+
+        <DialogContent dividers sx={{ p: 3, backgroundColor: "#fbfcff" }}>
           {modalForm ? (
             <Box>
-              <Grid container spacing={2}>
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Category
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {modalForm.category}
-                  </Typography>
-                </Grid>
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  mb: 2,
+                  borderRadius: 2,
+                  border: "1px solid rgba(100,149,237,0.22)",
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: cornflowerBlue,
+                    textTransform: "uppercase",
+                    mb: 1.5,
+                  }}
+                >
+                  Material Details
+                </Typography>
 
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Material Name
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {modalForm.materialName}
-                  </Typography>
-                </Grid>
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1,
+                        backgroundColor: "rgba(100,149,237,0.06)",
+                      }}
+                    >
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Category
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {modalForm.category || "-"}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Unit
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {modalForm.unit}
-                  </Typography>
-                </Grid>
+                  <Grid item xs={12} md={4}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1,
+                        backgroundColor: "rgba(100,149,237,0.06)",
+                      }}
+                    >
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Material Name
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {modalForm.materialName || "-"}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label="Pack Size Options"
-                    value={modalForm.packSizeOptions}
-                    onChange={(e) => handleModalChange("packSizeOptions", e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                    placeholder="25|50|100"
-                  />
-                </Grid>
+                  <Grid item xs={12} md={2}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Unit"
+                      value={modalForm.unit}
+                      onChange={(e) => handleModalChange("unit", e.target.value)}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily } }}
+                    />
+                  </Grid>
 
-                <Grid item xs={12} md={4}>
-                  {(modalForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
+                  <Grid item xs={12} md={2}>
                     <FormControl fullWidth size="small">
-                      <InputLabel>Pack Size</InputLabel>
+                      <InputLabel>Active</InputLabel>
                       <Select
+                        label="Active"
+                        value={modalForm.active}
+                        onChange={(e) => handleModalChange("active", e.target.value)}
+                        sx={{ fontFamily }}
+                      >
+                        <MenuItem value="TRUE">TRUE</MenuItem>
+                        <MenuItem value="FALSE">FALSE</MenuItem>
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                </Grid>
+              </Paper>
+
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  mb: 2,
+                  borderRadius: 2,
+                  border: "1px solid rgba(0,0,0,0.08)",
+                  backgroundColor: "#ffffff",
+                }}
+              >
+                <Typography
+                  sx={{
+                    fontFamily,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#1f2a44",
+                    textTransform: "uppercase",
+                    mb: 1.5,
+                  }}
+                >
+                  Stock Details
+                </Typography>
+
+                <Grid container spacing={2}>
+                  <Grid item xs={12} md={4}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Pack Size Options"
+                      value={modalForm.packSizeOptions}
+                      onChange={(e) => handleModalChange("packSizeOptions", e.target.value)}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily } }}
+                      placeholder="25|50|100"
+                      helperText="Use | or commas between values"
+                      FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    {(modalForm.packSizeOptionsList?.length || approvedPackSizes.length) ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Pack Size</InputLabel>
+                        <Select
+                          label="Pack Size"
+                          value={modalForm.packSize}
+                          onChange={(e) => handleModalChange("packSize", e.target.value)}
+                          sx={{ fontFamily }}
+                        >
+                          {Array.from(
+                            new Set([
+                              ...(modalForm.packSizeOptionsList || []),
+                              ...(approvedPackSizes || []),
+                            ])
+                          )
+                            .filter((ps) => asNum(ps) > 0)
+                            .sort((a, b) => a - b)
+                            .map((ps) => (
+                              <MenuItem key={ps} value={ps}>
+                                {ps}
+                              </MenuItem>
+                            ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        type="number"
                         label="Pack Size"
                         value={modalForm.packSize}
                         onChange={(e) => handleModalChange("packSize", e.target.value)}
                         sx={{ fontFamily }}
-                      >
-                        {Array.from(
-                          new Set([
-                            ...(modalForm.packSizeOptionsList || []),
-                            ...(approvedPackSizes || []),
-                          ])
-                        )
-                          .filter((ps) => asNum(ps) > 0)
-                          .sort((a, b) => a - b)
-                          .map((ps) => (
-                            <MenuItem key={ps} value={ps}>
-                              {ps}
-                            </MenuItem>
-                          ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
+                        inputProps={{ style: { fontFamily } }}
+                      />
+                    )}
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
                     <TextField
                       fullWidth
                       size="small"
                       type="number"
-                      label="Pack Size"
-                      value={modalForm.packSize}
-                      onChange={(e) => handleModalChange("packSize", e.target.value)}
+                      label="Ready Packs Count"
+                      value={modalForm.readyPacksCount}
+                      onChange={(e) => handleModalChange("readyPacksCount", e.target.value)}
                       sx={{ fontFamily }}
                       inputProps={{ style: { fontFamily } }}
                     />
-                  )}
-                </Grid>
+                  </Grid>
 
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Ready Packs Count"
-                    value={modalForm.readyPacksCount}
-                    onChange={(e) => handleModalChange("readyPacksCount", e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Loose Stock Qty"
-                    value={modalForm.looseStockQty}
-                    onChange={(e) => handleModalChange("looseStockQty", e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    type="number"
-                    label="Min Stock Level"
-                    value={modalForm.minStockLevel}
-                    onChange={(e) => handleModalChange("minStockLevel", e.target.value)}
-                    sx={{ fontFamily }}
-                    inputProps={{ style: { fontFamily } }}
-                  />
-                </Grid>
-
-                <Grid item xs={12} md={4}>
-                  <FormControl fullWidth size="small">
-                    <InputLabel>Active</InputLabel>
-                    <Select
-                      label="Active"
-                      value={modalForm.active}
-                      onChange={(e) => handleModalChange("active", e.target.value)}
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="Loose Stock Qty"
+                      value={modalForm.looseStockQty}
+                      onChange={(e) => handleModalChange("looseStockQty", e.target.value)}
                       sx={{ fontFamily }}
-                    >
-                      <MenuItem value="TRUE">TRUE</MenuItem>
-                      <MenuItem value="FALSE">FALSE</MenuItem>
-                    </Select>
-                  </FormControl>
-                </Grid>
+                      inputProps={{ style: { fontFamily } }}
+                    />
+                  </Grid>
 
-                <Grid item xs={12}>
-                  <Divider sx={{ my: 1 }} />
+                  <Grid item xs={12} md={6}>
+                    <TextField
+                      fullWidth
+                      size="small"
+                      type="number"
+                      label="Min Stock Level"
+                      value={modalForm.minStockLevel}
+                      onChange={(e) => handleModalChange("minStockLevel", e.target.value)}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily } }}
+                    />
+                  </Grid>
                 </Grid>
+              </Paper>
 
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Reserved Packaged Qty
+              <Paper
+                elevation={0}
+                sx={{
+                  p: 2,
+                  borderRadius: 2,
+                  border: "1px solid rgba(100,149,237,0.22)",
+                  backgroundColor: "rgba(100,149,237,0.06)",
+                }}
+              >
+                <Box display="flex" alignItems="center" justifyContent="space-between" gap={1} mb={1.5}>
+                  <Typography
+                    sx={{
+                      fontFamily,
+                      fontSize: 12,
+                      fontWeight: 700,
+                      color: "#1f2a44",
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Calculated Stock Preview
                   </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.reservedPackagedQty)}
-                  </Typography>
-                </Grid>
+                  <Chip
+                    size="small"
+                    label={`Packaged Qty: ${round2(modalForm.packagedStockQty)}`}
+                    sx={{
+                      fontFamily,
+                      fontWeight: 600,
+                      color: "#1f2a44",
+                      backgroundColor: "#ffffff",
+                    }}
+                  />
+                </Box>
 
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Reserved Loose Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.reservedLooseQty)}
-                  </Typography>
-                </Grid>
+                <Grid container spacing={1.5}>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Reserved Packaged
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {round2(modalForm.reservedPackagedQty)}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                <Grid item xs={12} md={4}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Packaged Stock Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.packagedStockQty)}
-                  </Typography>
-                </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Reserved Loose
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {round2(modalForm.reservedLooseQty)}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Available Packaged Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.availablePackagedQty)}
-                  </Typography>
-                </Grid>
+                  <Grid item xs={12} sm={6} md={4}>
+                    <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Packaged Stock
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {round2(modalForm.packagedStockQty)}
+                      </Typography>
+                    </Box>
+                  </Grid>
 
-                <Grid item xs={12} md={6}>
-                  <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                    Derived Available Loose Qty
-                  </Typography>
-                  <Typography sx={{ fontFamily, fontWeight: 600 }}>
-                    {round2(modalForm.availableLooseQty)}
-                  </Typography>
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Available Packaged
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
+                        {round2(modalForm.availablePackagedQty)}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} sm={6}>
+                    <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Available Loose
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
+                        {round2(modalForm.availableLooseQty)}
+                      </Typography>
+                    </Box>
+                  </Grid>
                 </Grid>
-              </Grid>
+              </Paper>
 
               {modalNotice ? (
                 <Box mt={2}>
@@ -1381,7 +1535,14 @@ export default function StockManagement({
           ) : null}
         </DialogContent>
 
-        <DialogActions>
+        <DialogActions
+          sx={{
+            px: 3,
+            py: 2,
+            borderTop: "1px solid rgba(0,0,0,0.08)",
+            backgroundColor: "#ffffff",
+          }}
+        >
           <Button onClick={handleCloseModal} sx={{ textTransform: "none", fontFamily }}>
             Close
           </Button>
@@ -1390,9 +1551,18 @@ export default function StockManagement({
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
             onClick={handleSaveStock}
             disabled={!modalForm || saving}
-            sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
+            sx={{
+              textTransform: "none",
+              fontFamily,
+              backgroundColor: cornflowerBlue,
+              boxShadow: "none",
+              "&:hover": {
+                backgroundColor: "#4f7fd4",
+                boxShadow: "none",
+              },
+            }}
           >
-            Save Stock
+            Save Changes
           </Button>
         </DialogActions>
       </Dialog>

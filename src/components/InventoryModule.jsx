@@ -228,6 +228,74 @@ function getAllocationKey(item, index) {
   return `${index}__${normalizeKey(item?.materialName)}`;
 }
 
+function isAcrylicColorMaterial(materialName) {
+  const n = normalizeKey(materialName);
+  return (
+    n === "COLOR" ||
+    n === "COLOUR" ||
+    n === "ACRYLIC COLOR" ||
+    n === "ACRYLIC COLOUR" ||
+    n.includes("ACRYLIC COLOR") ||
+    n.includes("ACRYLIC COLOUR")
+  );
+}
+
+function getStockMaterialName(row) {
+  return pickFirst(row, ["materialName", "Material Name", "Item Name", "itemName", "Material"]);
+}
+
+function getStockAvailability(row) {
+  if (!row) {
+    return {
+      packSize: 0,
+      availablePackagedQty: 0,
+      availableLooseQty: 0,
+      availableTotalQty: 0,
+    };
+  }
+
+  const packSize = asNum(pickFirst(row, ["packSize", "Pack Size", "Package Size"]));
+  const availablePackagedRaw = pickFirst(row, ["availablePackagedQty", "Available Packaged Qty"]);
+  const availableLooseRaw = pickFirst(row, ["availableLooseQty", "Available Loose Qty"]);
+
+  const hasExplicitAvailable =
+    safeStr(availablePackagedRaw) !== "" || safeStr(availableLooseRaw) !== "";
+
+  if (hasExplicitAvailable) {
+    const availablePackagedQty = Math.max(0, asNum(availablePackagedRaw));
+    const availableLooseQty = Math.max(0, asNum(availableLooseRaw));
+    return {
+      packSize,
+      availablePackagedQty: round2(availablePackagedQty),
+      availableLooseQty: round2(availableLooseQty),
+      availableTotalQty: round2(availablePackagedQty + availableLooseQty),
+    };
+  }
+
+  const packaged = asNum(pickFirst(row, ["packagedStockQty", "Packaged Stock Qty"]));
+  const loose = asNum(pickFirst(row, ["looseStockQty", "Loose Stock Qty"]));
+  const resPack = asNum(pickFirst(row, ["reservedPackagedQty", "Reserved Packaged Qty"]));
+  const resLoose = asNum(pickFirst(row, ["reservedLooseQty", "Reserved Loose Qty"]));
+
+  const availablePackagedQty = Math.max(0, packaged - resPack);
+  const availableLooseQty = Math.max(0, loose - resLoose);
+
+  return {
+    packSize,
+    availablePackagedQty: round2(availablePackagedQty),
+    availableLooseQty: round2(availableLooseQty),
+    availableTotalQty: round2(availablePackagedQty + availableLooseQty),
+  };
+}
+
+function findStockRowByMaterial(stockRows, materialName) {
+  const key = normalizeKey(materialName);
+  if (!key) return null;
+  return (
+    (stockRows || []).find((row) => normalizeKey(getStockMaterialName(row)) === key) || null
+  );
+}
+
 function normalizeValidationList(value) {
   if (Array.isArray(value)) return value;
   if (value == null) return [];
@@ -575,6 +643,7 @@ export default function InventoryModule({
 
   const [calcResult, setCalcResult] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
+  const [selectedAcrylicColors, setSelectedAcrylicColors] = useState({});
 
   const [remarks, setRemarks] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -656,6 +725,38 @@ export default function InventoryModule({
     ).sort((a, b) => a - b);
   }, [validation]);
 
+  const acrylicColorOptions = useMemo(() => {
+    const validationEntries = Object.entries(validation || {})
+      .filter(([key]) => isAcrylicColorMaterial(key))
+      .flatMap(([, value]) => normalizeValidationList(value));
+
+    const fromValidation = validationEntries
+      .flatMap((v) => safeStr(v).split(/[|,]/))
+      .map((v) => safeStr(v))
+      .filter(Boolean);
+
+    const fromStock = (stockRows || [])
+      .map((row) => getStockMaterialName(row))
+      .filter((name) => isAcrylicColorMaterial(name));
+
+    const seen = new Set();
+    return [...fromValidation, ...fromStock].filter((name) => {
+      const key = normalizeKey(name);
+      if (!key || seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [validation, stockRows]);
+
+  const stockByMaterial = useMemo(() => {
+    const out = {};
+    (stockRows || []).forEach((row) => {
+      const key = normalizeKey(getStockMaterialName(row));
+      if (key) out[key] = row;
+    });
+    return out;
+  }, [stockRows]);
+
   const bookingSummaryRows = useMemo(() => {
     return groupBookingsForSummary(bookings || []);
   }, [bookings]);
@@ -703,8 +804,53 @@ export default function InventoryModule({
     return out;
   }, [inputs, inputDefs]);
 
+  const calcDisplayItems = useMemo(() => {
+    return (calcResult?.items || []).map((it, index) => {
+      const requiresAcrylicColor = isAcrylicColorMaterial(it.materialName);
+      const colorKey = getAllocationKey(it, index);
+      const selectedMaterialName = requiresAcrylicColor
+        ? safeStr(selectedAcrylicColors[colorKey])
+        : "";
+
+      const stockRow = requiresAcrylicColor && selectedMaterialName
+        ? stockByMaterial[normalizeKey(selectedMaterialName)] || null
+        : null;
+
+      if (!requiresAcrylicColor || !acrylicColorOptions.length) {
+        return {
+          ...it,
+          colorKey,
+          requiresAcrylicColor,
+          selectedMaterialName: it.materialName,
+        };
+      }
+
+      const stockInfo = getStockAvailability(stockRow);
+      const availableTotalQty = selectedMaterialName ? stockInfo.availableTotalQty : 0;
+      const shortageQty = Math.max(0, asNum(it.requiredQty) - availableTotalQty);
+      const packSize = selectedMaterialName ? stockInfo.packSize : 0;
+      const estimatedPacksNeeded = packSize > 0 ? Math.ceil(asNum(it.requiredQty) / packSize) : 0;
+
+      return {
+        ...it,
+        colorKey,
+        requiresAcrylicColor,
+        selectedMaterialName,
+        selectedStockFound: Boolean(stockRow),
+        packSize,
+        estimatedPacksNeeded,
+        estimatedPackagingQty: round2(packSize > 0 ? estimatedPacksNeeded * packSize : 0),
+        availablePackagedQty: selectedMaterialName ? stockInfo.availablePackagedQty : 0,
+        availableLooseQty: selectedMaterialName ? stockInfo.availableLooseQty : 0,
+        availableTotalQty: round2(availableTotalQty),
+        shortageQty: round2(shortageQty),
+        canFulfill: selectedMaterialName && shortageQty <= 0,
+      };
+    });
+  }, [calcResult, selectedAcrylicColors, acrylicColorOptions, stockByMaterial]);
+
   const totals = useMemo(() => {
-    const items = calcResult?.items || [];
+    const items = calcDisplayItems || [];
     const totalRequired = items.reduce((s, it) => s + asNum(it.requiredQty), 0);
     const totalShort = items.reduce((s, it) => s + asNum(it.shortageQty), 0);
     const allFulfillable = items.every((it) => !!it.canFulfill);
@@ -714,7 +860,7 @@ export default function InventoryModule({
       totalShort: round2(totalShort),
       allFulfillable,
     };
-  }, [calcResult]);
+  }, [calcDisplayItems]);
 
   const busy =
     validationLoading ||
@@ -837,6 +983,34 @@ export default function InventoryModule({
   }, [stockRows]);
 
   useEffect(() => {
+    const items = calcResult?.items || [];
+    const colorItems = items
+      .map((item, index) => ({ item, index, key: getAllocationKey(item, index) }))
+      .filter(({ item }) => isAcrylicColorMaterial(item.materialName));
+
+    if (!colorItems.length) {
+      setSelectedAcrylicColors({});
+      return;
+    }
+
+    setSelectedAcrylicColors((prev) => {
+      const next = {};
+      colorItems.forEach(({ key }) => {
+        const previous = safeStr(prev[key]);
+        const previousStillValid = acrylicColorOptions.some(
+          (opt) => normalizeKey(opt) === normalizeKey(previous)
+        );
+        next[key] = previousStillValid
+          ? previous
+          : acrylicColorOptions.length === 1
+          ? acrylicColorOptions[0]
+          : "";
+      });
+      return next;
+    });
+  }, [calcResult, acrylicColorOptions]);
+
+  useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
     
@@ -903,6 +1077,15 @@ export default function InventoryModule({
     setBookingNotice("");
 
     try {
+      const missingColorSelections = (calcDisplayItems || []).filter(
+        (it) => it.requiresAcrylicColor && acrylicColorOptions.length && !safeStr(it.selectedMaterialName)
+      );
+
+      if (missingColorSelections.length) {
+        alert("Please select the acrylic color variant before submitting the booking.");
+        return;
+      }
+
       const payload = {
         action: "createBooking",
         data: {
@@ -914,12 +1097,13 @@ export default function InventoryModule({
           inputs: normalizedInputs,
           totalRequiredQty: totals.totalRequired,
           totalShortageQty: totals.totalShort,
-          items: (calcResult.items || []).map((it) => ({
-            materialName: it.materialName || "",
+          items: (calcDisplayItems || []).map((it) => ({
+            materialName: it.selectedMaterialName || it.materialName || "",
             unit: it.unit || "",
             requiredQty: asNum(it.requiredQty),
             calcType: it.calcType || "",
             formula: it.formula || "",
+            calculatedMaterialName: it.materialName || "",
           })),
         },
       };

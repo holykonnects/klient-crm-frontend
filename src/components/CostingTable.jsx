@@ -28,6 +28,8 @@ import {
   TableContainer,
   Paper,
   Drawer,
+  Tabs,
+  Tab,
 } from "@mui/material";
 
 import Autocomplete from "@mui/material/Autocomplete";
@@ -345,6 +347,19 @@ export default function CostingTable() {
   const [lineItems, setLineItems] = useState([]);
   const [lineItemHeaders, setLineItemHeaders] = useState([]);
 
+  const [mainTab, setMainTab] = useState("sheets");
+  const [lineSearchRows, setLineSearchRows] = useState([]);
+  const [lineSearchLoading, setLineSearchLoading] = useState(false);
+  const [lineSearchLoaded, setLineSearchLoaded] = useState(false);
+  const [lineSearch, setLineSearch] = useState("");
+  const [lineSearchColumn, setLineSearchColumn] = useState("all");
+  const [lineSearchEntityType, setLineSearchEntityType] = useState("");
+  const [lineSearchPaymentStatus, setLineSearchPaymentStatus] = useState("");
+  const [lineSearchHead, setLineSearchHead] = useState("");
+  const [lineSearchGroupBy, setLineSearchGroupBy] = useState("Linked Entity Name");
+  const [lineSearchColumnsAnchor, setLineSearchColumnsAnchor] = useState(null);
+  const [lineSearchVisibleCols, setLineSearchVisibleCols] = useState({});
+
   // ✅ Entity dropdown options for CREATE modal
   const [entityOptions, setEntityOptions] = useState([]);
   const [entityLoading, setEntityLoading] = useState(false);
@@ -418,6 +433,60 @@ export default function CostingTable() {
     return hs || fallbackLineItemHeaders;
   }, [lineItemHeaders, fallbackLineItemHeaders]);
 
+  const lineSearchDefaultCols = useMemo(() => {
+    return [
+      "Cost Sheet ID",
+      "Linked Entity Type",
+      "Linked Entity Name",
+      "Client Name",
+      "Project Type",
+      "Owner",
+      "Head Name",
+      "Subcategory",
+      "Expense Date",
+      "Particular",
+      "Details",
+      "QTY",
+      "Rate",
+      "Amount",
+      "GST Amount",
+      "Total Amount",
+      "Payment Status",
+      "Voucher/Invoice No",
+      "Entered By",
+    ];
+  }, []);
+
+  const lineSearchAllColumns = useMemo(() => {
+    const merged = new Set([...lineSearchDefaultCols, ...fallbackLineItemHeaders]);
+    (lineSearchRows || []).forEach((row) => {
+      Object.keys(row || {}).forEach((k) => {
+        if (!k.startsWith("__")) merged.add(k);
+      });
+    });
+    return Array.from(merged);
+  }, [lineSearchRows, lineSearchDefaultCols, fallbackLineItemHeaders]);
+
+  const lineSearchDisplayCols = useMemo(() => {
+    return lineSearchAllColumns.filter((c) => lineSearchVisibleCols[c] !== false);
+  }, [lineSearchAllColumns, lineSearchVisibleCols]);
+
+  const lineSearchGroupOptions = useMemo(() => {
+    return [
+      "Linked Entity Name",
+      "Linked Entity Type",
+      "Client Name",
+      "Project Type",
+      "Owner",
+      "Cost Sheet ID",
+      "Head Name",
+      "Subcategory",
+      "Payment Status",
+      "Particular",
+      "Entered By",
+    ].filter((c) => lineSearchAllColumns.includes(c));
+  }, [lineSearchAllColumns]);
+
   // ✅ Build searchable "Cost Sheet options" (for Autocomplete dropdowns)
   const costSheetOptions = useMemo(() => {
     const arr = Array.isArray(costSheets) ? costSheets : [];
@@ -435,6 +504,32 @@ export default function CostingTable() {
       })
       .filter((x) => x.id);
   }, [costSheets]);
+
+  useEffect(() => {
+    if (!lineSearchAllColumns.length) return;
+
+    setLineSearchVisibleCols((prev) => {
+      if (prev && Object.keys(prev).length) {
+        const next = { ...prev };
+        lineSearchAllColumns.forEach((c) => {
+          if (!(c in next)) next[c] = lineSearchDefaultCols.includes(c);
+        });
+        return next;
+      }
+
+      const initial = {};
+      lineSearchAllColumns.forEach((c) => {
+        initial[c] = lineSearchDefaultCols.includes(c);
+      });
+      return initial;
+    });
+  }, [lineSearchAllColumns, lineSearchDefaultCols]);
+
+  useEffect(() => {
+    if (lineSearchGroupOptions.length && !lineSearchGroupOptions.includes(lineSearchGroupBy)) {
+      setLineSearchGroupBy(lineSearchGroupOptions[0]);
+    }
+  }, [lineSearchGroupBy, lineSearchGroupOptions]);
 
   const selectedExtractCostSheetOption = useMemo(() => {
     const id = String(extractForm?.costSheetId || "").trim();
@@ -689,12 +784,90 @@ export default function CostingTable() {
   // ✅ Slightly more robust post-mutation refresh (helps when GAS recompute is async)
   async function refreshAfterMutation({ refreshValidation = false } = {}) {
     await refreshFast({ refreshValidation });
+    setLineSearchLoaded(false);
+  }
+
+  async function loadLineItemSearchData() {
+    const sheets = Array.isArray(costSheets) ? costSheets : [];
+    if (!sheets.length) {
+      setLineSearchRows([]);
+      setLineSearchLoaded(false);
+      return;
+    }
+
+    setLineSearchLoading(true);
+    try {
+      const rows = [];
+
+      await runWithConcurrency(
+        sheets,
+        async (sheet) => {
+          const costSheetId = String(sheet?.["Cost Sheet ID"] || "").trim();
+          if (!costSheetId) return;
+
+          try {
+            const items = await jsonpGet(
+              `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+            );
+
+            if (!Array.isArray(items)) {
+              console.error("LINE_SEARCH_DETAILS_NOT_ARRAY", { costSheetId, items });
+              return;
+            }
+
+            items.forEach((item, idx) => {
+              const active = String(item?.["Active"] ?? "Yes").trim().toLowerCase();
+              if (active === "no") return;
+
+              rows.push({
+                ...item,
+                "Cost Sheet ID": item?.["Cost Sheet ID"] || costSheetId,
+                Owner: item?.["Owner"] || sheet?.["Owner"] || "",
+                "Linked Entity Type":
+                  item?.["Linked Entity Type"] || sheet?.["Linked Entity Type"] || "",
+                "Linked Entity ID":
+                  item?.["Linked Entity ID"] || sheet?.["Linked Entity ID"] || "",
+                "Linked Entity Name":
+                  item?.["Linked Entity Name"] || sheet?.["Linked Entity Name"] || "",
+                "Client Name": item?.["Client Name"] || sheet?.["Client Name"] || "",
+                "Project Type": item?.["Project Type"] || sheet?.["Project Type"] || "",
+                __lineKey: makeLineItemKey(costSheetId, item) || `${costSheetId}__search__${idx}`,
+              });
+            });
+          } catch (e) {
+            console.error("LINE_SEARCH_COST_SHEET_ERROR", { costSheetId, error: e });
+          }
+        },
+        4
+      );
+
+      rows.sort((a, b) => {
+        const aDate = new Date(a?.["Expense Date"] || a?.["Entry Timestamp"] || 0).getTime() || 0;
+        const bDate = new Date(b?.["Expense Date"] || b?.["Entry Timestamp"] || 0).getTime() || 0;
+        return bDate - aDate;
+      });
+
+      setLineSearchRows(rows);
+      setLineSearchLoaded(true);
+    } catch (e) {
+      console.error("LINE_SEARCH_LOAD_ERROR", e);
+      alert("Failed to load line item search data.");
+    } finally {
+      setLineSearchLoading(false);
+    }
   }
 
   // On first mount, run FAST refresh
   useEffect(() => {
     refreshFast({ refreshValidation: true });
   }, []);
+
+  useEffect(() => {
+    if (mainTab !== "lineSearch") return;
+    if (lineSearchLoading) return;
+    if (lineSearchLoaded && lineSearchRows.length) return;
+    loadLineItemSearchData();
+  }, [mainTab, lineSearchLoaded, lineSearchLoading, lineSearchRows.length, costSheets]);
 
   async function ensureValidationLoaded() {
     const hasAny =
@@ -741,6 +914,13 @@ export default function CostingTable() {
   }
   function closeColumns() {
     setColumnsOpen(null);
+  }
+
+  function openLineSearchColumns(e) {
+    setLineSearchColumnsAnchor(e.currentTarget);
+  }
+  function closeLineSearchColumns() {
+    setLineSearchColumnsAnchor(null);
   }
 
   function openCreateModal() {
@@ -1530,6 +1710,87 @@ export default function CostingTable() {
     return picked;
   }, [lineItemHeaders]);
 
+  const filteredLineSearchRows = useMemo(() => {
+    const q = lineSearch.trim().toLowerCase();
+
+    return (lineSearchRows || []).filter((row) => {
+      if (
+        lineSearchEntityType &&
+        String(row?.["Linked Entity Type"] || "").trim() !== lineSearchEntityType
+      ) {
+        return false;
+      }
+
+      if (
+        lineSearchPaymentStatus &&
+        String(row?.["Payment Status"] || "").trim() !== lineSearchPaymentStatus
+      ) {
+        return false;
+      }
+
+      if (lineSearchHead && String(row?.["Head Name"] || "").trim() !== lineSearchHead) {
+        return false;
+      }
+
+      if (!q) return true;
+
+      if (lineSearchColumn !== "all") {
+        return String(row?.[lineSearchColumn] ?? "").toLowerCase().includes(q);
+      }
+
+      return lineSearchAllColumns.some((c) =>
+        String(row?.[c] ?? "").toLowerCase().includes(q)
+      );
+    });
+  }, [
+    lineSearchRows,
+    lineSearch,
+    lineSearchColumn,
+    lineSearchEntityType,
+    lineSearchPaymentStatus,
+    lineSearchHead,
+    lineSearchAllColumns,
+  ]);
+
+  const lineSearchTotals = useMemo(() => {
+    return filteredLineSearchRows.reduce(
+      (acc, row) => ({
+        count: acc.count + 1,
+        qty: acc.qty + safeNum(row?.["QTY"]),
+        amount: acc.amount + safeNum(row?.["Amount"]),
+        gst: acc.gst + safeNum(row?.["GST Amount"]),
+        total: acc.total + safeNum(row?.["Total Amount"]),
+      }),
+      { count: 0, qty: 0, amount: 0, gst: 0, total: 0 }
+    );
+  }, [filteredLineSearchRows]);
+
+  const lineSearchGroupedTotals = useMemo(() => {
+    const map = new Map();
+
+    filteredLineSearchRows.forEach((row) => {
+      const rawKey = String(row?.[lineSearchGroupBy] || "").trim();
+      const key = rawKey || "Unassigned";
+      const current = map.get(key) || {
+        key,
+        count: 0,
+        qty: 0,
+        amount: 0,
+        gst: 0,
+        total: 0,
+      };
+
+      current.count += 1;
+      current.qty += safeNum(row?.["QTY"]);
+      current.amount += safeNum(row?.["Amount"]);
+      current.gst += safeNum(row?.["GST Amount"]);
+      current.total += safeNum(row?.["Total Amount"]);
+      map.set(key, current);
+    });
+
+    return Array.from(map.values()).sort((a, b) => b.total - a.total);
+  }, [filteredLineSearchRows, lineSearchGroupBy]);
+
   /* ===================== Keyboard Shortcuts ===================== */
 
   function isEditableTarget(el) {
@@ -1677,7 +1938,13 @@ export default function CostingTable() {
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
-              onClick={refreshFast}
+              onClick={async () => {
+                await refreshFast();
+                if (mainTab === "lineSearch") {
+                  setLineSearchLoaded(false);
+                  await loadLineItemSearchData();
+                }
+              }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
             >
               Refresh
@@ -1719,6 +1986,28 @@ export default function CostingTable() {
           </Typography>
         </Box>
 
+        <Paper sx={{ mb: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
+          <Tabs
+            value={mainTab}
+            onChange={(_, value) => setMainTab(value)}
+            variant="scrollable"
+            scrollButtons="auto"
+            sx={{
+              minHeight: 42,
+              "& .MuiTab-root": {
+                minHeight: 42,
+                fontFamily: "Montserrat, sans-serif",
+                fontWeight: 800,
+                fontSize: 12,
+              },
+            }}
+          >
+            <Tab value="sheets" label="Cost Sheets" />
+            <Tab value="lineSearch" label="Line Item Search" />
+          </Tabs>
+        </Paper>
+
+        {mainTab === "sheets" ? (
         <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
           <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
             <TextField
@@ -1848,6 +2137,310 @@ export default function CostingTable() {
             </Table>
           </TableContainer>
         </Paper>
+        ) : null}
+
+        {mainTab === "lineSearch" ? (
+          <Paper sx={{ p: 1.5, borderRadius: 2, border: "1px solid #eee" }}>
+            <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap", alignItems: "center" }}>
+              <TextField
+                size="small"
+                label="Search line items"
+                value={lineSearch}
+                onChange={(e) => setLineSearch(e.target.value)}
+                sx={{ minWidth: 260 }}
+              />
+
+              <FormControl size="small" sx={{ minWidth: 190 }}>
+                <InputLabel>Search Column</InputLabel>
+                <Select
+                  value={lineSearchColumn}
+                  label="Search Column"
+                  onChange={(e) => setLineSearchColumn(e.target.value)}
+                >
+                  <MenuItem value="all">All Columns</MenuItem>
+                  {lineSearchAllColumns.map((c) => (
+                    <MenuItem key={c} value={c}>
+                      {c}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Entity Type</InputLabel>
+                <Select
+                  value={lineSearchEntityType}
+                  label="Entity Type"
+                  onChange={(e) => setLineSearchEntityType(e.target.value)}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  {["Account", "Deal", "Project", "Order"].map((t) => (
+                    <MenuItem key={t} value={t}>
+                      {t}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 190 }}>
+                <InputLabel>Payment Status</InputLabel>
+                <Select
+                  value={lineSearchPaymentStatus}
+                  label="Payment Status"
+                  onChange={(e) => setLineSearchPaymentStatus(e.target.value)}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  {(validation.paymentStatus || DEFAULT_PAYMENT_STATUSES).map((s) => (
+                    <MenuItem key={s} value={s}>
+                      {s}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 180 }}>
+                <InputLabel>Head</InputLabel>
+                <Select
+                  value={lineSearchHead}
+                  label="Head"
+                  onChange={(e) => setLineSearchHead(e.target.value)}
+                >
+                  <MenuItem value="">All</MenuItem>
+                  {(validation.heads || []).map((h) => (
+                    <MenuItem key={h} value={h}>
+                      {h}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl size="small" sx={{ minWidth: 210 }}>
+                <InputLabel>Total By</InputLabel>
+                <Select
+                  value={lineSearchGroupBy}
+                  label="Total By"
+                  onChange={(e) => setLineSearchGroupBy(e.target.value)}
+                >
+                  {lineSearchGroupOptions.map((c) => (
+                    <MenuItem key={c} value={c}>
+                      {c}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <IconButton onClick={openLineSearchColumns} title="Line item columns">
+                <ViewColumnIcon />
+              </IconButton>
+
+              <Button
+                variant="outlined"
+                startIcon={<RefreshIcon />}
+                onClick={loadLineItemSearchData}
+                disabled={lineSearchLoading || loading}
+                sx={{ fontFamily: "Montserrat, sans-serif" }}
+              >
+                {lineSearchLoading ? "Loading..." : lineSearchLoaded ? "Reload Items" : "Load Items"}
+              </Button>
+
+              <Popover
+                open={Boolean(lineSearchColumnsAnchor)}
+                anchorEl={lineSearchColumnsAnchor}
+                onClose={closeLineSearchColumns}
+                anchorOrigin={{ vertical: "bottom", horizontal: "left" }}
+              >
+                <Box sx={{ p: 1.5, maxWidth: 420 }}>
+                  <Box sx={{ display: "flex", alignItems: "center", justifyContent: "space-between", mb: 1 }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Line Item Columns</Typography>
+
+                    <Box sx={{ display: "flex", gap: 1 }}>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          const all = {};
+                          lineSearchAllColumns.forEach((c) => (all[c] = true));
+                          setLineSearchVisibleCols(all);
+                        }}
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        size="small"
+                        onClick={() => {
+                          const defaults = {};
+                          lineSearchAllColumns.forEach((c) => {
+                            defaults[c] = lineSearchDefaultCols.includes(c);
+                          });
+                          setLineSearchVisibleCols(defaults);
+                        }}
+                      >
+                        Default
+                      </Button>
+                    </Box>
+                  </Box>
+
+                  <Divider sx={{ mb: 1 }} />
+
+                  <FormGroup>
+                    {lineSearchAllColumns.map((c) => (
+                      <FormControlLabel
+                        key={c}
+                        control={
+                          <Checkbox
+                            size="small"
+                            checked={lineSearchVisibleCols[c] !== false}
+                            onChange={(e) =>
+                              setLineSearchVisibleCols((p) => ({ ...p, [c]: e.target.checked }))
+                            }
+                          />
+                        }
+                        label={<Typography sx={{ fontSize: 12 }}>{c}</Typography>}
+                      />
+                    ))}
+                  </FormGroup>
+                </Box>
+              </Popover>
+            </Box>
+
+            <Grid container spacing={1} sx={{ mt: 1 }}>
+              {[
+                ["Rows", lineSearchTotals.count],
+                ["QTY", fmtINR(lineSearchTotals.qty)],
+                ["Amount", `₹ ${fmtINR(lineSearchTotals.amount)}`],
+                ["GST", `₹ ${fmtINR(lineSearchTotals.gst)}`],
+                ["Total Amount", `₹ ${fmtINR(lineSearchTotals.total)}`],
+              ].map(([label, value]) => (
+                <Grid item xs={6} sm={4} md={2.4} key={label}>
+                  <Paper
+                    variant="outlined"
+                    sx={{ p: 1, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}
+                  >
+                    <Typography sx={{ fontSize: 11, opacity: 0.7 }}>{label}</Typography>
+                    <Typography sx={{ fontWeight: 900, fontSize: 13 }}>{value}</Typography>
+                  </Paper>
+                </Grid>
+              ))}
+            </Grid>
+
+            <Grid container spacing={1.25} sx={{ mt: 0.5 }}>
+              <Grid item xs={12} md={4}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+                  <Box sx={{ p: 1, bgcolor: "#f6f9ff", borderBottom: "1px solid #e9eefc" }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
+                      Totals by {lineSearchGroupBy}
+                    </Typography>
+                    <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                      {lineSearchGroupedTotals.length} grouped result(s)
+                    </Typography>
+                  </Box>
+
+                  <TableContainer sx={{ maxHeight: 420 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          <TableCell sx={{ fontWeight: 900, fontSize: 11 }}>{lineSearchGroupBy}</TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 900, fontSize: 11 }}>
+                            Total
+                          </TableCell>
+                          <TableCell align="right" sx={{ fontWeight: 900, fontSize: 11 }}>
+                            Count
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+                      <TableBody>
+                        {lineSearchGroupedTotals.map((row) => (
+                          <TableRow key={row.key} hover>
+                            <TableCell sx={{ fontSize: 11 }}>{row.key}</TableCell>
+                            <TableCell align="right" sx={{ fontSize: 11, fontWeight: 800 }}>
+                              ₹ {fmtINR(row.total)}
+                            </TableCell>
+                            <TableCell align="right" sx={{ fontSize: 11 }}>
+                              {row.count}
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                        {!lineSearchGroupedTotals.length ? (
+                          <TableRow>
+                            <TableCell colSpan={3} sx={{ fontSize: 12, opacity: 0.7 }}>
+                              {lineSearchLoading ? "Loading line items..." : "No grouped totals found."}
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12} md={8}>
+                <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+                  <Box sx={{ p: 1, bgcolor: "#f6f9ff", borderBottom: "1px solid #e9eefc" }}>
+                    <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Matching Line Items</Typography>
+                    <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
+                      {lineSearchLoading
+                        ? "Loading line items..."
+                        : `${filteredLineSearchRows.length} of ${lineSearchRows.length} item(s)`}
+                    </Typography>
+                  </Box>
+
+                  <TableContainer sx={{ maxHeight: 520 }}>
+                    <Table size="small" stickyHeader>
+                      <TableHead>
+                        <TableRow>
+                          {lineSearchDisplayCols.map((c) => (
+                            <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                              {c}
+                            </TableCell>
+                          ))}
+                          <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                            Action
+                          </TableCell>
+                        </TableRow>
+                      </TableHead>
+
+                      <TableBody>
+                        {filteredLineSearchRows.map((row, idx) => (
+                          <TableRow key={row.__lineKey || idx} hover>
+                            {lineSearchDisplayCols.map((c) => (
+                              <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
+                                {String(row?.[c] ?? "")}
+                              </TableCell>
+                            ))}
+                            <TableCell sx={{ whiteSpace: "nowrap" }}>
+                              <IconButton
+                                size="small"
+                                title="Open Cost Sheet"
+                                onClick={() => openEditModalById(row?.["Cost Sheet ID"])}
+                              >
+                                <EditIcon sx={{ color: cornflowerBlue }} fontSize="small" />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                        {!filteredLineSearchRows.length ? (
+                          <TableRow>
+                            <TableCell
+                              colSpan={lineSearchDisplayCols.length + 1}
+                              sx={{ fontSize: 12, opacity: 0.7 }}
+                            >
+                              {lineSearchLoading
+                                ? "Loading line items..."
+                                : lineSearchLoaded
+                                ? "No line items match the current search."
+                                : "Load line items to search across cost sheets."}
+                            </TableCell>
+                          </TableRow>
+                        ) : null}
+                      </TableBody>
+                    </Table>
+                  </TableContainer>
+                </Paper>
+              </Grid>
+            </Grid>
+          </Paper>
+        ) : null}
 
         {/* ================= EXTRACT MODAL ================= */}
         <Dialog open={openExtract} onClose={() => setOpenExtract(false)} maxWidth="sm" fullWidth>

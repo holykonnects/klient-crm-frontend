@@ -316,8 +316,12 @@ function normalizeSearchText(v) {
   return String(v ?? "").replace(/\s+/g, " ").trim().toLowerCase();
 }
 
-function canonicalColumnName(v) {
+function normalizeLooseSearchText(v) {
   return normalizeSearchText(v).replace(/[^a-z0-9]/g, "");
+}
+
+function canonicalColumnName(v) {
+  return normalizeLooseSearchText(v);
 }
 
 function getLineSearchValue(row, column) {
@@ -335,6 +339,7 @@ function getLineSearchValue(row, column) {
 
 function withLineSearchIndex(row) {
   const fieldText = {};
+  const fieldLooseText = {};
   const fieldRaw = {};
 
   Object.keys(row || {}).forEach((key) => {
@@ -347,6 +352,7 @@ function withLineSearchIndex(row) {
     const value = row[key] ?? "";
     fieldRaw[canonical] = value;
     fieldText[canonical] = normalizeSearchText(value);
+    fieldLooseText[canonical] = normalizeLooseSearchText(value);
 
     if (cleanKey && cleanKey !== key && !(cleanKey in row)) {
       row[cleanKey] = value;
@@ -357,7 +363,9 @@ function withLineSearchIndex(row) {
     ...row,
     __fieldRaw: fieldRaw,
     __fieldText: fieldText,
+    __fieldLooseText: fieldLooseText,
     __allText: Object.values(fieldText).join(" "),
+    __allLooseText: Object.values(fieldLooseText).join(" "),
   };
 }
 
@@ -401,7 +409,8 @@ export default function CostingTable() {
   const [lineSearchLoading, setLineSearchLoading] = useState(false);
   const [lineSearchLoaded, setLineSearchLoaded] = useState(false);
   const [lineSearch, setLineSearch] = useState("");
-  const [debouncedLineSearch, setDebouncedLineSearch] = useState("");
+  const [appliedLineSearch, setAppliedLineSearch] = useState("");
+  const [lineSearchSubmitted, setLineSearchSubmitted] = useState(false);
   const [lineSearchColumn, setLineSearchColumn] = useState("all");
   const [lineSearchMatchMode, setLineSearchMatchMode] = useState("contains");
   const [lineSearchEntityType, setLineSearchEntityType] = useState("");
@@ -581,11 +590,6 @@ export default function CostingTable() {
       setLineSearchGroupBy(lineSearchGroupOptions[0]);
     }
   }, [lineSearchGroupBy, lineSearchGroupOptions]);
-
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedLineSearch(lineSearch), 250);
-    return () => clearTimeout(t);
-  }, [lineSearch]);
 
   const selectedExtractCostSheetOption = useMemo(() => {
     const id = String(extractForm?.costSheetId || "").trim();
@@ -913,17 +917,28 @@ export default function CostingTable() {
     }
   }
 
+  async function runLineItemSearch() {
+    const hasSearchValue = String(lineSearch || "").trim();
+    const hasFilters =
+      lineSearchEntityType || lineSearchPaymentStatus || lineSearchHead || lineSearchColumn !== "all";
+
+    if (!hasSearchValue && !hasFilters) {
+      alert("Please enter a search value or select a filter before searching.");
+      return;
+    }
+
+    setAppliedLineSearch(lineSearch);
+    setLineSearchSubmitted(true);
+
+    if (!lineSearchLoaded) {
+      await loadLineItemSearchData();
+    }
+  }
+
   // On first mount, run FAST refresh
   useEffect(() => {
     refreshFast({ refreshValidation: true });
   }, []);
-
-  useEffect(() => {
-    if (mainTab !== "lineSearch") return;
-    if (lineSearchLoading) return;
-    if (lineSearchLoaded && lineSearchRows.length) return;
-    loadLineItemSearchData();
-  }, [mainTab, lineSearchLoaded, lineSearchLoading, lineSearchRows.length, costSheets]);
 
   async function ensureValidationLoaded() {
     const hasAny =
@@ -1767,11 +1782,17 @@ export default function CostingTable() {
   }, [lineItemHeaders]);
 
   const filteredLineSearchRows = useMemo(() => {
-    const q = normalizeSearchText(debouncedLineSearch);
+    if (!lineSearchSubmitted) return [];
+
+    const q = normalizeSearchText(appliedLineSearch);
+    const looseQ = normalizeLooseSearchText(appliedLineSearch);
     const isExact = lineSearchMatchMode === "exact";
-    const matches = (text) => {
-      if (!q) return true;
-      return isExact ? text === q : text.includes(q);
+    const matches = (text, looseText) => {
+      if (!q && !looseQ) return true;
+      if (isExact) {
+        return Boolean((q && text === q) || (looseQ && looseText === looseQ));
+      }
+      return Boolean((q && text.includes(q)) || (looseQ && looseText.includes(looseQ)));
     };
 
     return (lineSearchRows || []).filter((row) => {
@@ -1799,18 +1820,25 @@ export default function CostingTable() {
         const canonical = canonicalColumnName(lineSearchColumn);
         const fieldText =
           row?.__fieldText?.[canonical] ?? normalizeSearchText(getLineSearchValue(row, lineSearchColumn));
-        return matches(fieldText);
+        const fieldLooseText =
+          row?.__fieldLooseText?.[canonical] ??
+          normalizeLooseSearchText(getLineSearchValue(row, lineSearchColumn));
+        return matches(fieldText, fieldLooseText);
       }
 
       if (isExact) {
-        return Object.values(row?.__fieldText || {}).some((text) => matches(text));
+        const textValues = Object.values(row?.__fieldText || {});
+        const looseValues = Object.values(row?.__fieldLooseText || {});
+        return textValues.some((text) => matches(text, normalizeLooseSearchText(text))) ||
+          looseValues.some((text) => matches(text, text));
       }
 
-      return String(row?.__allText || "").includes(q);
+      return matches(String(row?.__allText || ""), String(row?.__allLooseText || ""));
     });
   }, [
     lineSearchRows,
-    debouncedLineSearch,
+    appliedLineSearch,
+    lineSearchSubmitted,
     lineSearchColumn,
     lineSearchMatchMode,
     lineSearchEntityType,
@@ -2013,6 +2041,8 @@ export default function CostingTable() {
                 if (mainTab === "lineSearch") {
                   setLineSearchRows([]);
                   setLineSearchLoaded(false);
+                  setLineSearchSubmitted(false);
+                  setAppliedLineSearch("");
                 }
               }}
               sx={{ fontFamily: "Montserrat, sans-serif" }}
@@ -2217,6 +2247,12 @@ export default function CostingTable() {
                 label="Search line items"
                 value={lineSearch}
                 onChange={(e) => setLineSearch(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    if (!lineSearchLoading && !loading) runLineItemSearch();
+                  }
+                }}
                 sx={{ minWidth: 260 }}
               />
 
@@ -2243,8 +2279,8 @@ export default function CostingTable() {
                   label="Match"
                   onChange={(e) => setLineSearchMatchMode(e.target.value)}
                 >
-                  <MenuItem value="contains">Contains</MenuItem>
-                  <MenuItem value="exact">Exact</MenuItem>
+                  <MenuItem value="contains">Contains (Text/Clean)</MenuItem>
+                  <MenuItem value="exact">Exact (Text/Clean)</MenuItem>
                 </Select>
               </FormControl>
 
@@ -2318,11 +2354,11 @@ export default function CostingTable() {
               <Button
                 variant="outlined"
                 startIcon={<RefreshIcon />}
-                onClick={loadLineItemSearchData}
+                onClick={runLineItemSearch}
                 disabled={lineSearchLoading || loading}
                 sx={{ fontFamily: "Montserrat, sans-serif" }}
               >
-                {lineSearchLoading ? "Loading..." : lineSearchLoaded ? "Reload Items" : "Load Items"}
+                {lineSearchLoading ? "Searching..." : "Search"}
               </Button>
 
               <Popover
@@ -2462,6 +2498,8 @@ export default function CostingTable() {
                     <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                       {lineSearchLoading
                         ? "Loading line items..."
+                        : !lineSearchSubmitted
+                        ? "Enter a value or select filters, then click Search"
                         : `${filteredLineSearchRows.length} of ${lineSearchRows.length} item(s)${
                             filteredLineSearchRows.length > visibleLineSearchRows.length
                               ? ` | showing first ${visibleLineSearchRows.length}`
@@ -2513,9 +2551,11 @@ export default function CostingTable() {
                             >
                               {lineSearchLoading
                                 ? "Loading line items..."
+                                : !lineSearchSubmitted
+                                ? "Enter a value or select filters, then click Search."
                                 : lineSearchLoaded
                                 ? "No line items match the current search."
-                                : "Load line items to search across cost sheets."}
+                                : "Click Search to load line items."}
                             </TableCell>
                           </TableRow>
                         ) : null}

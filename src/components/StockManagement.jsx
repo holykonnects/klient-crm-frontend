@@ -58,6 +58,7 @@ const asNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
+const hasValue = (v) => v !== undefined && v !== null && safeStr(v) !== "";
 
 function getDefaultPackSize(materialName) {
   const normalized = safeStr(materialName).toUpperCase();
@@ -165,7 +166,15 @@ function buildStockRow(row, idx) {
 
   const reservedPackagedQty = asNum(row.reservedPackagedQty);
   const reservedLooseQty = asNum(row.reservedLooseQty);
+  const dispatchedPackagedQty = asNum(row.dispatchedPackagedQty);
+  const dispatchedLooseQty = asNum(row.dispatchedLooseQty);
   const looseStockQty = asNum(row.looseStockQty);
+  const availablePackagedQty = hasValue(row.availablePackagedQty)
+    ? asNum(row.availablePackagedQty)
+    : Math.max(0, packagedStockQty - reservedPackagedQty - dispatchedPackagedQty);
+  const availableLooseQty = hasValue(row.availableLooseQty)
+    ? asNum(row.availableLooseQty)
+    : Math.max(0, looseStockQty - reservedLooseQty - dispatchedLooseQty);
 
   return {
     id: `${safeStr(row.category)}__${safeStr(row.materialName)}__${idx}`,
@@ -181,8 +190,10 @@ function buildStockRow(row, idx) {
     looseStockQty: round2(looseStockQty),
     reservedPackagedQty: round2(reservedPackagedQty),
     reservedLooseQty: round2(reservedLooseQty),
-    availablePackagedQty: round2(Math.max(0, packagedStockQty - reservedPackagedQty)),
-    availableLooseQty: round2(Math.max(0, looseStockQty - reservedLooseQty)),
+    dispatchedPackagedQty: round2(dispatchedPackagedQty),
+    dispatchedLooseQty: round2(dispatchedLooseQty),
+    availablePackagedQty: round2(availablePackagedQty),
+    availableLooseQty: round2(availableLooseQty),
     minStockLevel: asNum(row.minStockLevel),
     active: safeStr(row.active || "TRUE"),
     updatedBy: safeStr(row.updatedBy),
@@ -517,6 +528,10 @@ export default function StockManagement({
             looseStockQty: row.looseStockQty,
             reservedPackagedQty: row.reservedPackagedQty,
             reservedLooseQty: row.reservedLooseQty,
+            dispatchedPackagedQty: row.dispatchedPackagedQty,
+            dispatchedLooseQty: row.dispatchedLooseQty,
+            availablePackagedQty: row.availablePackagedQty,
+            availableLooseQty: row.availableLooseQty,
             minStockLevel: row.minStockLevel,
             active: row.active,
             updatedBy: row.updatedBy,
@@ -541,6 +556,20 @@ export default function StockManagement({
 
   useEffect(() => {
     fetchStock();
+  }, [apiUrl, category]);
+
+  useEffect(() => {
+    const refreshVisibleStock = () => {
+      if (document.visibilityState === "visible") fetchStock();
+    };
+
+    window.addEventListener("focus", fetchStock);
+    document.addEventListener("visibilitychange", refreshVisibleStock);
+
+    return () => {
+      window.removeEventListener("focus", fetchStock);
+      document.removeEventListener("visibilitychange", refreshVisibleStock);
+    };
   }, [apiUrl, category]);
 
   const handleOpenModal = (row) => {

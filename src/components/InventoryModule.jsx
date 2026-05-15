@@ -796,24 +796,45 @@ export default function InventoryModule({
     run();
   }, [apiUrl, category, variant]);
 
+  async function fetchStockRows(options = {}) {
+    const { silent = false } = options;
+    if (!apiUrl || !category) return [];
+
+    if (!silent) setStockLoading(true);
+    try {
+      const st = await apiGet(apiUrl, { action: "getStock", category });
+      const rows = Array.isArray(st) ? st : [];
+      setStockRows(rows);
+      return rows;
+    } catch (e) {
+      console.error("getStock error:", e);
+      setStockRows([]);
+      return [];
+    } finally {
+      if (!silent) setStockLoading(false);
+    }
+  }
+
   useEffect(() => {
-    const run = async () => {
-      if (!apiUrl || !category) return;
-
-      setStockLoading(true);
-      try {
-        const st = await apiGet(apiUrl, { action: "getStock", category });
-        setStockRows(Array.isArray(st) ? st : []);
-      } catch (e) {
-        console.error("getStock error:", e);
-        setStockRows([]);
-      } finally {
-        setStockLoading(false);
-      }
-    };
-
-    run();
+    fetchStockRows();
   }, [apiUrl, category]);
+
+  useEffect(() => {
+    if (!calcResult?.items?.length) return;
+
+    try {
+      const refreshed = computeLocally({
+        category,
+        variant,
+        inputs: normalizedInputs,
+        configRows,
+        stockRows,
+      });
+      setCalcResult(refreshed);
+    } catch (e) {
+      console.error("refresh calculation after stock update error:", e);
+    }
+  }, [stockRows]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -1021,7 +1042,11 @@ export default function InventoryModule({
 
       await apiPostNoCors(apiUrl, payload);
 
-      setStatusNotice("✅ Booking status update submitted.");
+      setStatusNotice(
+        shouldDispatch || shouldReserve || shouldRelease
+          ? "✅ Booking status update submitted. Refreshing stock availability…"
+          : "✅ Booking status update submitted."
+      );
 
       setBookings((prev) =>
         (prev || []).map((row) => {
@@ -1052,7 +1077,15 @@ export default function InventoryModule({
       );
 
       setSelectedBookingStatus(nextStatus);
-      setTimeout(() => fetchBookings(), 1200);
+      setTimeout(async () => {
+        await Promise.all([fetchBookings(), fetchStockRows({ silent: true })]);
+      }, 1200);
+
+      if (shouldDispatch || shouldReserve || shouldRelease) {
+        setTimeout(() => {
+          fetchStockRows({ silent: true });
+        }, 3500);
+      }
     } catch (e) {
       console.error("updateBookingStatus error:", e);
       alert(`Booking status update failed: ${e.message || e}`);

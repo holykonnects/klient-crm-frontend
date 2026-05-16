@@ -58,6 +58,19 @@ const asNum = (v) => {
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
+const hasValue = (v) => v !== undefined && v !== null && safeStr(v) !== "";
+
+function getLocationValue(row) {
+  return safeStr(
+    row?.location ||
+      row?.stockLocation ||
+      row?.stockAvailableAt ||
+      row?.Location ||
+      row?.["Stock Location"] ||
+      row?.["Stock Available At"] ||
+      row?.["Stock available at"]
+  );
+}
 
 function getDefaultPackSize(materialName) {
   const normalized = safeStr(materialName).toUpperCase();
@@ -165,13 +178,22 @@ function buildStockRow(row, idx) {
 
   const reservedPackagedQty = asNum(row.reservedPackagedQty);
   const reservedLooseQty = asNum(row.reservedLooseQty);
+  const dispatchedPackagedQty = asNum(row.dispatchedPackagedQty);
+  const dispatchedLooseQty = asNum(row.dispatchedLooseQty);
   const looseStockQty = asNum(row.looseStockQty);
+  const availablePackagedQty = hasValue(row.availablePackagedQty)
+    ? asNum(row.availablePackagedQty)
+    : Math.max(0, packagedStockQty - reservedPackagedQty - dispatchedPackagedQty);
+  const availableLooseQty = hasValue(row.availableLooseQty)
+    ? asNum(row.availableLooseQty)
+    : Math.max(0, looseStockQty - reservedLooseQty - dispatchedLooseQty);
 
   return {
-    id: `${safeStr(row.category)}__${safeStr(row.materialName)}__${idx}`,
+    id: `${safeStr(row.category)}__${safeStr(row.materialName)}__${getLocationValue(row)}__${idx}`,
     timestamp: row.timestamp || "",
     category: safeStr(row.category),
     materialName: safeStr(row.materialName),
+    location: getLocationValue(row),
     unit: safeStr(row.unit),
     packSize,
     packSizeOptions: safeStr(row.packSizeOptions || ""),
@@ -181,8 +203,10 @@ function buildStockRow(row, idx) {
     looseStockQty: round2(looseStockQty),
     reservedPackagedQty: round2(reservedPackagedQty),
     reservedLooseQty: round2(reservedLooseQty),
-    availablePackagedQty: round2(Math.max(0, packagedStockQty - reservedPackagedQty)),
-    availableLooseQty: round2(Math.max(0, looseStockQty - reservedLooseQty)),
+    dispatchedPackagedQty: round2(dispatchedPackagedQty),
+    dispatchedLooseQty: round2(dispatchedLooseQty),
+    availablePackagedQty: round2(availablePackagedQty),
+    availableLooseQty: round2(availableLooseQty),
     minStockLevel: asNum(row.minStockLevel),
     active: safeStr(row.active || "TRUE"),
     updatedBy: safeStr(row.updatedBy),
@@ -240,6 +264,7 @@ function buildNewMaterialState(defaultCategory = "") {
   return {
     category: mappedDefaultCategory,
     materialName: "",
+    location: "",
     unit: "",
     packSize: 0,
     packSizeOptions: "",
@@ -460,6 +485,28 @@ export default function StockManagement({
     return Array.from(new Set(nums)).sort((a, b) => a - b);
   }, [validation]);
 
+  const locationOptions = useMemo(() => {
+    const raw =
+      validation?.["Location"] ||
+      validation?.["Stock Location"] ||
+      validation?.["Stock Available At"] ||
+      validation?.["Stock available at"] ||
+      [];
+
+    const fromValidation = (raw || [])
+      .flatMap((v) => safeStr(v).split(/[|,]/))
+      .map((v) => safeStr(v))
+      .filter(Boolean);
+
+    const fromRows = (stockRows || [])
+      .map((row) => safeStr(row.location))
+      .filter(Boolean);
+
+    return Array.from(new Set([...fromValidation, ...fromRows])).sort((a, b) =>
+      a.localeCompare(b)
+    );
+  }, [validation, stockRows]);
+
   const filteredRows = useMemo(() => {
     const q = toUpper(search);
 
@@ -468,7 +515,7 @@ export default function StockManagement({
         category === "ALL" || toUpper(row.category) === toUpper(category);
 
       const hay =
-        `${row.category} ${row.materialName} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
+        `${row.category} ${row.materialName} ${row.location} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
 
       const matchesSearch = !q || hay.includes(q);
 
@@ -510,6 +557,7 @@ export default function StockManagement({
             timestamp: row.timestamp || "",
             category: row.category,
             materialName: row.materialName,
+            location: getLocationValue(row),
             unit: row.unit,
             packSize: row.packSize,
             packSizeOptions: row.packSizeOptions,
@@ -517,6 +565,10 @@ export default function StockManagement({
             looseStockQty: row.looseStockQty,
             reservedPackagedQty: row.reservedPackagedQty,
             reservedLooseQty: row.reservedLooseQty,
+            dispatchedPackagedQty: row.dispatchedPackagedQty,
+            dispatchedLooseQty: row.dispatchedLooseQty,
+            availablePackagedQty: row.availablePackagedQty,
+            availableLooseQty: row.availableLooseQty,
             minStockLevel: row.minStockLevel,
             active: row.active,
             updatedBy: row.updatedBy,
@@ -541,6 +593,20 @@ export default function StockManagement({
 
   useEffect(() => {
     fetchStock();
+  }, [apiUrl, category]);
+
+  useEffect(() => {
+    const refreshVisibleStock = () => {
+      if (document.visibilityState === "visible") fetchStock();
+    };
+
+    window.addEventListener("focus", fetchStock);
+    document.addEventListener("visibilitychange", refreshVisibleStock);
+
+    return () => {
+      window.removeEventListener("focus", fetchStock);
+      document.removeEventListener("visibilitychange", refreshVisibleStock);
+    };
   }, [apiUrl, category]);
 
   const handleOpenModal = (row) => {
@@ -639,6 +705,7 @@ export default function StockManagement({
           role: user.role || "",
           category: modalForm.category,
           materialName: modalForm.materialName,
+          location: safeStr(modalForm.location),
           unit: modalForm.unit,
           packSize: asNum(modalForm.packSize),
           packSizeOptions: safeStr(modalForm.packSizeOptions),
@@ -783,6 +850,7 @@ export default function StockManagement({
           role: user.role || "",
           category: storedCategory,
           materialName: createForm.materialName,
+          location: safeStr(createForm.location),
           unit: createForm.unit,
           packSize: asNum(createForm.packSize),
           packSizeOptions: safeStr(createForm.packSizeOptions),
@@ -1055,6 +1123,7 @@ export default function StockManagement({
                 <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Location</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Pack Size
@@ -1104,6 +1173,7 @@ export default function StockManagement({
                     <TableRow key={row.id}>
                       <TableCell sx={{ fontFamily }}>{row.category}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.materialName}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.location || "-"}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.packSize)}
@@ -1275,6 +1345,37 @@ export default function StockManagement({
                         {modalForm.materialName || "-"}
                       </Typography>
                     </Box>
+                  </Grid>
+
+                  <Grid item xs={12} md={4}>
+                    {locationOptions.length ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel>Location</InputLabel>
+                        <Select
+                          label="Location"
+                          value={modalForm.location || ""}
+                          onChange={(e) => handleModalChange("location", e.target.value)}
+                          sx={{ fontFamily }}
+                        >
+                          <MenuItem value="">Not set</MenuItem>
+                          {locationOptions.map((loc) => (
+                            <MenuItem key={loc} value={loc}>
+                              {loc}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : (
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label="Location"
+                        value={modalForm.location || ""}
+                        onChange={(e) => handleModalChange("location", e.target.value)}
+                        sx={{ fontFamily }}
+                        inputProps={{ style: { fontFamily } }}
+                      />
+                    )}
                   </Grid>
 
                   <Grid item xs={12} md={2}>
@@ -1619,6 +1720,37 @@ export default function StockManagement({
                   sx={{ fontFamily }}
                   inputProps={{ style: { fontFamily }, readOnly: true }}
                 />
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                {locationOptions.length ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Location</InputLabel>
+                    <Select
+                      label="Location"
+                      value={createForm.location}
+                      onChange={(e) => handleCreateChange("location", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
+                      <MenuItem value="">Not set</MenuItem>
+                      {locationOptions.map((loc) => (
+                        <MenuItem key={loc} value={loc}>
+                          {loc}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Location"
+                    value={createForm.location}
+                    onChange={(e) => handleCreateChange("location", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
+                )}
               </Grid>
 
               <Grid item xs={12} md={4}>

@@ -1774,9 +1774,9 @@ export default function InventoryModule({
                   return (
                     <TableRow key={`${it.materialName}-${it.calcType}-${index}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
-                      <TableCell sx={{ fontFamily }}>
+                      <TableCell sx={{ fontFamily, minWidth: 360 }}>
                         {it.requiresAcrylicColor && acrylicColorOptions.length ? (
-                          <Box sx={{ minWidth: 320 }}>
+                          <Box sx={{ minWidth: 340 }}>
                             <Autocomplete
                               multiple
                               size="small"
@@ -1786,16 +1786,16 @@ export default function InventoryModule({
                                 normalizeKey(option.skuCode || option.variant || option.label) ===
                                 normalizeKey(value?.skuCode || value?.variant || value?.label || value)
                               }
-                              getOptionLabel={(option) => {
+                              getOptionLabel={(option) =>
+                                typeof option === "object" && option
+                                  ? safeStr(option.label || option.variant || option.skuCode)
+                                  : safeStr(option)
+                              }
+                              renderOption={(props, option) => {
                                 const safeOption =
                                   typeof option === "object" && option
                                     ? option
-                                    : {
-                                        skuCode: "",
-                                        materialName: "Color",
-                                        variant: safeStr(option),
-                                        label: safeStr(option),
-                                      };
+                                    : { skuCode: "", materialName: "Color", variant: safeStr(option), label: safeStr(option) };
                                 const stockRow =
                                   stockByMaterial[normalizeKey(safeOption.skuCode)] ||
                                   stockByMaterial[normalizeKey(safeOption.variant)] ||
@@ -1804,10 +1804,43 @@ export default function InventoryModule({
                                   ] ||
                                   null;
                                 const stockInfo = getStockAvailability(stockRow);
-                                return `${safeOption.label || safeOption.variant} - Avl ${round2(stockInfo.availableTotalQty)}${
-                                  it.unit ? ` ${it.unit}` : ""
-                                }`;
+                                return (
+                                  <Box
+                                    component="li"
+                                    {...props}
+                                    sx={{ display: "flex", justifyContent: "space-between", gap: 2, fontFamily }}
+                                  >
+                                    <Typography sx={{ fontFamily, fontSize: 12 }}>
+                                      {safeOption.label || safeOption.variant}
+                                    </Typography>
+                                    <Typography sx={{ fontFamily, fontSize: 11, color: "#667085" }}>
+                                      Avl {round2(stockInfo.availableTotalQty)}
+                                      {it.unit ? ` ${it.unit}` : ""}
+                                    </Typography>
+                                  </Box>
+                                );
                               }}
+                              renderTags={(value, getTagProps) =>
+                                value.map((option, tagIndex) => {
+                                  const { key, ...tagProps } = getTagProps({ index: tagIndex });
+                                  return (
+                                    <Chip
+                                      {...tagProps}
+                                      key={key || normalizeKey(option.skuCode || option.variant || option.label)}
+                                      label={option.label || option.variant || option.skuCode}
+                                      size="small"
+                                      sx={{
+                                        height: 22,
+                                        borderRadius: "6px",
+                                        fontFamily,
+                                        fontSize: 11,
+                                        backgroundColor: "rgba(100,149,237,0.10)",
+                                        color: "#1f2a44",
+                                      }}
+                                    />
+                                  );
+                                })
+                              }
                               onChange={(event, value) => {
                                 setSelectedAcrylicColors((prev) => ({
                                   ...prev,
@@ -1817,7 +1850,8 @@ export default function InventoryModule({
                               renderInput={(params) => (
                                 <TextField
                                   {...params}
-                                  placeholder="Select colors"
+                                  label="Color variants"
+                                  placeholder="Select"
                                   inputProps={{
                                     ...params.inputProps,
                                     style: { ...params.inputProps.style, fontFamily },
@@ -1828,50 +1862,45 @@ export default function InventoryModule({
                             />
 
                             {(it.colorBreakup || []).length ? (
-                              <Box display="grid" gap={1} mt={1}>
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 1,
+                                  mt: 1,
+                                }}
+                              >
                                 {it.colorBreakup.map((color) => {
                                   const areaKey = `${it.colorKey}__${normalizeKey(
                                     color.skuCode || color.variant || color.label
                                   )}`;
                                   return (
-                                    <Grid
+                                    <Box
                                       key={areaKey}
-                                      container
-                                      spacing={1}
-                                      alignItems="center"
                                       sx={{
-                                        p: 1,
-                                        borderRadius: 1,
-                                        backgroundColor: "rgba(100,149,237,0.06)",
+                                        width: { xs: "100%", sm: "calc(50% - 4px)" },
+                                        minWidth: 150,
                                       }}
                                     >
-                                      <Grid item xs={12} sm={4}>
-                                        <Typography sx={{ fontFamily, fontSize: 12, fontWeight: 700 }}>
-                                          {color.variant}
-                                        </Typography>
-                                      </Grid>
-                                      <Grid item xs={12} sm={4}>
-                                        <TextField
-                                          fullWidth
-                                          size="small"
-                                          type="number"
-                                          label="Allocated Area"
-                                          value={selectedColorAreas[areaKey] || ""}
-                                          onChange={(e) =>
-                                            setSelectedColorAreas((prev) => ({
-                                              ...prev,
-                                              [areaKey]: e.target.value,
-                                            }))
-                                          }
-                                          inputProps={{ style: { fontFamily, textAlign: "right" } }}
-                                        />
-                                      </Grid>
-                                      <Grid item xs={12} sm={4}>
-                                        <Typography sx={{ fontFamily, fontSize: 12, textAlign: "right" }}>
-                                          Req: {round2(color.requiredQty)} {it.unit}
-                                        </Typography>
-                                      </Grid>
-                                    </Grid>
+                                      <TextField
+                                        fullWidth
+                                        size="small"
+                                        type="number"
+                                        label={`${color.variant} area`}
+                                        value={selectedColorAreas[areaKey] || ""}
+                                        onChange={(e) =>
+                                          setSelectedColorAreas((prev) => ({
+                                            ...prev,
+                                            [areaKey]: e.target.value,
+                                          }))
+                                        }
+                                        helperText={`Req ${round2(color.requiredQty)} ${it.unit}`}
+                                        FormHelperTextProps={{
+                                          sx: { mx: 0, fontFamily, fontSize: 10.5, lineHeight: 1.2 },
+                                        }}
+                                        inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                                      />
+                                    </Box>
                                   );
                                 })}
                               </Box>

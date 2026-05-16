@@ -58,7 +58,7 @@ const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
 const normalizeKey = (v) => safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
 const asNum = (v) => {
-  const n = Number(v);
+  const n = Number(typeof v === "string" ? v.replace(/,/g, "") : v);
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
@@ -1037,6 +1037,8 @@ export default function InventoryModule({
           materialName: option.materialName || "Color",
           variant: getColorOptionLabel(option),
           label: getColorOptionLabel(option),
+          optionKey,
+          areaKey,
           allocatedArea,
           requiredQty,
           packSize: stockInfo.packSize,
@@ -1267,6 +1269,33 @@ export default function InventoryModule({
   }, [calcResult, acrylicColorOptions]);
 
   useEffect(() => {
+    const items = calcResult?.items || [];
+    const fullArea = asNum(calcResult?.area || normalizedInputs.areaSqf || normalizedInputs.areaSqm);
+    if (!fullArea) return;
+
+    setSelectedColorAreas((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      items.forEach((item, index) => {
+        if (!isAcrylicColorMaterial(item.materialName)) return;
+
+        const colorKey = getAllocationKey(item, index);
+        const selectedOptions = selectedAcrylicColors[colorKey] || [];
+        if (selectedOptions.length !== 1) return;
+
+        const areaKey = `${colorKey}__${getColorOptionKey(selectedOptions[0])}`;
+        if (asNum(next[areaKey]) > 0) return;
+
+        next[areaKey] = fullArea;
+        changed = true;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [calcResult, normalizedInputs, selectedAcrylicColors]);
+
+  useEffect(() => {
     if (!apiUrl) return;
     fetchBookings();
     
@@ -1346,12 +1375,11 @@ export default function InventoryModule({
         (it) =>
           it.requiresAcrylicColor &&
           acrylicColorOptions.length &&
-          (!(it.colorBreakup || []).length ||
-            (it.colorBreakup || []).some((color) => asNum(color.allocatedArea) <= 0))
+          (!(it.colorBreakup || []).length || asNum(it.totalAllocatedArea) <= 0)
       );
 
       if (missingColorAreas.length) {
-        alert("Please enter allocated area for every selected acrylic color.");
+        alert("Please enter allocated area for the selected acrylic color breakup.");
         return;
       }
 
@@ -1368,18 +1396,20 @@ export default function InventoryModule({
           totalShortageQty: totals.totalShort,
           items: (calcDisplayItems || []).flatMap((it) => {
             if (it.requiresAcrylicColor && (it.colorBreakup || []).length) {
-              return it.colorBreakup.map((color) => ({
-                skuCode: color.skuCode || "",
-                materialName: color.materialName || "Color",
-                variant: color.variant || "",
-                unit: it.unit || "",
-                requiredQty: asNum(color.requiredQty),
-                allocatedArea: asNum(color.allocatedArea),
-                totalAllocatedArea: asNum(it.totalAllocatedArea),
-                calcType: it.calcType || "",
-                formula: it.formula || "",
-                calculatedMaterialName: it.materialName || "",
-              }));
+              return it.colorBreakup
+                .filter((color) => asNum(color.allocatedArea) > 0)
+                .map((color) => ({
+                  skuCode: color.skuCode || "",
+                  materialName: color.materialName || "Color",
+                  variant: color.variant || "",
+                  unit: it.unit || "",
+                  requiredQty: asNum(color.requiredQty),
+                  allocatedArea: asNum(color.allocatedArea),
+                  totalAllocatedArea: asNum(it.totalAllocatedArea),
+                  calcType: it.calcType || "",
+                  formula: it.formula || "",
+                  calculatedMaterialName: it.materialName || "",
+                }));
             }
 
             return [
@@ -1893,7 +1923,7 @@ export default function InventoryModule({
                               >
                                 {it.colorBreakup.map((color) => {
                                   const colorLabel = getColorOptionLabel(color);
-                                  const areaKey = `${it.colorKey}__${getColorOptionKey(color)}`;
+                                  const areaKey = color.areaKey || `${it.colorKey}__${getColorOptionKey(color)}`;
                                   const hasArea = asNum(color.allocatedArea) > 0;
                                   return (
                                     <Box

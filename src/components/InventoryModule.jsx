@@ -553,6 +553,16 @@ async function apiPostNoCors(apiUrl, body) {
   });
 }
 
+async function apiMutation(apiUrl, body) {
+  const payload = await enqueueJsonp(() =>
+    jsonp(
+      `${apiUrl}?action=mutation&payload=${encodeURIComponent(JSON.stringify(body))}&_=${Date.now()}`
+    )
+  );
+  if (!payload?.ok) throw new Error(payload?.error || "Request failed");
+  return payload.data;
+}
+
 function evalRate(expr) {
   if (!expr) return 0;
   const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
@@ -1376,7 +1386,7 @@ export default function InventoryModule({
 
       console.log("createBooking payload =>", payload);
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
 
       setRemarks("");
       setBookingNotice("✅ Requirement submitted for admin review. Refreshing bookings…");
@@ -1493,7 +1503,7 @@ export default function InventoryModule({
 
       console.log("updateBookingStatus payload =>", payload);
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
 
       setStatusNotice(
         shouldDispatch || shouldReserve || shouldRelease

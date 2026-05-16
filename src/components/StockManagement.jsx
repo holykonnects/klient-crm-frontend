@@ -59,6 +59,36 @@ const asNum = (v) => {
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
 const hasValue = (v) => v !== undefined && v !== null && safeStr(v) !== "";
+const normalizeKey = (v) => safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
+
+function pickFirst(row, keys = []) {
+  for (const key of keys) {
+    const val = row?.[key];
+    if (safeStr(val) !== "") return val;
+  }
+  return "";
+}
+
+function getSkuCode(row) {
+  return safeStr(pickFirst(row, ["skuCode", "SKU Code", "SKU", "Sku Code"]));
+}
+
+function normalizeSkuRow(row) {
+  const skuCode = getSkuCode(row);
+  const category = safeStr(pickFirst(row, ["category", "Category"]));
+  const materialName = safeStr(pickFirst(row, ["materialName", "Material Name", "Material"]));
+  const variant = safeStr(pickFirst(row, ["variant", "Variant", "Color Variant", "colorVariant"]));
+
+  if (!skuCode && !category && !materialName && !variant) return null;
+
+  return {
+    skuCode,
+    category,
+    materialName,
+    variant,
+    label: [skuCode, materialName, variant].filter(Boolean).join(" | "),
+  };
+}
 
 function getLocationValue(row) {
   return safeStr(
@@ -88,6 +118,7 @@ function getUserFromLocalStorage() {
     const parsed = JSON.parse(raw);
     return {
       username: parsed?.loginUsername || parsed?.username || parsed?.name || "",
+      email: parsed?.email || parsed?.loginEmail || parsed?.userEmail || "",
       role: parsed?.role || "",
     };
   } catch {
@@ -189,10 +220,12 @@ function buildStockRow(row, idx) {
     : Math.max(0, looseStockQty - reservedLooseQty - dispatchedLooseQty);
 
   return {
-    id: `${safeStr(row.category)}__${safeStr(row.materialName)}__${getLocationValue(row)}__${idx}`,
+    id: `${getSkuCode(row) || safeStr(row.category)}__${safeStr(row.materialName)}__${safeStr(row.variant)}__${getLocationValue(row)}__${idx}`,
+    skuCode: getSkuCode(row),
     timestamp: row.timestamp || "",
     category: safeStr(row.category),
     materialName: safeStr(row.materialName),
+    variant: safeStr(row.variant),
     location: getLocationValue(row),
     unit: safeStr(row.unit),
     packSize,
@@ -262,8 +295,10 @@ function buildNewMaterialState(defaultCategory = "") {
       : "";
 
   return {
+    skuCode: "",
     category: mappedDefaultCategory,
     materialName: "",
+    variant: "",
     location: "",
     unit: "",
     packSize: 0,
@@ -287,9 +322,17 @@ export default function StockManagement({
   title = "Stock Management",
 }) {
   const user = useMemo(() => getUserFromLocalStorage(), []);
+  const userIdentity = normalizeKey(
+    [user.username, user.email, user.role].filter(Boolean).join(" ")
+  );
+  const canManageStock =
+    userIdentity.includes("STOCK@RIDOSPORTS.COM") ||
+    userIdentity.includes("SARABJEET") ||
+    normalizeKey(user.role) === "ADMIN";
 
   const [validation, setValidation] = useState({});
   const [validationLoading, setValidationLoading] = useState(false);
+  const [skuRows, setSkuRows] = useState([]);
 
   const [category, setCategory] = useState("ALL");
   const [search, setSearch] = useState("");
@@ -400,6 +443,10 @@ export default function StockManagement({
 
   // Main page category filter
   const categoryOptions = useMemo(() => {
+    const fromSku = Array.from(
+      new Set((skuRows || []).map((r) => safeStr(r.category)).filter(Boolean))
+    );
+
     const fromValidation = Array.from(
       new Set(
         (validation?.["Category"] || [])
@@ -416,12 +463,36 @@ export default function StockManagement({
       )
     );
 
-    return Array.from(new Set([...fromValidation, ...fromRows]));
-  }, [validation, stockRows]);
+    return Array.from(new Set([...fromSku, ...fromValidation, ...fromRows]));
+  }, [skuRows, validation, stockRows]);
+
+  const skuOptions = useMemo(() => {
+    return (skuRows || [])
+      .filter((row) => category === "ALL" || toUpper(row.category) === toUpper(category))
+      .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
+  }, [skuRows, category]);
+
+  const createSkuOptions = useMemo(() => {
+    return (skuRows || [])
+      .filter(
+        (row) =>
+          !safeStr(createForm.category) ||
+          toUpper(row.category) === toUpper(createForm.category)
+      )
+      .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
+  }, [skuRows, createForm.category]);
 
   // Add Material modal category dropdown:
   // category selection should look up the relevant validation COLUMN HEADER.
   const createCategoryOptions = useMemo(() => {
+    const fromSku = Array.from(
+      new Set((skuRows || []).map((row) => safeStr(row.category)).filter(Boolean))
+    );
+
+    if (fromSku.length > 0) {
+      return fromSku;
+    }
+
     const allowedCategoryHeaders = [
       "Acrylic Material",
       "Acrylic or PU Material",
@@ -442,13 +513,22 @@ export default function StockManagement({
       .filter(Boolean);
 
     return Array.from(new Set(directCategory));
-  }, [validation]);
+  }, [skuRows, validation]);
 
   // Add Material modal material dropdown:
   // selected category directly maps to the values under that validation column.
   const createMaterialOptions = useMemo(() => {
     const selectedCategory = safeStr(createForm.category);
     if (!selectedCategory) return [];
+
+    const fromSku = (skuRows || [])
+      .filter((row) => toUpper(row.category) === toUpper(selectedCategory))
+      .map((row) => safeStr(row.materialName))
+      .filter(Boolean);
+
+    if (fromSku.length > 0) {
+      return Array.from(new Set(fromSku)).sort((a, b) => a.localeCompare(b));
+    }
 
     const values = Array.isArray(validation?.[selectedCategory])
       ? validation[selectedCategory]
@@ -467,7 +547,7 @@ export default function StockManagement({
       .filter(Boolean);
 
     return Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b));
-  }, [validation, createForm.category, materialValidationRows]);
+  }, [skuRows, validation, createForm.category, materialValidationRows]);
 
   // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
@@ -515,7 +595,7 @@ export default function StockManagement({
         category === "ALL" || toUpper(row.category) === toUpper(category);
 
       const hay =
-        `${row.category} ${row.materialName} ${row.location} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
+        `${row.skuCode} ${row.category} ${row.materialName} ${row.variant} ${row.location} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
 
       const matchesSearch = !q || hay.includes(q);
 
@@ -537,6 +617,19 @@ export default function StockManagement({
     }
   };
 
+  const fetchSkuMaster = async () => {
+    if (!apiUrl) return;
+
+    try {
+      const data = await apiGet(apiUrl, { action: "getSkuMaster" });
+      const rows = Array.isArray(data) ? data : [];
+      setSkuRows(rows.map(normalizeSkuRow).filter(Boolean));
+    } catch (e) {
+      console.error("getSkuMaster error:", e);
+      setSkuRows([]);
+    }
+  };
+
   const fetchStock = async () => {
     if (!apiUrl) return;
     setStockLoading(true);
@@ -555,8 +648,10 @@ export default function StockManagement({
         buildStockRow(
           {
             timestamp: row.timestamp || "",
+            skuCode: row.skuCode || row["SKU Code"],
             category: row.category,
             materialName: row.materialName,
+            variant: row.variant || row["Variant"],
             location: getLocationValue(row),
             unit: row.unit,
             packSize: row.packSize,
@@ -589,6 +684,7 @@ export default function StockManagement({
 
   useEffect(() => {
     fetchValidation();
+    fetchSkuMaster();
   }, [apiUrl]);
 
   useEffect(() => {
@@ -693,6 +789,10 @@ export default function StockManagement({
 
   const handleSaveStock = async () => {
     if (!modalForm) return;
+    if (!canManageStock) {
+      setModalError("Only stock@ridosports.com or admin can update stock line items.");
+      return;
+    }
 
     setSaving(true);
     setModalNotice("");
@@ -703,8 +803,10 @@ export default function StockManagement({
         action: "setStock",
         data: {
           role: user.role || "",
+          skuCode: modalForm.skuCode || "",
           category: modalForm.category,
           materialName: modalForm.materialName,
+          variant: modalForm.variant || "",
           location: safeStr(modalForm.location),
           unit: modalForm.unit,
           packSize: asNum(modalForm.packSize),
@@ -737,6 +839,12 @@ export default function StockManagement({
   };
 
   const handleOpenCreateModal = () => {
+    if (!canManageStock) {
+      setGlobalNotice("");
+      setStockError("Only stock@ridosports.com or admin can add stock line items.");
+      return;
+    }
+
     setCreateForm(buildNewMaterialState(category));
     setCreateNotice("");
     setCreateError("");
@@ -755,13 +863,40 @@ export default function StockManagement({
     setCreateForm((prev) => {
       const next = { ...prev, [field]: value };
 
+      if (field === "skuCode") {
+        const sku = (skuRows || []).find(
+          (row) => normalizeKey(row.skuCode) === normalizeKey(value)
+        );
+
+        if (sku) {
+          next.skuCode = sku.skuCode;
+          next.category = sku.category;
+          next.materialName = sku.materialName;
+          next.variant = sku.variant || "";
+          next.unit = toUpper(sku.materialName) === "THINNER" ? "ltr" : "kg";
+        }
+      }
+
       if (field === "category") {
+        next.skuCode = "";
         next.materialName = "";
+        next.variant = "";
         next.unit = "";
       }
 
       if (field === "materialName") {
         const selectedMaterial = safeStr(value);
+        const sku = (skuRows || []).find(
+          (row) =>
+            toUpper(row.category) === toUpper(next.category) &&
+            toUpper(row.materialName) === toUpper(selectedMaterial)
+        );
+
+        if (sku) {
+          next.skuCode = sku.skuCode;
+          next.variant = sku.variant || "";
+        }
+
         next.unit = toUpper(selectedMaterial) === "THINNER" ? "ltr" : "kg";
 
         const defaultPack = getDefaultPackSize(selectedMaterial);
@@ -817,6 +952,11 @@ export default function StockManagement({
   };
 
   const handleCreateMaterial = async () => {
+    if (!canManageStock) {
+      setCreateError("Only stock@ridosports.com or admin can add stock line items.");
+      return;
+    }
+
     if (!safeStr(createForm.category)) {
       setCreateError("Category is required.");
       return;
@@ -829,6 +969,11 @@ export default function StockManagement({
 
     if (!safeStr(createForm.unit)) {
       setCreateError("Unit is required.");
+      return;
+    }
+
+    if (!safeStr(createForm.location)) {
+      setCreateError("Stock location is required.");
       return;
     }
 
@@ -848,8 +993,10 @@ export default function StockManagement({
         action: "createStockItem",
         data: {
           role: user.role || "",
+          skuCode: createForm.skuCode || "",
           category: storedCategory,
           materialName: createForm.materialName,
+          variant: createForm.variant || "",
           location: safeStr(createForm.location),
           unit: createForm.unit,
           packSize: asNum(createForm.packSize),
@@ -898,6 +1045,10 @@ export default function StockManagement({
 
   const handleToggleActive = async () => {
     if (!toggleRow) return;
+    if (!canManageStock) {
+      setToggleError("Only stock@ridosports.com or admin can change stock line item status.");
+      return;
+    }
 
     setToggleLoading(true);
     setToggleError("");
@@ -909,8 +1060,11 @@ export default function StockManagement({
         action: "toggleStockItemActive",
         data: {
           role: user.role || "",
+          skuCode: toggleRow.skuCode || "",
           category: toggleRow.category,
           materialName: toggleRow.materialName,
+          variant: toggleRow.variant || "",
+          location: safeStr(toggleRow.location),
           active: nextActive,
           doneBy: user.username || "",
           notes:
@@ -989,6 +1143,7 @@ export default function StockManagement({
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleOpenCreateModal}
+              disabled={!canManageStock}
               sx={{
                 textTransform: "none",
                 fontFamily,
@@ -1064,6 +1219,12 @@ export default function StockManagement({
                 sx={{ fontFamily }}
               />
               <Chip
+                label={canManageStock ? "Stock access enabled" : "View only"}
+                size="small"
+                color={canManageStock ? "success" : "default"}
+                sx={{ fontFamily }}
+              />
+              <Chip
                 label={`Low Stock: ${lowStockCount}`}
                 size="small"
                 color={lowStockCount > 0 ? "warning" : "success"}
@@ -1121,8 +1282,10 @@ export default function StockManagement({
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>SKU</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Variant</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Location</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
@@ -1171,8 +1334,10 @@ export default function StockManagement({
 
                   return (
                     <TableRow key={row.id}>
+                      <TableCell sx={{ fontFamily }}>{row.skuCode || "-"}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.category}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.materialName}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.variant || "-"}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.location || "-"}</TableCell>
                       <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
@@ -1217,14 +1382,14 @@ export default function StockManagement({
                       </TableCell>
                       <TableCell align="center">
                         <Tooltip title="Update Stock">
-                          <IconButton onClick={() => handleOpenModal(row)}>
+                          <IconButton onClick={() => handleOpenModal(row)} disabled={!canManageStock}>
                             <EditIcon sx={{ color: cornflowerBlue }} />
                           </IconButton>
                         </Tooltip>
                       </TableCell>
                       <TableCell align="center">
                         <Tooltip title={isActive ? "Deactivate Material" : "Reactivate Material"}>
-                          <IconButton onClick={() => handleOpenToggleModal(row)}>
+                          <IconButton onClick={() => handleOpenToggleModal(row)} disabled={!canManageStock}>
                             {isActive ? (
                               <ToggleOffIcon sx={{ color: "#d97706" }} />
                             ) : (
@@ -1313,7 +1478,24 @@ export default function StockManagement({
                 </Typography>
 
                 <Grid container spacing={2}>
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1,
+                        backgroundColor: "rgba(100,149,237,0.06)",
+                      }}
+                    >
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        SKU
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {modalForm.skuCode || "-"}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} md={3}>
                     <Box
                       sx={{
                         p: 1.5,
@@ -1330,7 +1512,7 @@ export default function StockManagement({
                     </Box>
                   </Grid>
 
-                  <Grid item xs={12} md={4}>
+                  <Grid item xs={12} md={3}>
                     <Box
                       sx={{
                         p: 1.5,
@@ -1343,6 +1525,23 @@ export default function StockManagement({
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
                         {modalForm.materialName || "-"}
+                      </Typography>
+                    </Box>
+                  </Grid>
+
+                  <Grid item xs={12} md={3}>
+                    <Box
+                      sx={{
+                        p: 1.5,
+                        borderRadius: 1,
+                        backgroundColor: "rgba(100,149,237,0.06)",
+                      }}
+                    >
+                      <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
+                        Variant
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        {modalForm.variant || "-"}
                       </Typography>
                     </Box>
                   </Grid>
@@ -1651,7 +1850,7 @@ export default function StockManagement({
             variant="contained"
             startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
             onClick={handleSaveStock}
-            disabled={!modalForm || saving}
+            disabled={!modalForm || saving || !canManageStock}
             sx={{
               textTransform: "none",
               fontFamily,
@@ -1674,6 +1873,27 @@ export default function StockManagement({
         <DialogContent dividers>
           <Box>
             <Grid container spacing={2}>
+              {createSkuOptions.length ? (
+                <Grid item xs={12}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel>SKU</InputLabel>
+                    <Select
+                      label="SKU"
+                      value={createForm.skuCode || ""}
+                      onChange={(e) => handleCreateChange("skuCode", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
+                      <MenuItem value="">Select SKU</MenuItem>
+                      {createSkuOptions.map((sku) => (
+                        <MenuItem key={sku.skuCode || sku.label} value={sku.skuCode}>
+                          {sku.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              ) : null}
+
               <Grid item xs={12} md={4}>
                 <FormControl fullWidth size="small">
                   <InputLabel>Category</InputLabel>
@@ -1690,6 +1910,18 @@ export default function StockManagement({
                     ))}
                   </Select>
                 </FormControl>
+              </Grid>
+
+              <Grid item xs={12} md={4}>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Variant"
+                  value={createForm.variant || ""}
+                  onChange={(e) => handleCreateChange("variant", e.target.value)}
+                  sx={{ fontFamily }}
+                  inputProps={{ style: { fontFamily } }}
+                />
               </Grid>
 
               <Grid item xs={12} md={4}>
@@ -1917,7 +2149,7 @@ export default function StockManagement({
             variant="contained"
             startIcon={creating ? <CircularProgress size={16} /> : <SaveIcon />}
             onClick={handleCreateMaterial}
-            disabled={creating}
+            disabled={creating || !canManageStock}
             sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
           >
             Create Material
@@ -1978,7 +2210,7 @@ export default function StockManagement({
               )
             }
             onClick={handleToggleActive}
-            disabled={!toggleRow || toggleLoading}
+            disabled={!toggleRow || toggleLoading || !canManageStock}
             sx={{
               textTransform: "none",
               fontFamily,

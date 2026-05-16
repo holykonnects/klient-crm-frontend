@@ -265,6 +265,22 @@ function getAllocationKey(item, index) {
   return `${index}__${normalizeKey(item?.skuCode || item?.materialName)}`;
 }
 
+function getColorOptionKey(option) {
+  if (typeof option === "object" && option) {
+    return normalizeKey(option.skuCode || option.variant || option.label || option.materialName);
+  }
+
+  return normalizeKey(option);
+}
+
+function getColorOptionLabel(option) {
+  if (typeof option === "object" && option) {
+    return safeStr(option.label || option.variant || option.skuCode || option.materialName || "Color");
+  }
+
+  return safeStr(option || "Color");
+}
+
 function isAcrylicColorMaterial(materialName) {
   const n = normalizeKey(materialName);
   return (
@@ -996,12 +1012,12 @@ export default function InventoryModule({
         .filter(Boolean);
 
       const totalAllocatedArea = selectedColorOptions.reduce((sum, option) => {
-        const areaKey = `${colorKey}__${normalizeKey(option.skuCode || option.variant || option.label)}`;
+        const areaKey = `${colorKey}__${getColorOptionKey(option)}`;
         return sum + asNum(selectedColorAreas[areaKey]);
       }, 0);
 
       const colorBreakup = selectedColorOptions.map((option) => {
-        const optionKey = normalizeKey(option.skuCode || option.variant || option.label);
+        const optionKey = getColorOptionKey(option);
         const areaKey = `${colorKey}__${optionKey}`;
         const allocatedArea = asNum(selectedColorAreas[areaKey]);
         const requiredQty =
@@ -1019,8 +1035,8 @@ export default function InventoryModule({
         return {
           skuCode: option.skuCode || getSkuCode(stockRow),
           materialName: option.materialName || "Color",
-          variant: option.variant || option.label,
-          label: option.label || option.variant,
+          variant: getColorOptionLabel(option),
+          label: getColorOptionLabel(option),
           allocatedArea,
           requiredQty,
           packSize: stockInfo.packSize,
@@ -1793,14 +1809,9 @@ export default function InventoryModule({
                               options={acrylicColorOptions}
                               value={selectedAcrylicColors[it.colorKey] || []}
                               isOptionEqualToValue={(option, value) =>
-                                normalizeKey(option.skuCode || option.variant || option.label) ===
-                                normalizeKey(value?.skuCode || value?.variant || value?.label || value)
+                                getColorOptionKey(option) === getColorOptionKey(value)
                               }
-                              getOptionLabel={(option) =>
-                                typeof option === "object" && option
-                                  ? safeStr(option.label || option.variant || option.skuCode)
-                                  : safeStr(option)
-                              }
+                              getOptionLabel={getColorOptionLabel}
                               renderOption={(props, option) => {
                                 const safeOption =
                                   typeof option === "object" && option
@@ -1821,7 +1832,7 @@ export default function InventoryModule({
                                     sx={{ display: "flex", justifyContent: "space-between", gap: 2, fontFamily }}
                                   >
                                     <Typography sx={{ fontFamily, fontSize: 12 }}>
-                                      {safeOption.label || safeOption.variant}
+                                      {getColorOptionLabel(safeOption)}
                                     </Typography>
                                     <Typography sx={{ fontFamily, fontSize: 11, color: "#667085" }}>
                                       Avl {round2(stockInfo.availableTotalQty)}
@@ -1836,8 +1847,8 @@ export default function InventoryModule({
                                   return (
                                     <Chip
                                       {...tagProps}
-                                      key={key || normalizeKey(option.skuCode || option.variant || option.label)}
-                                      label={option.label || option.variant || option.skuCode}
+                                      key={key || getColorOptionKey(option)}
+                                      label={getColorOptionLabel(option)}
                                       size="small"
                                       sx={{
                                         height: 22,
@@ -1881,9 +1892,9 @@ export default function InventoryModule({
                                 }}
                               >
                                 {it.colorBreakup.map((color) => {
-                                  const areaKey = `${it.colorKey}__${normalizeKey(
-                                    color.skuCode || color.variant || color.label
-                                  )}`;
+                                  const colorLabel = getColorOptionLabel(color);
+                                  const areaKey = `${it.colorKey}__${getColorOptionKey(color)}`;
+                                  const hasArea = asNum(color.allocatedArea) > 0;
                                   return (
                                     <Box
                                       key={areaKey}
@@ -1896,7 +1907,7 @@ export default function InventoryModule({
                                         fullWidth
                                         size="small"
                                         type="number"
-                                        label={`${color.variant} area`}
+                                        label={`${colorLabel} area`}
                                         value={selectedColorAreas[areaKey] || ""}
                                         onChange={(e) =>
                                           setSelectedColorAreas((prev) => ({
@@ -1904,7 +1915,11 @@ export default function InventoryModule({
                                             [areaKey]: e.target.value,
                                           }))
                                         }
-                                        helperText={`Req ${round2(color.requiredQty)} ${it.unit}`}
+                                        helperText={
+                                          hasArea
+                                            ? `Req ${round2(color.requiredQty)} ${it.unit}`
+                                            : "Enter area"
+                                        }
                                         FormHelperTextProps={{
                                           sx: { mx: 0, fontFamily, fontSize: 10.5, lineHeight: 1.2 },
                                         }}

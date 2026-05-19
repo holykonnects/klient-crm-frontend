@@ -58,7 +58,7 @@ const safeStr = (v) => (v ?? "").toString().trim();
 const toUpper = (v) => safeStr(v).toUpperCase();
 const normalizeKey = (v) => safeStr(v).replace(/\s+/g, " ").trim().toUpperCase();
 const asNum = (v) => {
-  const n = Number(v);
+  const n = Number(typeof v === "string" ? v.replace(/,/g, "") : v);
   return Number.isFinite(n) ? n : 0;
 };
 const round2 = (n) => Math.round(asNum(n) * 100) / 100;
@@ -112,6 +112,40 @@ function pickFirst(row, keys = []) {
     if (safeStr(val) !== "") return val;
   }
   return "";
+}
+
+function getSkuCode(row) {
+  return safeStr(pickFirst(row, ["SKU Code", "skuCode", "SKU", "Sku Code"]));
+}
+
+function getStockLocation(row) {
+  return safeStr(
+    pickFirst(row, [
+      "location",
+      "Location",
+      "stockLocation",
+      "Stock Location",
+      "Stock Available At",
+      "Stock available at",
+    ])
+  );
+}
+
+function normalizeSkuRow(row) {
+  const skuCode = getSkuCode(row);
+  const category = safeStr(pickFirst(row, ["Category", "category"]));
+  const materialName = safeStr(pickFirst(row, ["Material Name", "materialName", "Material"]));
+  const variant = safeStr(pickFirst(row, ["Variant", "variant", "Color Variant", "colorVariant"]));
+
+  if (!skuCode && !materialName && !variant) return null;
+
+  return {
+    skuCode,
+    category,
+    materialName,
+    variant,
+    label: [skuCode, materialName, variant].filter(Boolean).join(" | "),
+  };
 }
 
 function getBookingHoldInfo(booking) {
@@ -202,7 +236,10 @@ function mapRowToChildItem(row) {
   const itemStatus = pickFirst(row, ["Item Status", "itemStatus", "Status", "status"]);
 
   return {
+    skuCode: getSkuCode(row),
     materialName: pickFirst(row, ["Material Name", "materialName", "Item Name", "itemName", "Material"]),
+    variant: pickFirst(row, ["Variant", "variant", "Color Variant", "colorVariant"]),
+    allocatedArea: asNum(pickFirst(row, ["Allocated Area", "allocatedArea", "Color Area", "colorArea"])),
     unit: pickFirst(row, ["Unit", "unit"]),
     requiredQty: asNum(pickFirst(row, ["Required Qty", "requiredQty", "Requirement Qty", "Qty Required"])),
     selectedPackSize,
@@ -225,7 +262,23 @@ function mapRowToChildItem(row) {
 }
 
 function getAllocationKey(item, index) {
-  return `${index}__${normalizeKey(item?.materialName)}`;
+  return `${index}__${normalizeKey(item?.skuCode || item?.materialName)}`;
+}
+
+function getColorOptionKey(option) {
+  if (typeof option === "object" && option) {
+    return normalizeKey(option.skuCode || option.variant || option.label || option.materialName);
+  }
+
+  return normalizeKey(option);
+}
+
+function getColorOptionLabel(option) {
+  if (typeof option === "object" && option) {
+    return safeStr(option.label || option.variant || option.skuCode || option.materialName || "Color");
+  }
+
+  return safeStr(option || "Color");
 }
 
 function isAcrylicColorMaterial(materialName) {
@@ -242,6 +295,77 @@ function isAcrylicColorMaterial(materialName) {
 
 function getStockMaterialName(row) {
   return pickFirst(row, ["materialName", "Material Name", "Item Name", "itemName", "Material"]);
+}
+
+function getStockVariant(row) {
+  return pickFirst(row, ["variant", "Variant", "Color Variant", "colorVariant"]);
+}
+
+function getStockKey(row) {
+  const skuCode = getSkuCode(row);
+  if (skuCode) return normalizeKey(skuCode);
+
+  const materialName = getStockMaterialName(row);
+  const variant = getStockVariant(row);
+  return normalizeKey([materialName, variant].filter(Boolean).join("__"));
+}
+
+function mergeStockRows(rows = []) {
+  const grouped = {};
+
+  rows.forEach((row) => {
+    const key = getStockKey(row);
+    if (!key) return;
+
+    const current =
+      grouped[key] ||
+      {
+        ...row,
+        locations: [],
+        packagedStockQty: 0,
+        looseStockQty: 0,
+        reservedPackagedQty: 0,
+        reservedLooseQty: 0,
+        availablePackagedQty: 0,
+        availableLooseQty: 0,
+      };
+
+    const stockInfo = getStockAvailability(row);
+    const location = getStockLocation(row);
+
+    current.packagedStockQty = round2(
+      asNum(current.packagedStockQty) + asNum(pickFirst(row, ["packagedStockQty", "Packaged Stock Qty"]))
+    );
+    current.looseStockQty = round2(
+      asNum(current.looseStockQty) + asNum(pickFirst(row, ["looseStockQty", "Loose Stock Qty"]))
+    );
+    current.reservedPackagedQty = round2(
+      asNum(current.reservedPackagedQty) + asNum(pickFirst(row, ["reservedPackagedQty", "Reserved Packaged Qty"]))
+    );
+    current.reservedLooseQty = round2(
+      asNum(current.reservedLooseQty) + asNum(pickFirst(row, ["reservedLooseQty", "Reserved Loose Qty"]))
+    );
+    current.availablePackagedQty = round2(
+      asNum(current.availablePackagedQty) + stockInfo.availablePackagedQty
+    );
+    current.availableLooseQty = round2(
+      asNum(current.availableLooseQty) + stockInfo.availableLooseQty
+    );
+    current.availableTotalQty = round2(
+      asNum(current.availablePackagedQty) + asNum(current.availableLooseQty)
+    );
+
+    if (location) {
+      current.locations.push({
+        location,
+        availableTotalQty: stockInfo.availableTotalQty,
+      });
+    }
+
+    grouped[key] = current;
+  });
+
+  return grouped;
 }
 
 function getStockAvailability(row) {
@@ -445,6 +569,16 @@ async function apiPostNoCors(apiUrl, body) {
   });
 }
 
+async function apiMutation(apiUrl, body) {
+  const payload = await enqueueJsonp(() =>
+    jsonp(
+      `${apiUrl}?action=mutation&payload=${encodeURIComponent(JSON.stringify(body))}&_=${Date.now()}`
+    )
+  );
+  if (!payload?.ok) throw new Error(payload?.error || "Request failed");
+  return payload.data;
+}
+
 function evalRate(expr) {
   if (!expr) return 0;
   const cleaned = String(expr).replace(/[^0-9+\-*/(). ]/g, "");
@@ -512,8 +646,14 @@ function computeLocally({ category, variant, inputs, configRows, stockRows }) {
   const wearCoatType = toUpper(inputs.wearCoatType || "SD");
 
   const stockMap = {};
-  (stockRows || []).forEach((s) => {
-    stockMap[normalizeKey(s.materialName)] = s;
+  const mergedStock = mergeStockRows(stockRows || []);
+  Object.values(mergedStock).forEach((s) => {
+    const skuKey = getSkuCode(s) ? normalizeKey(getSkuCode(s)) : "";
+    const materialKey = normalizeKey(getStockMaterialName(s));
+    const variantKey = normalizeKey([getStockMaterialName(s), getStockVariant(s)].filter(Boolean).join("__"));
+    if (skuKey) stockMap[skuKey] = s;
+    if (variantKey) stockMap[variantKey] = s;
+    if (materialKey && !stockMap[materialKey]) stockMap[materialKey] = s;
   });
 
   const computed = {};
@@ -632,10 +772,12 @@ export default function InventoryModule({
 
   const [stockRows, setStockRows] = useState([]);
   const [stockLoading, setStockLoading] = useState(false);
+  const [skuRows, setSkuRows] = useState([]);
 
   const [calcResult, setCalcResult] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
   const [selectedAcrylicColors, setSelectedAcrylicColors] = useState({});
+  const [selectedColorAreas, setSelectedColorAreas] = useState({});
 
   const [remarks, setRemarks] = useState("");
   const [bookingLoading, setBookingLoading] = useState(false);
@@ -718,6 +860,22 @@ export default function InventoryModule({
   }, [validation]);
 
   const acrylicColorOptions = useMemo(() => {
+    const fromSku = (skuRows || [])
+      .filter((row) => {
+        const categoryKey = normalizeKey(row.category);
+        return (
+          categoryKey === "ACRYLIC" &&
+          normalizeKey(row.materialName) === "COLOR" &&
+          safeStr(row.variant)
+        );
+      })
+      .map((row) => ({
+        skuCode: row.skuCode,
+        materialName: row.materialName || "Color",
+        variant: row.variant,
+        label: row.variant,
+      }));
+
     const validationEntries = Object.entries(validation || {})
       .filter(([key]) => isAcrylicColorMaterial(key))
       .flatMap(([, value]) => normalizeValidationList(value));
@@ -728,24 +886,52 @@ export default function InventoryModule({
       .filter(Boolean);
 
     const fromStock = (stockRows || [])
-      .map((row) => getStockMaterialName(row))
-      .filter((name) => isAcrylicColorMaterial(name));
+      .filter((row) => {
+        const materialName = getStockMaterialName(row);
+        const skuCode = getSkuCode(row);
+        return isAcrylicColorMaterial(materialName) || normalizeKey(skuCode).startsWith("ACR-COLOR-");
+      })
+      .map((row) => {
+        const variantName = safeStr(getStockVariant(row));
+        return variantName || getStockMaterialName(row);
+      })
+      .filter(Boolean);
 
     const seen = new Set();
-    return [...fromValidation, ...fromStock].filter((name) => {
-      const key = normalizeKey(name);
+    return [
+      ...fromSku,
+      ...fromValidation.map((name) => ({
+        skuCode: "",
+        materialName: "Color",
+        variant: name,
+        label: name,
+      })),
+      ...fromStock.map((name) => ({
+        skuCode: "",
+        materialName: "Color",
+        variant: name,
+        label: name,
+      })),
+    ].filter((option) => {
+      const key = normalizeKey(option.skuCode || option.variant || option.label);
       if (!key || seen.has(key)) return false;
       seen.add(key);
       return true;
     });
-  }, [validation, stockRows]);
+  }, [skuRows, validation, stockRows]);
 
   const stockByMaterial = useMemo(() => {
-    const out = {};
-    (stockRows || []).forEach((row) => {
-      const key = normalizeKey(getStockMaterialName(row));
-      if (key) out[key] = row;
+    const out = mergeStockRows(stockRows || []);
+
+    Object.values(out).forEach((row) => {
+      const materialKey = normalizeKey(getStockMaterialName(row));
+      const variantKey = normalizeKey(getStockVariant(row));
+      const combinedKey = normalizeKey([getStockMaterialName(row), getStockVariant(row)].filter(Boolean).join("__"));
+      if (materialKey && !out[materialKey]) out[materialKey] = row;
+      if (variantKey && !out[variantKey]) out[variantKey] = row;
+      if (combinedKey && !out[combinedKey]) out[combinedKey] = row;
     });
+
     return out;
   }, [stockRows]);
 
@@ -800,13 +986,9 @@ export default function InventoryModule({
     return (calcResult?.items || []).map((it, index) => {
       const requiresAcrylicColor = isAcrylicColorMaterial(it.materialName);
       const colorKey = getAllocationKey(it, index);
-      const selectedMaterialName = requiresAcrylicColor
-        ? safeStr(selectedAcrylicColors[colorKey])
-        : "";
-
-      const stockRow = requiresAcrylicColor && selectedMaterialName
-        ? stockByMaterial[normalizeKey(selectedMaterialName)] || null
-        : null;
+      const selectedOptions = requiresAcrylicColor
+        ? selectedAcrylicColors[colorKey] || []
+        : [];
 
       if (!requiresAcrylicColor || !acrylicColorOptions.length) {
         return {
@@ -817,29 +999,90 @@ export default function InventoryModule({
         };
       }
 
-      const stockInfo = getStockAvailability(stockRow);
-      const availableTotalQty = selectedMaterialName ? stockInfo.availableTotalQty : 0;
-      const shortageQty = Math.max(0, asNum(it.requiredQty) - availableTotalQty);
-      const packSize = selectedMaterialName ? stockInfo.packSize : 0;
-      const estimatedPacksNeeded = packSize > 0 ? Math.ceil(asNum(it.requiredQty) / packSize) : 0;
+      const selectedColorOptions = selectedOptions
+        .map((value) => {
+          if (typeof value === "object" && value) return value;
+          return acrylicColorOptions.find(
+            (opt) =>
+              normalizeKey(opt.skuCode) === normalizeKey(value) ||
+              normalizeKey(opt.variant) === normalizeKey(value) ||
+              normalizeKey(opt.label) === normalizeKey(value)
+          );
+        })
+        .filter(Boolean);
+
+      const totalAllocatedArea = selectedColorOptions.reduce((sum, option) => {
+        const areaKey = `${colorKey}__${getColorOptionKey(option)}`;
+        return sum + asNum(selectedColorAreas[areaKey]);
+      }, 0);
+
+      const colorBreakup = selectedColorOptions.map((option) => {
+        const optionKey = getColorOptionKey(option);
+        const areaKey = `${colorKey}__${optionKey}`;
+        const allocatedArea = asNum(selectedColorAreas[areaKey]);
+        const requiredQty =
+          totalAllocatedArea > 0
+            ? round2(asNum(it.requiredQty) * (allocatedArea / totalAllocatedArea))
+            : 0;
+        const stockRow =
+          stockByMaterial[normalizeKey(option.skuCode)] ||
+          stockByMaterial[normalizeKey(option.variant)] ||
+          stockByMaterial[normalizeKey([option.materialName, option.variant].filter(Boolean).join("__"))] ||
+          null;
+        const stockInfo = getStockAvailability(stockRow);
+        const shortageQty = Math.max(0, requiredQty - stockInfo.availableTotalQty);
+
+        return {
+          skuCode: option.skuCode || getSkuCode(stockRow),
+          materialName: option.materialName || "Color",
+          variant: getColorOptionLabel(option),
+          label: getColorOptionLabel(option),
+          optionKey,
+          areaKey,
+          allocatedArea,
+          requiredQty,
+          packSize: stockInfo.packSize,
+          estimatedPacksNeeded:
+            stockInfo.packSize > 0 ? Math.ceil(requiredQty / stockInfo.packSize) : 0,
+          availablePackagedQty: stockInfo.availablePackagedQty,
+          availableLooseQty: stockInfo.availableLooseQty,
+          availableTotalQty: stockInfo.availableTotalQty,
+          shortageQty: round2(shortageQty),
+          canFulfill: requiredQty > 0 && shortageQty <= 0,
+        };
+      });
+
+      const availableTotalQty = colorBreakup.reduce((sum, item) => sum + asNum(item.availableTotalQty), 0);
+      const shortageQty = selectedColorOptions.length
+        ? colorBreakup.reduce((sum, item) => sum + asNum(item.shortageQty), 0)
+        : asNum(it.requiredQty);
+      const estimatedPacksNeeded = colorBreakup.reduce(
+        (sum, item) => sum + asNum(item.estimatedPacksNeeded),
+        0
+      );
 
       return {
         ...it,
         colorKey,
         requiresAcrylicColor,
-        selectedMaterialName,
-        selectedStockFound: Boolean(stockRow),
-        packSize,
+        selectedMaterialName: colorBreakup.map((item) => item.variant).filter(Boolean).join(", "),
+        colorBreakup,
+        totalAllocatedArea: round2(totalAllocatedArea),
+        selectedStockFound: colorBreakup.some((item) => item.availableTotalQty > 0),
+        packSize: colorBreakup.length === 1 ? colorBreakup[0].packSize : 0,
         estimatedPacksNeeded,
-        estimatedPackagingQty: round2(packSize > 0 ? estimatedPacksNeeded * packSize : 0),
-        availablePackagedQty: selectedMaterialName ? stockInfo.availablePackagedQty : 0,
-        availableLooseQty: selectedMaterialName ? stockInfo.availableLooseQty : 0,
+        estimatedPackagingQty: 0,
+        availablePackagedQty: colorBreakup.reduce((sum, item) => sum + asNum(item.availablePackagedQty), 0),
+        availableLooseQty: colorBreakup.reduce((sum, item) => sum + asNum(item.availableLooseQty), 0),
         availableTotalQty: round2(availableTotalQty),
         shortageQty: round2(shortageQty),
-        canFulfill: selectedMaterialName && shortageQty <= 0,
+        canFulfill:
+          selectedColorOptions.length > 0 &&
+          totalAllocatedArea > 0 &&
+          colorBreakup.every((item) => item.canFulfill),
       };
     });
-  }, [calcResult, selectedAcrylicColors, acrylicColorOptions, stockByMaterial]);
+  }, [calcResult, selectedAcrylicColors, selectedColorAreas, acrylicColorOptions, stockByMaterial]);
 
   const totals = useMemo(() => {
     const items = calcDisplayItems || [];
@@ -878,6 +1121,23 @@ export default function InventoryModule({
         console.error("getValidation error:", e);
       } finally {
         setValidationLoading(false);
+      }
+    };
+
+    run();
+  }, [apiUrl]);
+
+  useEffect(() => {
+    const run = async () => {
+      if (!apiUrl) return;
+
+      try {
+        const data = await apiGet(apiUrl, { action: "getSkuMaster" });
+        const rows = Array.isArray(data) ? data : [];
+        setSkuRows(rows.map(normalizeSkuRow).filter(Boolean));
+      } catch (e) {
+        console.error("getSkuMaster error:", e);
+        setSkuRows([]);
       }
     };
 
@@ -988,19 +1248,52 @@ export default function InventoryModule({
     setSelectedAcrylicColors((prev) => {
       const next = {};
       colorItems.forEach(({ key }) => {
-        const previous = safeStr(prev[key]);
-        const previousStillValid = acrylicColorOptions.some(
-          (opt) => normalizeKey(opt) === normalizeKey(previous)
+        const previousList = Array.isArray(prev[key]) ? prev[key] : safeStr(prev[key]) ? [prev[key]] : [];
+        const validPrevious = previousList.filter((previous) =>
+          acrylicColorOptions.some(
+            (opt) =>
+              normalizeKey(opt.skuCode) === normalizeKey(previous?.skuCode || previous) ||
+              normalizeKey(opt.variant) === normalizeKey(previous?.variant || previous) ||
+              normalizeKey(opt.label) === normalizeKey(previous?.label || previous)
+          )
         );
-        next[key] = previousStillValid
-          ? previous
-          : acrylicColorOptions.length === 1
-          ? acrylicColorOptions[0]
-          : "";
+        next[key] =
+          validPrevious.length > 0
+            ? validPrevious
+            : acrylicColorOptions.length === 1
+            ? [acrylicColorOptions[0]]
+            : [];
       });
       return next;
     });
   }, [calcResult, acrylicColorOptions]);
+
+  useEffect(() => {
+    const items = calcResult?.items || [];
+    const fullArea = asNum(calcResult?.area || normalizedInputs.areaSqf || normalizedInputs.areaSqm);
+    if (!fullArea) return;
+
+    setSelectedColorAreas((prev) => {
+      let changed = false;
+      const next = { ...prev };
+
+      items.forEach((item, index) => {
+        if (!isAcrylicColorMaterial(item.materialName)) return;
+
+        const colorKey = getAllocationKey(item, index);
+        const selectedOptions = selectedAcrylicColors[colorKey] || [];
+        if (selectedOptions.length !== 1) return;
+
+        const areaKey = `${colorKey}__${getColorOptionKey(selectedOptions[0])}`;
+        if (asNum(next[areaKey]) > 0) return;
+
+        next[areaKey] = fullArea;
+        changed = true;
+      });
+
+      return changed ? next : prev;
+    });
+  }, [calcResult, normalizedInputs, selectedAcrylicColors]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -1070,11 +1363,23 @@ export default function InventoryModule({
 
     try {
       const missingColorSelections = (calcDisplayItems || []).filter(
-        (it) => it.requiresAcrylicColor && acrylicColorOptions.length && !safeStr(it.selectedMaterialName)
+        (it) => it.requiresAcrylicColor && acrylicColorOptions.length && !(it.colorBreakup || []).length
       );
 
       if (missingColorSelections.length) {
-        alert("Please select the acrylic color variant before submitting the booking.");
+        alert("Please select at least one acrylic color variant before submitting the booking.");
+        return;
+      }
+
+      const missingColorAreas = (calcDisplayItems || []).filter(
+        (it) =>
+          it.requiresAcrylicColor &&
+          acrylicColorOptions.length &&
+          (!(it.colorBreakup || []).length || asNum(it.totalAllocatedArea) <= 0)
+      );
+
+      if (missingColorAreas.length) {
+        alert("Please enter allocated area for the selected acrylic color breakup.");
         return;
       }
 
@@ -1089,20 +1394,45 @@ export default function InventoryModule({
           inputs: normalizedInputs,
           totalRequiredQty: totals.totalRequired,
           totalShortageQty: totals.totalShort,
-          items: (calcDisplayItems || []).map((it) => ({
-            materialName: it.selectedMaterialName || it.materialName || "",
-            unit: it.unit || "",
-            requiredQty: asNum(it.requiredQty),
-            calcType: it.calcType || "",
-            formula: it.formula || "",
-            calculatedMaterialName: it.materialName || "",
-          })),
+          items: (calcDisplayItems || []).flatMap((it) => {
+            if (it.requiresAcrylicColor && (it.colorBreakup || []).length) {
+              return it.colorBreakup
+                .filter((color) => asNum(color.allocatedArea) > 0)
+                .map((color) => ({
+                  skuCode: color.skuCode || "",
+                  materialName: color.materialName || "Color",
+                  variant: color.variant || "",
+                  unit: it.unit || "",
+                  requiredQty: asNum(color.requiredQty),
+                  allocatedArea: asNum(color.allocatedArea),
+                  totalAllocatedArea: asNum(it.totalAllocatedArea),
+                  calcType: it.calcType || "",
+                  formula: it.formula || "",
+                  calculatedMaterialName: it.materialName || "",
+                }));
+            }
+
+            return [
+              {
+                skuCode: it.skuCode || "",
+                materialName: it.selectedMaterialName || it.materialName || "",
+                variant: it.variant || "",
+                unit: it.unit || "",
+                requiredQty: asNum(it.requiredQty),
+                allocatedArea: 0,
+                totalAllocatedArea: 0,
+                calcType: it.calcType || "",
+                formula: it.formula || "",
+                calculatedMaterialName: it.materialName || "",
+              },
+            ];
+          }),
         },
       };
 
       console.log("createBooking payload =>", payload);
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
 
       setRemarks("");
       setBookingNotice("✅ Requirement submitted for admin review. Refreshing bookings…");
@@ -1175,7 +1505,10 @@ export default function InventoryModule({
       const shortageQty = round2(Math.max(0, asNum(item.requiredQty) - mappedStockQty));
 
       return {
+        skuCode: item.skuCode || "",
         materialName: item.materialName || "",
+        variant: item.variant || "",
+        allocatedArea: asNum(item.allocatedArea),
         unit: item.unit || "",
         requiredQty: asNum(item.requiredQty),
         selectedPackSize,
@@ -1216,7 +1549,7 @@ export default function InventoryModule({
 
       console.log("updateBookingStatus payload =>", payload);
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
 
       setStatusNotice(
         shouldDispatch || shouldReserve || shouldRelease
@@ -1497,50 +1830,140 @@ export default function InventoryModule({
                   return (
                     <TableRow key={`${it.materialName}-${it.calcType}-${index}`}>
                       <TableCell sx={{ fontFamily }}>{it.materialName}</TableCell>
-                      <TableCell sx={{ fontFamily }}>
+                      <TableCell sx={{ fontFamily, minWidth: 360 }}>
                         {it.requiresAcrylicColor && acrylicColorOptions.length ? (
-                          <FormControl size="small" fullWidth>
-                            <Select
-                              displayEmpty
-                              value={selectedAcrylicColors[it.colorKey] || ""}
-                              onChange={(e) =>
-                                setSelectedAcrylicColors((prev) => ({
-                                  ...prev,
-                                  [it.colorKey]: e.target.value,
-                                }))
+                          <Box sx={{ minWidth: 340 }}>
+                            <Autocomplete
+                              multiple
+                              size="small"
+                              options={acrylicColorOptions}
+                              value={selectedAcrylicColors[it.colorKey] || []}
+                              isOptionEqualToValue={(option, value) =>
+                                getColorOptionKey(option) === getColorOptionKey(value)
                               }
-                              sx={{
-                                fontFamily,
-                                fontSize: 12,
-                                minWidth: 220,
-                                "& .MuiSelect-select": {
-                                  py: 0.7,
-                                  whiteSpace: "normal",
-                                },
-                              }}
-                            >
-                              <MenuItem value="">
-                                <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                                  Select acrylic color
-                                </Typography>
-                              </MenuItem>
-                              {acrylicColorOptions.map((colorName) => {
-                                const colorStock = stockByMaterial[normalizeKey(colorName)] || null;
-                                const colorStockInfo = getStockAvailability(colorStock);
+                              getOptionLabel={getColorOptionLabel}
+                              renderOption={(props, option) => {
+                                const safeOption =
+                                  typeof option === "object" && option
+                                    ? option
+                                    : { skuCode: "", materialName: "Color", variant: safeStr(option), label: safeStr(option) };
+                                const stockRow =
+                                  stockByMaterial[normalizeKey(safeOption.skuCode)] ||
+                                  stockByMaterial[normalizeKey(safeOption.variant)] ||
+                                  stockByMaterial[
+                                    normalizeKey([safeOption.materialName, safeOption.variant].filter(Boolean).join("__"))
+                                  ] ||
+                                  null;
+                                const stockInfo = getStockAvailability(stockRow);
                                 return (
-                                  <MenuItem key={colorName} value={colorName}>
+                                  <Box
+                                    component="li"
+                                    {...props}
+                                    sx={{ display: "flex", justifyContent: "space-between", gap: 2, fontFamily }}
+                                  >
                                     <Typography sx={{ fontFamily, fontSize: 12 }}>
-                                      {colorName} - Avl {round2(colorStockInfo.availableTotalQty)}
+                                      {getColorOptionLabel(safeOption)}
+                                    </Typography>
+                                    <Typography sx={{ fontFamily, fontSize: 11, color: "#667085" }}>
+                                      Avl {round2(stockInfo.availableTotalQty)}
                                       {it.unit ? ` ${it.unit}` : ""}
                                     </Typography>
-                                  </MenuItem>
+                                  </Box>
                                 );
-                              })}
-                            </Select>
-                          </FormControl>
+                              }}
+                              renderTags={(value, getTagProps) =>
+                                value.map((option, tagIndex) => {
+                                  const { key, ...tagProps } = getTagProps({ index: tagIndex });
+                                  return (
+                                    <Chip
+                                      {...tagProps}
+                                      key={key || getColorOptionKey(option)}
+                                      label={getColorOptionLabel(option)}
+                                      size="small"
+                                      sx={{
+                                        height: 22,
+                                        borderRadius: "6px",
+                                        fontFamily,
+                                        fontSize: 11,
+                                        backgroundColor: "rgba(100,149,237,0.10)",
+                                        color: "#1f2a44",
+                                      }}
+                                    />
+                                  );
+                                })
+                              }
+                              onChange={(event, value) => {
+                                setSelectedAcrylicColors((prev) => ({
+                                  ...prev,
+                                  [it.colorKey]: value,
+                                }));
+                              }}
+                              renderInput={(params) => (
+                                <TextField
+                                  {...params}
+                                  label="Color variants"
+                                  placeholder="Select"
+                                  inputProps={{
+                                    ...params.inputProps,
+                                    style: { ...params.inputProps.style, fontFamily },
+                                  }}
+                                />
+                              )}
+                              sx={{ fontFamily }}
+                            />
+
+                            {(it.colorBreakup || []).length ? (
+                              <Box
+                                sx={{
+                                  display: "flex",
+                                  flexWrap: "wrap",
+                                  gap: 1,
+                                  mt: 1,
+                                }}
+                              >
+                                {it.colorBreakup.map((color) => {
+                                  const colorLabel = getColorOptionLabel(color);
+                                  const areaKey = color.areaKey || `${it.colorKey}__${getColorOptionKey(color)}`;
+                                  const hasArea = asNum(color.allocatedArea) > 0;
+                                  return (
+                                    <Box
+                                      key={areaKey}
+                                      sx={{
+                                        width: { xs: "100%", sm: "calc(50% - 4px)" },
+                                        minWidth: 150,
+                                      }}
+                                    >
+                                      <TextField
+                                        fullWidth
+                                        size="small"
+                                        type="number"
+                                        label={`${colorLabel} area`}
+                                        value={selectedColorAreas[areaKey] || ""}
+                                        onChange={(e) =>
+                                          setSelectedColorAreas((prev) => ({
+                                            ...prev,
+                                            [areaKey]: e.target.value,
+                                          }))
+                                        }
+                                        helperText={
+                                          hasArea
+                                            ? `Req ${round2(color.requiredQty)} ${it.unit}`
+                                            : "Enter area"
+                                        }
+                                        FormHelperTextProps={{
+                                          sx: { mx: 0, fontFamily, fontSize: 10.5, lineHeight: 1.2 },
+                                        }}
+                                        inputProps={{ style: { fontFamily, textAlign: "right" } }}
+                                      />
+                                    </Box>
+                                  );
+                                })}
+                              </Box>
+                            ) : null}
+                          </Box>
                         ) : it.requiresAcrylicColor ? (
                           <Typography sx={{ fontFamily, fontSize: 12, color: "#c62828" }}>
-                            Add Acrylic Color options in validation
+                            Add acrylic color SKUs in SKU sheet
                           </Typography>
                         ) : (
                           <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.65 }}>-</Typography>
@@ -1866,7 +2289,10 @@ export default function InventoryModule({
                   <Table size="small">
                     <TableHead>
                       <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }}>SKU</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }}>Variant</TableCell>
+                        <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Area</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Required Qty</TableCell>
                         <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">Package Size</TableCell>
@@ -1904,7 +2330,12 @@ export default function InventoryModule({
 
                         return (
                           <TableRow key={`${item.materialName || "item"}-${index}`}>
+                            <TableCell sx={{ fontFamily }}>{safeStr(item.skuCode) || "-"}</TableCell>
                             <TableCell sx={{ fontFamily }}>{safeStr(item.materialName)}</TableCell>
+                            <TableCell sx={{ fontFamily }}>{safeStr(item.variant) || "-"}</TableCell>
+                            <TableCell sx={{ fontFamily }} align="right">
+                              {asNum(item.allocatedArea) > 0 ? round2(item.allocatedArea) : "-"}
+                            </TableCell>
                             <TableCell sx={{ fontFamily }}>{safeStr(item.unit)}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">{round2(item.requiredQty)}</TableCell>
                             <TableCell sx={{ fontFamily }} align="right">

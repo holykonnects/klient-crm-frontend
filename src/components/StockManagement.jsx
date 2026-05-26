@@ -799,10 +799,15 @@ export default function StockManagement({
     setModalError("");
 
     try {
+      if (!safeStr(modalForm.location)) {
+        throw new Error("Location is required and cannot be changed during update.");
+      }
+
       const payload = {
         action: "setStock",
         data: {
           role: user.role || "",
+          timestamp: modalForm.timestamp || "",
           skuCode: modalForm.skuCode || "",
           category: modalForm.category,
           materialName: modalForm.materialName,
@@ -1547,34 +1552,16 @@ export default function StockManagement({
                   </Grid>
 
                   <Grid item xs={12} md={4}>
-                    {locationOptions.length ? (
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Location</InputLabel>
-                        <Select
-                          label="Location"
-                          value={modalForm.location || ""}
-                          onChange={(e) => handleModalChange("location", e.target.value)}
-                          sx={{ fontFamily }}
-                        >
-                          <MenuItem value="">Not set</MenuItem>
-                          {locationOptions.map((loc) => (
-                            <MenuItem key={loc} value={loc}>
-                              {loc}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    ) : (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="Location"
-                        value={modalForm.location || ""}
-                        onChange={(e) => handleModalChange("location", e.target.value)}
-                        sx={{ fontFamily }}
-                        inputProps={{ style: { fontFamily } }}
-                      />
-                    )}
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Location"
+                      value={modalForm.location || ""}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily }, readOnly: true }}
+                      helperText="Location cannot be changed in Update. Deactivate and create a new row for a different location."
+                      FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                    />
                   </Grid>
 
                   <Grid item xs={12} md={2}>

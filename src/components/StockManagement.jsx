@@ -691,19 +691,6 @@ export default function StockManagement({
     fetchStock();
   }, [apiUrl, category]);
 
-  useEffect(() => {
-    const refreshVisibleStock = () => {
-      if (document.visibilityState === "visible") fetchStock();
-    };
-
-    window.addEventListener("focus", fetchStock);
-    document.addEventListener("visibilitychange", refreshVisibleStock);
-
-    return () => {
-      window.removeEventListener("focus", fetchStock);
-      document.removeEventListener("visibilitychange", refreshVisibleStock);
-    };
-  }, [apiUrl, category]);
 
   const handleOpenModal = (row) => {
     const validationPackSizes = approvedPackSizes || [];

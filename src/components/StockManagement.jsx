@@ -803,6 +803,7 @@ export default function StockManagement({
         action: "setStock",
         data: {
           role: user.role || "",
+          timestamp: modalForm.timestamp || "",
           skuCode: modalForm.skuCode || "",
           category: modalForm.category,
           materialName: modalForm.materialName,

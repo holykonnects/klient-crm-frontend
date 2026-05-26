@@ -799,10 +799,15 @@ export default function StockManagement({
     setModalError("");
 
     try {
+      if (!safeStr(modalForm.location)) {
+        throw new Error("Location is required and cannot be changed during update.");
+      }
+
       const payload = {
         action: "setStock",
         data: {
           role: user.role || "",
+          timestamp: modalForm.timestamp || "",
           skuCode: modalForm.skuCode || "",
           category: modalForm.category,
           materialName: modalForm.materialName,
@@ -823,13 +828,38 @@ export default function StockManagement({
 
       await apiPostNoCors(apiUrl, payload);
 
+      const verifyRows = await apiGet(apiUrl, {
+        action: "getStock",
+        category: modalForm.category || "",
+      });
+
+      const matched = (Array.isArray(verifyRows) ? verifyRows : []).find((row) => {
+        const rowSku = safeStr(row.skuCode || row["SKU Code"]);
+        const rowVariant = safeStr(row.variant || row["Variant"]);
+        const rowLocation = getLocationValue(row);
+
+        return (
+          normalizeKey(rowSku) === normalizeKey(modalForm.skuCode || "") &&
+          normalizeKey(rowVariant) === normalizeKey(modalForm.variant || "") &&
+          normalizeKey(rowLocation) === normalizeKey(modalForm.location || "")
+        );
+      });
+
+      const packagedOk = round2(matched?.packagedStockQty) === round2(modalForm.packagedStockQty);
+      const looseOk = round2(matched?.looseStockQty) === round2(modalForm.looseStockQty);
+      const minOk = round2(matched?.minStockLevel) === round2(modalForm.minStockLevel);
+
+      if (!matched || !packagedOk || !looseOk || !minOk) {
+        throw new Error("Save request sent, but stock row did not update. Please recheck SKU/location mapping in stock sheet.");
+      }
+
       setModalNotice("✅ Stock updated successfully.");
       setGlobalNotice("✅ Stock row updated successfully.");
 
       setTimeout(() => {
         handleCloseModal();
         fetchStock();
-      }, 1000);
+      }, 700);
     } catch (e) {
       console.error("setStock error:", e);
       setModalError(`Save failed: ${e.message || e}`);
@@ -1547,34 +1577,16 @@ export default function StockManagement({
                   </Grid>
 
                   <Grid item xs={12} md={4}>
-                    {locationOptions.length ? (
-                      <FormControl fullWidth size="small">
-                        <InputLabel>Location</InputLabel>
-                        <Select
-                          label="Location"
-                          value={modalForm.location || ""}
-                          onChange={(e) => handleModalChange("location", e.target.value)}
-                          sx={{ fontFamily }}
-                        >
-                          <MenuItem value="">Not set</MenuItem>
-                          {locationOptions.map((loc) => (
-                            <MenuItem key={loc} value={loc}>
-                              {loc}
-                            </MenuItem>
-                          ))}
-                        </Select>
-                      </FormControl>
-                    ) : (
-                      <TextField
-                        fullWidth
-                        size="small"
-                        label="Location"
-                        value={modalForm.location || ""}
-                        onChange={(e) => handleModalChange("location", e.target.value)}
-                        sx={{ fontFamily }}
-                        inputProps={{ style: { fontFamily } }}
-                      />
-                    )}
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="Location"
+                      value={modalForm.location || ""}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily }, readOnly: true }}
+                      helperText="Location cannot be changed in Update. Deactivate and create a new row for a different location."
+                      FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                    />
                   </Grid>
 
                   <Grid item xs={12} md={2}>

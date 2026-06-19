@@ -75,7 +75,8 @@ const COST_SHEET_LIST_FIELDS = [
   "Notes",
 ];
 
-const COST_SHEET_RENDER_LIMIT = 500;
+const COST_SHEET_RENDER_LIMIT = 200;
+const LINE_ITEM_RENDER_LIMIT = 300;
 
 /* ===================== helpers ===================== */
 
@@ -294,6 +295,17 @@ function safeJsonParse(s, fallback) {
   }
 }
 
+function useDebouncedValue(value, delay = 250) {
+  const [debounced, setDebounced] = useState(value);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+
+  return debounced;
+}
+
 /* ===================== stable row key helpers ===================== */
 
 function normalizeTsForKey(v) {
@@ -367,6 +379,13 @@ function withLineSearchIndex(row) {
     __fieldLooseText: fieldLooseText,
     __allText: Object.values(fieldText).join(" "),
     __allLooseText: Object.values(fieldLooseText).join(" "),
+  };
+}
+
+function withCostSheetSearchIndex(row) {
+  return {
+    ...row,
+    __searchText: normalizeSearchText(Object.values(row || {}).join(" ")),
   };
 }
 
@@ -448,6 +467,7 @@ export default function CostingTable() {
 
   const [costSheets, setCostSheets] = useState([]);
   const [search, setSearch] = useState("");
+  const debouncedSearch = useDebouncedValue(search, 250);
 
   const [statusFilter, setStatusFilter] = useState("");
   const [entityTypeFilter, setEntityTypeFilter] = useState("");
@@ -889,7 +909,7 @@ export default function CostingTable() {
       const sheets = await jsonpGet(`${BACKEND}?${params.toString()}`);
       if (seq !== loadSeq.current) return;
 
-      const arr = Array.isArray(sheets) ? sheets : [];
+      const arr = Array.isArray(sheets) ? sheets.map(withCostSheetSearchIndex) : [];
       setCostSheets(arr);
 
       if (arr.length) {
@@ -998,22 +1018,17 @@ export default function CostingTable() {
   }
 
   const filtered = useMemo(() => {
-    const q = search.trim().toLowerCase();
+    const q = normalizeSearchText(debouncedSearch);
 
     return costSheets.filter((r) => {
       const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
       const entityOk =
         !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
-      const hay = Object.values(r)
-        .map((x) => String(x || ""))
-        .join(" ")
-        .toLowerCase();
-
-      const qOk = !q || hay.includes(q);
+      const qOk = !q || String(r.__searchText || "").includes(q);
       return statusOk && entityOk && qOk;
     });
-  }, [costSheets, search, statusFilter, entityTypeFilter]);
+  }, [costSheets, debouncedSearch, statusFilter, entityTypeFilter]);
 
   const visibleCostSheets = useMemo(() => {
     return filtered.slice(0, COST_SHEET_RENDER_LIMIT);
@@ -1028,6 +1043,10 @@ export default function CostingTable() {
     });
     return Array.from(merged);
   }, [costSheets]);
+
+  const visibleCostSheetColumns = useMemo(() => {
+    return costSheetColumns.filter((c) => !String(c).startsWith("__") && visibleCols[c] !== false);
+  }, [costSheetColumns, visibleCols]);
 
   function openColumns(e) {
     setColumnsOpen(e.currentTarget);
@@ -1125,13 +1144,10 @@ export default function CostingTable() {
 
     try {
       const id = String(row?.["Cost Sheet ID"] || "").trim();
-      console.log("OPENING COST SHEET ID:", JSON.stringify(id));
 
       const items = await jsonpGet(
         `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
       );
-
-      console.log("DETAIL RESPONSE:", items);
 
       if (!Array.isArray(items)) {
         console.error("DETAILS_NOT_ARRAY", items);
@@ -1830,6 +1846,12 @@ export default function CostingTable() {
     return picked;
   }, [lineItemHeaders]);
 
+  const visibleLineItems = useMemo(() => {
+    return (lineItems || []).slice(0, LINE_ITEM_RENDER_LIMIT);
+  }, [lineItems]);
+
+  const hiddenLineItemCount = Math.max(0, (lineItems || []).length - visibleLineItems.length);
+
   const filteredLineSearchRows = useMemo(() => {
     if (!lineSearchSubmitted) return [];
     return lineSearchRows || [];
@@ -2168,7 +2190,7 @@ export default function CostingTable() {
                   Summary columns are loaded for faster table rendering.
                 </Typography>
                 <FormGroup>
-                  {costSheetColumns.map((c) => (
+                  {costSheetColumns.filter((c) => !String(c).startsWith("__")).map((c) => (
                     <FormControlLabel
                       key={c}
                       control={
@@ -2192,13 +2214,11 @@ export default function CostingTable() {
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ background: "#f6f9ff" }}>
-                  {costSheetColumns
-                    .filter((c) => visibleCols[c] !== false)
-                    .map((c) => (
-                      <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
-                        {c}
-                      </TableCell>
-                    ))}
+                  {visibleCostSheetColumns.map((c) => (
+                    <TableCell key={c} sx={{ fontWeight: 800, fontSize: 12 }}>
+                      {c}
+                    </TableCell>
+                  ))}
                   <TableCell sx={{ fontWeight: 800, fontSize: 12 }}>Action</TableCell>
                 </TableRow>
               </TableHead>
@@ -2206,13 +2226,11 @@ export default function CostingTable() {
               <TableBody>
                 {visibleCostSheets.map((r, idx) => (
                   <TableRow key={String(r["Cost Sheet ID"] || idx)} hover>
-                    {costSheetColumns
-                      .filter((c) => visibleCols[c] !== false)
-                      .map((c) => (
-                        <TableCell key={c} sx={{ fontSize: 12 }}>
-                          {String(r[c] ?? "")}
-                        </TableCell>
-                      ))}
+                    {visibleCostSheetColumns.map((c) => (
+                      <TableCell key={c} sx={{ fontSize: 12 }}>
+                        {String(r[c] ?? "")}
+                      </TableCell>
+                    ))}
                     <TableCell>
                       <IconButton onClick={() => openEditModalById(r["Cost Sheet ID"])}>
                         <EditIcon sx={{ color: cornflowerBlue }} />
@@ -2237,7 +2255,7 @@ export default function CostingTable() {
 
                 {!visibleCostSheets.length ? (
                   <TableRow>
-                    <TableCell colSpan={costSheetColumns.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                    <TableCell colSpan={visibleCostSheetColumns.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
                       No cost sheets found.
                     </TableCell>
                   </TableRow>
@@ -3630,7 +3648,13 @@ export default function CostingTable() {
                     Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
                   </Typography>
                   <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
-                    {detailsLoading ? "Loading line items…" : `${lineItems.length} active line item(s)`}
+                    {detailsLoading
+                      ? "Loading line items…"
+                      : `${lineItems.length} active line item(s)${
+                          hiddenLineItemCount
+                            ? `, showing first ${visibleLineItems.length}. Use Line Item Search for the full sheet.`
+                            : ""
+                        }`}
                   </Typography>
                 </Box>
 
@@ -3671,7 +3695,7 @@ export default function CostingTable() {
                     ) : null}
 
                     {!detailsLoading &&
-                      (lineItems || []).map((it, idx) => (
+                      visibleLineItems.map((it, idx) => (
                         <TableRow key={it.__lineKey || idx} hover>
                           {lineItemCols.map((c) => (
                             <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
@@ -3697,6 +3721,15 @@ export default function CostingTable() {
                           </TableCell>
                         </TableRow>
                       ))}
+
+                    {!detailsLoading && hiddenLineItemCount ? (
+                      <TableRow>
+                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.72 }}>
+                          {hiddenLineItemCount} more active line item(s) are loaded but not rendered here to keep
+                          this dialog responsive. Use Line Item Search or export for the full list.
+                        </TableCell>
+                      </TableRow>
+                    ) : null}
 
                     {!detailsLoading && !lineItems.length ? (
                       <TableRow>

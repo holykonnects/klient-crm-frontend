@@ -78,6 +78,16 @@ const COST_SHEET_LIST_FIELDS = [
 const COST_SHEET_RENDER_LIMIT = 200;
 const LINE_ITEM_RENDER_LIMIT = 100;
 
+const COST_SHEET_UPDATED_FIELDS = [
+  "Last Updated At",
+  "Last Updated",
+  "Updated At",
+  "Modified At",
+  "Last Modified At",
+  "Last Calculated At",
+  "Timestamp",
+];
+
 /* ===================== helpers ===================== */
 
 function safeNum(v) {
@@ -91,6 +101,54 @@ function fmtINR(n) {
   } catch {
     return String(n);
   }
+}
+
+function parseDateValue(v) {
+  if (v === null || v === undefined || v === "") return null;
+  if (v instanceof Date && !isNaN(v.getTime())) return v;
+
+  const s = String(v).trim();
+  if (!s) return null;
+
+  const parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return parsed;
+
+  const dmy = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+.*)?$/);
+  if (dmy) {
+    const d = new Date(Number(dmy[3]), Number(dmy[2]) - 1, Number(dmy[1]));
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  return null;
+}
+
+function getDateTimeMs(v) {
+  const d = parseDateValue(v);
+  return d ? d.getTime() : 0;
+}
+
+function isDateColumn(column) {
+  const c = String(column || "").toLowerCase();
+  return c === "timestamp" || c.includes(" date") || c.endsWith("date") || c.includes(" at");
+}
+
+function formatDateCell(column, value) {
+  if (!isDateColumn(column)) return String(value ?? "");
+  const d = parseDateValue(value);
+  if (!d) return String(value ?? "");
+
+  const dd = String(d.getDate()).padStart(2, "0");
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const yyyy = d.getFullYear();
+  return `${dd}/${mm}/${yyyy}`;
+}
+
+function getCostSheetUpdatedMs(row) {
+  for (const field of COST_SHEET_UPDATED_FIELDS) {
+    const ms = getDateTimeMs(row?.[field]);
+    if (ms) return ms;
+  }
+  return 0;
 }
 
 /**
@@ -393,6 +451,10 @@ function csvEscapeCell(v) {
   const s = String(v ?? "");
   if (/[",\n\r]/.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
+}
+
+function csvCell(column, value) {
+  return csvEscapeCell(formatDateCell(column, value));
 }
 
 function isActiveLineItem(row) {
@@ -780,6 +842,7 @@ export default function CostingTable() {
       mergeBy: extractForm.mergeBy,
       activeOnly: "true",
       excludeInactive: "true",
+      dateFormat: "DD/MM/YYYY",
 
       ...(extractForm.exportType === "finance"
         ? {
@@ -1093,14 +1156,16 @@ export default function CostingTable() {
   const filtered = useMemo(() => {
     const q = normalizeSearchText(debouncedSearch);
 
-    return costSheets.filter((r) => {
-      const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
-      const entityOk =
-        !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
+    return costSheets
+      .filter((r) => {
+        const statusOk = !statusFilter || String(r["Status"] || "").trim() === statusFilter;
+        const entityOk =
+          !entityTypeFilter || String(r["Linked Entity Type"] || "").trim() === entityTypeFilter;
 
-      const qOk = !q || String(r.__searchText || "").includes(q);
-      return statusOk && entityOk && qOk;
-    });
+        const qOk = !q || String(r.__searchText || "").includes(q);
+        return statusOk && entityOk && qOk;
+      })
+      .sort((a, b) => getCostSheetUpdatedMs(b) - getCostSheetUpdatedMs(a));
   }, [costSheets, debouncedSearch, statusFilter, entityTypeFilter]);
 
   const visibleCostSheets = useMemo(() => {
@@ -2032,7 +2097,7 @@ export default function CostingTable() {
     const lines = [
       headers.map(csvEscapeCell).join(","),
       ...rows.map((row) =>
-        headers.map((c) => csvEscapeCell(getLineSearchValue(row, c))).join(",")
+        headers.map((c) => csvCell(c, getLineSearchValue(row, c))).join(",")
       ),
     ];
 
@@ -2084,7 +2149,7 @@ export default function CostingTable() {
 
       const lines = [
         headers.map(csvEscapeCell).join(","),
-        ...rows.map((row) => headers.map((h) => csvEscapeCell(row[h])).join(",")),
+        ...rows.map((row) => headers.map((h) => csvCell(h, row[h])).join(",")),
       ];
 
       const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
@@ -2425,7 +2490,7 @@ export default function CostingTable() {
                   <TableRow key={String(r["Cost Sheet ID"] || idx)} hover>
                     {visibleCostSheetColumns.map((c) => (
                       <TableCell key={c} sx={{ fontSize: 12 }}>
-                        {String(r[c] ?? "")}
+                        {formatDateCell(c, r[c])}
                       </TableCell>
                     ))}
                     <TableCell>
@@ -2776,7 +2841,7 @@ export default function CostingTable() {
                           <TableRow key={row.__lineKey || idx} hover>
                             {lineSearchDisplayCols.map((c) => (
                               <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
-                                {String(getLineSearchValue(row, c) ?? "")}
+                                {formatDateCell(c, getLineSearchValue(row, c))}
                               </TableCell>
                             ))}
                             <TableCell sx={{ whiteSpace: "nowrap" }}>
@@ -3986,7 +4051,7 @@ export default function CostingTable() {
                           <TableRow key={it.__lineKey || idx} hover>
                             {lineItemCols.map((c) => (
                               <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
-                                {String(it[c] ?? "")}
+                                {formatDateCell(c, it[c])}
                               </TableCell>
                             ))}
                             <TableCell sx={{ whiteSpace: "nowrap" }}>

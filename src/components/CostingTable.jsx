@@ -395,6 +395,20 @@ function csvEscapeCell(v) {
   return s;
 }
 
+function isActiveLineItem(row) {
+  const active = String(row?.["Active"] ?? "Yes").trim().toLowerCase();
+  return active !== "no";
+}
+
+function prepareActiveLineItems(costSheetId, items) {
+  const activeOnly = (Array.isArray(items) ? items : []).filter(isActiveLineItem);
+
+  return activeOnly.map((x, idx) => ({
+    ...x,
+    __lineKey: makeLineItemKey(costSheetId, x) || `${costSheetId}__fallback__${idx}`,
+  }));
+}
+
 const LineItemSearchBox = React.memo(function LineItemSearchBox({
   initialValue,
   loading,
@@ -457,6 +471,7 @@ export default function CostingTable() {
 
   const [loading, setLoading] = useState(false);
   const [detailsLoading, setDetailsLoading] = useState(false);
+  const [downloadingCostSheetId, setDownloadingCostSheetId] = useState("");
   const [submitProgress, setSubmitProgress] = useState(null); // { done, total, label }
 
   const [validation, setValidation] = useState({
@@ -482,6 +497,8 @@ export default function CostingTable() {
   const [activeSheet, setActiveSheet] = useState(null);
   const [lineItems, setLineItems] = useState([]);
   const [lineItemHeaders, setLineItemHeaders] = useState([]);
+  const [lineItemsRequested, setLineItemsRequested] = useState(false);
+  const [lineItemsTotalCount, setLineItemsTotalCount] = useState(0);
 
   const [mainTab, setMainTab] = useState("sheets");
   const [lineSearchRows, setLineSearchRows] = useState([]);
@@ -760,6 +777,8 @@ export default function CostingTable() {
     const baseParams = {
       action: exportAction,
       mergeBy: extractForm.mergeBy,
+      activeOnly: "true",
+      excludeInactive: "true",
 
       ...(extractForm.exportType === "finance"
         ? {
@@ -874,6 +893,7 @@ export default function CostingTable() {
   const [addExpenseItems, setAddExpenseItems] = useState([]);
 
   const loadSeq = useRef(0);
+  const costSheetDetailsCache = useRef({});
 
   /**
    * ✅ FAST REFRESH (GAS efficiency update)
@@ -1134,38 +1154,73 @@ export default function CostingTable() {
   }
 
   async function openEditModal(row) {
-    await ensureValidationLoaded();
+    const id = String(row?.["Cost Sheet ID"] || "").trim();
+    const cached = id ? costSheetDetailsCache.current[id] : null;
 
     setActiveSheet(row);
     setOpenEdit(true);
-    setLineItems([]);
-    setLineItemHeaders(fallbackLineItemHeaders);
+    setLineItems(cached?.rows || []);
+    setLineItemHeaders(cached?.headers || fallbackLineItemHeaders);
+    setLineItemsTotalCount(cached?.totalCount || cached?.rows?.length || 0);
+    setLineItemsRequested(Boolean(cached));
+    setDetailsLoading(false);
+    ensureValidationLoaded();
+  }
+
+  async function fetchLineItemsForModal(costSheetId) {
+    const params = new URLSearchParams({
+      action: "searchCostLineItems",
+      q: costSheetId,
+      searchColumn: "Cost Sheet ID",
+      matchMode: "exact",
+      groupBy: "Cost Sheet ID",
+      limit: String(LINE_ITEM_RENDER_LIMIT),
+      offset: "0",
+    });
+
+    const data = await jsonpGet(`${BACKEND}?${params.toString()}`);
+    if (data?.success && Array.isArray(data.rows)) {
+      const rows = prepareActiveLineItems(costSheetId, data.rows);
+      return {
+        rows,
+        totalCount: safeNum(data.totalCount) || rows.length,
+      };
+    }
+
+    console.warn("LINE_ITEMS_SEARCH_FALLBACK_TO_DETAILS", data);
+    const items = await jsonpGet(
+      `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+    );
+
+    if (!Array.isArray(items)) {
+      console.error("DETAILS_NOT_ARRAY", items);
+      throw new Error("This cost sheet returned invalid detail data.");
+    }
+
+    const rows = prepareActiveLineItems(costSheetId, items);
+    return {
+      rows,
+      totalCount: rows.length,
+    };
+  }
+
+  async function loadLineItemsForSheet(costSheetId, { force = false } = {}) {
+    const id = String(costSheetId || "").trim();
+    if (!id) return;
+
+    const cached = costSheetDetailsCache.current[id];
+    if (cached && !force) {
+      setLineItems(cached.rows || []);
+      setLineItemHeaders(cached.headers || fallbackLineItemHeaders);
+      setLineItemsTotalCount(cached.totalCount || cached.rows?.length || 0);
+      setLineItemsRequested(true);
+      return;
+    }
+
+    setLineItemsRequested(true);
     setDetailsLoading(true);
-
     try {
-      const id = String(row?.["Cost Sheet ID"] || "").trim();
-
-      const items = await jsonpGet(
-        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(id)}`
-      );
-
-      if (!Array.isArray(items)) {
-        console.error("DETAILS_NOT_ARRAY", items);
-        alert("This cost sheet returned invalid detail data. Please check the backend response.");
-        setLineItems([]);
-        setLineItemHeaders(fallbackLineItemHeaders);
-        return;
-      }
-
-      const activeOnly = items.filter((x) => {
-        const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
-        return a !== "no";
-      });
-
-      const withKeys = activeOnly.map((x, idx) => ({
-        ...x,
-        __lineKey: makeLineItemKey(id, x) || `${id}__fallback__${idx}`,
-      }));
+      const { rows: withKeys, totalCount } = await fetchLineItemsForModal(id);
 
       const keys = withKeys.map((x) => x.__lineKey);
       const dupes = keys.filter((k, i) => keys.indexOf(k) !== i);
@@ -1174,6 +1229,7 @@ export default function CostingTable() {
       }
 
       setLineItems(withKeys);
+      setLineItemsTotalCount(totalCount);
 
       const mergedHeaders = Array.from(
         new Set(
@@ -1181,12 +1237,15 @@ export default function CostingTable() {
         )
       );
 
-      setLineItemHeaders(mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders);
+      const headers = mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders;
+      setLineItemHeaders(headers);
+      costSheetDetailsCache.current[id] = { rows: withKeys, headers, totalCount };
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
-      alert("Failed to open cost sheet details.");
+      alert(e?.message || "Failed to open cost sheet details.");
       setLineItems([]);
       setLineItemHeaders(fallbackLineItemHeaders);
+      setLineItemsTotalCount(0);
     } finally {
       setDetailsLoading(false);
     }
@@ -1214,46 +1273,52 @@ export default function CostingTable() {
     await openEditModal(row);
   }
 
-  async function refreshLineItemsForActiveSheet(costSheetId) {
-    setDetailsLoading(true);
-    try {
-      const items = await jsonpGet(
-        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
-      );
-
-      if (!Array.isArray(items)) {
-        console.error("REFRESH_DETAILS_NOT_ARRAY", items);
-        setLineItems([]);
-        setLineItemHeaders(fallbackLineItemHeaders);
-        return;
-      }
-
-      const activeOnly = items.filter((x) => {
-        const a = String(x?.["Active"] ?? "Yes").trim().toLowerCase();
-        return a !== "no";
-      });
-
-      const withKeys = activeOnly.map((x, idx) => ({
-        ...x,
-        __lineKey: makeLineItemKey(costSheetId, x) || `${costSheetId}__fallback__${idx}`,
-      }));
-
-      setLineItems(withKeys);
-
-      const mergedHeaders = Array.from(
-        new Set(
-          withKeys.flatMap((x) => Object.keys(x || {})).filter((h) => h !== "__lineKey")
-        )
-      );
-
-      setLineItemHeaders(mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders);
-    } catch (e) {
-      console.error("REFRESH_LINE_ITEMS_ERROR", e);
-      setLineItems([]);
-      setLineItemHeaders(fallbackLineItemHeaders);
-    } finally {
-      setDetailsLoading(false);
+  async function openLineItemFromSearch(row) {
+    const costSheetId = String(getLineSearchValue(row, "Cost Sheet ID") || "").trim();
+    if (!costSheetId) {
+      alert("Cannot edit this line item because Cost Sheet ID is missing.");
+      return;
     }
+
+    const sheetRow =
+      (costSheets || []).find(
+        (x) => String(x?.["Cost Sheet ID"] || "").trim() === costSheetId
+      ) || {
+        "Cost Sheet ID": costSheetId,
+        "Linked Entity Type": getLineSearchValue(row, "Linked Entity Type"),
+        "Linked Entity ID": getLineSearchValue(row, "Linked Entity ID"),
+        "Linked Entity Name": getLineSearchValue(row, "Linked Entity Name"),
+        "Client Name": getLineSearchValue(row, "Client Name"),
+        "Project Type": getLineSearchValue(row, "Project Type"),
+        Owner: getLineSearchValue(row, "Owner"),
+      };
+
+    const prepared = prepareActiveLineItems(costSheetId, [row]);
+    if (!prepared.length) {
+      alert("This line item is inactive and cannot be edited from the fast editor.");
+      return;
+    }
+
+    const headers = Array.from(
+      new Set(
+        [...fallbackLineItemHeaders, ...Object.keys(prepared[0] || {})].filter(
+          (h) => h && !String(h).startsWith("__")
+        )
+      )
+    );
+
+    setActiveSheet(sheetRow);
+    setOpenEdit(true);
+    setLineItems(prepared);
+    setLineItemHeaders(headers);
+    setLineItemsTotalCount(1);
+    setLineItemsRequested(true);
+    setDetailsLoading(false);
+    await openDrawerEdit(prepared[0]);
+  }
+
+  async function refreshLineItemsForActiveSheet(costSheetId) {
+    await loadLineItemsForSheet(costSheetId, { force: true });
   }
 
   /**
@@ -1309,11 +1374,11 @@ export default function CostingTable() {
         data: { costSheetId, items: [payloadRow] },
       });
 
+      delete costSheetDetailsCache.current[costSheetId];
       setTimeout(async () => {
-        await Promise.all([
-          refreshLineItemsForActiveSheet(costSheetId),
-          refreshAfterMutation(),
-        ]);
+        const tasks = [refreshAfterMutation()];
+        if (lineItemsRequested) tasks.unshift(refreshLineItemsForActiveSheet(costSheetId));
+        await Promise.all(tasks);
       }, 150);
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
@@ -1386,6 +1451,10 @@ export default function CostingTable() {
   const grandTotal = useMemo(() => {
     return Object.values(totalsByHead).reduce((a, b) => a + safeNum(b), 0);
   }, [totalsByHead]);
+
+  const displayedGrandTotal = lineItemsRequested
+    ? grandTotal
+    : safeNum(activeSheet?.["Grand Total"]);
 
   const subcatsForHead = (head) => {
     const m = validation.subcategories || {};
@@ -1850,7 +1919,9 @@ export default function CostingTable() {
     return (lineItems || []).slice(0, LINE_ITEM_RENDER_LIMIT);
   }, [lineItems]);
 
-  const hiddenLineItemCount = Math.max(0, (lineItems || []).length - visibleLineItems.length);
+  const loadedLineItemCount = (lineItems || []).length;
+  const lineItemsKnownTotal = Math.max(lineItemsTotalCount || 0, loadedLineItemCount);
+  const hiddenLineItemCount = Math.max(0, lineItemsKnownTotal - visibleLineItems.length);
 
   const filteredLineSearchRows = useMemo(() => {
     if (!lineSearchSubmitted) return [];
@@ -1908,6 +1979,63 @@ export default function CostingTable() {
       URL.revokeObjectURL(url);
       a.remove();
     }, 300);
+  }
+
+  async function downloadActiveCostSheetCsv(sheetRow) {
+    const costSheetId = String(sheetRow?.["Cost Sheet ID"] || "").trim();
+    if (!costSheetId) {
+      alert("Cannot download: Cost Sheet ID is missing.");
+      return;
+    }
+
+    setDownloadingCostSheetId(costSheetId);
+    try {
+      const items = await jsonpGet(
+        `${BACKEND}?action=getCostSheetDetails&costSheetId=${encodeURIComponent(costSheetId)}`
+      );
+
+      if (!Array.isArray(items)) {
+        console.error("DOWNLOAD_DETAILS_NOT_ARRAY", items);
+        alert("Could not download this cost sheet. Detail data was invalid.");
+        return;
+      }
+
+      const rows = prepareActiveLineItems(costSheetId, items);
+      if (!rows.length) {
+        alert("No active line items found for this cost sheet.");
+        return;
+      }
+
+      const headers = Array.from(
+        new Set(
+          [...fallbackLineItemHeaders, ...rows.flatMap((row) => Object.keys(row || {}))]
+            .filter((h) => h && !String(h).startsWith("__") && h !== "Active")
+        )
+      );
+
+      const lines = [
+        headers.map(csvEscapeCell).join(","),
+        ...rows.map((row) => headers.map((h) => csvEscapeCell(row[h])).join(",")),
+      ];
+
+      const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.href = url;
+      a.download = `cost_sheet_${costSheetId}_${stamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        URL.revokeObjectURL(url);
+        a.remove();
+      }, 300);
+    } catch (e) {
+      console.error("DOWNLOAD_ACTIVE_COST_SHEET_ERROR", e);
+      alert("Failed to download active cost sheet data.");
+    } finally {
+      setDownloadingCostSheetId("");
+    }
   }
 
   /* ===================== Keyboard Shortcuts ===================== */
@@ -2239,15 +2367,14 @@ export default function CostingTable() {
                       <IconButton
                         size="small"
                         title="Download Cost Sheet"
-                        onClick={() => {
-                          const csId = r?.["Cost Sheet ID"] || "";
-                          const url = `${BACKEND}?action=exportCosting&format=csv&costSheetId=${encodeURIComponent(
-                            csId
-                          )}`;
-                          window.open(url, "_blank");
-                        }}
+                        onClick={() => downloadActiveCostSheetCsv(r)}
+                        disabled={Boolean(downloadingCostSheetId)}
                       >
-                        <DownloadIcon fontSize="small" />
+                        {downloadingCostSheetId === String(r?.["Cost Sheet ID"] || "").trim() ? (
+                          <CircularProgress size={16} />
+                        ) : (
+                          <DownloadIcon fontSize="small" />
+                        )}
                       </IconButton>
                     </TableCell>
                   </TableRow>
@@ -2586,8 +2713,8 @@ export default function CostingTable() {
                             <TableCell sx={{ whiteSpace: "nowrap" }}>
                               <IconButton
                                 size="small"
-                                title="Open Cost Sheet"
-                                onClick={() => openEditModalById(getLineSearchValue(row, "Cost Sheet ID"))}
+                                title="Edit Line Item"
+                                onClick={() => openLineItemFromSearch(row)}
                               >
                                 <EditIcon sx={{ color: cornflowerBlue }} fontSize="small" />
                               </IconButton>
@@ -3645,14 +3772,16 @@ export default function CostingTable() {
               >
                 <Box>
                   <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                    Grand Total (Active Items): ₹ {fmtINR(grandTotal)}
+                    Grand Total (Active Items): ₹ {fmtINR(displayedGrandTotal)}
                   </Typography>
                   <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
-                    {detailsLoading
+                    {!lineItemsRequested
+                      ? "Line items are not loaded yet."
+                      : detailsLoading
                       ? "Loading line items…"
-                      : `${lineItems.length} active line item(s)${
+                      : `${loadedLineItemCount} active line item(s) loaded${
                           hiddenLineItemCount
-                            ? `, showing first ${visibleLineItems.length}. Use Line Item Search for the full sheet.`
+                            ? ` of ${lineItemsKnownTotal}. Use Line Item Search for older entries.`
                             : ""
                         }`}
                   </Typography>
@@ -3666,82 +3795,116 @@ export default function CostingTable() {
                 >
                   Add Line Item
                 </Button>
+
+                <Button
+                  variant="outlined"
+                  startIcon={<RefreshIcon />}
+                  disabled={detailsLoading || !activeSheet?.["Cost Sheet ID"]}
+                  onClick={() =>
+                    loadLineItemsForSheet(activeSheet?.["Cost Sheet ID"], {
+                      force: lineItemsRequested,
+                    })
+                  }
+                >
+                  {lineItemsRequested ? "Refresh Line Items" : "Load / Edit Line Items"}
+                </Button>
               </Box>
             </Paper>
 
-            <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
-              <TableContainer sx={{ maxHeight: 520 }}>
-                <Table size="small" stickyHeader>
-                  <TableHead>
-                    <TableRow sx={{ background: "#f6f9ff" }}>
-                      {lineItemCols.map((c) => (
-                        <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
-                          {c}
-                        </TableCell>
-                      ))}
-                      <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
-                        Actions
-                      </TableCell>
-                    </TableRow>
-                  </TableHead>
-
-                  <TableBody>
-                    {detailsLoading ? (
-                      <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
-                          Loading line items…
+            {!lineItemsRequested ? (
+              <Paper sx={{ p: 2, borderRadius: 2, border: "1px solid #eee" }}>
+                <Typography sx={{ fontWeight: 900, fontSize: 13, mb: 0.6 }}>
+                  Line items are loaded only when needed
+                </Typography>
+                <Typography sx={{ fontSize: 12, opacity: 0.72, mb: 1.5 }}>
+                  This keeps the cost sheet modal fast. Add a new line item directly, or load line items when you
+                  need to view, edit, or delete existing entries.
+                </Typography>
+                <Button
+                  variant="contained"
+                  startIcon={<RefreshIcon />}
+                  sx={{ bgcolor: cornflowerBlue }}
+                  disabled={detailsLoading || !activeSheet?.["Cost Sheet ID"]}
+                  onClick={() => loadLineItemsForSheet(activeSheet?.["Cost Sheet ID"])}
+                >
+                  Load / Edit Line Items
+                </Button>
+              </Paper>
+            ) : (
+              <Paper sx={{ borderRadius: 2, border: "1px solid #eee", overflow: "hidden" }}>
+                <TableContainer sx={{ maxHeight: 520 }}>
+                  <Table size="small" stickyHeader>
+                    <TableHead>
+                      <TableRow sx={{ background: "#f6f9ff" }}>
+                        {lineItemCols.map((c) => (
+                          <TableCell key={c} sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                            {c}
+                          </TableCell>
+                        ))}
+                        <TableCell sx={{ fontWeight: 900, fontSize: 11, whiteSpace: "nowrap" }}>
+                          Actions
                         </TableCell>
                       </TableRow>
-                    ) : null}
+                    </TableHead>
 
-                    {!detailsLoading &&
-                      visibleLineItems.map((it, idx) => (
-                        <TableRow key={it.__lineKey || idx} hover>
-                          {lineItemCols.map((c) => (
-                            <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
-                              {String(it[c] ?? "")}
-                            </TableCell>
-                          ))}
-                          <TableCell sx={{ whiteSpace: "nowrap" }}>
-                            <IconButton
-                              title="Edit (will mark old row inactive and append updated row)"
-                              onClick={() => openDrawerEdit(it)}
-                              disabled={loading}
-                            >
-                              <EditIcon sx={{ color: cornflowerBlue }} />
-                            </IconButton>
-
-                            <IconButton
-                              onClick={() => softDeleteLineItem(it)}
-                              disabled={loading}
-                              title="Delete"
-                            >
-                              <DeleteOutlineIcon sx={{ color: "#c62828" }} />
-                            </IconButton>
+                    <TableBody>
+                      {detailsLoading ? (
+                        <TableRow>
+                          <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                            Loading line items…
                           </TableCell>
                         </TableRow>
-                      ))}
+                      ) : null}
 
-                    {!detailsLoading && hiddenLineItemCount ? (
-                      <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.72 }}>
-                          {hiddenLineItemCount} more active line item(s) are loaded but not rendered here to keep
-                          this dialog responsive. Use Line Item Search or export for the full list.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
+                      {!detailsLoading &&
+                        visibleLineItems.map((it, idx) => (
+                          <TableRow key={it.__lineKey || idx} hover>
+                            {lineItemCols.map((c) => (
+                              <TableCell key={c} sx={{ fontSize: 11, verticalAlign: "top" }}>
+                                {String(it[c] ?? "")}
+                              </TableCell>
+                            ))}
+                            <TableCell sx={{ whiteSpace: "nowrap" }}>
+                              <IconButton
+                                title="Edit (will mark old row inactive and append updated row)"
+                                onClick={() => openDrawerEdit(it)}
+                                disabled={loading}
+                              >
+                                <EditIcon sx={{ color: cornflowerBlue }} />
+                              </IconButton>
 
-                    {!detailsLoading && !lineItems.length ? (
-                      <TableRow>
-                        <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
-                          No line items found for this cost sheet.
-                        </TableCell>
-                      </TableRow>
-                    ) : null}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </Paper>
+                              <IconButton
+                                onClick={() => softDeleteLineItem(it)}
+                                disabled={loading}
+                                title="Delete"
+                              >
+                                <DeleteOutlineIcon sx={{ color: "#c62828" }} />
+                              </IconButton>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+
+                      {!detailsLoading && hiddenLineItemCount ? (
+                        <TableRow>
+                          <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.72 }}>
+                            {hiddenLineItemCount} more matching line item(s) are not loaded in this fast editor view.
+                            Use Line Item Search to find and open older entries.
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+
+                      {!detailsLoading && !lineItems.length ? (
+                        <TableRow>
+                          <TableCell colSpan={lineItemCols.length + 1} sx={{ fontSize: 12, opacity: 0.7 }}>
+                            No line items found for this cost sheet.
+                          </TableCell>
+                        </TableRow>
+                      ) : null}
+                    </TableBody>
+                  </Table>
+                </TableContainer>
+              </Paper>
+            )}
 
             {/* RIGHT DRAWER */}
             <Drawer

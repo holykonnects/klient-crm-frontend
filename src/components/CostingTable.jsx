@@ -76,7 +76,7 @@ const COST_SHEET_LIST_FIELDS = [
 ];
 
 const COST_SHEET_RENDER_LIMIT = 200;
-const LINE_ITEM_RENDER_LIMIT = 300;
+const LINE_ITEM_RENDER_LIMIT = 100;
 
 /* ===================== helpers ===================== */
 
@@ -896,6 +896,58 @@ export default function CostingTable() {
   const loadSeq = useRef(0);
   const costSheetDetailsCache = useRef({});
 
+  function getCachedLineItemPage(costSheetId, offset = 0) {
+    const id = String(costSheetId || "").trim();
+    const pageOffset = safeNum(offset);
+    const entry = costSheetDetailsCache.current[id];
+    if (!entry) return null;
+
+    const page = entry.pages?.[pageOffset];
+    if (page) {
+      return {
+        rows: page.rows || [],
+        headers: page.headers || entry.headers || fallbackLineItemHeaders,
+        totalCount: entry.totalCount || page.rows?.length || 0,
+        offset: pageOffset,
+      };
+    }
+
+    if (pageOffset === 0 && entry.rows) {
+      return {
+        rows: entry.rows || [],
+        headers: entry.headers || fallbackLineItemHeaders,
+        totalCount: entry.totalCount || entry.rows?.length || 0,
+        offset: 0,
+      };
+    }
+
+    return null;
+  }
+
+  function setCachedLineItemPage(costSheetId, offset, rows, headers, totalCount) {
+    const id = String(costSheetId || "").trim();
+    if (!id) return;
+
+    const pageOffset = safeNum(offset);
+    const prev = costSheetDetailsCache.current[id] || {};
+    const next = {
+      ...prev,
+      pages: {
+        ...(prev.pages || {}),
+        [pageOffset]: { rows, headers },
+      },
+      headers,
+      totalCount,
+    };
+
+    if (pageOffset === 0) {
+      next.rows = rows;
+      next.offset = 0;
+    }
+
+    costSheetDetailsCache.current[id] = next;
+  }
+
   /**
    * ✅ FAST REFRESH (GAS efficiency update)
    * GAS now recomputes totals when line items are added/updated (batch endpoints),
@@ -1156,7 +1208,7 @@ export default function CostingTable() {
 
   async function openEditModal(row) {
     const id = String(row?.["Cost Sheet ID"] || "").trim();
-    const cached = id ? costSheetDetailsCache.current[id] : null;
+    const cached = id ? getCachedLineItemPage(id, 0) : null;
 
     setActiveSheet(row);
     setOpenEdit(true);
@@ -1211,8 +1263,8 @@ export default function CostingTable() {
     const id = String(costSheetId || "").trim();
     if (!id) return;
 
-    const cached = costSheetDetailsCache.current[id];
-    if (cached && !force && offset === 0) {
+    const cached = getCachedLineItemPage(id, offset);
+    if (cached && !force) {
       setLineItems(cached.rows || []);
       setLineItemHeaders(cached.headers || fallbackLineItemHeaders);
       setLineItemsTotalCount(cached.totalCount || cached.rows?.length || 0);
@@ -1244,9 +1296,7 @@ export default function CostingTable() {
 
       const headers = mergedHeaders.length ? mergedHeaders : fallbackLineItemHeaders;
       setLineItemHeaders(headers);
-      if (offset === 0) {
-        costSheetDetailsCache.current[id] = { rows: withKeys, headers, totalCount, offset };
-      }
+      setCachedLineItemPage(id, offset, withKeys, headers, totalCount);
     } catch (e) {
       console.error("OPEN_EDIT_COST_SHEET_ERROR", e);
       alert(e?.message || "Failed to open cost sheet details.");
@@ -1319,6 +1369,7 @@ export default function CostingTable() {
     setLineItems(prepared);
     setLineItemHeaders(headers);
     setLineItemsTotalCount(1);
+    setLineItemsOffset(0);
     setLineItemsRequested(true);
     setDetailsLoading(false);
     await openDrawerEdit(prepared[0]);
@@ -1459,9 +1510,8 @@ export default function CostingTable() {
     return Object.values(totalsByHead).reduce((a, b) => a + safeNum(b), 0);
   }, [totalsByHead]);
 
-  const displayedGrandTotal = lineItemsRequested
-    ? grandTotal
-    : safeNum(activeSheet?.["Grand Total"]);
+  const displayedGrandTotal = safeNum(activeSheet?.["Grand Total"]) || grandTotal;
+  const displayedPageTotal = grandTotal;
 
   const subcatsForHead = (head) => {
     const m = validation.subcategories || {};
@@ -1937,7 +1987,7 @@ export default function CostingTable() {
   function loadLineItemPage(nextOffset) {
     const safeOffset = Math.max(0, safeNum(nextOffset));
     return loadLineItemsForSheet(activeSheet?.["Cost Sheet ID"], {
-      force: true,
+      force: false,
       offset: safeOffset,
     });
   }
@@ -3791,8 +3841,13 @@ export default function CostingTable() {
               >
                 <Box sx={{ minWidth: 240, flex: "1 1 280px" }}>
                   <Typography sx={{ fontWeight: 900, fontSize: 12 }}>
-                    Grand Total (Active Items): ₹ {fmtINR(displayedGrandTotal)}
+                    Overall Total (Active Items): ₹ {fmtINR(displayedGrandTotal)}
                   </Typography>
+                  {lineItemsRequested ? (
+                    <Typography sx={{ fontSize: 11, fontWeight: 800, color: "#1f2a44" }}>
+                      Current Page Total: ₹ {fmtINR(displayedPageTotal)}
+                    </Typography>
+                  ) : null}
                   <Typography sx={{ fontSize: 11, opacity: 0.7 }}>
                     {!lineItemsRequested
                       ? "Line items are not loaded yet."

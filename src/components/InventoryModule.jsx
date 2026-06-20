@@ -996,18 +996,18 @@ export default function InventoryModule({
       const overrideKey = getRequiredOverrideKey(it, index);
       const overrideValue = requiredOverrides[overrideKey];
       const hasOverride = overrideValue !== undefined && overrideValue !== "";
-      const requiredQty = hasOverride ? Math.max(0, asNum(overrideValue)) : asNum(it.requiredQty);
-      const availableTotalQty = asNum(it.availableTotalQty);
+      const adjustedRequiredQty = hasOverride ? Math.max(0, asNum(overrideValue)) : asNum(it.requiredQty);
+      const baseAvailableTotalQty = asNum(it.availableTotalQty);
       const packSize = asNum(it.packSize);
       const baseItem = {
         ...it,
         overrideKey,
         calculatedRequiredQty: asNum(it.requiredQty),
-        requiredQty: round2(requiredQty),
-        estimatedPacksNeeded: packSize > 0 ? Math.ceil(requiredQty / packSize) : 0,
-        estimatedPackagingQty: packSize > 0 ? round2(Math.ceil(requiredQty / packSize) * packSize) : 0,
-        shortageQty: round2(Math.max(0, requiredQty - availableTotalQty)),
-        canFulfill: requiredQty > 0 ? requiredQty <= availableTotalQty : true,
+        requiredQty: round2(adjustedRequiredQty),
+        estimatedPacksNeeded: packSize > 0 ? Math.ceil(adjustedRequiredQty / packSize) : 0,
+        estimatedPackagingQty: packSize > 0 ? round2(Math.ceil(adjustedRequiredQty / packSize) * packSize) : 0,
+        shortageQty: round2(Math.max(0, adjustedRequiredQty - baseAvailableTotalQty)),
+        canFulfill: adjustedRequiredQty > 0 ? adjustedRequiredQty <= baseAvailableTotalQty : true,
       };
       const requiresAcrylicColor = shouldUseAcrylicColorSelection(category, it.materialName);
       const colorKey = getAllocationKey(it, index);
@@ -1045,9 +1045,9 @@ export default function InventoryModule({
         const optionKey = getColorOptionKey(option);
         const areaKey = `${colorKey}__${optionKey}`;
         const allocatedArea = asNum(selectedColorAreas[areaKey]);
-        const requiredQty =
+        const colorRequiredQty =
           totalAllocatedArea > 0
-            ? round2(requiredQty * (allocatedArea / totalAllocatedArea))
+            ? round2(adjustedRequiredQty * (allocatedArea / totalAllocatedArea))
             : 0;
         const stockRow =
           stockByMaterial[normalizeKey(option.skuCode)] ||
@@ -1055,7 +1055,7 @@ export default function InventoryModule({
           stockByMaterial[normalizeKey([option.materialName, option.variant].filter(Boolean).join("__"))] ||
           null;
         const stockInfo = getStockAvailability(stockRow);
-        const shortageQty = Math.max(0, requiredQty - stockInfo.availableTotalQty);
+        const shortageQty = Math.max(0, colorRequiredQty - stockInfo.availableTotalQty);
 
         return {
           skuCode: option.skuCode || getSkuCode(stockRow),
@@ -1065,10 +1065,10 @@ export default function InventoryModule({
           optionKey,
           areaKey,
           allocatedArea,
-          requiredQty,
+          requiredQty: colorRequiredQty,
           packSize: stockInfo.packSize,
           estimatedPacksNeeded:
-            stockInfo.packSize > 0 ? Math.ceil(requiredQty / stockInfo.packSize) : 0,
+            stockInfo.packSize > 0 ? Math.ceil(colorRequiredQty / stockInfo.packSize) : 0,
           availablePackagedQty: stockInfo.availablePackagedQty,
           availableLooseQty: stockInfo.availableLooseQty,
           availableTotalQty: stockInfo.availableTotalQty,
@@ -1080,7 +1080,7 @@ export default function InventoryModule({
       const availableTotalQty = colorBreakup.reduce((sum, item) => sum + asNum(item.availableTotalQty), 0);
       const shortageQty = selectedColorOptions.length
         ? colorBreakup.reduce((sum, item) => sum + asNum(item.shortageQty), 0)
-        : requiredQty;
+        : adjustedRequiredQty;
       const estimatedPacksNeeded = colorBreakup.reduce(
         (sum, item) => sum + asNum(item.estimatedPacksNeeded),
         0

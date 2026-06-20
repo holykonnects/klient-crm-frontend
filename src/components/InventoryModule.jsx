@@ -265,6 +265,10 @@ function getAllocationKey(item, index) {
   return `${index}__${normalizeKey(item?.skuCode || item?.materialName)}`;
 }
 
+function getRequiredOverrideKey(item, index) {
+  return `${index}__${normalizeKey([item?.skuCode, item?.materialName, item?.calcType].filter(Boolean).join("__"))}`;
+}
+
 function getColorOptionKey(option) {
   if (typeof option === "object" && option) {
     return normalizeKey(option.skuCode || option.variant || option.label || option.materialName);
@@ -291,6 +295,10 @@ function isAcrylicColorMaterial(materialName) {
     n.includes("ACRYLIC COLOR") ||
     n.includes("ACRYLIC COLOUR")
   );
+}
+
+function shouldUseAcrylicColorSelection(category, materialName) {
+  return toUpper(category) === "ACRYLIC" && isAcrylicColorMaterial(materialName);
 }
 
 function getStockMaterialName(row) {
@@ -776,6 +784,7 @@ export default function InventoryModule({
 
   const [calcResult, setCalcResult] = useState(null);
   const [calcLoading, setCalcLoading] = useState(false);
+  const [requiredOverrides, setRequiredOverrides] = useState({});
   const [selectedAcrylicColors, setSelectedAcrylicColors] = useState({});
   const [selectedColorAreas, setSelectedColorAreas] = useState({});
 
@@ -984,7 +993,23 @@ export default function InventoryModule({
 
   const calcDisplayItems = useMemo(() => {
     return (calcResult?.items || []).map((it, index) => {
-      const requiresAcrylicColor = isAcrylicColorMaterial(it.materialName);
+      const overrideKey = getRequiredOverrideKey(it, index);
+      const overrideValue = requiredOverrides[overrideKey];
+      const hasOverride = overrideValue !== undefined && overrideValue !== "";
+      const adjustedRequiredQty = hasOverride ? Math.max(0, asNum(overrideValue)) : asNum(it.requiredQty);
+      const baseAvailableTotalQty = asNum(it.availableTotalQty);
+      const packSize = asNum(it.packSize);
+      const baseItem = {
+        ...it,
+        overrideKey,
+        calculatedRequiredQty: asNum(it.requiredQty),
+        requiredQty: round2(adjustedRequiredQty),
+        estimatedPacksNeeded: packSize > 0 ? Math.ceil(adjustedRequiredQty / packSize) : 0,
+        estimatedPackagingQty: packSize > 0 ? round2(Math.ceil(adjustedRequiredQty / packSize) * packSize) : 0,
+        shortageQty: round2(Math.max(0, adjustedRequiredQty - baseAvailableTotalQty)),
+        canFulfill: adjustedRequiredQty > 0 ? adjustedRequiredQty <= baseAvailableTotalQty : true,
+      };
+      const requiresAcrylicColor = shouldUseAcrylicColorSelection(category, it.materialName);
       const colorKey = getAllocationKey(it, index);
       const selectedOptions = requiresAcrylicColor
         ? selectedAcrylicColors[colorKey] || []
@@ -992,7 +1017,7 @@ export default function InventoryModule({
 
       if (!requiresAcrylicColor || !acrylicColorOptions.length) {
         return {
-          ...it,
+          ...baseItem,
           colorKey,
           requiresAcrylicColor,
           selectedMaterialName: it.materialName,
@@ -1020,9 +1045,9 @@ export default function InventoryModule({
         const optionKey = getColorOptionKey(option);
         const areaKey = `${colorKey}__${optionKey}`;
         const allocatedArea = asNum(selectedColorAreas[areaKey]);
-        const requiredQty =
+        const colorRequiredQty =
           totalAllocatedArea > 0
-            ? round2(asNum(it.requiredQty) * (allocatedArea / totalAllocatedArea))
+            ? round2(adjustedRequiredQty * (allocatedArea / totalAllocatedArea))
             : 0;
         const stockRow =
           stockByMaterial[normalizeKey(option.skuCode)] ||
@@ -1030,7 +1055,7 @@ export default function InventoryModule({
           stockByMaterial[normalizeKey([option.materialName, option.variant].filter(Boolean).join("__"))] ||
           null;
         const stockInfo = getStockAvailability(stockRow);
-        const shortageQty = Math.max(0, requiredQty - stockInfo.availableTotalQty);
+        const shortageQty = Math.max(0, colorRequiredQty - stockInfo.availableTotalQty);
 
         return {
           skuCode: option.skuCode || getSkuCode(stockRow),
@@ -1040,10 +1065,10 @@ export default function InventoryModule({
           optionKey,
           areaKey,
           allocatedArea,
-          requiredQty,
+          requiredQty: colorRequiredQty,
           packSize: stockInfo.packSize,
           estimatedPacksNeeded:
-            stockInfo.packSize > 0 ? Math.ceil(requiredQty / stockInfo.packSize) : 0,
+            stockInfo.packSize > 0 ? Math.ceil(colorRequiredQty / stockInfo.packSize) : 0,
           availablePackagedQty: stockInfo.availablePackagedQty,
           availableLooseQty: stockInfo.availableLooseQty,
           availableTotalQty: stockInfo.availableTotalQty,
@@ -1055,14 +1080,14 @@ export default function InventoryModule({
       const availableTotalQty = colorBreakup.reduce((sum, item) => sum + asNum(item.availableTotalQty), 0);
       const shortageQty = selectedColorOptions.length
         ? colorBreakup.reduce((sum, item) => sum + asNum(item.shortageQty), 0)
-        : asNum(it.requiredQty);
+        : adjustedRequiredQty;
       const estimatedPacksNeeded = colorBreakup.reduce(
         (sum, item) => sum + asNum(item.estimatedPacksNeeded),
         0
       );
 
       return {
-        ...it,
+        ...baseItem,
         colorKey,
         requiresAcrylicColor,
         selectedMaterialName: colorBreakup.map((item) => item.variant).filter(Boolean).join(", "),
@@ -1082,7 +1107,7 @@ export default function InventoryModule({
           colorBreakup.every((item) => item.canFulfill),
       };
     });
-  }, [calcResult, selectedAcrylicColors, selectedColorAreas, acrylicColorOptions, stockByMaterial]);
+  }, [calcResult, selectedAcrylicColors, selectedColorAreas, acrylicColorOptions, stockByMaterial, category]);
 
   const totals = useMemo(() => {
     const items = calcDisplayItems || [];
@@ -1238,7 +1263,7 @@ export default function InventoryModule({
     const items = calcResult?.items || [];
     const colorItems = items
       .map((item, index) => ({ item, index, key: getAllocationKey(item, index) }))
-      .filter(({ item }) => isAcrylicColorMaterial(item.materialName));
+      .filter(({ item }) => shouldUseAcrylicColorSelection(category, item.materialName));
 
     if (!colorItems.length) {
       setSelectedAcrylicColors({});
@@ -1266,7 +1291,7 @@ export default function InventoryModule({
       });
       return next;
     });
-  }, [calcResult, acrylicColorOptions]);
+  }, [calcResult, acrylicColorOptions, category]);
 
   useEffect(() => {
     const items = calcResult?.items || [];
@@ -1278,7 +1303,7 @@ export default function InventoryModule({
       const next = { ...prev };
 
       items.forEach((item, index) => {
-        if (!isAcrylicColorMaterial(item.materialName)) return;
+        if (!shouldUseAcrylicColorSelection(category, item.materialName)) return;
 
         const colorKey = getAllocationKey(item, index);
         const selectedOptions = selectedAcrylicColors[colorKey] || [];
@@ -1293,7 +1318,7 @@ export default function InventoryModule({
 
       return changed ? next : prev;
     });
-  }, [calcResult, normalizedInputs, selectedAcrylicColors]);
+  }, [calcResult, normalizedInputs, selectedAcrylicColors, category]);
 
   useEffect(() => {
     if (!apiUrl) return;
@@ -1317,6 +1342,7 @@ export default function InventoryModule({
         configRows,
         stockRows,
       });
+      setRequiredOverrides({});
       setCalcResult(result);
     } catch (e) {
       console.error("local calculate error:", e);
@@ -1662,6 +1688,8 @@ export default function InventoryModule({
                 onChange={(e) => {
                   setCategory(e.target.value);
                   setVariant("");
+                  setCalcResult(null);
+                  setRequiredOverrides({});
                 }}
                 sx={{ fontFamily }}
               >
@@ -1677,7 +1705,11 @@ export default function InventoryModule({
               <Select
                 label="Variant / Base Type"
                 value={variant}
-                onChange={(e) => setVariant(e.target.value)}
+                onChange={(e) => {
+                  setVariant(e.target.value);
+                  setCalcResult(null);
+                  setRequiredOverrides({});
+                }}
                 sx={{ fontFamily }}
               >
                 {(variantsList || []).map((v) => (
@@ -1970,7 +2002,51 @@ export default function InventoryModule({
                         )}
                       </TableCell>
                       <TableCell sx={{ fontFamily }}>{it.unit}</TableCell>
-                      <TableCell sx={{ fontFamily }} align="right">{round2(it.requiredQty)}</TableCell>
+                      <TableCell sx={{ fontFamily, minWidth: 150 }} align="right">
+                        <TextField
+                          size="small"
+                          type="number"
+                          value={
+                            requiredOverrides[it.overrideKey] !== undefined
+                              ? requiredOverrides[it.overrideKey]
+                              : round2(it.requiredQty)
+                          }
+                          onChange={(e) =>
+                            setRequiredOverrides((prev) => ({
+                              ...prev,
+                              [it.overrideKey]: e.target.value,
+                            }))
+                          }
+                          helperText={
+                            asNum(it.calculatedRequiredQty) !== asNum(it.requiredQty)
+                              ? `Calc ${round2(it.calculatedRequiredQty)}`
+                              : "Editable"
+                          }
+                          FormHelperTextProps={{
+                            sx: { mx: 0, textAlign: "right", fontFamily, fontSize: 10.5 },
+                          }}
+                          inputProps={{
+                            min: 0,
+                            step: "0.01",
+                            style: { fontFamily, textAlign: "right", width: 92 },
+                          }}
+                        />
+                        {asNum(it.calculatedRequiredQty) !== asNum(it.requiredQty) ? (
+                          <Button
+                            size="small"
+                            onClick={() =>
+                              setRequiredOverrides((prev) => {
+                                const next = { ...prev };
+                                delete next[it.overrideKey];
+                                return next;
+                              })
+                            }
+                            sx={{ mt: 0.4, minWidth: 0, fontFamily, fontSize: 10 }}
+                          >
+                            Reset
+                          </Button>
+                        ) : null}
+                      </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{it.packSize ? round2(it.packSize) : "-"}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{it.estimatedPacksNeeded || "-"}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">{round2(it.availableTotalQty)}</TableCell>
@@ -1993,7 +2069,7 @@ export default function InventoryModule({
 
         {calcResult?.items?.length ? (
           <Alert severity="info" sx={{ mt: 2, fontFamily }}>
-            Pack sizes shown here are read-only estimates from current stock. Final package allocation is handled by the stock admin during booking review.
+            Required quantities can be edited before booking for client-specific requirements. Pack sizes shown here are read-only estimates from current stock. Final package allocation is handled by the stock admin during booking review.
           </Alert>
         ) : null}
       </Paper>

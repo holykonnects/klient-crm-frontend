@@ -293,6 +293,10 @@ function isAcrylicColorMaterial(materialName) {
   );
 }
 
+function shouldUseAcrylicColorSelection(category, materialName) {
+  return toUpper(category) === "ACRYLIC" && isAcrylicColorMaterial(materialName);
+}
+
 function getStockMaterialName(row) {
   return pickFirst(row, ["materialName", "Material Name", "Item Name", "itemName", "Material"]);
 }
@@ -984,7 +988,7 @@ export default function InventoryModule({
 
   const calcDisplayItems = useMemo(() => {
     return (calcResult?.items || []).map((it, index) => {
-      const requiresAcrylicColor = isAcrylicColorMaterial(it.materialName);
+      const requiresAcrylicColor = shouldUseAcrylicColorSelection(category, it.materialName);
       const colorKey = getAllocationKey(it, index);
       const selectedOptions = requiresAcrylicColor
         ? selectedAcrylicColors[colorKey] || []
@@ -1082,7 +1086,7 @@ export default function InventoryModule({
           colorBreakup.every((item) => item.canFulfill),
       };
     });
-  }, [calcResult, selectedAcrylicColors, selectedColorAreas, acrylicColorOptions, stockByMaterial]);
+  }, [calcResult, selectedAcrylicColors, selectedColorAreas, acrylicColorOptions, stockByMaterial, category]);
 
   const totals = useMemo(() => {
     const items = calcDisplayItems || [];
@@ -1238,7 +1242,7 @@ export default function InventoryModule({
     const items = calcResult?.items || [];
     const colorItems = items
       .map((item, index) => ({ item, index, key: getAllocationKey(item, index) }))
-      .filter(({ item }) => isAcrylicColorMaterial(item.materialName));
+      .filter(({ item }) => shouldUseAcrylicColorSelection(category, item.materialName));
 
     if (!colorItems.length) {
       setSelectedAcrylicColors({});
@@ -1266,7 +1270,7 @@ export default function InventoryModule({
       });
       return next;
     });
-  }, [calcResult, acrylicColorOptions]);
+  }, [calcResult, acrylicColorOptions, category]);
 
   useEffect(() => {
     const items = calcResult?.items || [];
@@ -1278,7 +1282,7 @@ export default function InventoryModule({
       const next = { ...prev };
 
       items.forEach((item, index) => {
-        if (!isAcrylicColorMaterial(item.materialName)) return;
+        if (!shouldUseAcrylicColorSelection(category, item.materialName)) return;
 
         const colorKey = getAllocationKey(item, index);
         const selectedOptions = selectedAcrylicColors[colorKey] || [];
@@ -1293,7 +1297,7 @@ export default function InventoryModule({
 
       return changed ? next : prev;
     });
-  }, [calcResult, normalizedInputs, selectedAcrylicColors]);
+  }, [calcResult, normalizedInputs, selectedAcrylicColors, category]);
 
   useEffect(() => {
     if (!apiUrl) return;

@@ -272,24 +272,30 @@ function deriveModalState(row) {
 }
 
 function mapCreateCategoryToStoredCategory(category) {
-    const value = safeStr(category);
-  
-    if (value === "Acrylic Material") return "Acrylic";
-    if (value === "PU Material") return "PU";
-    if (value === "Acrylic or PU Material") return "Acrylic or PU";
-  
-    return value;
-  }
-  
-  function mapStoredCategoryToCreateCategory(category) {
-    const value = safeStr(category);
-  
-    if (value === "Acrylic") return "Acrylic Material";
-    if (value === "PU") return "PU Material";
-    if (value === "Acrylic or PU") return "Acrylic or PU Material";
-  
-    return value;
-  }
+  const value = safeStr(category);
+  const normalized = normalizeKey(value);
+
+  if (normalized === "ACRYLIC MATERIAL" || normalized === "ACRYLIC") return "ACRYLIC";
+  if (normalized === "PU MATERIAL" || normalized === "PU") return "PU";
+  if (normalized === "ACRYLIC OR PU MATERIAL" || normalized === "ACRYLIC OR PU") return "ACRYLIC OR PU";
+
+  return value;
+}
+
+function mapStoredCategoryToCreateCategory(category) {
+  const value = safeStr(category);
+  const normalized = normalizeKey(value);
+
+  if (normalized === "ACRYLIC MATERIAL" || normalized === "ACRYLIC") return "ACRYLIC";
+  if (normalized === "PU MATERIAL" || normalized === "PU") return "PU";
+  if (normalized === "ACRYLIC OR PU MATERIAL" || normalized === "ACRYLIC OR PU") return "ACRYLIC OR PU";
+
+  return value;
+}
+
+function sameInventoryCategory(a, b) {
+  return normalizeKey(mapCreateCategoryToStoredCategory(a)) === normalizeKey(mapCreateCategoryToStoredCategory(b));
+}
 
 function buildNewMaterialState(defaultCategory = "") {
   const mappedDefaultCategory =
@@ -478,7 +484,7 @@ export default function StockManagement({
 
   const skuOptions = useMemo(() => {
     return (skuRows || [])
-      .filter((row) => category === "ALL" || toUpper(row.category) === toUpper(category))
+      .filter((row) => category === "ALL" || sameInventoryCategory(row.category, category))
       .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
   }, [skuRows, category]);
 
@@ -487,7 +493,7 @@ export default function StockManagement({
       .filter(
         (row) =>
           !safeStr(createForm.category) ||
-          toUpper(row.category) === toUpper(createForm.category)
+          sameInventoryCategory(row.category, createForm.category)
       )
       .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
   }, [skuRows, createForm.category]);
@@ -532,7 +538,7 @@ export default function StockManagement({
     if (!selectedCategory) return [];
 
     const fromSku = (skuRows || [])
-      .filter((row) => toUpper(row.category) === toUpper(selectedCategory))
+      .filter((row) => sameInventoryCategory(row.category, selectedCategory))
       .map((row) => safeStr(row.materialName))
       .filter(Boolean);
 
@@ -558,6 +564,20 @@ export default function StockManagement({
 
     return Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b));
   }, [skuRows, validation, createForm.category, materialValidationRows]);
+
+  const createVariantOptions = useMemo(() => {
+    if (!safeStr(createForm.category) || !safeStr(createForm.materialName)) return [];
+
+    return Array.from(
+      new Set(
+        (skuRows || [])
+          .filter((row) => sameInventoryCategory(row.category, createForm.category))
+          .filter((row) => normalizeKey(row.materialName) === normalizeKey(createForm.materialName))
+          .map((row) => safeStr(row.variant))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [skuRows, createForm.category, createForm.materialName]);
 
   // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
@@ -969,7 +989,7 @@ export default function StockManagement({
         const selectedMaterial = safeStr(value);
         const sku = (skuRows || []).find(
           (row) =>
-            toUpper(row.category) === toUpper(next.category) &&
+            sameInventoryCategory(row.category, next.category) &&
             toUpper(row.materialName) === toUpper(selectedMaterial)
         );
 
@@ -990,6 +1010,19 @@ export default function StockManagement({
           ).sort((a, b) => a - b);
 
           next.packSizeOptions = next.packSizeOptionsList.join(", ");
+        }
+      }
+
+      if (field === "variant") {
+        const sku = (skuRows || []).find(
+          (row) =>
+            sameInventoryCategory(row.category, next.category) &&
+            normalizeKey(row.materialName) === normalizeKey(next.materialName) &&
+            normalizeKey(row.variant) === normalizeKey(value)
+        );
+
+        if (sku) {
+          next.skuCode = sku.skuCode;
         }
       }
 
@@ -1648,7 +1681,6 @@ export default function StockManagement({
                     Min Stock
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Updated By</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
                     Update
                   </TableCell>
@@ -1714,9 +1746,6 @@ export default function StockManagement({
                           color={isActive ? "success" : "default"}
                           sx={{ fontFamily }}
                         />
-                      </TableCell>
-                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
-                        {row.updatedBy || "-"}
                       </TableCell>
                       <TableCell align="center">
                         <Tooltip title="Update Stock">
@@ -2240,15 +2269,34 @@ export default function StockManagement({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Variant"
-                  value={createForm.variant || ""}
-                  onChange={(e) => handleCreateChange("variant", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                {createVariantOptions.length ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Variant</InputLabel>
+                    <Select
+                      label="Variant"
+                      value={createForm.variant || ""}
+                      onChange={(e) => handleCreateChange("variant", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
+                      <MenuItem value="">Select Variant</MenuItem>
+                      {createVariantOptions.map((variant) => (
+                        <MenuItem key={variant} value={variant}>
+                          {variant}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Variant"
+                    value={createForm.variant || ""}
+                    onChange={(e) => handleCreateChange("variant", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
+                )}
               </Grid>
 
               <Grid item xs={12} md={4}>
@@ -2494,7 +2542,7 @@ export default function StockManagement({
 
       {/* Transfer Stock Modal */}
       <Dialog open={openTransferModal} onClose={handleCloseTransferModal} fullWidth maxWidth="sm">
-        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Transfer Stock</DialogTitle>
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Transfer Partial Stock</DialogTitle>
         <DialogContent dividers>
           {transferForm ? (
             <Box>
@@ -2506,6 +2554,9 @@ export default function StockManagement({
                 {transferForm.variant ? ` | ${transferForm.variant}` : ""}
                 {transferForm.skuCode ? ` | ${transferForm.skuCode}` : ""}
               </Typography>
+              <Alert severity="info" sx={{ fontFamily, mb: 2 }}>
+                Enter only the quantity to move. If the destination location does not already have this material row, it will be created automatically.
+              </Alert>
 
               <Grid container spacing={2}>
                 <Grid item xs={12} md={6}>
@@ -2556,7 +2607,7 @@ export default function StockManagement({
                     fullWidth
                     size="small"
                     type="number"
-                    label="Packaged Qty"
+                    label="Packaged Qty to Transfer"
                     value={transferForm.transferPackagedQty}
                     onChange={(e) => handleTransferChange("transferPackagedQty", e.target.value)}
                     sx={{ fontFamily }}
@@ -2571,7 +2622,7 @@ export default function StockManagement({
                     fullWidth
                     size="small"
                     type="number"
-                    label="Loose Qty"
+                    label="Loose Qty to Transfer"
                     value={transferForm.transferLooseQty}
                     onChange={(e) => handleTransferChange("transferLooseQty", e.target.value)}
                     sx={{ fontFamily }}

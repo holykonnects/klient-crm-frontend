@@ -217,7 +217,12 @@ function parsePackSizeOptions(value) {
 function buildStockRow(row, idx) {
   const packSize = asNum(row.packSize);
   const packagedStockQty = asNum(row.packagedStockQty);
-  const readyPacksCount = packSize > 0 ? round2(packagedStockQty / packSize) : 0;
+  const packagesAvailable = hasValue(row.packagesAvailable)
+    ? asNum(row.packagesAvailable)
+    : packSize > 0
+      ? round2(packagedStockQty / packSize)
+      : 0;
+  const readyPacksCount = packagesAvailable;
 
   const reservedPackagedQty = asNum(row.reservedPackagedQty);
   const reservedLooseQty = asNum(row.reservedLooseQty);
@@ -243,6 +248,7 @@ function buildStockRow(row, idx) {
     packSize,
     packSizeOptions: safeStr(row.packSizeOptions || ""),
     packSizeOptionsList: parsePackSizeOptions(row.packSizeOptions || ""),
+    packagesAvailable: round2(packagesAvailable),
     readyPacksCount,
     packagedStockQty: round2(packagedStockQty),
     looseStockQty: round2(looseStockQty),
@@ -717,6 +723,7 @@ export default function StockManagement({
           reservedLooseQty: 0,
           availablePackagedQty: 0,
           availableLooseQty: 0,
+          packagesAvailable: 0,
           minStockLevel: 0,
           activeCount: 0,
           rowCount: 0,
@@ -731,6 +738,7 @@ export default function StockManagement({
       group.reservedLooseQty = round2(group.reservedLooseQty + asNum(row.reservedLooseQty));
       group.availablePackagedQty = round2(group.availablePackagedQty + asNum(row.availablePackagedQty));
       group.availableLooseQty = round2(group.availableLooseQty + asNum(row.availableLooseQty));
+      group.packagesAvailable = round2(group.packagesAvailable + asNum(row.packagesAvailable));
       group.minStockLevel = round2(group.minStockLevel + asNum(row.minStockLevel));
       group.activeCount += toUpper(row.active) === "TRUE" ? 1 : 0;
       group.rowCount += 1;
@@ -819,6 +827,7 @@ export default function StockManagement({
             unit: row.unit,
             packSize: row.packSize,
             packSizeOptions: row.packSizeOptions,
+            packagesAvailable: row.packagesAvailable,
             packagedStockQty: row.packagedStockQty,
             looseStockQty: row.looseStockQty,
             reservedPackagedQty: row.reservedPackagedQty,
@@ -1721,10 +1730,13 @@ export default function StockManagement({
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Sites</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaged Qty
+                    Packaged Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Loose Qty
+                    Packages Available
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Reserved Packaged
@@ -1733,10 +1745,10 @@ export default function StockManagement({
                     Reserved Loose
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Packaged
+                    Available Packaged Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Loose
+                    Available Loose Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Min Stock
@@ -1765,7 +1777,7 @@ export default function StockManagement({
                             <Chip
                               key={locRow.id}
                               size="small"
-                              label={`${locRow.location || "-"}: ${round2(locRow.availablePackagedQty)} pkg / ${round2(locRow.availableLooseQty)} loose`}
+                              label={`${locRow.location || "-"}: ${round2(locRow.availablePackagedQty)} packaged / ${round2(locRow.availableLooseQty)} loose`}
                               color={toUpper(locRow.active) === "TRUE" ? "default" : "warning"}
                               sx={{ fontFamily }}
                             />
@@ -1775,6 +1787,9 @@ export default function StockManagement({
                       <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.packagedStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagesAvailable)}
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.looseStockQty)}
@@ -1823,10 +1838,13 @@ export default function StockManagement({
                     Pack Size
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaged Qty
+                    Packaged Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Loose Qty
+                    Packages Available
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Reserved Packaged
@@ -1835,10 +1853,10 @@ export default function StockManagement({
                     Reserved Loose
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Packaged
+                    Available Packaged Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Loose
+                    Available Loose Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Min Stock
@@ -1878,6 +1896,9 @@ export default function StockManagement({
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.packagedStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagesAvailable)}
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.looseStockQty)}
@@ -2208,7 +2229,7 @@ export default function StockManagement({
                       fullWidth
                       size="small"
                       type="number"
-                      label="Ready Packs Count"
+                      label="Packages Available"
                       value={modalForm.readyPacksCount}
                       onChange={(e) => handleModalChange("readyPacksCount", e.target.value)}
                       sx={{ fontFamily }}
@@ -2221,7 +2242,7 @@ export default function StockManagement({
                       fullWidth
                       size="small"
                       type="number"
-                      label="Loose Stock Qty"
+                      label="Loose Stock Qty (Kg/Litre)"
                       value={modalForm.looseStockQty}
                       onChange={(e) => handleModalChange("looseStockQty", e.target.value)}
                       sx={{ fontFamily }}
@@ -2267,7 +2288,7 @@ export default function StockManagement({
                   </Typography>
                   <Chip
                     size="small"
-                    label={`Packaged Qty: ${round2(modalForm.packagedStockQty)}`}
+                    label={`Packaged Stock Qty (Kg/Litre): ${round2(modalForm.packagedStockQty)}`}
                     sx={{
                       fontFamily,
                       fontWeight: 600,
@@ -2303,7 +2324,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6} md={4}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Packaged Stock
+                        Packaged Stock Qty (Kg/Litre)
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
                         {round2(modalForm.packagedStockQty)}
@@ -2314,7 +2335,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Available Packaged
+                        Available Packaged Qty
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                         {round2(modalForm.availablePackagedQty)}
@@ -2325,7 +2346,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Available Loose
+                        Available Loose Qty
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                         {round2(modalForm.availableLooseQty)}
@@ -2588,7 +2609,7 @@ export default function StockManagement({
                   fullWidth
                   size="small"
                   type="number"
-                  label="Ready Packs Count"
+                  label="Packages Available"
                   value={createForm.readyPacksCount}
                   onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)}
                   sx={{ fontFamily }}
@@ -2601,7 +2622,7 @@ export default function StockManagement({
                   fullWidth
                   size="small"
                   type="number"
-                  label="Loose Stock Qty"
+                  label="Loose Stock Qty (Kg/Litre)"
                   value={createForm.looseStockQty}
                   onChange={(e) => handleCreateChange("looseStockQty", e.target.value)}
                   sx={{ fontFamily }}
@@ -2849,7 +2870,7 @@ export default function StockManagement({
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Packaged Stock Qty
+                  Packaged Stock Qty (Kg/Litre)
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.packagedStockQty)}
@@ -2858,7 +2879,7 @@ export default function StockManagement({
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Packaged Qty
+                  Available Packaged Qty
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.availablePackagedQty)}
@@ -2867,7 +2888,7 @@ export default function StockManagement({
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Loose Qty
+                  Available Loose Qty
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.availableLooseQty)}
@@ -2976,7 +2997,7 @@ export default function StockManagement({
                     fullWidth
                     size="small"
                     type="number"
-                    label="Packaged Qty to Transfer"
+                    label="Packaged Stock Qty (Kg/Litre) to Transfer"
                     value={transferForm.transferPackagedQty}
                     onChange={(e) => handleTransferChange("transferPackagedQty", e.target.value)}
                     sx={{ fontFamily }}
@@ -2991,7 +3012,7 @@ export default function StockManagement({
                     fullWidth
                     size="small"
                     type="number"
-                    label="Loose Qty to Transfer"
+                    label="Loose Stock Qty (Kg/Litre) to Transfer"
                     value={transferForm.transferLooseQty}
                     onChange={(e) => handleTransferChange("transferLooseQty", e.target.value)}
                     sx={{ fontFamily }}

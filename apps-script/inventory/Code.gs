@@ -119,6 +119,18 @@ function now_() {
 function idxMap_(headers) {
   const map = {};
   headers.forEach((h, i) => (map[String(h).trim()] = i));
+
+  [
+    ["Packaged Stock Qty", "Packaged Stock Qty (Kg/Litre)"],
+    ["Loose Stock Qty", "Loose Stock Qty (Kg/Litre)"],
+  ].forEach(function(pair) {
+    const canonical = pair[0];
+    const alternate = pair[1];
+
+    if (map[canonical] == null && map[alternate] != null) map[canonical] = map[alternate];
+    if (map[alternate] == null && map[canonical] != null) map[alternate] = map[canonical];
+  });
+
   return map;
 }
 
@@ -155,6 +167,14 @@ function isAdminRole_(role) {
 
 function setIfPresent_(row, headerMap, headerName, value) {
   if (headerMap[headerName] != null) row[headerMap[headerName]] = value;
+}
+
+function syncPackagesAvailable_(row, m) {
+  if (m["Packages Available"] == null) return;
+
+  const packSize = m["Pack Size"] != null ? asNum_(row[m["Pack Size"]]) : 0;
+  const packagedStockQty = m["Packaged Stock Qty"] != null ? asNum_(row[m["Packaged Stock Qty"]]) : 0;
+  row[m["Packages Available"]] = packSize > 0 ? round2_(packagedStockQty / packSize) : 0;
 }
 
 function getLocationFromData_(data) {
@@ -529,6 +549,9 @@ function getStock_(category) {
       const loose = asNum_(r[m["Loose Stock Qty"]]);
       const resPack = asNum_(r[m["Reserved Packaged Qty"]]);
       const resLoose = asNum_(r[m["Reserved Loose Qty"]]);
+      const packagesAvailable =
+        m["Packages Available"] != null ? asNum_(r[m["Packages Available"]]) :
+        packSize > 0 ? round2_(packaged / packSize) : 0;
 
       return {
         timestamp: m["Timestamp"] != null ? r[m["Timestamp"]] : "",
@@ -540,6 +563,7 @@ function getStock_(category) {
         unit: safeStr_(r[m["Unit"]]),
         packSize,
         packSizeOptions: m["Pack Size Options"] != null ? safeStr_(r[m["Pack Size Options"]]) : "",
+        packagesAvailable,
         packagedStockQty: packaged,
         looseStockQty: loose,
         reservedPackagedQty: resPack,
@@ -976,6 +1000,7 @@ function updateStock_(data) {
     if (m["Pack Size"] != null && data.packSize != null && safeStr_(data.packSize) !== "") {
       row[m["Pack Size"]] = asNum_(data.packSize);
     }
+    syncPackagesAvailable_(row, m);
     if (m["Updated By"] != null) row[m["Updated By"]] = doneBy || "Admin";
     if (m["Timestamp"] != null) row[m["Timestamp"]] = now_();
 
@@ -1168,6 +1193,7 @@ function setStock_(data) {
     if (m["Available Loose Qty"] != null) {
       row[m["Available Loose Qty"]] = round2_(Math.max(0, looseStockQty - reservedLooseQty));
     }
+    syncPackagesAvailable_(row, m);
 
     if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(minStockLevel);
     if (m["Active"] != null) row[m["Active"]] = active;
@@ -1287,6 +1313,7 @@ function createStockItem_(data) {
     if (m["Reserved Loose Qty"] != null) row[m["Reserved Loose Qty"]] = 0;
     if (m["Available Packaged Qty"] != null) row[m["Available Packaged Qty"]] = round2_(packagedStockQty);
     if (m["Available Loose Qty"] != null) row[m["Available Loose Qty"]] = round2_(looseStockQty);
+    syncPackagesAvailable_(row, m);
     if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(minStockLevel);
     if (m["Active"] != null) row[m["Active"]] = active;
     if (m["Updated By"] != null) row[m["Updated By"]] = doneBy || "User";
@@ -1436,6 +1463,7 @@ function transferStock_(data) {
       if (m["Reserved Loose Qty"] != null) row[m["Reserved Loose Qty"]] = 0;
       if (m["Available Packaged Qty"] != null) row[m["Available Packaged Qty"]] = 0;
       if (m["Available Loose Qty"] != null) row[m["Available Loose Qty"]] = 0;
+      syncPackagesAvailable_(row, m);
       if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(asNum_(data.minStockLevel || sourceRow[m["Min Stock Level"]]));
       if (m["Active"] != null) row[m["Active"]] = safeStr_(data.active || "TRUE");
       values.push(row);
@@ -1643,6 +1671,7 @@ function syncStockAvailable_(row, m) {
   if (m["Available Loose Qty"] != null) {
     row[m["Available Loose Qty"]] = round2_(Math.max(0, loose - reservedLoose));
   }
+  syncPackagesAvailable_(row, m);
 }
 
 function findBookingRows_(values, m, bookingId) {

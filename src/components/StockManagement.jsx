@@ -27,6 +27,8 @@ import {
   DialogTitle,
   DialogContent,
   DialogActions,
+  Checkbox,
+  ListItemText,
 } from "@mui/material";
 
 import RefreshIcon from "@mui/icons-material/Refresh";
@@ -36,6 +38,7 @@ import SaveIcon from "@mui/icons-material/Save";
 import AddIcon from "@mui/icons-material/Add";
 import ToggleOffIcon from "@mui/icons-material/ToggleOff";
 import ToggleOnIcon from "@mui/icons-material/ToggleOn";
+import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
@@ -49,6 +52,15 @@ const DEFAULT_PACK_SIZES = {
   "WEAR COAT": 21.4,
   "ADHESIVE": 15,
 };
+const CALC_MATRIX_ADMIN_EMAILS = ["holy@klientkonnect.com", "sidhant@ridosports.com"];
+const DEFAULT_CALC_TYPES = [
+  "AREA_X_RATE",
+  "AREA_X_LAYER",
+  "AREA_X_THICKNESS_RATE",
+  "AREA_X_FIXED",
+  "AREA_X_RATE_IF",
+  "FORMULA",
+];
 
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
@@ -205,7 +217,12 @@ function parsePackSizeOptions(value) {
 function buildStockRow(row, idx) {
   const packSize = asNum(row.packSize);
   const packagedStockQty = asNum(row.packagedStockQty);
-  const readyPacksCount = packSize > 0 ? round2(packagedStockQty / packSize) : 0;
+  const packagesAvailable = hasValue(row.packagesAvailable)
+    ? asNum(row.packagesAvailable)
+    : packSize > 0
+      ? round2(packagedStockQty / packSize)
+      : 0;
+  const readyPacksCount = packagesAvailable;
 
   const reservedPackagedQty = asNum(row.reservedPackagedQty);
   const reservedLooseQty = asNum(row.reservedLooseQty);
@@ -231,6 +248,7 @@ function buildStockRow(row, idx) {
     packSize,
     packSizeOptions: safeStr(row.packSizeOptions || ""),
     packSizeOptionsList: parsePackSizeOptions(row.packSizeOptions || ""),
+    packagesAvailable: round2(packagesAvailable),
     readyPacksCount,
     packagedStockQty: round2(packagedStockQty),
     looseStockQty: round2(looseStockQty),
@@ -269,24 +287,50 @@ function deriveModalState(row) {
 }
 
 function mapCreateCategoryToStoredCategory(category) {
-    const value = safeStr(category);
-  
-    if (value === "Acrylic Material") return "Acrylic";
-    if (value === "PU Material") return "PU";
-    if (value === "Acrylic or PU Material") return "Acrylic or PU";
-  
-    return value;
-  }
-  
-  function mapStoredCategoryToCreateCategory(category) {
-    const value = safeStr(category);
-  
-    if (value === "Acrylic") return "Acrylic Material";
-    if (value === "PU") return "PU Material";
-    if (value === "Acrylic or PU") return "Acrylic or PU Material";
-  
-    return value;
-  }
+  const value = safeStr(category);
+  const normalized = normalizeKey(value);
+
+  if (normalized === "ACRYLIC MATERIAL" || normalized === "ACRYLIC") return "ACRYLIC";
+  if (normalized === "PU MATERIAL" || normalized === "PU") return "PU";
+  if (normalized === "ACRYLIC OR PU MATERIAL" || normalized === "ACRYLIC OR PU") return "ACRYLIC OR PU";
+
+  return value;
+}
+
+function mapStoredCategoryToCreateCategory(category) {
+  const value = safeStr(category);
+  const normalized = normalizeKey(value);
+
+  if (normalized === "ACRYLIC MATERIAL" || normalized === "ACRYLIC") return "ACRYLIC";
+  if (normalized === "PU MATERIAL" || normalized === "PU") return "PU";
+  if (normalized === "ACRYLIC OR PU MATERIAL" || normalized === "ACRYLIC OR PU") return "ACRYLIC OR PU";
+
+  return value;
+}
+
+function sameInventoryCategory(a, b) {
+  return normalizeKey(mapCreateCategoryToStoredCategory(a)) === normalizeKey(mapCreateCategoryToStoredCategory(b));
+}
+
+function isWildcardVariant(variant) {
+  const value = normalizeKey(variant);
+  return !value || value === "ALL" || value === "DEFAULT" || value === "ALL VARIANTS" || value === "ALL COLORS";
+}
+
+function buildCalcRuleDraft({ category = "", materialName = "", variant = "", unit = "" } = {}) {
+  return {
+    category: mapCreateCategoryToStoredCategory(category),
+    variant: variant || "ALL VARIANTS",
+    materialName,
+    unit,
+    calcType: "AREA_X_RATE",
+    baseRate: "",
+    inputKey: "area",
+    dependsOn: "",
+    formula: "",
+    active: "TRUE",
+  };
+}
 
 function buildNewMaterialState(defaultCategory = "") {
   const mappedDefaultCategory =
@@ -329,12 +373,16 @@ export default function StockManagement({
     userIdentity.includes("STOCK@RIDOSPORTS.COM") ||
     userIdentity.includes("SARABJEET") ||
     normalizeKey(user.role) === "ADMIN";
+  const userEmail = safeStr(user.email || user.username).toLowerCase();
+  const canManageCalcMatrix = CALC_MATRIX_ADMIN_EMAILS.includes(userEmail);
 
   const [validation, setValidation] = useState({});
   const [validationLoading, setValidationLoading] = useState(false);
   const [skuRows, setSkuRows] = useState([]);
 
   const [category, setCategory] = useState("ALL");
+  const [locationFilter, setLocationFilter] = useState("ALL");
+  const [viewMode, setViewMode] = useState("ROWS");
   const [search, setSearch] = useState("");
 
   const [stockRows, setStockRows] = useState([]);
@@ -353,11 +401,22 @@ export default function StockManagement({
   const [creating, setCreating] = useState(false);
   const [createNotice, setCreateNotice] = useState("");
   const [createError, setCreateError] = useState("");
+  const [calcRules, setCalcRules] = useState([]);
+  const [calcRulesLoading, setCalcRulesLoading] = useState(false);
+  const [calcRuleDraft, setCalcRuleDraft] = useState(buildCalcRuleDraft());
+  const [calcRuleSaving, setCalcRuleSaving] = useState(false);
+  const [calcRuleNotice, setCalcRuleNotice] = useState("");
+  const [calcRuleError, setCalcRuleError] = useState("");
 
   const [openToggleModal, setOpenToggleModal] = useState(false);
   const [toggleRow, setToggleRow] = useState(null);
   const [toggleLoading, setToggleLoading] = useState(false);
   const [toggleError, setToggleError] = useState("");
+
+  const [openTransferModal, setOpenTransferModal] = useState(false);
+  const [transferForm, setTransferForm] = useState(null);
+  const [transferLoading, setTransferLoading] = useState(false);
+  const [transferError, setTransferError] = useState("");
 
   // ---------- Validation Mapping ----------
   // Keep the row-wise logic available for any future use or backend normalization,
@@ -468,7 +527,7 @@ export default function StockManagement({
 
   const skuOptions = useMemo(() => {
     return (skuRows || [])
-      .filter((row) => category === "ALL" || toUpper(row.category) === toUpper(category))
+      .filter((row) => category === "ALL" || sameInventoryCategory(row.category, category))
       .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
   }, [skuRows, category]);
 
@@ -477,7 +536,7 @@ export default function StockManagement({
       .filter(
         (row) =>
           !safeStr(createForm.category) ||
-          toUpper(row.category) === toUpper(createForm.category)
+          sameInventoryCategory(row.category, createForm.category)
       )
       .sort((a, b) => safeStr(a.label).localeCompare(safeStr(b.label)));
   }, [skuRows, createForm.category]);
@@ -522,7 +581,7 @@ export default function StockManagement({
     if (!selectedCategory) return [];
 
     const fromSku = (skuRows || [])
-      .filter((row) => toUpper(row.category) === toUpper(selectedCategory))
+      .filter((row) => sameInventoryCategory(row.category, selectedCategory))
       .map((row) => safeStr(row.materialName))
       .filter(Boolean);
 
@@ -548,6 +607,39 @@ export default function StockManagement({
 
     return Array.from(new Set(filtered)).sort((a, b) => a.localeCompare(b));
   }, [skuRows, validation, createForm.category, materialValidationRows]);
+
+  const createVariantOptions = useMemo(() => {
+    if (!safeStr(createForm.category) || !safeStr(createForm.materialName)) return [];
+
+    return Array.from(
+      new Set(
+        (skuRows || [])
+          .filter((row) => sameInventoryCategory(row.category, createForm.category))
+          .filter((row) => normalizeKey(row.materialName) === normalizeKey(createForm.materialName))
+          .map((row) => safeStr(row.variant))
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b));
+  }, [skuRows, createForm.category, createForm.materialName]);
+
+  const selectedCalcRule = useMemo(() => {
+    if (!safeStr(createForm.category) || !safeStr(createForm.materialName)) return null;
+
+    const selectedCategory = mapCreateCategoryToStoredCategory(createForm.category);
+    const selectedVariant = safeStr(createForm.variant);
+    const candidates = (calcRules || []).filter(
+      (rule) =>
+        sameInventoryCategory(rule.category, selectedCategory) &&
+        normalizeKey(rule.materialName) === normalizeKey(createForm.materialName)
+    );
+
+    return (
+      candidates.find((rule) => selectedVariant && normalizeKey(rule.variant) === normalizeKey(selectedVariant)) ||
+      candidates.find((rule) => isWildcardVariant(rule.variant)) ||
+      candidates[0] ||
+      null
+    );
+  }, [calcRules, createForm.category, createForm.materialName, createForm.variant]);
 
   // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
@@ -593,15 +685,71 @@ export default function StockManagement({
     return (stockRows || []).filter((row) => {
       const matchesCategory =
         category === "ALL" || toUpper(row.category) === toUpper(category);
+      const matchesLocation =
+        locationFilter === "ALL" || normalizeKey(row.location) === normalizeKey(locationFilter);
 
       const hay =
         `${row.skuCode} ${row.category} ${row.materialName} ${row.variant} ${row.location} ${row.unit} ${row.packSizeOptions}`.toUpperCase();
 
       const matchesSearch = !q || hay.includes(q);
 
-      return matchesCategory && matchesSearch;
+      return matchesCategory && matchesLocation && matchesSearch;
     });
-  }, [stockRows, category, search]);
+  }, [stockRows, category, locationFilter, search]);
+
+  const materialRows = useMemo(() => {
+    const groups = new Map();
+
+    filteredRows.forEach((row) => {
+      const key = [
+        normalizeKey(row.skuCode),
+        normalizeKey(row.category),
+        normalizeKey(row.materialName),
+        normalizeKey(row.variant),
+      ].join("||");
+
+      if (!groups.has(key)) {
+        groups.set(key, {
+          id: key,
+          skuCode: row.skuCode,
+          category: row.category,
+          materialName: row.materialName,
+          variant: row.variant,
+          unit: row.unit,
+          locations: [],
+          packagedStockQty: 0,
+          looseStockQty: 0,
+          reservedPackagedQty: 0,
+          reservedLooseQty: 0,
+          availablePackagedQty: 0,
+          availableLooseQty: 0,
+          packagesAvailable: 0,
+          minStockLevel: 0,
+          activeCount: 0,
+          rowCount: 0,
+        });
+      }
+
+      const group = groups.get(key);
+      group.locations.push(row);
+      group.packagedStockQty = round2(group.packagedStockQty + asNum(row.packagedStockQty));
+      group.looseStockQty = round2(group.looseStockQty + asNum(row.looseStockQty));
+      group.reservedPackagedQty = round2(group.reservedPackagedQty + asNum(row.reservedPackagedQty));
+      group.reservedLooseQty = round2(group.reservedLooseQty + asNum(row.reservedLooseQty));
+      group.availablePackagedQty = round2(group.availablePackagedQty + asNum(row.availablePackagedQty));
+      group.availableLooseQty = round2(group.availableLooseQty + asNum(row.availableLooseQty));
+      group.packagesAvailable = round2(group.packagesAvailable + asNum(row.packagesAvailable));
+      group.minStockLevel = round2(group.minStockLevel + asNum(row.minStockLevel));
+      group.activeCount += toUpper(row.active) === "TRUE" ? 1 : 0;
+      group.rowCount += 1;
+    });
+
+    return Array.from(groups.values()).sort((a, b) =>
+      `${a.category} ${a.materialName} ${a.variant}`.localeCompare(
+        `${b.category} ${b.materialName} ${b.variant}`
+      )
+    );
+  }, [filteredRows]);
 
   const fetchValidation = async () => {
     if (!apiUrl) return;
@@ -627,6 +775,29 @@ export default function StockManagement({
     } catch (e) {
       console.error("getSkuMaster error:", e);
       setSkuRows([]);
+    }
+  };
+
+  const fetchCalcRules = async (categoryValue = createForm.category) => {
+    if (!apiUrl || !safeStr(categoryValue)) {
+      setCalcRules([]);
+      return;
+    }
+
+    setCalcRulesLoading(true);
+
+    try {
+      const data = await apiGet(apiUrl, {
+        action: "getCalcConfig",
+        category: mapCreateCategoryToStoredCategory(categoryValue),
+        variant: "",
+      });
+      setCalcRules(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("getCalcConfig error:", e);
+      setCalcRules([]);
+    } finally {
+      setCalcRulesLoading(false);
     }
   };
 
@@ -656,6 +827,7 @@ export default function StockManagement({
             unit: row.unit,
             packSize: row.packSize,
             packSizeOptions: row.packSizeOptions,
+            packagesAvailable: row.packagesAvailable,
             packagedStockQty: row.packagedStockQty,
             looseStockQty: row.looseStockQty,
             reservedPackagedQty: row.reservedPackagedQty,
@@ -690,6 +862,36 @@ export default function StockManagement({
   useEffect(() => {
     fetchStock();
   }, [apiUrl, category]);
+
+  useEffect(() => {
+    if (openCreateModal && safeStr(createForm.category)) {
+      fetchCalcRules(createForm.category);
+    }
+  }, [openCreateModal, createForm.category]);
+
+  useEffect(() => {
+    const base = selectedCalcRule || buildCalcRuleDraft({
+      category: createForm.category,
+      materialName: createForm.materialName,
+      variant: createVariantOptions.length ? "ALL VARIANTS" : createForm.variant,
+      unit: createForm.unit,
+    });
+
+    setCalcRuleDraft({
+      category: mapCreateCategoryToStoredCategory(base.category || createForm.category),
+      variant: safeStr(base.variant || (createVariantOptions.length ? "ALL VARIANTS" : createForm.variant)),
+      materialName: safeStr(base.materialName || createForm.materialName),
+      unit: safeStr(base.unit || createForm.unit),
+      calcType: safeStr(base.calcType || "AREA_X_RATE"),
+      baseRate: safeStr(base.baseRate),
+      inputKey: safeStr(base.inputKey || "area"),
+      dependsOn: safeStr(base.dependsOn),
+      formula: safeStr(base.formula),
+      active: safeStr(base.active || "TRUE"),
+    });
+    setCalcRuleNotice("");
+    setCalcRuleError("");
+  }, [selectedCalcRule, createForm.category, createForm.materialName, createForm.variant, createForm.unit, createVariantOptions.length]);
 
 
   const handleOpenModal = (row) => {
@@ -905,7 +1107,7 @@ export default function StockManagement({
         const selectedMaterial = safeStr(value);
         const sku = (skuRows || []).find(
           (row) =>
-            toUpper(row.category) === toUpper(next.category) &&
+            sameInventoryCategory(row.category, next.category) &&
             toUpper(row.materialName) === toUpper(selectedMaterial)
         );
 
@@ -926,6 +1128,19 @@ export default function StockManagement({
           ).sort((a, b) => a - b);
 
           next.packSizeOptions = next.packSizeOptionsList.join(", ");
+        }
+      }
+
+      if (field === "variant") {
+        const sku = (skuRows || []).find(
+          (row) =>
+            sameInventoryCategory(row.category, next.category) &&
+            normalizeKey(row.materialName) === normalizeKey(next.materialName) &&
+            normalizeKey(row.variant) === normalizeKey(value)
+        );
+
+        if (sku) {
+          next.skuCode = sku.skuCode;
         }
       }
 
@@ -968,6 +1183,60 @@ export default function StockManagement({
     });
   };
 
+  const handleCalcRuleDraftChange = (field, value) => {
+    setCalcRuleDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveCalcRule = async () => {
+    if (!canManageCalcMatrix) {
+      setCalcRuleError("Only calculation matrix admins can update calculation rules.");
+      return;
+    }
+
+    if (!safeStr(calcRuleDraft.category) || !safeStr(calcRuleDraft.materialName)) {
+      setCalcRuleError("Category and Material Name are required for a calculation rule.");
+      return;
+    }
+
+    if (!safeStr(calcRuleDraft.calcType)) {
+      setCalcRuleError("Calc Type is required.");
+      return;
+    }
+
+    if (safeStr(calcRuleDraft.calcType) === "FORMULA") {
+      if (!safeStr(calcRuleDraft.formula)) {
+        setCalcRuleError("Formula is required for FORMULA rules.");
+        return;
+      }
+    } else if (!safeStr(calcRuleDraft.baseRate)) {
+      setCalcRuleError("Base Rate / Factor is required.");
+      return;
+    }
+
+    setCalcRuleSaving(true);
+    setCalcRuleNotice("");
+    setCalcRuleError("");
+
+    try {
+      await apiPostNoCors(apiUrl, {
+        action: "upsertCalcMatrixRule",
+        data: {
+          userEmail: user.email || user.username || "",
+          updatedBy: user.username || user.email || "",
+          rule: calcRuleDraft,
+        },
+      });
+
+      setCalcRuleNotice("Calculation rule update submitted.");
+      setTimeout(() => fetchCalcRules(createForm.category), 800);
+    } catch (e) {
+      console.error("upsertCalcMatrixRule error:", e);
+      setCalcRuleError(`Rule update failed: ${e.message || e}`);
+    } finally {
+      setCalcRuleSaving(false);
+    }
+  };
+
   const handleCreateMaterial = async () => {
     if (!canManageStock) {
       setCreateError("Only stock@ridosports.com or admin can add stock line items.");
@@ -989,8 +1258,14 @@ export default function StockManagement({
       return;
     }
 
-    if (!safeStr(createForm.location)) {
-      setCreateError("Stock location is required.");
+    const selectedLocations = Array.isArray(createForm.location)
+      ? createForm.location.map((loc) => safeStr(loc)).filter(Boolean)
+      : safeStr(createForm.location)
+        ? [safeStr(createForm.location)]
+        : [];
+
+    if (selectedLocations.length === 0) {
+      setCreateError("At least one stock location is required.");
       return;
     }
 
@@ -1006,34 +1281,37 @@ export default function StockManagement({
     try {
       const storedCategory = mapCreateCategoryToStoredCategory(createForm.category);
 
-      const payload = {
-        action: "createStockItem",
-        data: {
-          role: user.role || "",
-          skuCode: createForm.skuCode || "",
-          category: storedCategory,
-          materialName: createForm.materialName,
-          variant: createForm.variant || "",
-          location: safeStr(createForm.location),
-          unit: createForm.unit,
-          packSize: asNum(createForm.packSize),
-          packSizeOptions: safeStr(createForm.packSizeOptions),
-          readyPacksCount: asNum(createForm.readyPacksCount),
-          packagedStockQty: asNum(createForm.packagedStockQty),
-          looseStockQty: asNum(createForm.looseStockQty),
-          minStockLevel: asNum(createForm.minStockLevel),
-          active: safeStr(createForm.active || "TRUE"),
-          doneBy: user.username || "",
-          notes: "New stock item created from Stock Management",
-        },
-      };
-      
-      console.log("createStockItem payload =>", payload);
+      await Promise.all(
+        selectedLocations.map((location) => {
+          const payload = {
+            action: "createStockItem",
+            data: {
+              role: user.role || "",
+              skuCode: createForm.skuCode || "",
+              category: storedCategory,
+              materialName: createForm.materialName,
+              variant: createForm.variant || "",
+              location,
+              unit: createForm.unit,
+              packSize: asNum(createForm.packSize),
+              packSizeOptions: safeStr(createForm.packSizeOptions),
+              readyPacksCount: asNum(createForm.readyPacksCount),
+              packagedStockQty: asNum(createForm.packagedStockQty),
+              looseStockQty: asNum(createForm.looseStockQty),
+              minStockLevel: asNum(createForm.minStockLevel),
+              active: safeStr(createForm.active || "TRUE"),
+              doneBy: user.username || "",
+              notes: "New stock item created from Stock Management",
+            },
+          };
 
-      await apiPostNoCors(apiUrl, payload);
+          console.log("createStockItem payload =>", payload);
+          return apiPostNoCors(apiUrl, payload);
+        })
+      );
 
-      setCreateNotice("✅ Material submission sent.");
-      setGlobalNotice("✅ Material submission sent. Refreshing stock...");
+      setCreateNotice("✅ Material submission sent for selected location(s).");
+      setGlobalNotice("✅ Material submission sent for selected location(s). Refreshing stock...");
 
       setTimeout(() => {
         handleCloseCreateModal();
@@ -1111,7 +1389,114 @@ export default function StockManagement({
     }
   };
 
+  const handleOpenTransferModal = (row) => {
+    setTransferForm({
+      ...row,
+      fromLocation: row.location || "",
+      toLocation: "",
+      transferPackagedQty: 0,
+      transferLooseQty: 0,
+      notes: "Stock transfer from Stock Management",
+    });
+    setTransferError("");
+    setOpenTransferModal(true);
+  };
+
+  const handleCloseTransferModal = () => {
+    setOpenTransferModal(false);
+    setTransferForm(null);
+    setTransferError("");
+    setTransferLoading(false);
+  };
+
+  const handleTransferChange = (field, value) => {
+    setTransferForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handleSubmitTransfer = async () => {
+    if (!transferForm) return;
+    if (!canManageStock) {
+      setTransferError("Only stock@ridosports.com or admin can transfer stock.");
+      return;
+    }
+
+    const fromLocation = safeStr(transferForm.fromLocation);
+    const toLocation = safeStr(transferForm.toLocation);
+    const transferPackagedQty = asNum(transferForm.transferPackagedQty);
+    const transferLooseQty = asNum(transferForm.transferLooseQty);
+
+    if (!fromLocation) {
+      setTransferError("Source location is required.");
+      return;
+    }
+
+    if (!toLocation) {
+      setTransferError("Destination location is required.");
+      return;
+    }
+
+    if (normalizeKey(fromLocation) === normalizeKey(toLocation)) {
+      setTransferError("Source and destination locations must be different.");
+      return;
+    }
+
+    if (transferPackagedQty <= 0 && transferLooseQty <= 0) {
+      setTransferError("Enter packaged qty or loose qty to transfer.");
+      return;
+    }
+
+    if (transferPackagedQty > asNum(transferForm.availablePackagedQty)) {
+      setTransferError("Transfer packaged qty cannot exceed available packaged qty.");
+      return;
+    }
+
+    if (transferLooseQty > asNum(transferForm.availableLooseQty)) {
+      setTransferError("Transfer loose qty cannot exceed available loose qty.");
+      return;
+    }
+
+    setTransferLoading(true);
+    setTransferError("");
+
+    try {
+      await apiPostNoCors(apiUrl, {
+        action: "transferStock",
+        data: {
+          role: user.role || "",
+          skuCode: transferForm.skuCode || "",
+          category: transferForm.category,
+          materialName: transferForm.materialName,
+          variant: transferForm.variant || "",
+          fromLocation,
+          toLocation,
+          unit: transferForm.unit,
+          packSize: asNum(transferForm.packSize),
+          packSizeOptions: safeStr(transferForm.packSizeOptions),
+          packagedQty: transferPackagedQty,
+          looseQty: transferLooseQty,
+          minStockLevel: asNum(transferForm.minStockLevel),
+          active: safeStr(transferForm.active || "TRUE"),
+          doneBy: user.username || "",
+          notes: safeStr(transferForm.notes || "Stock transfer from Stock Management"),
+        },
+      });
+
+      setGlobalNotice("✅ Stock transfer submitted. Refreshing stock...");
+
+      setTimeout(() => {
+        handleCloseTransferModal();
+        fetchStock();
+      }, 900);
+    } catch (e) {
+      console.error("transferStock error:", e);
+      setTransferError(`Transfer failed: ${e.message || e}`);
+    } finally {
+      setTransferLoading(false);
+    }
+  };
+
   const totalRows = filteredRows.length;
+  const totalMaterials = materialRows.length;
   const lowStockCount = filteredRows.filter(
     (row) =>
       asNum(row.minStockLevel) > 0 &&
@@ -1191,7 +1576,7 @@ export default function StockManagement({
         }}
       >
         <Grid container spacing={2} alignItems="center">
-          <Grid item xs={12} md={3}>
+          <Grid item xs={12} md={2}>
             <FormControl fullWidth size="small">
               <InputLabel>Category</InputLabel>
               <Select
@@ -1210,7 +1595,41 @@ export default function StockManagement({
             </FormControl>
           </Grid>
 
-          <Grid item xs={12} md={5}>
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Location</InputLabel>
+              <Select
+                label="Location"
+                value={locationFilter}
+                onChange={(e) => setLocationFilter(e.target.value)}
+                sx={{ fontFamily }}
+              >
+                <MenuItem value="ALL">ALL</MenuItem>
+                {locationOptions.map((loc) => (
+                  <MenuItem key={loc} value={loc}>
+                    {loc}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={2}>
+            <FormControl fullWidth size="small">
+              <InputLabel>View</InputLabel>
+              <Select
+                label="View"
+                value={viewMode}
+                onChange={(e) => setViewMode(e.target.value)}
+                sx={{ fontFamily }}
+              >
+                <MenuItem value="ROWS">Location Rows</MenuItem>
+                <MenuItem value="MATERIALS">Material View</MenuItem>
+              </Select>
+            </FormControl>
+          </Grid>
+
+          <Grid item xs={12} md={3}>
             <TextField
               fullWidth
               size="small"
@@ -1222,7 +1641,7 @@ export default function StockManagement({
             />
           </Grid>
 
-          <Grid item xs={12} md={4}>
+          <Grid item xs={12} md={3}>
             <Box
               display="flex"
               justifyContent={{ xs: "flex-start", md: "flex-end" }}
@@ -1232,6 +1651,11 @@ export default function StockManagement({
               <Chip
                 icon={<Inventory2Icon />}
                 label={`Rows: ${totalRows}`}
+                size="small"
+                sx={{ fontFamily }}
+              />
+              <Chip
+                label={`Materials: ${totalMaterials}`}
                 size="small"
                 sx={{ fontFamily }}
               />
@@ -1279,7 +1703,7 @@ export default function StockManagement({
         <Box display="flex" alignItems="center" gap={1} mb={1}>
           <Inventory2Icon sx={{ color: cornflowerBlue }} />
           <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
-            Inventory Stock
+            {viewMode === "MATERIALS" ? "Inventory Stock by Material" : "Inventory Stock by Location"}
           </Typography>
         </Box>
 
@@ -1294,6 +1718,111 @@ export default function StockManagement({
           <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.75 }}>
             No stock rows found.
           </Typography>
+        ) : viewMode === "MATERIALS" ? (
+          <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
+            <Table size="small">
+              <TableHead>
+                <TableRow sx={{ backgroundColor: "rgba(100,149,237,0.10)" }}>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>SKU</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Category</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Material</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Variant</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Sites</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Unit</TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Packaged Stock Qty (Kg/Litre)
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Packages Available
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Stock Qty (Kg/Litre)
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Packaged
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Reserved Loose
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Packaged Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Available Loose Qty
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Min Stock
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active Sites</TableCell>
+                </TableRow>
+              </TableHead>
+
+              <TableBody>
+                {materialRows.map((row) => {
+                  const totalAvailable = round2(
+                    asNum(row.availablePackagedQty) + asNum(row.availableLooseQty)
+                  );
+                  const isLowStock =
+                    asNum(row.minStockLevel) > 0 && totalAvailable <= asNum(row.minStockLevel);
+
+                  return (
+                    <TableRow key={row.id}>
+                      <TableCell sx={{ fontFamily }}>{row.skuCode || "-"}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.category}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.materialName}</TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.variant || "-"}</TableCell>
+                      <TableCell sx={{ fontFamily, minWidth: 220 }}>
+                        <Box display="flex" gap={0.5} flexWrap="wrap">
+                          {row.locations.map((locRow) => (
+                            <Chip
+                              key={locRow.id}
+                              size="small"
+                              label={`${locRow.location || "-"}: ${round2(locRow.availablePackagedQty)} packaged / ${round2(locRow.availableLooseQty)} loose`}
+                              color={toUpper(locRow.active) === "TRUE" ? "default" : "warning"}
+                              sx={{ fontFamily }}
+                            />
+                          ))}
+                        </Box>
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }}>{row.unit}</TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagedStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagesAvailable)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.looseStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedPackagedQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.reservedLooseQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        <Chip
+                          size="small"
+                          label={round2(row.availablePackagedQty)}
+                          color={isLowStock ? "warning" : "default"}
+                          sx={{ fontFamily }}
+                        />
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.availableLooseQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.minStockLevel)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }}>
+                        {row.activeCount} / {row.rowCount}
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TableContainer>
         ) : (
           <TableContainer component={Paper} elevation={0} sx={{ borderRadius: 2 }}>
             <Table size="small">
@@ -1309,10 +1838,13 @@ export default function StockManagement({
                     Pack Size
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Packaged Qty
+                    Packaged Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Loose Qty
+                    Packages Available
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
+                    Loose Stock Qty (Kg/Litre)
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Reserved Packaged
@@ -1321,18 +1853,20 @@ export default function StockManagement({
                     Reserved Loose
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Packaged
+                    Available Packaged Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
-                    Available Loose
+                    Available Loose Qty
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="right">
                     Min Stock
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }}>Active</TableCell>
-                  <TableCell sx={{ fontFamily, fontWeight: 700 }}>Updated By</TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
                     Update
+                  </TableCell>
+                  <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
+                    Transfer
                   </TableCell>
                   <TableCell sx={{ fontFamily, fontWeight: 700 }} align="center">
                     Deactivate
@@ -1362,6 +1896,9 @@ export default function StockManagement({
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.packagedStockQty)}
+                      </TableCell>
+                      <TableCell sx={{ fontFamily }} align="right">
+                        {round2(row.packagesAvailable)}
                       </TableCell>
                       <TableCell sx={{ fontFamily }} align="right">
                         {round2(row.looseStockQty)}
@@ -1394,13 +1931,17 @@ export default function StockManagement({
                           sx={{ fontFamily }}
                         />
                       </TableCell>
-                      <TableCell sx={{ fontFamily, fontSize: 12 }}>
-                        {row.updatedBy || "-"}
-                      </TableCell>
                       <TableCell align="center">
                         <Tooltip title="Update Stock">
                           <IconButton onClick={() => handleOpenModal(row)} disabled={!canManageStock}>
                             <EditIcon sx={{ color: cornflowerBlue }} />
+                          </IconButton>
+                        </Tooltip>
+                      </TableCell>
+                      <TableCell align="center">
+                        <Tooltip title="Transfer Stock">
+                          <IconButton onClick={() => handleOpenTransferModal(row)} disabled={!canManageStock || !isActive}>
+                            <SwapHorizIcon sx={{ color: cornflowerBlue }} />
                           </IconButton>
                         </Tooltip>
                       </TableCell>
@@ -1688,7 +2229,7 @@ export default function StockManagement({
                       fullWidth
                       size="small"
                       type="number"
-                      label="Ready Packs Count"
+                      label="Packages Available"
                       value={modalForm.readyPacksCount}
                       onChange={(e) => handleModalChange("readyPacksCount", e.target.value)}
                       sx={{ fontFamily }}
@@ -1701,7 +2242,7 @@ export default function StockManagement({
                       fullWidth
                       size="small"
                       type="number"
-                      label="Loose Stock Qty"
+                      label="Loose Stock Qty (Kg/Litre)"
                       value={modalForm.looseStockQty}
                       onChange={(e) => handleModalChange("looseStockQty", e.target.value)}
                       sx={{ fontFamily }}
@@ -1747,7 +2288,7 @@ export default function StockManagement({
                   </Typography>
                   <Chip
                     size="small"
-                    label={`Packaged Qty: ${round2(modalForm.packagedStockQty)}`}
+                    label={`Packaged Stock Qty (Kg/Litre): ${round2(modalForm.packagedStockQty)}`}
                     sx={{
                       fontFamily,
                       fontWeight: 600,
@@ -1783,7 +2324,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6} md={4}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Packaged Stock
+                        Packaged Stock Qty (Kg/Litre)
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
                         {round2(modalForm.packagedStockQty)}
@@ -1794,7 +2335,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Available Packaged
+                        Available Packaged Qty
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                         {round2(modalForm.availablePackagedQty)}
@@ -1805,7 +2346,7 @@ export default function StockManagement({
                   <Grid item xs={12} sm={6}>
                     <Box sx={{ p: 1.5, borderRadius: 1, backgroundColor: "#ffffff" }}>
                       <Typography sx={{ fontFamily, fontSize: 11, opacity: 0.65 }}>
-                        Available Loose
+                        Available Loose Qty
                       </Typography>
                       <Typography sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                         {round2(modalForm.availableLooseQty)}
@@ -1912,15 +2453,34 @@ export default function StockManagement({
               </Grid>
 
               <Grid item xs={12} md={4}>
-                <TextField
-                  fullWidth
-                  size="small"
-                  label="Variant"
-                  value={createForm.variant || ""}
-                  onChange={(e) => handleCreateChange("variant", e.target.value)}
-                  sx={{ fontFamily }}
-                  inputProps={{ style: { fontFamily } }}
-                />
+                {createVariantOptions.length ? (
+                  <FormControl fullWidth size="small">
+                    <InputLabel>Variant</InputLabel>
+                    <Select
+                      label="Variant"
+                      value={createForm.variant || ""}
+                      onChange={(e) => handleCreateChange("variant", e.target.value)}
+                      sx={{ fontFamily }}
+                    >
+                      <MenuItem value="">Select Variant</MenuItem>
+                      {createVariantOptions.map((variant) => (
+                        <MenuItem key={variant} value={variant}>
+                          {variant}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                ) : (
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Variant"
+                    value={createForm.variant || ""}
+                    onChange={(e) => handleCreateChange("variant", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
+                )}
               </Grid>
 
               <Grid item xs={12} md={4}>
@@ -1956,17 +2516,25 @@ export default function StockManagement({
               <Grid item xs={12} md={4}>
                 {locationOptions.length ? (
                   <FormControl fullWidth size="small">
-                    <InputLabel>Location</InputLabel>
+                    <InputLabel>Location(s)</InputLabel>
                     <Select
-                      label="Location"
-                      value={createForm.location}
+                      multiple
+                      label="Location(s)"
+                      value={Array.isArray(createForm.location) ? createForm.location : createForm.location ? [createForm.location] : []}
                       onChange={(e) => handleCreateChange("location", e.target.value)}
+                      renderValue={(selected) => selected.join(", ")}
                       sx={{ fontFamily }}
                     >
-                      <MenuItem value="">Not set</MenuItem>
                       {locationOptions.map((loc) => (
                         <MenuItem key={loc} value={loc}>
-                          {loc}
+                          <Checkbox
+                            checked={
+                              Array.isArray(createForm.location)
+                                ? createForm.location.includes(loc)
+                                : createForm.location === loc
+                            }
+                          />
+                          <ListItemText primary={loc} />
                         </MenuItem>
                       ))}
                     </Select>
@@ -2041,7 +2609,7 @@ export default function StockManagement({
                   fullWidth
                   size="small"
                   type="number"
-                  label="Ready Packs Count"
+                  label="Packages Available"
                   value={createForm.readyPacksCount}
                   onChange={(e) => handleCreateChange("readyPacksCount", e.target.value)}
                   sx={{ fontFamily }}
@@ -2054,7 +2622,7 @@ export default function StockManagement({
                   fullWidth
                   size="small"
                   type="number"
-                  label="Loose Stock Qty"
+                  label="Loose Stock Qty (Kg/Litre)"
                   value={createForm.looseStockQty}
                   onChange={(e) => handleCreateChange("looseStockQty", e.target.value)}
                   sx={{ fontFamily }}
@@ -2094,9 +2662,215 @@ export default function StockManagement({
                 <Divider sx={{ my: 1 }} />
               </Grid>
 
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid rgba(100,149,237,0.22)",
+                    backgroundColor: "#fbfcff",
+                  }}
+                >
+                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={1} flexWrap="wrap" mb={1.5}>
+                    <Box>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        Calculation Matrix
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.72 }}>
+                        {selectedCalcRule
+                          ? "This material is mapped to an inventory calculation rule."
+                          : "No calculation rule is currently mapped for this material."}
+                      </Typography>
+                    </Box>
+                    {calcRulesLoading ? <CircularProgress size={16} /> : null}
+                  </Box>
+
+                  {!canManageCalcMatrix ? (
+                    selectedCalcRule ? (
+                      <Grid container spacing={1.5}>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Variant: ${safeStr(selectedCalcRule.variant) || "DEFAULT"}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Calc: ${selectedCalcRule.calcType}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Factor: ${selectedCalcRule.baseRate || "-"}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Input: ${selectedCalcRule.inputKey || "-"}`} sx={{ fontFamily }} />
+                        </Grid>
+                      </Grid>
+                    ) : (
+                      <Alert severity="warning" sx={{ fontFamily }}>
+                        Ask a calculation matrix admin to map this material before it is used in calculator-driven bookings.
+                      </Alert>
+                    )
+                  ) : (
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Matrix Category"
+                          value={calcRuleDraft.category}
+                          onChange={(e) => handleCalcRuleDraftChange("category", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Matrix Material"
+                          value={calcRuleDraft.materialName}
+                          onChange={(e) => handleCalcRuleDraftChange("materialName", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Variant Group"
+                          value={calcRuleDraft.variant}
+                          onChange={(e) => handleCalcRuleDraftChange("variant", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                          helperText="Use ALL VARIANTS for colors/shared rules"
+                          FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Unit"
+                          value={calcRuleDraft.unit}
+                          onChange={(e) => handleCalcRuleDraftChange("unit", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Calc Type</InputLabel>
+                          <Select
+                            label="Calc Type"
+                            value={calcRuleDraft.calcType}
+                            onChange={(e) => handleCalcRuleDraftChange("calcType", e.target.value)}
+                            sx={{ fontFamily }}
+                          >
+                            {DEFAULT_CALC_TYPES.map((type) => (
+                              <MenuItem key={type} value={type}>
+                                {type}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Base Rate / Factor"
+                          value={calcRuleDraft.baseRate}
+                          onChange={(e) => handleCalcRuleDraftChange("baseRate", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Input Key"
+                          value={calcRuleDraft.inputKey}
+                          onChange={(e) => handleCalcRuleDraftChange("inputKey", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Matrix Active</InputLabel>
+                          <Select
+                            label="Matrix Active"
+                            value={calcRuleDraft.active}
+                            onChange={(e) => handleCalcRuleDraftChange("active", e.target.value)}
+                            sx={{ fontFamily }}
+                          >
+                            <MenuItem value="TRUE">TRUE</MenuItem>
+                            <MenuItem value="FALSE">FALSE</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Depends On"
+                          value={calcRuleDraft.dependsOn}
+                          onChange={(e) => handleCalcRuleDraftChange("dependsOn", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Formula"
+                          value={calcRuleDraft.formula}
+                          onChange={(e) => handleCalcRuleDraftChange("formula", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box display="flex" justifyContent="flex-end">
+                          <Button
+                            variant="outlined"
+                            startIcon={calcRuleSaving ? <CircularProgress size={16} /> : <SaveIcon />}
+                            onClick={handleSaveCalcRule}
+                            disabled={calcRuleSaving}
+                            sx={{ textTransform: "none", fontFamily }}
+                          >
+                            Save Calculation Rule
+                          </Button>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  )}
+
+                  {calcRuleNotice ? (
+                    <Box mt={2}>
+                      <Alert severity="success" sx={{ fontFamily }}>
+                        {calcRuleNotice}
+                      </Alert>
+                    </Box>
+                  ) : null}
+
+                  {calcRuleError ? (
+                    <Box mt={2}>
+                      <Alert severity="error" sx={{ fontFamily }}>
+                        {calcRuleError}
+                      </Alert>
+                    </Box>
+                  ) : null}
+                </Paper>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
+
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Packaged Stock Qty
+                  Packaged Stock Qty (Kg/Litre)
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.packagedStockQty)}
@@ -2105,7 +2879,7 @@ export default function StockManagement({
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Packaged Qty
+                  Available Packaged Qty
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.availablePackagedQty)}
@@ -2114,7 +2888,7 @@ export default function StockManagement({
 
               <Grid item xs={12} md={4}>
                 <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.7 }}>
-                  Derived Available Loose Qty
+                  Available Loose Qty
                 </Typography>
                 <Typography sx={{ fontFamily, fontWeight: 600 }}>
                   {round2(createForm.availableLooseQty)}
@@ -2152,6 +2926,138 @@ export default function StockManagement({
             sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
           >
             Create Material
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Transfer Stock Modal */}
+      <Dialog open={openTransferModal} onClose={handleCloseTransferModal} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ fontFamily, fontWeight: 700 }}>Transfer Partial Stock</DialogTitle>
+        <DialogContent dividers>
+          {transferForm ? (
+            <Box>
+              <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44", mb: 0.5 }}>
+                {transferForm.materialName}
+              </Typography>
+              <Typography sx={{ fontFamily, fontSize: 12, color: "rgba(31,42,68,0.72)", mb: 2 }}>
+                {transferForm.category}
+                {transferForm.variant ? ` | ${transferForm.variant}` : ""}
+                {transferForm.skuCode ? ` | ${transferForm.skuCode}` : ""}
+              </Typography>
+              <Alert severity="info" sx={{ fontFamily, mb: 2 }}>
+                Enter only the quantity to move. If the destination location does not already have this material row, it will be created automatically.
+              </Alert>
+
+              <Grid container spacing={2}>
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="From Location"
+                    value={transferForm.fromLocation}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily }, readOnly: true }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  {locationOptions.length ? (
+                    <FormControl fullWidth size="small">
+                      <InputLabel>To Location</InputLabel>
+                      <Select
+                        label="To Location"
+                        value={transferForm.toLocation}
+                        onChange={(e) => handleTransferChange("toLocation", e.target.value)}
+                        sx={{ fontFamily }}
+                      >
+                        {locationOptions
+                          .filter((loc) => normalizeKey(loc) !== normalizeKey(transferForm.fromLocation))
+                          .map((loc) => (
+                            <MenuItem key={loc} value={loc}>
+                              {loc}
+                            </MenuItem>
+                          ))}
+                      </Select>
+                    </FormControl>
+                  ) : (
+                    <TextField
+                      fullWidth
+                      size="small"
+                      label="To Location"
+                      value={transferForm.toLocation}
+                      onChange={(e) => handleTransferChange("toLocation", e.target.value)}
+                      sx={{ fontFamily }}
+                      inputProps={{ style: { fontFamily } }}
+                    />
+                  )}
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Packaged Stock Qty (Kg/Litre) to Transfer"
+                    value={transferForm.transferPackagedQty}
+                    onChange={(e) => handleTransferChange("transferPackagedQty", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                    helperText={`Available: ${round2(transferForm.availablePackagedQty)}`}
+                    FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    type="number"
+                    label="Loose Stock Qty (Kg/Litre) to Transfer"
+                    value={transferForm.transferLooseQty}
+                    onChange={(e) => handleTransferChange("transferLooseQty", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                    helperText={`Available: ${round2(transferForm.availableLooseQty)}`}
+                    FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                  />
+                </Grid>
+
+                <Grid item xs={12}>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label="Notes"
+                    value={transferForm.notes}
+                    onChange={(e) => handleTransferChange("notes", e.target.value)}
+                    sx={{ fontFamily }}
+                    inputProps={{ style: { fontFamily } }}
+                  />
+                </Grid>
+              </Grid>
+
+              {transferError ? (
+                <Box mt={2}>
+                  <Alert severity="error" sx={{ fontFamily }}>
+                    {transferError}
+                  </Alert>
+                </Box>
+              ) : null}
+            </Box>
+          ) : null}
+        </DialogContent>
+
+        <DialogActions>
+          <Button onClick={handleCloseTransferModal} sx={{ textTransform: "none", fontFamily }}>
+            Close
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={transferLoading ? <CircularProgress size={16} /> : <SwapHorizIcon />}
+            onClick={handleSubmitTransfer}
+            disabled={!transferForm || transferLoading || !canManageStock}
+            sx={{ textTransform: "none", fontFamily, backgroundColor: cornflowerBlue }}
+          >
+            Transfer
           </Button>
         </DialogActions>
       </Dialog>

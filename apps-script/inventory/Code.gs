@@ -50,6 +50,10 @@ const INVENTORY_BOOKING_REQUIREMENT_TO = [
 const EMAIL_FONT_STACK = "Montserrat, Arial, sans-serif";
 const EMAIL_BODY_FONT_SIZE = "11px";
 const EMAIL_TABLE_FONT_SIZE = "10px";
+const CALC_MATRIX_ADMIN_EMAILS = [
+  "holy@klientkonnect.com",
+  "sidhant@ridosports.com",
+];
 
 
 /** ---------- Output (JSON + JSONP) ---------- **/
@@ -115,6 +119,18 @@ function now_() {
 function idxMap_(headers) {
   const map = {};
   headers.forEach((h, i) => (map[String(h).trim()] = i));
+
+  [
+    ["Packaged Stock Qty", "Packaged Stock Qty (Kg/Litre)"],
+    ["Loose Stock Qty", "Loose Stock Qty (Kg/Litre)"],
+  ].forEach(function(pair) {
+    const canonical = pair[0];
+    const alternate = pair[1];
+
+    if (map[canonical] == null && map[alternate] != null) map[canonical] = map[alternate];
+    if (map[alternate] == null && map[canonical] != null) map[alternate] = map[canonical];
+  });
+
   return map;
 }
 
@@ -151,6 +167,14 @@ function isAdminRole_(role) {
 
 function setIfPresent_(row, headerMap, headerName, value) {
   if (headerMap[headerName] != null) row[headerMap[headerName]] = value;
+}
+
+function syncPackagesAvailable_(row, m) {
+  if (m["Packages Available"] == null) return;
+
+  const packSize = m["Pack Size"] != null ? asNum_(row[m["Pack Size"]]) : 0;
+  const packagedStockQty = m["Packaged Stock Qty"] != null ? asNum_(row[m["Packaged Stock Qty"]]) : 0;
+  row[m["Packages Available"]] = packSize > 0 ? round2_(packagedStockQty / packSize) : 0;
 }
 
 function getLocationFromData_(data) {
@@ -288,6 +312,20 @@ function doPost(e) {
       return jsonOut_({ ok: true, data: result });
     }
 
+    if (action === "transferStock") {
+      Logger.log("Routing to transferStock_ with data => " + JSON.stringify(body.data || {}));
+      const result = transferStock_(body.data || {});
+      Logger.log("transferStock_ result => " + JSON.stringify(result));
+      return jsonOut_({ ok: true, data: result });
+    }
+
+    if (action === "upsertCalcMatrixRule") {
+      Logger.log("Routing to upsertCalcMatrixRule_ with data => " + JSON.stringify(body.data || {}));
+      const result = upsertCalcMatrixRule_(body.data || {});
+      Logger.log("upsertCalcMatrixRule_ result => " + JSON.stringify(result));
+      return jsonOut_({ ok: true, data: result });
+    }
+
     Logger.log("Unknown action received => " + action);
     return jsonOut_({ ok: false, error: "Unknown action", action });
   } catch (err) {
@@ -352,6 +390,8 @@ function runMutation_(body) {
   if (action === "setStock") return setStock_(data);
   if (action === "updateBookingStatus") return updateBookingStatus_(data);
   if (action === "createStockItem") return createStockItem_(data);
+  if (action === "transferStock") return transferStock_(data);
+  if (action === "upsertCalcMatrixRule") return upsertCalcMatrixRule_(data);
 
   throw new Error("Unknown mutation action: " + action);
 }
@@ -363,11 +403,15 @@ function getCalcConfig_(category, variant) {
 
   const catN = normalizeKey_(category);
   const varN = normalizeKey_(variant);
+  const wildcardVariants = ["", "ALL", "DEFAULT", "ALL VARIANTS", "ALL COLORS"];
 
   return rows
     .filter((r) => normalizeKey_(r[m["Active"]]) !== "FALSE")
     .filter((r) => !catN || normalizeKey_(r[m["Category"]]) === catN)
-    .filter((r) => !varN || normalizeKey_(r[m["Variant"]]) === varN)
+    .filter((r) => {
+      const rowVariant = normalizeKey_(r[m["Variant"]]);
+      return !varN || rowVariant === varN || wildcardVariants.indexOf(rowVariant) !== -1;
+    })
     .map((r) => ({
       category: safeStr_(r[m["Category"]]),
       variant: safeStr_(r[m["Variant"]]),
@@ -380,6 +424,112 @@ function getCalcConfig_(category, variant) {
       formula: safeStr_(r[m["Formula"]]),
       active: safeStr_(r[m["Active"]]),
     }));
+}
+
+function isCalcMatrixAdmin_(email) {
+  const emailN = safeStr_(email).toLowerCase();
+  return CALC_MATRIX_ADMIN_EMAILS.indexOf(emailN) !== -1;
+}
+
+function upsertCalcMatrixRule_(data) {
+  const userEmail = safeStr_(data.userEmail || data.email || "");
+  const updatedBy = safeStr_(data.updatedBy || userEmail || "");
+  const rule = data.rule || {};
+
+  if (!isCalcMatrixAdmin_(userEmail)) {
+    throw new Error("Only calculation matrix admins can update calculation rules");
+  }
+
+  const category = normalizeKey_(rule.category);
+  const variant = safeStr_(rule.variant || "ALL VARIANTS");
+  const materialName = safeStr_(rule.materialName);
+  const unit = safeStr_(rule.unit);
+  const calcType = safeStr_(rule.calcType);
+  const baseRate = safeStr_(rule.baseRate);
+  const inputKey = safeStr_(rule.inputKey);
+  const dependsOn = safeStr_(rule.dependsOn);
+  const formula = safeStr_(rule.formula);
+  const active = safeStr_(rule.active || "TRUE");
+
+  if (!category) throw new Error("Matrix Category is required");
+  if (!materialName) throw new Error("Matrix Material Name is required");
+  if (!unit) throw new Error("Matrix Unit is required");
+  if (!calcType) throw new Error("Matrix Calc Type is required");
+  if (calcType === "FORMULA" && !formula) throw new Error("Formula is required for FORMULA rules");
+  if (calcType !== "FORMULA" && !baseRate) throw new Error("Base Rate / Factor is required");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const sh = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_CONFIG);
+    const values = sh.getDataRange().getValues();
+    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const m = idxMap_(headers);
+
+    [
+      "Category",
+      "Variant",
+      "Material Name",
+      "Unit",
+      "Calc Type",
+      "Base Rate",
+      "Input Key",
+      "Depends On",
+      "Formula",
+      "Active",
+    ].forEach(function(header) {
+      if (m[header] == null) throw new Error('Inventory Calc Config missing "' + header + '" header');
+    });
+
+    const categoryN = normalizeKey_(category);
+    const variantN = normalizeKey_(variant);
+    const materialN = normalizeKey_(materialName);
+    let targetRow = -1;
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      if (!row.some(function(c) { return String(c).trim() !== ""; })) continue;
+      if (
+        normalizeKey_(row[m["Category"]]) === categoryN &&
+        normalizeKey_(row[m["Variant"]]) === variantN &&
+        normalizeKey_(row[m["Material Name"]]) === materialN
+      ) {
+        targetRow = r;
+        break;
+      }
+    }
+
+    const out = targetRow >= 0 ? values[targetRow] : new Array(headers.length).fill("");
+    out[m["Category"]] = category;
+    out[m["Variant"]] = variant;
+    out[m["Material Name"]] = materialName;
+    out[m["Unit"]] = unit;
+    out[m["Calc Type"]] = calcType;
+    out[m["Base Rate"]] = baseRate;
+    out[m["Input Key"]] = inputKey;
+    out[m["Depends On"]] = dependsOn;
+    out[m["Formula"]] = formula;
+    out[m["Active"]] = active;
+    if (m["Updated By"] != null) out[m["Updated By"]] = updatedBy;
+    if (m["Updated At"] != null) out[m["Updated At"]] = now_();
+
+    if (targetRow >= 0) {
+      sh.getRange(targetRow + 1, 1, 1, headers.length).setValues([out]);
+    } else {
+      sh.appendRow(out);
+    }
+
+    return {
+      category,
+      variant,
+      materialName,
+      updatedBy,
+      created: targetRow < 0,
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** ---------- Stock (Space-safe category + material) ---------- **/
@@ -399,6 +549,9 @@ function getStock_(category) {
       const loose = asNum_(r[m["Loose Stock Qty"]]);
       const resPack = asNum_(r[m["Reserved Packaged Qty"]]);
       const resLoose = asNum_(r[m["Reserved Loose Qty"]]);
+      const packagesAvailable =
+        m["Packages Available"] != null ? asNum_(r[m["Packages Available"]]) :
+        packSize > 0 ? round2_(packaged / packSize) : 0;
 
       return {
         timestamp: m["Timestamp"] != null ? r[m["Timestamp"]] : "",
@@ -410,6 +563,7 @@ function getStock_(category) {
         unit: safeStr_(r[m["Unit"]]),
         packSize,
         packSizeOptions: m["Pack Size Options"] != null ? safeStr_(r[m["Pack Size Options"]]) : "",
+        packagesAvailable,
         packagedStockQty: packaged,
         looseStockQty: loose,
         reservedPackagedQty: resPack,
@@ -846,6 +1000,7 @@ function updateStock_(data) {
     if (m["Pack Size"] != null && data.packSize != null && safeStr_(data.packSize) !== "") {
       row[m["Pack Size"]] = asNum_(data.packSize);
     }
+    syncPackagesAvailable_(row, m);
     if (m["Updated By"] != null) row[m["Updated By"]] = doneBy || "Admin";
     if (m["Timestamp"] != null) row[m["Timestamp"]] = now_();
 
@@ -1038,6 +1193,7 @@ function setStock_(data) {
     if (m["Available Loose Qty"] != null) {
       row[m["Available Loose Qty"]] = round2_(Math.max(0, looseStockQty - reservedLooseQty));
     }
+    syncPackagesAvailable_(row, m);
 
     if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(minStockLevel);
     if (m["Active"] != null) row[m["Active"]] = active;
@@ -1128,11 +1284,16 @@ function createStockItem_(data) {
     });
 
     if (exists) {
-      throw new Error(
-        `Material already exists in Inventory Stock: ${skuCode || category + " / " + materialNameRaw}` +
-          (variant ? ` / ${variant}` : "") +
-          (location ? ` / ${location}` : "")
-      );
+      return {
+        skuCode,
+        category,
+        materialName: materialNameRaw,
+        variant,
+        location,
+        unit,
+        skipped: true,
+        reason: "Material already exists for this location",
+      };
     }
 
     const row = new Array(headers.length).fill("");
@@ -1152,6 +1313,7 @@ function createStockItem_(data) {
     if (m["Reserved Loose Qty"] != null) row[m["Reserved Loose Qty"]] = 0;
     if (m["Available Packaged Qty"] != null) row[m["Available Packaged Qty"]] = round2_(packagedStockQty);
     if (m["Available Loose Qty"] != null) row[m["Available Loose Qty"]] = round2_(looseStockQty);
+    syncPackagesAvailable_(row, m);
     if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(minStockLevel);
     if (m["Active"] != null) row[m["Active"]] = active;
     if (m["Updated By"] != null) row[m["Updated By"]] = doneBy || "User";
@@ -1186,6 +1348,221 @@ function createStockItem_(data) {
       looseStockQty: round2_(looseStockQty),
       minStockLevel: round2_(minStockLevel),
       active,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function transferStock_(data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const skuCode = getSkuFromData_(data);
+    const skuCodeN = normalizeKey_(skuCode);
+    const category = normalizeKey_(data.category);
+    const materialNameRaw = safeStr_(data.materialName);
+    const materialNameN = normalizeKey_(materialNameRaw);
+    const variant = getVariantFromData_(data);
+    const variantN = normalizeKey_(variant);
+    const fromLocation = safeStr_(data.fromLocation);
+    const toLocation = safeStr_(data.toLocation);
+    const fromLocationN = normalizeKey_(fromLocation);
+    const toLocationN = normalizeKey_(toLocation);
+    const packagedQty = round2_(asNum_(data.packagedQty));
+    const looseQty = round2_(asNum_(data.looseQty));
+    const doneBy = safeStr_(data.doneBy || "");
+    const notes = safeStr_(data.notes || "Stock transfer");
+
+    if (!category) throw new Error("Missing category");
+    if (!materialNameRaw) throw new Error("Missing materialName");
+    if (!fromLocation) throw new Error("Missing fromLocation");
+    if (!toLocation) throw new Error("Missing toLocation");
+    if (fromLocationN === toLocationN) throw new Error("Source and destination locations must be different");
+    if (packagedQty <= 0 && looseQty <= 0) throw new Error("Transfer packagedQty or looseQty is required");
+
+    const stockSheet = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_STOCK);
+    const values = stockSheet.getDataRange().getValues();
+    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const m = idxMap_(headers);
+
+    [
+      "Category",
+      "Material Name",
+      "Location",
+      "Packaged Stock Qty",
+      "Loose Stock Qty",
+    ].forEach(function(header) {
+      if (m[header] == null) throw new Error('Inventory Stock missing "' + header + '" header');
+    });
+
+    let sourceIndex = -1;
+    let destinationIndex = -1;
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      if (!row.some(function(c) { return String(c).trim() !== ""; })) continue;
+
+      const rowSku = m["SKU Code"] != null ? normalizeKey_(row[m["SKU Code"]]) : "";
+      const rowCat = normalizeKey_(row[m["Category"]]);
+      const rowMat = normalizeKey_(row[m["Material Name"]]);
+      const rowVariant = m["Variant"] != null ? normalizeKey_(row[m["Variant"]]) : "";
+      const rowLocation = normalizeKey_(getLocationFromRow_(row, m));
+      const matchesMaterial = skuCodeN
+        ? rowSku === skuCodeN
+        : rowCat === category && rowMat === materialNameN && rowVariant === variantN;
+
+      if (!matchesMaterial) continue;
+      if (rowLocation === fromLocationN) sourceIndex = r;
+      if (rowLocation === toLocationN) destinationIndex = r;
+    }
+
+    if (sourceIndex < 0) {
+      throw new Error(
+        "Source material/location not found: " +
+          (skuCode || category + " / " + materialNameRaw) +
+          (variant ? " / " + variant : "") +
+          " / " +
+          fromLocation
+      );
+    }
+
+    const sourceRow = values[sourceIndex];
+    const sourcePackaged = asNum_(sourceRow[m["Packaged Stock Qty"]]);
+    const sourceLoose = asNum_(sourceRow[m["Loose Stock Qty"]]);
+    const sourceReservedPackaged = m["Reserved Packaged Qty"] != null ? asNum_(sourceRow[m["Reserved Packaged Qty"]]) : 0;
+    const sourceReservedLoose = m["Reserved Loose Qty"] != null ? asNum_(sourceRow[m["Reserved Loose Qty"]]) : 0;
+    const sourceAvailablePackaged = Math.max(0, sourcePackaged - sourceReservedPackaged);
+    const sourceAvailableLoose = Math.max(0, sourceLoose - sourceReservedLoose);
+
+    if (packagedQty > sourceAvailablePackaged) {
+      throw new Error("Transfer packaged qty exceeds available packaged qty at source");
+    }
+
+    if (looseQty > sourceAvailableLoose) {
+      throw new Error("Transfer loose qty exceeds available loose qty at source");
+    }
+
+    const destinationCreated = destinationIndex < 0;
+
+    if (destinationCreated) {
+      const row = new Array(headers.length).fill("");
+      if (m["Timestamp"] != null) row[m["Timestamp"]] = now_();
+      if (m["SKU Code"] != null) row[m["SKU Code"]] = skuCode;
+      if (m["Category"] != null) row[m["Category"]] = category;
+      if (m["Material Name"] != null) row[m["Material Name"]] = materialNameRaw;
+      if (m["Variant"] != null) row[m["Variant"]] = variant;
+      if (m["Location"] != null) row[m["Location"]] = toLocation;
+      if (m["Unit"] != null) row[m["Unit"]] = safeStr_(data.unit || sourceRow[m["Unit"]]);
+      if (m["Pack Size"] != null) row[m["Pack Size"]] = round2_(asNum_(data.packSize || sourceRow[m["Pack Size"]]));
+      if (m["Pack Size Options"] != null) row[m["Pack Size Options"]] = safeStr_(data.packSizeOptions || sourceRow[m["Pack Size Options"]]);
+      if (m["Packaged Stock Qty"] != null) row[m["Packaged Stock Qty"]] = 0;
+      if (m["Loose Stock Qty"] != null) row[m["Loose Stock Qty"]] = 0;
+      if (m["Reserved Packaged Qty"] != null) row[m["Reserved Packaged Qty"]] = 0;
+      if (m["Reserved Loose Qty"] != null) row[m["Reserved Loose Qty"]] = 0;
+      if (m["Available Packaged Qty"] != null) row[m["Available Packaged Qty"]] = 0;
+      if (m["Available Loose Qty"] != null) row[m["Available Loose Qty"]] = 0;
+      syncPackagesAvailable_(row, m);
+      if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(asNum_(data.minStockLevel || sourceRow[m["Min Stock Level"]]));
+      if (m["Active"] != null) row[m["Active"]] = safeStr_(data.active || "TRUE");
+      values.push(row);
+      destinationIndex = values.length - 1;
+    }
+
+    const destinationRow = values[destinationIndex];
+    sourceRow[m["Packaged Stock Qty"]] = round2_(sourcePackaged - packagedQty);
+    sourceRow[m["Loose Stock Qty"]] = round2_(sourceLoose - looseQty);
+    destinationRow[m["Packaged Stock Qty"]] = round2_(asNum_(destinationRow[m["Packaged Stock Qty"]]) + packagedQty);
+    destinationRow[m["Loose Stock Qty"]] = round2_(asNum_(destinationRow[m["Loose Stock Qty"]]) + looseQty);
+
+    if (m["Timestamp"] != null) {
+      sourceRow[m["Timestamp"]] = now_();
+      destinationRow[m["Timestamp"]] = now_();
+    }
+    if (m["Updated By"] != null) {
+      sourceRow[m["Updated By"]] = doneBy || "User";
+      destinationRow[m["Updated By"]] = doneBy || "User";
+    }
+
+    syncStockAvailable_(sourceRow, m);
+    syncStockAvailable_(destinationRow, m);
+
+    stockSheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+
+    const txnSheet = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_TXN);
+    if (packagedQty > 0) {
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_OUT",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: packagedQty,
+        bucket: "Packaged",
+        doneBy,
+        notes: notes + " to " + toLocation,
+        skuCode,
+        variant,
+        location: fromLocation,
+      });
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_IN",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: packagedQty,
+        bucket: "Packaged",
+        doneBy,
+        notes: notes + " from " + fromLocation,
+        skuCode,
+        variant,
+        location: toLocation,
+      });
+    }
+
+    if (looseQty > 0) {
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_OUT",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: looseQty,
+        bucket: "Loose",
+        doneBy,
+        notes: notes + " to " + toLocation,
+        skuCode,
+        variant,
+        location: fromLocation,
+      });
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_IN",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: looseQty,
+        bucket: "Loose",
+        doneBy,
+        notes: notes + " from " + fromLocation,
+        skuCode,
+        variant,
+        location: toLocation,
+      });
+    }
+
+    return {
+      skuCode,
+      category,
+      materialName: materialNameRaw,
+      variant,
+      fromLocation,
+      toLocation,
+      packagedQty,
+      looseQty,
+      destinationCreated,
     };
   } finally {
     lock.releaseLock();
@@ -1294,6 +1671,7 @@ function syncStockAvailable_(row, m) {
   if (m["Available Loose Qty"] != null) {
     row[m["Available Loose Qty"]] = round2_(Math.max(0, loose - reservedLoose));
   }
+  syncPackagesAvailable_(row, m);
 }
 
 function findBookingRows_(values, m, bookingId) {

@@ -288,6 +288,13 @@ function doPost(e) {
       return jsonOut_({ ok: true, data: result });
     }
 
+    if (action === "transferStock") {
+      Logger.log("Routing to transferStock_ with data => " + JSON.stringify(body.data || {}));
+      const result = transferStock_(body.data || {});
+      Logger.log("transferStock_ result => " + JSON.stringify(result));
+      return jsonOut_({ ok: true, data: result });
+    }
+
     Logger.log("Unknown action received => " + action);
     return jsonOut_({ ok: false, error: "Unknown action", action });
   } catch (err) {
@@ -352,6 +359,7 @@ function runMutation_(body) {
   if (action === "setStock") return setStock_(data);
   if (action === "updateBookingStatus") return updateBookingStatus_(data);
   if (action === "createStockItem") return createStockItem_(data);
+  if (action === "transferStock") return transferStock_(data);
 
   throw new Error("Unknown mutation action: " + action);
 }
@@ -1128,11 +1136,16 @@ function createStockItem_(data) {
     });
 
     if (exists) {
-      throw new Error(
-        `Material already exists in Inventory Stock: ${skuCode || category + " / " + materialNameRaw}` +
-          (variant ? ` / ${variant}` : "") +
-          (location ? ` / ${location}` : "")
-      );
+      return {
+        skuCode,
+        category,
+        materialName: materialNameRaw,
+        variant,
+        location,
+        unit,
+        skipped: true,
+        reason: "Material already exists for this location",
+      };
     }
 
     const row = new Array(headers.length).fill("");
@@ -1186,6 +1199,220 @@ function createStockItem_(data) {
       looseStockQty: round2_(looseStockQty),
       minStockLevel: round2_(minStockLevel),
       active,
+    };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+function transferStock_(data) {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const skuCode = getSkuFromData_(data);
+    const skuCodeN = normalizeKey_(skuCode);
+    const category = normalizeKey_(data.category);
+    const materialNameRaw = safeStr_(data.materialName);
+    const materialNameN = normalizeKey_(materialNameRaw);
+    const variant = getVariantFromData_(data);
+    const variantN = normalizeKey_(variant);
+    const fromLocation = safeStr_(data.fromLocation);
+    const toLocation = safeStr_(data.toLocation);
+    const fromLocationN = normalizeKey_(fromLocation);
+    const toLocationN = normalizeKey_(toLocation);
+    const packagedQty = round2_(asNum_(data.packagedQty));
+    const looseQty = round2_(asNum_(data.looseQty));
+    const doneBy = safeStr_(data.doneBy || "");
+    const notes = safeStr_(data.notes || "Stock transfer");
+
+    if (!category) throw new Error("Missing category");
+    if (!materialNameRaw) throw new Error("Missing materialName");
+    if (!fromLocation) throw new Error("Missing fromLocation");
+    if (!toLocation) throw new Error("Missing toLocation");
+    if (fromLocationN === toLocationN) throw new Error("Source and destination locations must be different");
+    if (packagedQty <= 0 && looseQty <= 0) throw new Error("Transfer packagedQty or looseQty is required");
+
+    const stockSheet = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_STOCK);
+    const values = stockSheet.getDataRange().getValues();
+    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const m = idxMap_(headers);
+
+    [
+      "Category",
+      "Material Name",
+      "Location",
+      "Packaged Stock Qty",
+      "Loose Stock Qty",
+    ].forEach(function(header) {
+      if (m[header] == null) throw new Error('Inventory Stock missing "' + header + '" header');
+    });
+
+    let sourceIndex = -1;
+    let destinationIndex = -1;
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      if (!row.some(function(c) { return String(c).trim() !== ""; })) continue;
+
+      const rowSku = m["SKU Code"] != null ? normalizeKey_(row[m["SKU Code"]]) : "";
+      const rowCat = normalizeKey_(row[m["Category"]]);
+      const rowMat = normalizeKey_(row[m["Material Name"]]);
+      const rowVariant = m["Variant"] != null ? normalizeKey_(row[m["Variant"]]) : "";
+      const rowLocation = normalizeKey_(getLocationFromRow_(row, m));
+      const matchesMaterial = skuCodeN
+        ? rowSku === skuCodeN
+        : rowCat === category && rowMat === materialNameN && rowVariant === variantN;
+
+      if (!matchesMaterial) continue;
+      if (rowLocation === fromLocationN) sourceIndex = r;
+      if (rowLocation === toLocationN) destinationIndex = r;
+    }
+
+    if (sourceIndex < 0) {
+      throw new Error(
+        "Source material/location not found: " +
+          (skuCode || category + " / " + materialNameRaw) +
+          (variant ? " / " + variant : "") +
+          " / " +
+          fromLocation
+      );
+    }
+
+    const sourceRow = values[sourceIndex];
+    const sourcePackaged = asNum_(sourceRow[m["Packaged Stock Qty"]]);
+    const sourceLoose = asNum_(sourceRow[m["Loose Stock Qty"]]);
+    const sourceReservedPackaged = m["Reserved Packaged Qty"] != null ? asNum_(sourceRow[m["Reserved Packaged Qty"]]) : 0;
+    const sourceReservedLoose = m["Reserved Loose Qty"] != null ? asNum_(sourceRow[m["Reserved Loose Qty"]]) : 0;
+    const sourceAvailablePackaged = Math.max(0, sourcePackaged - sourceReservedPackaged);
+    const sourceAvailableLoose = Math.max(0, sourceLoose - sourceReservedLoose);
+
+    if (packagedQty > sourceAvailablePackaged) {
+      throw new Error("Transfer packaged qty exceeds available packaged qty at source");
+    }
+
+    if (looseQty > sourceAvailableLoose) {
+      throw new Error("Transfer loose qty exceeds available loose qty at source");
+    }
+
+    const destinationCreated = destinationIndex < 0;
+
+    if (destinationCreated) {
+      const row = new Array(headers.length).fill("");
+      if (m["Timestamp"] != null) row[m["Timestamp"]] = now_();
+      if (m["SKU Code"] != null) row[m["SKU Code"]] = skuCode;
+      if (m["Category"] != null) row[m["Category"]] = category;
+      if (m["Material Name"] != null) row[m["Material Name"]] = materialNameRaw;
+      if (m["Variant"] != null) row[m["Variant"]] = variant;
+      if (m["Location"] != null) row[m["Location"]] = toLocation;
+      if (m["Unit"] != null) row[m["Unit"]] = safeStr_(data.unit || sourceRow[m["Unit"]]);
+      if (m["Pack Size"] != null) row[m["Pack Size"]] = round2_(asNum_(data.packSize || sourceRow[m["Pack Size"]]));
+      if (m["Pack Size Options"] != null) row[m["Pack Size Options"]] = safeStr_(data.packSizeOptions || sourceRow[m["Pack Size Options"]]);
+      if (m["Packaged Stock Qty"] != null) row[m["Packaged Stock Qty"]] = 0;
+      if (m["Loose Stock Qty"] != null) row[m["Loose Stock Qty"]] = 0;
+      if (m["Reserved Packaged Qty"] != null) row[m["Reserved Packaged Qty"]] = 0;
+      if (m["Reserved Loose Qty"] != null) row[m["Reserved Loose Qty"]] = 0;
+      if (m["Available Packaged Qty"] != null) row[m["Available Packaged Qty"]] = 0;
+      if (m["Available Loose Qty"] != null) row[m["Available Loose Qty"]] = 0;
+      if (m["Min Stock Level"] != null) row[m["Min Stock Level"]] = round2_(asNum_(data.minStockLevel || sourceRow[m["Min Stock Level"]]));
+      if (m["Active"] != null) row[m["Active"]] = safeStr_(data.active || "TRUE");
+      values.push(row);
+      destinationIndex = values.length - 1;
+    }
+
+    const destinationRow = values[destinationIndex];
+    sourceRow[m["Packaged Stock Qty"]] = round2_(sourcePackaged - packagedQty);
+    sourceRow[m["Loose Stock Qty"]] = round2_(sourceLoose - looseQty);
+    destinationRow[m["Packaged Stock Qty"]] = round2_(asNum_(destinationRow[m["Packaged Stock Qty"]]) + packagedQty);
+    destinationRow[m["Loose Stock Qty"]] = round2_(asNum_(destinationRow[m["Loose Stock Qty"]]) + looseQty);
+
+    if (m["Timestamp"] != null) {
+      sourceRow[m["Timestamp"]] = now_();
+      destinationRow[m["Timestamp"]] = now_();
+    }
+    if (m["Updated By"] != null) {
+      sourceRow[m["Updated By"]] = doneBy || "User";
+      destinationRow[m["Updated By"]] = doneBy || "User";
+    }
+
+    syncStockAvailable_(sourceRow, m);
+    syncStockAvailable_(destinationRow, m);
+
+    stockSheet.getRange(1, 1, values.length, values[0].length).setValues(values);
+
+    const txnSheet = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_TXN);
+    if (packagedQty > 0) {
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_OUT",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: packagedQty,
+        bucket: "Packaged",
+        doneBy,
+        notes: notes + " to " + toLocation,
+        skuCode,
+        variant,
+        location: fromLocation,
+      });
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_IN",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: packagedQty,
+        bucket: "Packaged",
+        doneBy,
+        notes: notes + " from " + fromLocation,
+        skuCode,
+        variant,
+        location: toLocation,
+      });
+    }
+
+    if (looseQty > 0) {
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_OUT",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: looseQty,
+        bucket: "Loose",
+        doneBy,
+        notes: notes + " to " + toLocation,
+        skuCode,
+        variant,
+        location: fromLocation,
+      });
+      appendTxn_(txnSheet, {
+        timestamp: now_(),
+        type: "TRANSFER_IN",
+        bookingId: "",
+        category,
+        materialName: materialNameRaw,
+        qty: looseQty,
+        bucket: "Loose",
+        doneBy,
+        notes: notes + " from " + fromLocation,
+        skuCode,
+        variant,
+        location: toLocation,
+      });
+    }
+
+    return {
+      skuCode,
+      category,
+      materialName: materialNameRaw,
+      variant,
+      fromLocation,
+      toLocation,
+      packagedQty,
+      looseQty,
+      destinationCreated,
     };
   } finally {
     lock.releaseLock();

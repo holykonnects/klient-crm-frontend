@@ -50,6 +50,10 @@ const INVENTORY_BOOKING_REQUIREMENT_TO = [
 const EMAIL_FONT_STACK = "Montserrat, Arial, sans-serif";
 const EMAIL_BODY_FONT_SIZE = "11px";
 const EMAIL_TABLE_FONT_SIZE = "10px";
+const CALC_MATRIX_ADMIN_EMAILS = [
+  "holy@klientkonnect.com",
+  "sidhant@ridosports.com",
+];
 
 
 /** ---------- Output (JSON + JSONP) ---------- **/
@@ -295,6 +299,13 @@ function doPost(e) {
       return jsonOut_({ ok: true, data: result });
     }
 
+    if (action === "upsertCalcMatrixRule") {
+      Logger.log("Routing to upsertCalcMatrixRule_ with data => " + JSON.stringify(body.data || {}));
+      const result = upsertCalcMatrixRule_(body.data || {});
+      Logger.log("upsertCalcMatrixRule_ result => " + JSON.stringify(result));
+      return jsonOut_({ ok: true, data: result });
+    }
+
     Logger.log("Unknown action received => " + action);
     return jsonOut_({ ok: false, error: "Unknown action", action });
   } catch (err) {
@@ -360,6 +371,7 @@ function runMutation_(body) {
   if (action === "updateBookingStatus") return updateBookingStatus_(data);
   if (action === "createStockItem") return createStockItem_(data);
   if (action === "transferStock") return transferStock_(data);
+  if (action === "upsertCalcMatrixRule") return upsertCalcMatrixRule_(data);
 
   throw new Error("Unknown mutation action: " + action);
 }
@@ -371,11 +383,15 @@ function getCalcConfig_(category, variant) {
 
   const catN = normalizeKey_(category);
   const varN = normalizeKey_(variant);
+  const wildcardVariants = ["", "ALL", "DEFAULT", "ALL VARIANTS", "ALL COLORS"];
 
   return rows
     .filter((r) => normalizeKey_(r[m["Active"]]) !== "FALSE")
     .filter((r) => !catN || normalizeKey_(r[m["Category"]]) === catN)
-    .filter((r) => !varN || normalizeKey_(r[m["Variant"]]) === varN)
+    .filter((r) => {
+      const rowVariant = normalizeKey_(r[m["Variant"]]);
+      return !varN || rowVariant === varN || wildcardVariants.indexOf(rowVariant) !== -1;
+    })
     .map((r) => ({
       category: safeStr_(r[m["Category"]]),
       variant: safeStr_(r[m["Variant"]]),
@@ -388,6 +404,112 @@ function getCalcConfig_(category, variant) {
       formula: safeStr_(r[m["Formula"]]),
       active: safeStr_(r[m["Active"]]),
     }));
+}
+
+function isCalcMatrixAdmin_(email) {
+  const emailN = safeStr_(email).toLowerCase();
+  return CALC_MATRIX_ADMIN_EMAILS.indexOf(emailN) !== -1;
+}
+
+function upsertCalcMatrixRule_(data) {
+  const userEmail = safeStr_(data.userEmail || data.email || "");
+  const updatedBy = safeStr_(data.updatedBy || userEmail || "");
+  const rule = data.rule || {};
+
+  if (!isCalcMatrixAdmin_(userEmail)) {
+    throw new Error("Only calculation matrix admins can update calculation rules");
+  }
+
+  const category = normalizeKey_(rule.category);
+  const variant = safeStr_(rule.variant || "ALL VARIANTS");
+  const materialName = safeStr_(rule.materialName);
+  const unit = safeStr_(rule.unit);
+  const calcType = safeStr_(rule.calcType);
+  const baseRate = safeStr_(rule.baseRate);
+  const inputKey = safeStr_(rule.inputKey);
+  const dependsOn = safeStr_(rule.dependsOn);
+  const formula = safeStr_(rule.formula);
+  const active = safeStr_(rule.active || "TRUE");
+
+  if (!category) throw new Error("Matrix Category is required");
+  if (!materialName) throw new Error("Matrix Material Name is required");
+  if (!unit) throw new Error("Matrix Unit is required");
+  if (!calcType) throw new Error("Matrix Calc Type is required");
+  if (calcType === "FORMULA" && !formula) throw new Error("Formula is required for FORMULA rules");
+  if (calcType !== "FORMULA" && !baseRate) throw new Error("Base Rate / Factor is required");
+
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+
+  try {
+    const sh = getSheet_(INVENTORY_SPREADSHEET_ID, SHEET_CONFIG);
+    const values = sh.getDataRange().getValues();
+    const headers = values[0].map(function(h) { return String(h).trim(); });
+    const m = idxMap_(headers);
+
+    [
+      "Category",
+      "Variant",
+      "Material Name",
+      "Unit",
+      "Calc Type",
+      "Base Rate",
+      "Input Key",
+      "Depends On",
+      "Formula",
+      "Active",
+    ].forEach(function(header) {
+      if (m[header] == null) throw new Error('Inventory Calc Config missing "' + header + '" header');
+    });
+
+    const categoryN = normalizeKey_(category);
+    const variantN = normalizeKey_(variant);
+    const materialN = normalizeKey_(materialName);
+    let targetRow = -1;
+
+    for (let r = 1; r < values.length; r++) {
+      const row = values[r];
+      if (!row.some(function(c) { return String(c).trim() !== ""; })) continue;
+      if (
+        normalizeKey_(row[m["Category"]]) === categoryN &&
+        normalizeKey_(row[m["Variant"]]) === variantN &&
+        normalizeKey_(row[m["Material Name"]]) === materialN
+      ) {
+        targetRow = r;
+        break;
+      }
+    }
+
+    const out = targetRow >= 0 ? values[targetRow] : new Array(headers.length).fill("");
+    out[m["Category"]] = category;
+    out[m["Variant"]] = variant;
+    out[m["Material Name"]] = materialName;
+    out[m["Unit"]] = unit;
+    out[m["Calc Type"]] = calcType;
+    out[m["Base Rate"]] = baseRate;
+    out[m["Input Key"]] = inputKey;
+    out[m["Depends On"]] = dependsOn;
+    out[m["Formula"]] = formula;
+    out[m["Active"]] = active;
+    if (m["Updated By"] != null) out[m["Updated By"]] = updatedBy;
+    if (m["Updated At"] != null) out[m["Updated At"]] = now_();
+
+    if (targetRow >= 0) {
+      sh.getRange(targetRow + 1, 1, 1, headers.length).setValues([out]);
+    } else {
+      sh.appendRow(out);
+    }
+
+    return {
+      category,
+      variant,
+      materialName,
+      updatedBy,
+      created: targetRow < 0,
+    };
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 /** ---------- Stock (Space-safe category + material) ---------- **/

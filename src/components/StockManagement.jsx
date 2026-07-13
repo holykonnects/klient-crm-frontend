@@ -52,6 +52,15 @@ const DEFAULT_PACK_SIZES = {
   "WEAR COAT": 21.4,
   "ADHESIVE": 15,
 };
+const CALC_MATRIX_ADMIN_EMAILS = ["holy@klientkonnect.com", "sidhant@ridosports.com"];
+const DEFAULT_CALC_TYPES = [
+  "AREA_X_RATE",
+  "AREA_X_LAYER",
+  "AREA_X_THICKNESS_RATE",
+  "AREA_X_FIXED",
+  "AREA_X_RATE_IF",
+  "FORMULA",
+];
 
 // ---------- Helpers ----------
 const safeStr = (v) => (v ?? "").toString().trim();
@@ -297,6 +306,26 @@ function sameInventoryCategory(a, b) {
   return normalizeKey(mapCreateCategoryToStoredCategory(a)) === normalizeKey(mapCreateCategoryToStoredCategory(b));
 }
 
+function isWildcardVariant(variant) {
+  const value = normalizeKey(variant);
+  return !value || value === "ALL" || value === "DEFAULT" || value === "ALL VARIANTS" || value === "ALL COLORS";
+}
+
+function buildCalcRuleDraft({ category = "", materialName = "", variant = "", unit = "" } = {}) {
+  return {
+    category: mapCreateCategoryToStoredCategory(category),
+    variant: variant || "ALL VARIANTS",
+    materialName,
+    unit,
+    calcType: "AREA_X_RATE",
+    baseRate: "",
+    inputKey: "area",
+    dependsOn: "",
+    formula: "",
+    active: "TRUE",
+  };
+}
+
 function buildNewMaterialState(defaultCategory = "") {
   const mappedDefaultCategory =
     defaultCategory && defaultCategory !== "ALL"
@@ -338,6 +367,8 @@ export default function StockManagement({
     userIdentity.includes("STOCK@RIDOSPORTS.COM") ||
     userIdentity.includes("SARABJEET") ||
     normalizeKey(user.role) === "ADMIN";
+  const userEmail = safeStr(user.email || user.username).toLowerCase();
+  const canManageCalcMatrix = CALC_MATRIX_ADMIN_EMAILS.includes(userEmail);
 
   const [validation, setValidation] = useState({});
   const [validationLoading, setValidationLoading] = useState(false);
@@ -364,6 +395,12 @@ export default function StockManagement({
   const [creating, setCreating] = useState(false);
   const [createNotice, setCreateNotice] = useState("");
   const [createError, setCreateError] = useState("");
+  const [calcRules, setCalcRules] = useState([]);
+  const [calcRulesLoading, setCalcRulesLoading] = useState(false);
+  const [calcRuleDraft, setCalcRuleDraft] = useState(buildCalcRuleDraft());
+  const [calcRuleSaving, setCalcRuleSaving] = useState(false);
+  const [calcRuleNotice, setCalcRuleNotice] = useState("");
+  const [calcRuleError, setCalcRuleError] = useState("");
 
   const [openToggleModal, setOpenToggleModal] = useState(false);
   const [toggleRow, setToggleRow] = useState(null);
@@ -579,6 +616,25 @@ export default function StockManagement({
     ).sort((a, b) => a.localeCompare(b));
   }, [skuRows, createForm.category, createForm.materialName]);
 
+  const selectedCalcRule = useMemo(() => {
+    if (!safeStr(createForm.category) || !safeStr(createForm.materialName)) return null;
+
+    const selectedCategory = mapCreateCategoryToStoredCategory(createForm.category);
+    const selectedVariant = safeStr(createForm.variant);
+    const candidates = (calcRules || []).filter(
+      (rule) =>
+        sameInventoryCategory(rule.category, selectedCategory) &&
+        normalizeKey(rule.materialName) === normalizeKey(createForm.materialName)
+    );
+
+    return (
+      candidates.find((rule) => selectedVariant && normalizeKey(rule.variant) === normalizeKey(selectedVariant)) ||
+      candidates.find((rule) => isWildcardVariant(rule.variant)) ||
+      candidates[0] ||
+      null
+    );
+  }, [calcRules, createForm.category, createForm.materialName, createForm.variant]);
+
   // Pack size validation fallback from validation sheet if available
   const approvedPackSizes = useMemo(() => {
     const raw =
@@ -714,6 +770,29 @@ export default function StockManagement({
     }
   };
 
+  const fetchCalcRules = async (categoryValue = createForm.category) => {
+    if (!apiUrl || !safeStr(categoryValue)) {
+      setCalcRules([]);
+      return;
+    }
+
+    setCalcRulesLoading(true);
+
+    try {
+      const data = await apiGet(apiUrl, {
+        action: "getCalcConfig",
+        category: mapCreateCategoryToStoredCategory(categoryValue),
+        variant: "",
+      });
+      setCalcRules(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("getCalcConfig error:", e);
+      setCalcRules([]);
+    } finally {
+      setCalcRulesLoading(false);
+    }
+  };
+
   const fetchStock = async () => {
     if (!apiUrl) return;
     setStockLoading(true);
@@ -774,6 +853,36 @@ export default function StockManagement({
   useEffect(() => {
     fetchStock();
   }, [apiUrl, category]);
+
+  useEffect(() => {
+    if (openCreateModal && safeStr(createForm.category)) {
+      fetchCalcRules(createForm.category);
+    }
+  }, [openCreateModal, createForm.category]);
+
+  useEffect(() => {
+    const base = selectedCalcRule || buildCalcRuleDraft({
+      category: createForm.category,
+      materialName: createForm.materialName,
+      variant: createVariantOptions.length ? "ALL VARIANTS" : createForm.variant,
+      unit: createForm.unit,
+    });
+
+    setCalcRuleDraft({
+      category: mapCreateCategoryToStoredCategory(base.category || createForm.category),
+      variant: safeStr(base.variant || (createVariantOptions.length ? "ALL VARIANTS" : createForm.variant)),
+      materialName: safeStr(base.materialName || createForm.materialName),
+      unit: safeStr(base.unit || createForm.unit),
+      calcType: safeStr(base.calcType || "AREA_X_RATE"),
+      baseRate: safeStr(base.baseRate),
+      inputKey: safeStr(base.inputKey || "area"),
+      dependsOn: safeStr(base.dependsOn),
+      formula: safeStr(base.formula),
+      active: safeStr(base.active || "TRUE"),
+    });
+    setCalcRuleNotice("");
+    setCalcRuleError("");
+  }, [selectedCalcRule, createForm.category, createForm.materialName, createForm.variant, createForm.unit, createVariantOptions.length]);
 
 
   const handleOpenModal = (row) => {
@@ -1063,6 +1172,60 @@ export default function StockManagement({
 
       return next;
     });
+  };
+
+  const handleCalcRuleDraftChange = (field, value) => {
+    setCalcRuleDraft((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveCalcRule = async () => {
+    if (!canManageCalcMatrix) {
+      setCalcRuleError("Only calculation matrix admins can update calculation rules.");
+      return;
+    }
+
+    if (!safeStr(calcRuleDraft.category) || !safeStr(calcRuleDraft.materialName)) {
+      setCalcRuleError("Category and Material Name are required for a calculation rule.");
+      return;
+    }
+
+    if (!safeStr(calcRuleDraft.calcType)) {
+      setCalcRuleError("Calc Type is required.");
+      return;
+    }
+
+    if (safeStr(calcRuleDraft.calcType) === "FORMULA") {
+      if (!safeStr(calcRuleDraft.formula)) {
+        setCalcRuleError("Formula is required for FORMULA rules.");
+        return;
+      }
+    } else if (!safeStr(calcRuleDraft.baseRate)) {
+      setCalcRuleError("Base Rate / Factor is required.");
+      return;
+    }
+
+    setCalcRuleSaving(true);
+    setCalcRuleNotice("");
+    setCalcRuleError("");
+
+    try {
+      await apiPostNoCors(apiUrl, {
+        action: "upsertCalcMatrixRule",
+        data: {
+          userEmail: user.email || user.username || "",
+          updatedBy: user.username || user.email || "",
+          rule: calcRuleDraft,
+        },
+      });
+
+      setCalcRuleNotice("Calculation rule update submitted.");
+      setTimeout(() => fetchCalcRules(createForm.category), 800);
+    } catch (e) {
+      console.error("upsertCalcMatrixRule error:", e);
+      setCalcRuleError(`Rule update failed: ${e.message || e}`);
+    } finally {
+      setCalcRuleSaving(false);
+    }
   };
 
   const handleCreateMaterial = async () => {
@@ -2472,6 +2635,212 @@ export default function StockManagement({
                     <MenuItem value="FALSE">FALSE</MenuItem>
                   </Select>
                 </FormControl>
+              </Grid>
+
+              <Grid item xs={12}>
+                <Divider sx={{ my: 1 }} />
+              </Grid>
+
+              <Grid item xs={12}>
+                <Paper
+                  elevation={0}
+                  sx={{
+                    p: 2,
+                    borderRadius: 2,
+                    border: "1px solid rgba(100,149,237,0.22)",
+                    backgroundColor: "#fbfcff",
+                  }}
+                >
+                  <Box display="flex" alignItems="center" justifyContent="space-between" gap={1} flexWrap="wrap" mb={1.5}>
+                    <Box>
+                      <Typography sx={{ fontFamily, fontWeight: 700, color: "#1f2a44" }}>
+                        Calculation Matrix
+                      </Typography>
+                      <Typography sx={{ fontFamily, fontSize: 12, opacity: 0.72 }}>
+                        {selectedCalcRule
+                          ? "This material is mapped to an inventory calculation rule."
+                          : "No calculation rule is currently mapped for this material."}
+                      </Typography>
+                    </Box>
+                    {calcRulesLoading ? <CircularProgress size={16} /> : null}
+                  </Box>
+
+                  {!canManageCalcMatrix ? (
+                    selectedCalcRule ? (
+                      <Grid container spacing={1.5}>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Variant: ${safeStr(selectedCalcRule.variant) || "DEFAULT"}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Calc: ${selectedCalcRule.calcType}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Factor: ${selectedCalcRule.baseRate || "-"}`} sx={{ fontFamily }} />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <Chip label={`Input: ${selectedCalcRule.inputKey || "-"}`} sx={{ fontFamily }} />
+                        </Grid>
+                      </Grid>
+                    ) : (
+                      <Alert severity="warning" sx={{ fontFamily }}>
+                        Ask a calculation matrix admin to map this material before it is used in calculator-driven bookings.
+                      </Alert>
+                    )
+                  ) : (
+                    <Grid container spacing={2}>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Matrix Category"
+                          value={calcRuleDraft.category}
+                          onChange={(e) => handleCalcRuleDraftChange("category", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Matrix Material"
+                          value={calcRuleDraft.materialName}
+                          onChange={(e) => handleCalcRuleDraftChange("materialName", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Variant Group"
+                          value={calcRuleDraft.variant}
+                          onChange={(e) => handleCalcRuleDraftChange("variant", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                          helperText="Use ALL VARIANTS for colors/shared rules"
+                          FormHelperTextProps={{ sx: { fontFamily, m: 0.5 } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Unit"
+                          value={calcRuleDraft.unit}
+                          onChange={(e) => handleCalcRuleDraftChange("unit", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Calc Type</InputLabel>
+                          <Select
+                            label="Calc Type"
+                            value={calcRuleDraft.calcType}
+                            onChange={(e) => handleCalcRuleDraftChange("calcType", e.target.value)}
+                            sx={{ fontFamily }}
+                          >
+                            {DEFAULT_CALC_TYPES.map((type) => (
+                              <MenuItem key={type} value={type}>
+                                {type}
+                              </MenuItem>
+                            ))}
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Base Rate / Factor"
+                          value={calcRuleDraft.baseRate}
+                          onChange={(e) => handleCalcRuleDraftChange("baseRate", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Input Key"
+                          value={calcRuleDraft.inputKey}
+                          onChange={(e) => handleCalcRuleDraftChange("inputKey", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={3}>
+                        <FormControl fullWidth size="small">
+                          <InputLabel>Matrix Active</InputLabel>
+                          <Select
+                            label="Matrix Active"
+                            value={calcRuleDraft.active}
+                            onChange={(e) => handleCalcRuleDraftChange("active", e.target.value)}
+                            sx={{ fontFamily }}
+                          >
+                            <MenuItem value="TRUE">TRUE</MenuItem>
+                            <MenuItem value="FALSE">FALSE</MenuItem>
+                          </Select>
+                        </FormControl>
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Depends On"
+                          value={calcRuleDraft.dependsOn}
+                          onChange={(e) => handleCalcRuleDraftChange("dependsOn", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12} md={6}>
+                        <TextField
+                          fullWidth
+                          size="small"
+                          label="Formula"
+                          value={calcRuleDraft.formula}
+                          onChange={(e) => handleCalcRuleDraftChange("formula", e.target.value)}
+                          sx={{ fontFamily }}
+                          inputProps={{ style: { fontFamily } }}
+                        />
+                      </Grid>
+                      <Grid item xs={12}>
+                        <Box display="flex" justifyContent="flex-end">
+                          <Button
+                            variant="outlined"
+                            startIcon={calcRuleSaving ? <CircularProgress size={16} /> : <SaveIcon />}
+                            onClick={handleSaveCalcRule}
+                            disabled={calcRuleSaving}
+                            sx={{ textTransform: "none", fontFamily }}
+                          >
+                            Save Calculation Rule
+                          </Button>
+                        </Box>
+                      </Grid>
+                    </Grid>
+                  )}
+
+                  {calcRuleNotice ? (
+                    <Box mt={2}>
+                      <Alert severity="success" sx={{ fontFamily }}>
+                        {calcRuleNotice}
+                      </Alert>
+                    </Box>
+                  ) : null}
+
+                  {calcRuleError ? (
+                    <Box mt={2}>
+                      <Alert severity="error" sx={{ fontFamily }}>
+                        {calcRuleError}
+                      </Alert>
+                    </Box>
+                  ) : null}
+                </Paper>
               </Grid>
 
               <Grid item xs={12}>

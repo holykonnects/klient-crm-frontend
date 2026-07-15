@@ -1073,7 +1073,7 @@ export default function InventoryModule({
           availableLooseQty: stockInfo.availableLooseQty,
           availableTotalQty: stockInfo.availableTotalQty,
           shortageQty: round2(shortageQty),
-          canFulfill: requiredQty > 0 && shortageQty <= 0,
+          canFulfill: colorRequiredQty > 0 && shortageQty <= 0,
         };
       });
 

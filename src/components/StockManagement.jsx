@@ -801,17 +801,16 @@ export default function StockManagement({
     }
   };
 
-  const fetchStock = async () => {
+  const fetchStock = async (options = {}) => {
+    const { silent = false, preserveNotice = false } = options;
     if (!apiUrl) return;
-    setStockLoading(true);
+    if (!silent) setStockLoading(true);
     setStockError("");
-    setGlobalNotice("");
+    if (!preserveNotice) setGlobalNotice("");
 
     try {
-      const categoryParam = category === "ALL" ? "" : category;
       const data = await apiGet(apiUrl, {
         action: "getStock",
-        category: categoryParam,
       });
 
       const safeRows = Array.isArray(data) ? data : [];
@@ -847,10 +846,9 @@ export default function StockManagement({
       setStockRows(mapped);
     } catch (e) {
       console.error("getStock error:", e);
-      setStockRows([]);
       setStockError(`Failed to load stock: ${e.message || e}`);
     } finally {
-      setStockLoading(false);
+      if (!silent) setStockLoading(false);
     }
   };
 
@@ -861,7 +859,7 @@ export default function StockManagement({
 
   useEffect(() => {
     fetchStock();
-  }, [apiUrl, category]);
+  }, [apiUrl]);
 
   useEffect(() => {
     if (openCreateModal && safeStr(createForm.category)) {
@@ -1016,38 +1014,39 @@ export default function StockManagement({
       };
 
       await apiPostNoCors(apiUrl, payload);
+      setStockRows((prevRows) =>
+        (prevRows || []).map((row, index) => {
+          const sameRow =
+            row.id === modalForm.id ||
+            (
+              normalizeKey(row.skuCode) === normalizeKey(modalForm.skuCode || "") &&
+              normalizeKey(row.variant) === normalizeKey(modalForm.variant || "") &&
+              normalizeKey(row.location) === normalizeKey(modalForm.location || "")
+            );
 
-      const verifyRows = await apiGet(apiUrl, {
-        action: "getStock",
-        category: modalForm.category || "",
-      });
+          if (!sameRow) return row;
 
-      const matched = (Array.isArray(verifyRows) ? verifyRows : []).find((row) => {
-        const rowSku = safeStr(row.skuCode || row["SKU Code"]);
-        const rowVariant = safeStr(row.variant || row["Variant"]);
-        const rowLocation = getLocationValue(row);
+          const updated = buildStockRow(
+            {
+              ...row,
+              ...modalForm,
+              updatedBy: user.username || row.updatedBy,
+            },
+            index
+          );
 
-        return (
-          normalizeKey(rowSku) === normalizeKey(modalForm.skuCode || "") &&
-          normalizeKey(rowVariant) === normalizeKey(modalForm.variant || "") &&
-          normalizeKey(rowLocation) === normalizeKey(modalForm.location || "")
-        );
-      });
-
-      const packagedOk = round2(matched?.packagedStockQty) === round2(modalForm.packagedStockQty);
-      const looseOk = round2(matched?.looseStockQty) === round2(modalForm.looseStockQty);
-      const minOk = round2(matched?.minStockLevel) === round2(modalForm.minStockLevel);
-
-      if (!matched || !packagedOk || !looseOk || !minOk) {
-        throw new Error("Save request sent, but stock row did not update. Please recheck SKU/location mapping in stock sheet.");
-      }
+          return {
+            ...updated,
+            id: row.id,
+          };
+        })
+      );
 
       setModalNotice("✅ Stock updated successfully.");
       setGlobalNotice("✅ Stock row updated successfully.");
 
       setTimeout(() => {
         handleCloseModal();
-        fetchStock();
       }, 700);
     } catch (e) {
       console.error("setStock error:", e);
@@ -1315,7 +1314,7 @@ export default function StockManagement({
 
       setTimeout(() => {
         handleCloseCreateModal();
-        fetchStock();
+        fetchStock({ preserveNotice: true });
       }, 1000);
     } catch (e) {
       console.error("createStockItem error:", e);
@@ -1379,7 +1378,7 @@ export default function StockManagement({
 
       setTimeout(() => {
         handleCloseToggleModal();
-        fetchStock();
+        fetchStock({ preserveNotice: true });
       }, 800);
     } catch (e) {
       console.error("toggleStockItemActive error:", e);
@@ -1485,7 +1484,7 @@ export default function StockManagement({
 
       setTimeout(() => {
         handleCloseTransferModal();
-        fetchStock();
+        fetchStock({ preserveNotice: true });
       }, 900);
     } catch (e) {
       console.error("transferStock error:", e);

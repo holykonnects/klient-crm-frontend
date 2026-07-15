@@ -1,5 +1,5 @@
 // src/components/InventoryModule.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Autocomplete,
   Box,
@@ -764,6 +764,11 @@ export default function InventoryModule({
   title = "Inventory Calculator",
 }) {
   const user = useMemo(() => getUserFromLocalStorage(), []);
+  const dataCacheRef = useRef({
+    inputs: {},
+    config: {},
+    stock: {},
+  });
 
   const [validation, setValidation] = useState({});
   const [validationLoading, setValidationLoading] = useState(false);
@@ -820,6 +825,12 @@ export default function InventoryModule({
 
     return toUpper(category) === "PU" ? puVariants : acrylicVariants;
   }, [validation, category]);
+
+  const variantIsValidForCategory = useMemo(() => {
+    if (!variant) return false;
+    if (!variantsList?.length) return true;
+    return variantsList.some((option) => normalizeKey(option) === normalizeKey(variant));
+  }, [variantsList, variant]);
 
   const bookingStatusOptions = useMemo(() => {
     const raw =
@@ -1073,7 +1084,7 @@ export default function InventoryModule({
           availableLooseQty: stockInfo.availableLooseQty,
           availableTotalQty: stockInfo.availableTotalQty,
           shortageQty: round2(shortageQty),
-          canFulfill: requiredQty > 0 && shortageQty <= 0,
+          canFulfill: colorRequiredQty > 0 && shortageQty <= 0,
         };
       });
 
@@ -1131,7 +1142,10 @@ export default function InventoryModule({
     bookingLoading;
 
   useEffect(() => {
-    if (variantsList?.length && !variant) setVariant(variantsList[0]);
+    if (!variantsList?.length) return;
+    if (!variant || !variantsList.some((option) => normalizeKey(option) === normalizeKey(variant))) {
+      setVariant(variantsList[0]);
+    }
   }, [variantsList, variant]);
 
   useEffect(() => {
@@ -1171,22 +1185,36 @@ export default function InventoryModule({
 
   useEffect(() => {
     const run = async () => {
-      if (!apiUrl || !category || !variant) return;
+      if (!apiUrl || !category || !variant || !variantIsValidForCategory) return;
 
-      setInputsLoading(true);
       setCalcResult(null);
       setBookingNotice("");
+
+      const cacheKey = `${normalizeKey(category)}||${normalizeKey(variant)}`;
+      const cached = dataCacheRef.current.inputs[cacheKey];
+      if (cached) {
+        setInputDefs(cached.defs);
+        setInputs({ ...cached.inputs });
+        return;
+      }
+
+      setInputsLoading(true);
 
       try {
         const defs = await apiGet(apiUrl, { action: "getInputs", category, variant });
         const safeDefs = Array.isArray(defs) ? defs : [];
-        setInputDefs(safeDefs);
 
         const next = {};
         safeDefs.forEach((d) => {
           if (!d.inputKey) return;
           next[d.inputKey] = d.defaultValue ?? "";
         });
+
+        dataCacheRef.current.inputs[cacheKey] = {
+          defs: safeDefs,
+          inputs: next,
+        };
+        setInputDefs(safeDefs);
         setInputs(next);
       } catch (e) {
         console.error("getInputs error:", e);
@@ -1198,16 +1226,25 @@ export default function InventoryModule({
     };
 
     run();
-  }, [apiUrl, category, variant]);
+  }, [apiUrl, category, variant, variantIsValidForCategory]);
 
   useEffect(() => {
     const run = async () => {
-      if (!apiUrl || !category || !variant) return;
+      if (!apiUrl || !category || !variant || !variantIsValidForCategory) return;
+
+      const cacheKey = `${normalizeKey(category)}||${normalizeKey(variant)}`;
+      const cached = dataCacheRef.current.config[cacheKey];
+      if (cached) {
+        setConfigRows(cached);
+        return;
+      }
 
       setConfigLoading(true);
       try {
         const cfg = await apiGet(apiUrl, { action: "getCalcConfig", category, variant });
-        setConfigRows(Array.isArray(cfg) ? cfg : []);
+        const rows = Array.isArray(cfg) ? cfg : [];
+        dataCacheRef.current.config[cacheKey] = rows;
+        setConfigRows(rows);
       } catch (e) {
         console.error("getCalcConfig error:", e);
         setConfigRows([]);
@@ -1217,21 +1254,28 @@ export default function InventoryModule({
     };
 
     run();
-  }, [apiUrl, category, variant]);
+  }, [apiUrl, category, variant, variantIsValidForCategory]);
 
   async function fetchStockRows(options = {}) {
-    const { silent = false } = options;
+    const { silent = false, force = false } = options;
     if (!apiUrl || !category) return [];
+
+    const cacheKey = normalizeKey(category);
+    if (!force && dataCacheRef.current.stock[cacheKey]) {
+      const cachedRows = dataCacheRef.current.stock[cacheKey];
+      setStockRows(cachedRows);
+      return cachedRows;
+    }
 
     if (!silent) setStockLoading(true);
     try {
       const st = await apiGet(apiUrl, { action: "getStock", category });
       const rows = Array.isArray(st) ? st : [];
+      dataCacheRef.current.stock[cacheKey] = rows;
       setStockRows(rows);
       return rows;
     } catch (e) {
       console.error("getStock error:", e);
-      setStockRows([]);
       return [];
     } finally {
       if (!silent) setStockLoading(false);
@@ -1241,6 +1285,14 @@ export default function InventoryModule({
   useEffect(() => {
     fetchStockRows();
   }, [apiUrl, category]);
+
+  const handleRefreshData = async () => {
+    if (!apiUrl) return;
+    if (category) {
+      delete dataCacheRef.current.stock[normalizeKey(category)];
+    }
+    await Promise.all([fetchBookings(), fetchStockRows({ silent: true, force: true })]);
+  };
 
   useEffect(() => {
     if (!calcResult?.items?.length) return;
@@ -1613,12 +1665,12 @@ export default function InventoryModule({
 
       setSelectedBookingStatus(nextStatus);
       setTimeout(async () => {
-        await Promise.all([fetchBookings(), fetchStockRows({ silent: true })]);
+        await Promise.all([fetchBookings(), fetchStockRows({ silent: true, force: true })]);
       }, 1200);
 
       if (shouldDispatch || shouldReserve || shouldRelease) {
         setTimeout(() => {
-          fetchStockRows({ silent: true });
+          fetchStockRows({ silent: true, force: true });
         }, 3500);
       }
     } catch (e) {
@@ -1659,8 +1711,8 @@ export default function InventoryModule({
           </Box>
 
           <Box display="flex" alignItems="center" gap={1}>
-            <Tooltip title="Reload page">
-              <IconButton onClick={() => window.location.reload()}>
+            <Tooltip title="Refresh data">
+              <IconButton onClick={handleRefreshData} disabled={busy}>
                 <RefreshIcon />
               </IconButton>
             </Tooltip>

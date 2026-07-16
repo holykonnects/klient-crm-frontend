@@ -12,6 +12,18 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 
+const THIRD_PARTY_STATUS = 'Third Party Transfer';
+const THIRD_PARTY_FIELDS = [
+  'Third Party Name',
+  'Third Party Address',
+  'Third Party GST Number',
+  'Third Party Certificate Validity',
+  'Approved By',
+  'Authorization Certificate'
+];
+const AUTH_CERT_FIELD = 'Authorization Certificate';
+const MAX_UPLOAD_BYTES = 1_200_000;
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -25,6 +37,7 @@ function ManageTender() {
   const [formValues, setFormValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [files, setFiles] = useState({});
 
   // URLs – UPDATE with your deployed Web App endpoint base
   const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
@@ -60,7 +73,9 @@ function ManageTender() {
   }, []);
 
   // ✅ ADDED: detect date fields (minimal + safe)
-  const isDateField = (fieldName) => /date/i.test(fieldName);
+  const isDateField = (fieldName) => /date|validity/i.test(fieldName);
+  const isThirdPartyTransfer = formValues['Tender Status'] === THIRD_PARTY_STATUS;
+  const shouldShowField = (field) => !THIRD_PARTY_FIELDS.includes(field) || isThirdPartyTransfer;
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -68,6 +83,44 @@ function ManageTender() {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleFileChange = (field) => (e) => {
+    const file = e.target.files?.[0] || null;
+    setFiles(prev => ({ ...prev, [field]: file }));
+  };
+
+  const fileToBase64 = (file, label) => {
+    if (!file) return Promise.resolve(null);
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return Promise.resolve({
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        base64: '',
+        size: file.size,
+        tooLarge: true,
+        label
+      });
+    }
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result || '');
+        const base64 = res.split('base64,')[1] || '';
+        resolve({
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          base64,
+          size: file.size || 0,
+          tooLarge: false,
+          label
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
   };
 
   // ✅ ADDED: date picker handler (stores dd/MM/yyyy)
@@ -95,6 +148,35 @@ function ManageTender() {
     };
 
     try {
+      if (payload['Tender Status'] === THIRD_PARTY_STATUS) {
+        const missingField = THIRD_PARTY_FIELDS
+          .filter(field => field !== AUTH_CERT_FIELD)
+          .find(field => !String(payload[field] || '').trim());
+
+        if (missingField) {
+          alert(`❌ ${missingField} is required for Third Party Transfer.`);
+          setSubmitting(false);
+          return;
+        }
+
+        const certObj = await fileToBase64(files[AUTH_CERT_FIELD], AUTH_CERT_FIELD);
+        if (!certObj) {
+          alert('❌ Authorization Certificate is required for Third Party Transfer.');
+          setSubmitting(false);
+          return;
+        }
+        if (certObj.tooLarge) {
+          alert('❌ Authorization Certificate is too large. Please upload a file under 1.2 MB.');
+          setSubmitting(false);
+          return;
+        }
+        payload[AUTH_CERT_FIELD] = certObj;
+      } else {
+        THIRD_PARTY_FIELDS.forEach(field => {
+          payload[field] = '';
+        });
+      }
+
       await fetch(formSubmitUrl, {
         method: 'POST',
         mode: 'no-cors',
@@ -109,6 +191,7 @@ function ManageTender() {
       const reset = {};
       fields.forEach(field => (reset[field] = ''));
       setFormValues(reset);
+      setFiles({});
     } catch (error) {
       console.error('❌ Submission failed:', error);
       alert('❌ Submission failed. Try again.');
@@ -134,9 +217,14 @@ function ManageTender() {
 
           <Box component="form" onSubmit={handleSubmit}>
             <Grid container spacing={2}>
-              {fields.map((field, idx) => (
+              {fields.filter(shouldShowField).map((field, idx) => (
                 <Grid item xs={12} sm={6} key={idx}>
-                  {dropdownOptions[field] ? (
+                  {field === AUTH_CERT_FIELD ? (
+                    <Button variant="outlined" component="label" fullWidth sx={{ justifyContent: 'flex-start', py: 1 }}>
+                      {files[field]?.name || field}
+                      <input hidden type="file" onChange={handleFileChange(field)} />
+                    </Button>
+                  ) : dropdownOptions[field] ? (
                     <FormControl fullWidth size="small">
                       <InputLabel>{field}</InputLabel>
                       <Select
@@ -191,4 +279,3 @@ function ManageTender() {
 }
 
 export default ManageTender;
-

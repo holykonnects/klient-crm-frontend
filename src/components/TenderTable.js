@@ -22,6 +22,18 @@ import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import dayjs from 'dayjs';
 
+const THIRD_PARTY_STATUS = 'Third Party Transfer';
+const THIRD_PARTY_FIELDS = [
+  'Third Party Name',
+  'Third Party Address',
+  'Third Party GST Number',
+  'Third Party Certificate Validity',
+  'Approved By',
+  'Authorization Certificate'
+];
+const AUTH_CERT_FIELD = 'Authorization Certificate';
+const MAX_UPLOAD_BYTES = 1_200_000;
+
 const theme = createTheme({
   typography: {
     fontFamily: 'Montserrat, sans-serif',
@@ -58,6 +70,7 @@ const TenderTable = () => {
   const [searchInput, setSearchInput] = useState('');
   const [activeSearch, setActiveSearch] = useState('');
   const [filters, setFilters] = useState({ status: '', ministry: '', bidType: '' });
+  const [editFiles, setEditFiles] = useState({});
 
   // ✅ ADDED: full log column selection + diff toggle
   const [logVisibleColumns, setLogVisibleColumns] = useState([]);
@@ -132,7 +145,9 @@ const TenderTable = () => {
   };
 
   // ✅ detect date fields
-  const isDateField = (fieldName) => /date/i.test(fieldName);
+  const isDateField = (fieldName) => /date|validity/i.test(fieldName);
+  const isThirdPartyRow = (row) => row?.['Tender Status'] === THIRD_PARTY_STATUS;
+  const shouldShowEditField = (field) => !THIRD_PARTY_FIELDS.includes(field) || isThirdPartyRow(editRow);
 
   // ✅ UPDATED: One formatter for all cell values (fixes ISO date strings too)
   const formatValue = (key, value) => {
@@ -208,11 +223,73 @@ const TenderTable = () => {
 
   const unique = (key) => [...new Set(tenders.map(d => d[key]).filter(Boolean))];
 
+  const fileToBase64 = (file, label) => {
+    if (!file) return Promise.resolve(null);
+
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return Promise.resolve({
+        name: file.name,
+        type: file.type || 'application/octet-stream',
+        base64: '',
+        size: file.size,
+        tooLarge: true,
+        label
+      });
+    }
+
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const res = String(reader.result || '');
+        const base64 = res.split('base64,')[1] || '';
+        resolve({
+          name: file.name,
+          type: file.type || 'application/octet-stream',
+          base64,
+          size: file.size || 0,
+          tooLarge: false,
+          label
+        });
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  };
+
   const handleEditSubmit = async () => {
+    const certObj = await fileToBase64(editFiles[AUTH_CERT_FIELD], AUTH_CERT_FIELD);
+    if (certObj?.tooLarge) {
+      alert('❌ Authorization Certificate is too large. Please upload a file under 1.2 MB.');
+      return;
+    }
+
     const updated = {
       ...editRow,
       'Tender Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
     };
+
+    if (updated['Tender Status'] === THIRD_PARTY_STATUS) {
+      const missingField = THIRD_PARTY_FIELDS
+        .filter(field => field !== AUTH_CERT_FIELD)
+        .find(field => !String(updated[field] || '').trim());
+
+      if (missingField) {
+        alert(`❌ ${missingField} is required for Third Party Transfer.`);
+        return;
+      }
+
+      if (!certObj && !String(updated[AUTH_CERT_FIELD] || '').trim()) {
+        alert('❌ Authorization Certificate is required for Third Party Transfer.');
+        return;
+      }
+
+      if (certObj) updated[AUTH_CERT_FIELD] = certObj;
+    } else {
+      THIRD_PARTY_FIELDS.forEach(field => {
+        updated[field] = '';
+      });
+    }
+
     try {
       await fetch(dataUrl, {
         method: 'POST',
@@ -222,6 +299,7 @@ const TenderTable = () => {
       });
       alert('✅ Tender updated successfully');
       setEditRow(null);
+      setEditFiles({});
     } catch {
       alert('❌ Error updating tender');
     }
@@ -248,6 +326,11 @@ const TenderTable = () => {
   const handleUpdateChange = (e) => {
     const { name, value } = e.target;
     setEditRow(prev => ({ ...prev, [name]: value }));
+  };
+
+  const handleEditFileChange = (field) => (e) => {
+    const file = e.target.files?.[0] || null;
+    setEditFiles(prev => ({ ...prev, [field]: file }));
   };
 
   // date picker handler for edit modal
@@ -519,13 +602,18 @@ const TenderTable = () => {
           </Dialog>
 
           {/* Edit Modal */}
-          <Dialog open={!!editRow} onClose={() => setEditRow(null)} maxWidth="md" fullWidth>
+          <Dialog open={!!editRow} onClose={() => { setEditRow(null); setEditFiles({}); }} maxWidth="md" fullWidth>
             <DialogTitle>Edit Tender</DialogTitle>
             <DialogContent dividers>
               <Grid container spacing={2}>
-                {editRow && Object.keys(editRow).map((key, i) => (
+                {editRow && Object.keys(editRow).filter(shouldShowEditField).map((key, i) => (
                   <Grid item xs={6} key={i}>
-                    {validationOptions[key] ? (
+                    {key === AUTH_CERT_FIELD ? (
+                      <Button variant="outlined" component="label" fullWidth sx={{ justifyContent: 'flex-start', py: 1 }}>
+                        {editFiles[key]?.name || editRow[key] || key}
+                        <input hidden type="file" onChange={handleEditFileChange(key)} />
+                      </Button>
+                    ) : validationOptions[key] ? (
                       <FormControl fullWidth size="small">
                         <InputLabel>{key}</InputLabel>
                         <Select

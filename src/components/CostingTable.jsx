@@ -947,6 +947,15 @@ export default function CostingTable() {
   const [openAddExpense, setOpenAddExpense] = useState(false);
   const [addExpenseMode, setAddExpenseMode] = useState("existing"); // "existing" | "new"
   const [selectedExistingSheetId, setSelectedExistingSheetId] = useState("");
+  const [advanceOptions, setAdvanceOptions] = useState([]);
+  const [advanceLoading, setAdvanceLoading] = useState(false);
+  const [advanceForm, setAdvanceForm] = useState({
+    "Advance Date": new Date().toISOString().slice(0, 10),
+    "Advance Amount": "",
+    Mode: "",
+    "Reference No": "",
+    Remarks: "",
+  });
 
   const selectedAddExpenseCostSheetOption = useMemo(() => {
     const id = String(selectedExistingSheetId || "").trim();
@@ -958,6 +967,69 @@ export default function CostingTable() {
 
   const loadSeq = useRef(0);
   const costSheetDetailsCache = useRef({});
+
+  async function loadAdvancesForCostSheet(costSheetId) {
+    const id = String(costSheetId || "").trim();
+    if (!id) {
+      setAdvanceOptions([]);
+      return [];
+    }
+
+    setAdvanceLoading(true);
+    try {
+      const params = new URLSearchParams({
+        action: "getAdvancesForCostSheet",
+        costSheetId: id,
+      });
+      const data = await jsonpGet(`${BACKEND}?${params.toString()}`);
+      const rows = Array.isArray(data) ? data : [];
+      setAdvanceOptions(rows);
+      return rows;
+    } catch (e) {
+      console.error("LOAD_ADVANCES_ERROR", e);
+      setAdvanceOptions([]);
+      return [];
+    } finally {
+      setAdvanceLoading(false);
+    }
+  }
+
+  async function recordAdvanceForSelectedSheet() {
+    if (!selectedExistingSheetId) {
+      alert("Please select an existing Cost Sheet first.");
+      return;
+    }
+    if (safeNum(advanceForm["Advance Amount"]) <= 0) {
+      alert("Please enter a valid advance amount.");
+      return;
+    }
+
+    setAdvanceLoading(true);
+    try {
+      await apiPost({
+        action: "recordAdvancePayment",
+        data: {
+          ...advanceForm,
+          "Cost Sheet ID": selectedExistingSheetId,
+          "Collected By": loggedInName || "",
+        },
+      });
+      setAdvanceForm({
+        "Advance Date": new Date().toISOString().slice(0, 10),
+        "Advance Amount": "",
+        Mode: "",
+        "Reference No": "",
+        Remarks: "",
+      });
+      setTimeout(() => loadAdvancesForCostSheet(selectedExistingSheetId), 350);
+      alert("Advance payment recorded.");
+    } catch (e) {
+      console.error("RECORD_ADVANCE_ERROR", e);
+      alert("Failed to record advance payment.");
+    } finally {
+      setAdvanceLoading(false);
+    }
+  }
 
   function getCachedLineItemPage(costSheetId, offset = 0) {
     const id = String(costSheetId || "").trim();
@@ -1607,6 +1679,9 @@ export default function CostingTable() {
       "Attachment Link": "",
       "Voucher/Invoice No": "",
       "Payment Status": "",
+      "Payment Source": "Company Paid",
+      "Advance ID": "",
+      "Advance Applied Amount": "",
       __useAutoAmount: true,
       __useManualTotal: false,
     });
@@ -1811,6 +1886,13 @@ export default function CostingTable() {
 
       const updated = { ...cur, [key]: value };
       if (key === "Head Name") updated.Subcategory = "";
+      if (key === "Payment Source" && value !== "Advance") {
+        updated["Advance ID"] = "";
+        updated["Advance Applied Amount"] = "";
+      }
+      if (key === "Advance ID" && value && !updated["Advance Applied Amount"]) {
+        updated["Advance Applied Amount"] = updated["Total Amount"] || "";
+      }
 
       if (key === "QTY" || key === "Rate") {
         if (updated.__useAutoAmount !== false) updated.__useAutoAmount = true;
@@ -1852,6 +1934,14 @@ export default function CostingTable() {
   function openAddExpenseModal() {
     setAddExpenseMode("existing");
     setSelectedExistingSheetId("");
+    setAdvanceOptions([]);
+    setAdvanceForm({
+      "Advance Date": new Date().toISOString().slice(0, 10),
+      "Advance Amount": "",
+      Mode: "",
+      "Reference No": "",
+      Remarks: "",
+    });
     setEntityOptions([]);
     setCreateForm((p) => ({
       ...p,
@@ -1905,6 +1995,15 @@ export default function CostingTable() {
       alert(
         "Please enter at least Particular / Details / Amount / Total Amount in at least one line item."
       );
+      return;
+    }
+
+    const invalidAdvanceItem = validItems.find((item) => {
+      if (String(item["Payment Source"] || "") !== "Advance") return false;
+      return !String(item["Advance ID"] || "").trim() || safeNum(item["Advance Applied Amount"]) <= 0;
+    });
+    if (invalidAdvanceItem) {
+      alert("Please select an advance and enter the amount used for every advance-funded line item.");
       return;
     }
 
@@ -3262,20 +3361,94 @@ export default function CostingTable() {
               </Grid>
 
               {addExpenseMode === "existing" ? (
-                <Grid item xs={12}>
-                  <Autocomplete
-                    size="small"
-                    options={costSheetOptions}
-                    value={selectedAddExpenseCostSheetOption}
-                    isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
-                    getOptionLabel={(opt) => String(opt?.label || opt?.id || "")}
-                    onChange={(_, picked) => {
-                      const id = picked ? String(picked.id) : "";
-                      setSelectedExistingSheetId(id);
-                    }}
-                    renderInput={(params) => <TextField {...params} label="Existing Cost Sheet (Search)" />}
-                  />
-                </Grid>
+                <>
+                  <Grid item xs={12}>
+                    <Autocomplete
+                      size="small"
+                      options={costSheetOptions}
+                      value={selectedAddExpenseCostSheetOption}
+                      isOptionEqualToValue={(a, b) => String(a?.id) === String(b?.id)}
+                      getOptionLabel={(opt) => String(opt?.label || opt?.id || "")}
+                      onChange={(_, picked) => {
+                        const id = picked ? String(picked.id) : "";
+                        setSelectedExistingSheetId(id);
+                        loadAdvancesForCostSheet(id);
+                      }}
+                      renderInput={(params) => <TextField {...params} label="Existing Cost Sheet (Search)" />}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 2, borderColor: "#e9eefc", bgcolor: "#fbfcff" }}>
+                      <Box sx={{ display: "flex", justifyContent: "space-between", gap: 1, flexWrap: "wrap", mb: 1 }}>
+                        <Box>
+                          <Typography sx={{ fontWeight: 900, fontSize: 12 }}>Advance Attribution</Typography>
+                          <Typography sx={{ fontSize: 11, opacity: 0.72 }}>
+                            Available advances: {advanceLoading ? "Loading..." : advanceOptions.length}
+                          </Typography>
+                        </Box>
+                        <Button size="small" variant="outlined" onClick={() => loadAdvancesForCostSheet(selectedExistingSheetId)} disabled={!selectedExistingSheetId || advanceLoading}>
+                          Refresh Advances
+                        </Button>
+                      </Box>
+
+                      <Grid container spacing={1}>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            type="date"
+                            label="Advance Date"
+                            InputLabelProps={{ shrink: true }}
+                            value={advanceForm["Advance Date"]}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, "Advance Date": e.target.value }))}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={3}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Advance Amount"
+                            value={advanceForm["Advance Amount"]}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, "Advance Amount": e.target.value }))}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Mode"
+                            value={advanceForm.Mode}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, Mode: e.target.value }))}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Reference No"
+                            value={advanceForm["Reference No"]}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, "Reference No": e.target.value }))}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2}>
+                          <Button fullWidth variant="contained" onClick={recordAdvanceForSelectedSheet} disabled={!selectedExistingSheetId || advanceLoading} sx={{ height: 40, bgcolor: cornflowerBlue }}>
+                            Record
+                          </Button>
+                        </Grid>
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Advance Remarks"
+                            value={advanceForm.Remarks}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, Remarks: e.target.value }))}
+                          />
+                        </Grid>
+                      </Grid>
+                    </Paper>
+                  </Grid>
+                </>
               ) : (
                 <>
                   <Grid item xs={12} md={6}>
@@ -3546,6 +3719,56 @@ export default function CostingTable() {
                                 ))}
                               </Select>
                             </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={4}>
+                            <FormControl size="small" fullWidth>
+                              <InputLabel>Payment Source</InputLabel>
+                              <Select
+                                label="Payment Source"
+                                value={it?.["Payment Source"] || "Company Paid"}
+                                onChange={(e) => setAddExpenseItemField(idx, "Payment Source", e.target.value)}
+                              >
+                                {["Company Paid", "Advance", "Pending"].map((s) => (
+                                  <MenuItem key={s} value={s}>
+                                    {s}
+                                  </MenuItem>
+                                ))}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={5}>
+                            <FormControl size="small" fullWidth disabled={it?.["Payment Source"] !== "Advance" || !selectedExistingSheetId}>
+                              <InputLabel>Advance Reference</InputLabel>
+                              <Select
+                                label="Advance Reference"
+                                value={it?.["Advance ID"] || ""}
+                                onChange={(e) => setAddExpenseItemField(idx, "Advance ID", e.target.value)}
+                              >
+                                {advanceOptions.map((adv) => (
+                                  <MenuItem key={adv["Advance ID"]} value={adv["Advance ID"]}>
+                                    {adv.label || `${adv["Advance ID"]} | Balance ₹ ${fmtINR(safeNum(adv["Balance Available"]))}`}
+                                  </MenuItem>
+                                ))}
+                                {!advanceOptions.length ? (
+                                  <MenuItem value="" disabled>
+                                    No advances for selected cost sheet
+                                  </MenuItem>
+                                ) : null}
+                              </Select>
+                            </FormControl>
+                          </Grid>
+
+                          <Grid item xs={12} md={3}>
+                            <TextField
+                              fullWidth
+                              size="small"
+                              label="Advance Used"
+                              value={it?.["Advance Applied Amount"] || ""}
+                              onChange={(e) => setAddExpenseItemField(idx, "Advance Applied Amount", e.target.value)}
+                              disabled={it?.["Payment Source"] !== "Advance"}
+                            />
                           </Grid>
 
                           <Grid item xs={12}>

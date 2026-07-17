@@ -12,6 +12,27 @@ import { useAuth } from './AuthContext';
 
 const WEB_APP_URL = '/api/gas';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
+const fieldSx = {
+  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff' },
+  '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
+  '& .MuiInputLabel-root': { fontFamily: 'Montserrat, sans-serif' }
+};
+const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff' };
+const panelSx = {
+  p: 2,
+  border: '1px solid #dbe3ef',
+  borderRadius: 2,
+  boxShadow: '0 8px 22px rgba(15, 23, 42, 0.05)'
+};
+const sectionTitleSx = {
+  fontFamily: 'Montserrat, sans-serif',
+  fontSize: '0.78rem',
+  fontWeight: 700,
+  color: '#475569',
+  textTransform: 'uppercase',
+  letterSpacing: 0,
+  mb: 1.5
+};
 const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring'];
 const ITEM_TYPE_OPTIONS = ['Equipment', 'Non Equipment'];
 const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
@@ -148,7 +169,7 @@ export default function QuotationBuilder() {
           row.unit = found.unit || '';
           row.rate = toNumber(found.rate);
           row.itemType = found.itemType || row.itemType || 'Equipment';
-          // ✅ Description from Equipment BD "Description" column
+          // Description from Equipment BD "Description" column
           // fallback to "Category : Sub-Category : Item Code" if not present
           row.desc = (found.desc && String(found.desc).trim())
             ? found.desc
@@ -185,7 +206,7 @@ export default function QuotationBuilder() {
             itemType: r.itemType || 'Equipment',
             rate: toNumber(r.rate),
             rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
-            // ✅ send description override so backend writes this exact text
+            // Send description override so backend writes this exact text.
             descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined
           })),
         attach: attachLead ? { leadDisplay: attachLead } : null
@@ -223,240 +244,262 @@ export default function QuotationBuilder() {
   }
 
   return (
-    <Box sx={{ p: 2, fontFamily: 'Montserrat, sans-serif' }}>
-      <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, mb: 2 }}>
-        Quotation Builder
-      </Typography>
-
-      {/* Meta */}
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={4}>
-            <TextField fullWidth label="Client Name" value={meta.clientName}
-              onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField fullWidth label="Project Name" value={meta.projectName}
-              onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField fullWidth label="Quotation No." value={meta.quotationNo}
-              onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField fullWidth type="date" label="Date" InputLabelProps={{ shrink: true }}
-              value={meta.dateISO} onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField fullWidth label="Prepared By" value={meta.preparedBy}
-              onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth>
-              <InputLabel>Choose TC</InputLabel>
-              <Select value={meta.tcType} label="Choose TC"
-                onChange={e => setMeta(m => ({ ...m, tcType: e.target.value }))}
-                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                {tcOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <FormControl fullWidth>
-              <InputLabel>Attach to Lead (optional)</InputLabel>
-              <Select
-                value={attachLead}
-                label="Attach to Lead (optional)"
-                onChange={e => setAttachLead(e.target.value)}
-                sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}
-              >
-                <MenuItem value=""><em>Skip</em></MenuItem>
-                {leadOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid item xs={12}>
-            <TextField fullWidth multiline minRows={2} label="Notes"
-              value={meta.notes} onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField fullWidth label="Quote Title / File Name" value={meta.quotationTitle}
-              onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={5}>
-            <TextField fullWidth label="Client Billing Address" value={meta.clientBillingAddress}
-              onChange={e => setMeta(m => ({ ...m, clientBillingAddress: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={3}>
-            <TextField fullWidth label="Client GST Number" value={meta.clientGstNumber}
-              onChange={e => setMeta(m => ({ ...m, clientGstNumber: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-        </Grid>
-      </Paper>
-
-      <Paper sx={{ p: 2, mb: 2 }}>
-        <Typography fontWeight={600} sx={{ mb: 2 }}>Template Pricing Controls</Typography>
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={2}>
-            <TextField fullWidth type="number" label="Freight" value={pricing.freightAmount}
-              onChange={e => setPricing(p => ({ ...p, freightAmount: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField fullWidth type="number" label="Installation" value={pricing.installationAmount}
-              onChange={e => setPricing(p => ({ ...p, installationAmount: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField fullWidth type="number" label="Non Equipment Discount %" value={pricing.nonEquipmentDiscountPct}
-              onChange={e => setPricing(p => ({ ...p, nonEquipmentDiscountPct: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField fullWidth type="number" label="Equipment Discount %" value={pricing.equipmentDiscountPct}
-              onChange={e => setPricing(p => ({ ...p, equipmentDiscountPct: e.target.value }))} inputProps={{ style: cellStyle }} />
-          </Grid>
-          {[
-            ['nonEquipmentGstPct', 'GST Non Equipment'],
-            ['equipmentGstPct', 'GST Equipment'],
-            ['freightInstallGstPct', 'GST Freight + Installation']
-          ].map(([key, label]) => (
-            <Grid item xs={12} md={4} key={key}>
-              <FormControl fullWidth>
-                <InputLabel>{label}</InputLabel>
-                <Select value={pricing[key]} label={label}
-                  onChange={e => setPricing(p => ({ ...p, [key]: e.target.value }))}
-                  sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                  {GST_RATE_OPTIONS.map(rate => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
-                </Select>
-              </FormControl>
-            </Grid>
-          ))}
-        </Grid>
-      </Paper>
-
-      {/* Lines */}
-      <Paper sx={{ p: 2 }}>
-        {/* Header row (removed small Description column) */}
-        <Grid container spacing={1} sx={{ mb: 1 }}>
-          <Grid item xs={12} md={2}><Typography fontWeight={600}>Category</Typography></Grid>
-          <Grid item xs={12} md={2}><Typography fontWeight={600}>Sub-Category</Typography></Grid>
-          <Grid item xs={12} md={2}><Typography fontWeight={600}>Item Code</Typography></Grid>
-          <Grid item xs={12} md={1}><Typography fontWeight={600}>Unit</Typography></Grid>
-          <Grid item xs={12} md={1}><Typography fontWeight={600}>Qty</Typography></Grid>
-          <Grid item xs={12} md={1}><Typography fontWeight={600}>Rate</Typography></Grid>
-          <Grid item xs={12} md={1.5}><Typography fontWeight={600}>Type</Typography></Grid>
-          <Grid item xs={12} md={1}><Typography fontWeight={600}>Image</Typography></Grid>
-          <Grid item xs={12} md={1}><Typography fontWeight={600}>Actions</Typography></Grid>
-        </Grid>
-
-        {rows.map((r, i) => {
-          const subcats = subCatsFor(r.category);
-          const items = itemsFor(r.category, r.subCategory);
-          return (
-            <Box key={i} sx={{ mb: 2 }}>
-              <Grid container spacing={1} alignItems="center">
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth>
-                    <Select value={r.category} displayEmpty
-                      onChange={e => handleRowChange(i, 'category', e.target.value)}
-                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                      <MenuItem value=""><em>Select</em></MenuItem>
-                      {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth>
-                    <Select value={r.subCategory} displayEmpty disabled={!r.category}
-                      onChange={e => handleRowChange(i, 'subCategory', e.target.value)}
-                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                      <MenuItem value=""><em>Select</em></MenuItem>
-                      {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={2}>
-                  <FormControl fullWidth>
-                    <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
-                      onChange={e => handleRowChange(i, 'itemCode', e.target.value)}
-                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                      <MenuItem value=""><em>Select</em></MenuItem>
-                      {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  <TextField fullWidth value={r.unit || ''} label="Unit"
-                    InputLabelProps={{ shrink: true }} inputProps={{ readOnly: true, style: cellStyle }} />
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  <TextField fullWidth type="number" label="Qty" value={r.qty}
-                    onChange={e => handleRowChange(i, 'qty', e.target.value)} inputProps={{ style: cellStyle }} />
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  <TextField fullWidth type="number" label="Rate"
-                    value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
-                    onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
-                    helperText="Leave blank to use item rate" FormHelperTextProps={{ sx: { m: 0 } }}
-                    inputProps={{ style: cellStyle }} />
-                </Grid>
-                <Grid item xs={12} md={1.5}>
-                  <FormControl fullWidth>
-                    <Select value={r.itemType || 'Equipment'}
-                      onChange={e => handleRowChange(i, 'itemType', e.target.value)}
-                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                      {ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                    </Select>
-                  </FormControl>
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  {r.imageUrl ? (
-                    <IconButton onClick={() => safeOpen(r.imageUrl)} title="Open image"><PictureInPictureAlt /></IconButton>
-                  ) : <Typography variant="body2" color="text.secondary">—</Typography>}
-                </Grid>
-                <Grid item xs={12} md={1}>
-                  <IconButton onClick={() => removeRow(i)} title="Remove">
-                    <DeleteOutline />
-                  </IconButton>
-                </Grid>
-
-                {/* ✅ Big description box under the row */}
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth multiline minRows={4}
-                    label="Description"
-                    value={r.desc || ''}
-                    onChange={e => handleRowChange(i, 'desc', e.target.value)}
-                    inputProps={{ style: { ...cellStyle, lineHeight: 1.4 } }}
-                  />
-                </Grid>
-              </Grid>
-            </Box>
-          );
-        })}
-
-        <Box sx={{ mt: 1 }}>
-          <Button startIcon={<AddCircleOutline />} onClick={addRow}>Add Line</Button>
-        </Box>
-      </Paper>
-
-      {/* Totals & Actions */}
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, flexWrap: 'wrap', gap: 2 }}>
+    <Box sx={{ minHeight: '100vh', p: { xs: 1.5, md: 3 }, bgcolor: '#f6f8fb', fontFamily: 'Montserrat, sans-serif' }}>
+      <Box sx={{
+        mb: 2.5,
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: { xs: 'flex-start', md: 'center' },
+        gap: 2,
+        flexDirection: { xs: 'column', md: 'row' }
+      }}>
         <Box>
-          <Typography>Equipment: ₹{money(totals.equipment)}</Typography>
-          <Typography>Non Equipment: ₹{money(totals.nonEquipment)}</Typography>
-          <Typography>Subtotal: ₹{money(totals.subTotal)}</Typography>
-          <Typography>Discounts: ₹{money(totals.equipmentDiscount + totals.nonEquipmentDiscount)}</Typography>
-          <Typography>GST: ₹{money(totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst)}</Typography>
-          <Typography fontWeight={700}>Grand Total: ₹{money(totals.grand)}</Typography>
+          <Typography variant="h5" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 800, color: '#0f172a' }}>
+            Build Quote
+          </Typography>
+          <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
+            {rows.filter(r => r.category && r.subCategory && r.itemCode).length} line item{rows.length === 1 ? '' : 's'} ready for export
+          </Typography>
         </Box>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <Button variant="contained" onClick={exportPdf} disabled={exporting}>
-            {exporting ? 'Exporting…' : 'Export to PDF + Link Lead'}
-          </Button>
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {lastExport && isHttpUrl(lastExport.url) && (
-            <Button variant="outlined" onClick={() => safeOpen(lastExport.url)}>Open Last PDF</Button>
+            <Button variant="outlined" onClick={() => safeOpen(lastExport.url)} sx={{ borderRadius: 1.5 }}>
+              Open Last PDF
+            </Button>
           )}
+          <Button variant="contained" onClick={exportPdf} disabled={exporting}
+            sx={{ borderRadius: 1.5, px: 2.5, bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}>
+            {exporting ? 'Exporting...' : 'Export PDF'}
+          </Button>
         </Box>
       </Box>
+
+      <Grid container spacing={2.5} alignItems="flex-start">
+        <Grid item xs={12} lg={8.5}>
+          <Paper sx={{ ...panelSx, mb: 2.5 }}>
+            <Typography sx={sectionTitleSx}>Quote Details</Typography>
+            <Grid container spacing={1.5}>
+              <Grid item xs={12} md={7}>
+                <TextField fullWidth size="small" label="Quote Title / File Name" value={meta.quotationTitle}
+                  onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <FormControl fullWidth size="small" sx={fieldSx}>
+                  <InputLabel>Attach to Lead</InputLabel>
+                  <Select value={attachLead} label="Attach to Lead" onChange={e => setAttachLead(e.target.value)} sx={selectSx}>
+                    <MenuItem value=""><em>Skip</em></MenuItem>
+                    {leadOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField fullWidth size="small" label="Client Name" value={meta.clientName}
+                  onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField fullWidth size="small" label="Project Name" value={meta.projectName}
+                  onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={4}>
+                <TextField fullWidth size="small" label="Quotation No." value={meta.quotationNo}
+                  onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField fullWidth size="small" type="date" label="Date" InputLabelProps={{ shrink: true }}
+                  value={meta.dateISO} onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField fullWidth size="small" label="Prepared By" value={meta.preparedBy}
+                  onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <FormControl fullWidth size="small" sx={fieldSx}>
+                  <InputLabel>Terms Type</InputLabel>
+                  <Select value={meta.tcType} label="Terms Type" onChange={e => setMeta(m => ({ ...m, tcType: e.target.value }))} sx={selectSx}>
+                    {tcOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={3}>
+                <TextField fullWidth size="small" label="Client GST Number" value={meta.clientGstNumber}
+                  onChange={e => setMeta(m => ({ ...m, clientGstNumber: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={7}>
+                <TextField fullWidth size="small" label="Client Billing Address" value={meta.clientBillingAddress}
+                  onChange={e => setMeta(m => ({ ...m, clientBillingAddress: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={5}>
+                <TextField fullWidth size="small" label="Notes" value={meta.notes}
+                  onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} sx={fieldSx} />
+              </Grid>
+            </Grid>
+          </Paper>
+
+          <Paper sx={{ ...panelSx, mb: 2.5 }}>
+            <Typography sx={sectionTitleSx}>Pricing Controls</Typography>
+            <Grid container spacing={1.5}>
+              <Grid item xs={6} md={3}>
+                <TextField fullWidth size="small" type="number" label="Freight" value={pricing.freightAmount}
+                  onChange={e => setPricing(p => ({ ...p, freightAmount: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <TextField fullWidth size="small" type="number" label="Installation" value={pricing.installationAmount}
+                  onChange={e => setPricing(p => ({ ...p, installationAmount: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <TextField fullWidth size="small" type="number" label="Equipment Discount %" value={pricing.equipmentDiscountPct}
+                  onChange={e => setPricing(p => ({ ...p, equipmentDiscountPct: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={6} md={3}>
+                <TextField fullWidth size="small" type="number" label="Non Equipment Discount %" value={pricing.nonEquipmentDiscountPct}
+                  onChange={e => setPricing(p => ({ ...p, nonEquipmentDiscountPct: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              {[
+                ['equipmentGstPct', 'GST Equipment'],
+                ['nonEquipmentGstPct', 'GST Non Equipment'],
+                ['freightInstallGstPct', 'GST Freight + Installation']
+              ].map(([key, label]) => (
+                <Grid item xs={12} md={4} key={key}>
+                  <FormControl fullWidth size="small" sx={fieldSx}>
+                    <InputLabel>{label}</InputLabel>
+                    <Select value={pricing[key]} label={label}
+                      onChange={e => setPricing(p => ({ ...p, [key]: e.target.value }))}
+                      sx={selectSx}>
+                      {GST_RATE_OPTIONS.map(rate => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+              ))}
+            </Grid>
+          </Paper>
+
+          <Paper sx={panelSx}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Line Items</Typography>
+              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
+                Add Line
+              </Button>
+            </Box>
+
+            {rows.map((r, i) => {
+              const subcats = subCatsFor(r.category);
+              const items = itemsFor(r.category, r.subCategory);
+              const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
+              const lineTotal = toNumber(r.qty) * lineRate;
+              return (
+                <Box key={i} sx={{
+                  mb: 1.5,
+                  p: 1.5,
+                  border: '1px solid #e2e8f0',
+                  borderRadius: 1.5,
+                  bgcolor: '#fbfdff'
+                }}>
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25, gap: 1 }}>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
+                      Line {i + 1}
+                    </Typography>
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
+                        ₹{money(lineTotal)}
+                      </Typography>
+                      {r.imageUrl && (
+                        <IconButton size="small" onClick={() => safeOpen(r.imageUrl)} title="Open image"><PictureInPictureAlt fontSize="small" /></IconButton>
+                      )}
+                      <IconButton size="small" onClick={() => removeRow(i)} title="Remove">
+                        <DeleteOutline fontSize="small" />
+                      </IconButton>
+                    </Box>
+                  </Box>
+
+                  <Grid container spacing={1.25}>
+                    <Grid item xs={12} md={2.2}>
+                      <FormControl fullWidth size="small" sx={fieldSx}>
+                        <Select value={r.category} displayEmpty onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}>
+                          <MenuItem value=""><em>Category</em></MenuItem>
+                          {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={2.2}>
+                      <FormControl fullWidth size="small" sx={fieldSx}>
+                        <Select value={r.subCategory} displayEmpty disabled={!r.category}
+                          onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}>
+                          <MenuItem value=""><em>Sub-category</em></MenuItem>
+                          {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12} md={2.4}>
+                      <FormControl fullWidth size="small" sx={fieldSx}>
+                        <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
+                          onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}>
+                          <MenuItem value=""><em>Item</em></MenuItem>
+                          {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={6} md={1.1}>
+                      <TextField fullWidth size="small" value={r.unit || ''} label="Unit" InputLabelProps={{ shrink: true }}
+                        inputProps={{ readOnly: true }} sx={fieldSx} />
+                    </Grid>
+                    <Grid item xs={6} md={1}>
+                      <TextField fullWidth size="small" type="number" label="Qty" value={r.qty}
+                        onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} />
+                    </Grid>
+                    <Grid item xs={6} md={1.3}>
+                      <TextField fullWidth size="small" type="number" label="Rate"
+                        value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
+                        onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
+                        sx={fieldSx} />
+                    </Grid>
+                    <Grid item xs={6} md={1.8}>
+                      <FormControl fullWidth size="small" sx={fieldSx}>
+                        <Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>
+                          {ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                        </Select>
+                      </FormControl>
+                    </Grid>
+                    <Grid item xs={12}>
+                      <TextField fullWidth size="small" multiline minRows={2} label="Description"
+                        value={r.desc || ''} onChange={e => handleRowChange(i, 'desc', e.target.value)}
+                        sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.35 } }} />
+                    </Grid>
+                  </Grid>
+                </Box>
+              );
+            })}
+          </Paper>
+        </Grid>
+
+        <Grid item xs={12} lg={3.5}>
+          <Paper sx={{ ...panelSx, position: { lg: 'sticky' }, top: { lg: 24 } }}>
+            <Typography sx={sectionTitleSx}>Quote Summary</Typography>
+            {[
+              ['Equipment', totals.equipment],
+              ['Non Equipment', totals.nonEquipment],
+              ['Subtotal', totals.subTotal],
+              ['Discounts', -(totals.equipmentDiscount + totals.nonEquipmentDiscount)],
+              ['GST', totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst],
+              ['Freight + Installation', totals.freight + totals.installation]
+            ].map(([label, value]) => (
+              <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.85, borderBottom: '1px solid #e2e8f0' }}>
+                <Typography sx={{ fontSize: '0.86rem', color: '#64748b' }}>{label}</Typography>
+                <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: value < 0 ? '#b91c1c' : '#0f172a' }}>
+                  {value < 0 ? '-' : ''}₹{money(Math.abs(value))}
+                </Typography>
+              </Box>
+            ))}
+            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#0f172a', borderRadius: 1.5, color: '#fff' }}>
+              <Typography sx={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0 }}>
+                Grand Total
+              </Typography>
+              <Typography sx={{ mt: 0.5, fontSize: '1.45rem', fontWeight: 800 }}>
+                ₹{money(totals.grand)}
+              </Typography>
+            </Box>
+          </Paper>
+        </Grid>
+      </Grid>
     </Box>
   );
 }

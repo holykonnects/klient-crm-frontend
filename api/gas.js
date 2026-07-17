@@ -1,4 +1,8 @@
 // klient-crm-frontend/api/gas.js
+export const config = {
+  maxDuration: 60
+};
+
 export default async function handler(req, res) {
   // Same-origin; these CORS headers are optional
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -26,15 +30,28 @@ export default async function handler(req, res) {
     const upstream = await fetch(target.toString(), init);
     const text = await upstream.text();
     const ct = upstream.headers.get('content-type') || 'application/json';
-    res.setHeader('Content-Type', ct);
+    const wantsJson = incoming.searchParams.has('action');
+    res.setHeader('Content-Type', wantsJson ? 'application/json' : ct);
 
-    // Try JSON; fall back to text
+    // Try JSON; fall back to a JSON error envelope so the UI does not crash on HTML/text errors.
     if (ct.includes('application/json')) {
       try { return res.status(upstream.status).json(JSON.parse(text)); }
-      catch { return res.status(upstream.status).send(text); }
-    } else {
-      return res.status(upstream.status).send(text);
+      catch {
+        return res.status(upstream.status).json({
+          ok: false,
+          error: 'Invalid JSON from GAS',
+          detail: text.slice(0, 1000)
+        });
+      }
     }
+    if (wantsJson) {
+      return res.status(upstream.status).json({
+        ok: false,
+        error: upstream.ok ? 'Unexpected non-JSON response from GAS' : 'GAS request failed',
+        detail: text.slice(0, 1000)
+      });
+    }
+    return res.status(upstream.status).send(text);
   } catch (err) {
     console.error('GAS proxy error:', err);
     return res.status(502).json({ ok: false, error: 'Proxy failed', detail: String(err) });

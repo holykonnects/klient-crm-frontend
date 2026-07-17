@@ -46,7 +46,18 @@ const emptyRow = {
 // helpers
 function isHttpUrl(s) { if (!s) return false; const t = String(s).trim(); return /^https?:\/\/\S+$/i.test(t); }
 function safeOpen(url) { const t = String(url || '').trim(); if (!isHttpUrl(t)) return false; window.open(t, '_blank', 'noopener,noreferrer'); return true; }
-async function fetchJSON(url, init) { const r = await fetch(url, init); const text = await r.text(); try { return JSON.parse(text); } catch { console.error('Non-JSON from server:', text); throw new Error('Invalid JSON from server'); } }
+async function fetchJSON(url, init) {
+  const r = await fetch(url, init);
+  const text = await r.text();
+  try {
+    const parsed = JSON.parse(text);
+    if (!r.ok && parsed && !parsed.error) parsed.error = `Request failed with status ${r.status}`;
+    return parsed;
+  } catch {
+    const detail = text ? `: ${text.slice(0, 240)}` : '';
+    throw new Error(`Invalid JSON from server${detail}`);
+  }
+}
 function toNumber(value) {
   if (value === '' || value === null || value === undefined) return 0;
   const cleaned = String(value).replace(/[₹,%\s,]/g, '');
@@ -87,6 +98,7 @@ export default function QuotationBuilder() {
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
+  const [leadLookupError, setLeadLookupError] = useState('');
 
   const canUseQuotation =
     user?.role === 'Admin' ||
@@ -106,9 +118,17 @@ export default function QuotationBuilder() {
     if (!user?.username) return;
     (async () => {
       const j = await fetchJSON(`${WEB_APP_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
-      if (j.ok && Array.isArray(j.entries)) setLeadOptions(j.entries);
-      else console.error('getLeadsForUser error:', j.error);
-    })().catch(console.error);
+      if (j.ok && Array.isArray(j.entries)) {
+        setLeadOptions(j.entries);
+        setLeadLookupError('');
+      } else {
+        setLeadOptions([]);
+        setLeadLookupError(j.error || 'Lead lookup unavailable');
+      }
+    })().catch(err => {
+      setLeadOptions([]);
+      setLeadLookupError(err.message || 'Lead lookup unavailable');
+    });
   }, [user?.username]);
 
   const totals = useMemo(() => {
@@ -284,10 +304,11 @@ export default function QuotationBuilder() {
                   onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} sx={fieldSx} />
               </Grid>
               <Grid item xs={12} md={5}>
-                <FormControl fullWidth size="small" sx={fieldSx}>
+                <FormControl fullWidth size="small" sx={fieldSx} error={Boolean(leadLookupError)}>
                   <InputLabel>Attach to Lead</InputLabel>
                   <Select value={attachLead} label="Attach to Lead" onChange={e => setAttachLead(e.target.value)} sx={selectSx}>
                     <MenuItem value=""><em>Skip</em></MenuItem>
+                    {leadLookupError && <MenuItem value="" disabled>Lead lookup unavailable</MenuItem>}
                     {leadOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
                   </Select>
                 </FormControl>

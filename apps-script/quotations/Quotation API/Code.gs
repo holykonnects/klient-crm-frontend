@@ -26,7 +26,7 @@ const VALIDATION_SHEET_ID   = '1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ';
 const VALIDATION_LOGIN_SHEET = 'CRM Login'; // headers: Login Username | Role | Page Access
 
 // Leads sheet (to write “Quotation Link”)
-const LEADS_SHEET_ID   = '1vJbB0fmBQhd6XGTNbjUAi7Bt71hNya u2TBMXTCdoM0'.replace(/\s/g, '');
+const LEADS_SHEET_ID   = '1vJbB0fmBQhd6XGTNbjUAi7Bt71lHNyau2TBMXTCdoM0';
 const LEADS_SHEET_NAME = 'Form responses 1'; // must contain "Quotation Link" header
 
 // Equipment BD expected headers (in reference spreadsheet)
@@ -460,7 +460,7 @@ function updateLeadQuotationLink_(leadDisplay, pdfUrl, actingUser){
   const rec = getLoginRow_(actingUser);
   const isAdmin = rec && rec.role === 'Admin';
 
-  const ss = SpreadsheetApp.openById(LEADS_SHEET_ID);
+  const ss = SpreadsheetApp.openById(sanitizeId_(LEADS_SHEET_ID));
   const sh = ss.getSheetByName(LEADS_SHEET_NAME);
   if (!sh) throw new Error(`Leads sheet "${LEADS_SHEET_NAME}" not found`);
 

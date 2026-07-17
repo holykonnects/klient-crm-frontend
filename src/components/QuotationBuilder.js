@@ -12,17 +12,33 @@ import { useAuth } from './AuthContext';
 
 const WEB_APP_URL = '/api/gas';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
+const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring'];
+const ITEM_TYPE_OPTIONS = ['Equipment', 'Non Equipment'];
+const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
   qty: 1, rateOverride: '',
-  unit: '', rate: '', desc: '', imageUrl: ''
+  unit: '', rate: '', desc: '', imageUrl: '', itemType: 'Equipment'
 };
 
 // helpers
 function isHttpUrl(s) { if (!s) return false; const t = String(s).trim(); return /^https?:\/\/\S+$/i.test(t); }
 function safeOpen(url) { const t = String(url || '').trim(); if (!isHttpUrl(t)) return false; window.open(t, '_blank', 'noopener,noreferrer'); return true; }
 async function fetchJSON(url, init) { const r = await fetch(url, init); const text = await r.text(); try { return JSON.parse(text); } catch { console.error('Non-JSON from server:', text); throw new Error('Invalid JSON from server'); } }
+function toNumber(value) {
+  if (value === '' || value === null || value === undefined) return 0;
+  const cleaned = String(value).replace(/[₹,%\s,]/g, '');
+  const n = Number(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+function money(value) {
+  return toNumber(value).toLocaleString('en-IN', { maximumFractionDigits: 0 });
+}
+function pctValue(value) {
+  const n = toNumber(value);
+  return n > 1 ? n / 100 : n;
+}
 
 export default function QuotationBuilder() {
   const { user } = useAuth();
@@ -32,7 +48,18 @@ export default function QuotationBuilder() {
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
     dateISO: new Date().toISOString().slice(0, 10),
-    preparedBy: '', notes: '', layout: 'portrait'
+    preparedBy: '', notes: '', layout: 'portrait',
+    quotationTitle: '', clientBillingAddress: '', clientGstNumber: '',
+    tcType: 'Equipment'
+  });
+  const [pricing, setPricing] = useState({
+    freightAmount: '',
+    installationAmount: '',
+    nonEquipmentDiscountPct: 0,
+    equipmentDiscountPct: 0,
+    nonEquipmentGstPct: 18,
+    equipmentGstPct: 18,
+    freightInstallGstPct: 18
   });
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
@@ -64,18 +91,39 @@ export default function QuotationBuilder() {
   }, [user?.username]);
 
   const totals = useMemo(() => {
-    let sub = 0;
+    let equipment = 0;
+    let nonEquipment = 0;
     rows.forEach(r => {
-      const qty = Number(r.qty || 0);
-      const rate = Number(r.rateOverride !== '' ? r.rateOverride : r.rate || 0);
-      sub += qty * rate;
+      const qty = toNumber(r.qty);
+      const rate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
+      const lineTotal = qty * rate;
+      if (r.itemType === 'Non Equipment') nonEquipment += lineTotal;
+      else equipment += lineTotal;
     });
-    const tax = 0;
-    return { subTotal: sub, tax, grand: sub + tax };
-  }, [rows]);
+    const freight = toNumber(pricing.freightAmount);
+    const installation = toNumber(pricing.installationAmount);
+    const equipmentDiscount = equipment * pctValue(pricing.equipmentDiscountPct);
+    const nonEquipmentDiscount = nonEquipment * pctValue(pricing.nonEquipmentDiscountPct);
+    const equipmentTaxable = Math.max(equipment - equipmentDiscount, 0);
+    const nonEquipmentTaxable = Math.max(nonEquipment - nonEquipmentDiscount, 0);
+    const freightInstall = freight + installation;
+    const equipmentGst = equipmentTaxable * pctValue(pricing.equipmentGstPct);
+    const nonEquipmentGst = nonEquipmentTaxable * pctValue(pricing.nonEquipmentGstPct);
+    const freightInstallGst = freightInstall * pctValue(pricing.freightInstallGstPct);
+    const grandRaw = equipmentTaxable + nonEquipmentTaxable + freightInstall + equipmentGst + nonEquipmentGst + freightInstallGst;
+    return {
+      equipment, nonEquipment,
+      subTotal: equipment + nonEquipment,
+      freight, installation,
+      equipmentDiscount, nonEquipmentDiscount,
+      equipmentGst, nonEquipmentGst, freightInstallGst,
+      grand: Math.ceil(grandRaw)
+    };
+  }, [rows, pricing]);
 
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
+  const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
 
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
@@ -98,7 +146,8 @@ export default function QuotationBuilder() {
         const found = pool.find(p => p.code === value);
         if (found) {
           row.unit = found.unit || '';
-          row.rate = Number(found.rate || 0);
+          row.rate = toNumber(found.rate);
+          row.itemType = found.itemType || row.itemType || 'Equipment';
           // ✅ Description from Equipment BD "Description" column
           // fallback to "Category : Sub-Category : Item Code" if not present
           row.desc = (found.desc && String(found.desc).trim())
@@ -124,14 +173,18 @@ export default function QuotationBuilder() {
     try {
       const payload = {
         meta,
+        pricing,
         items: rows
           .filter(r => r.category && r.subCategory && r.itemCode)
           .map(r => ({
             category: r.category,
             subCategory: r.subCategory,
             itemCode: r.itemCode,
-            qty: Number(r.qty || 0),
-            rateOverride: r.rateOverride !== '' ? Number(r.rateOverride) : undefined,
+            qty: toNumber(r.qty),
+            unit: r.unit || '',
+            itemType: r.itemType || 'Equipment',
+            rate: toNumber(r.rate),
+            rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
             // ✅ send description override so backend writes this exact text
             descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined
           })),
@@ -200,12 +253,11 @@ export default function QuotationBuilder() {
           </Grid>
           <Grid item xs={12} md={3}>
             <FormControl fullWidth>
-              <InputLabel>Layout</InputLabel>
-              <Select value={meta.layout} label="Layout"
-                onChange={e => setMeta(m => ({ ...m, layout: e.target.value }))}
+              <InputLabel>Choose TC</InputLabel>
+              <Select value={meta.tcType} label="Choose TC"
+                onChange={e => setMeta(m => ({ ...m, tcType: e.target.value }))}
                 sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
-                <MenuItem value="portrait">Portrait</MenuItem>
-                <MenuItem value="landscape">Landscape</MenuItem>
+                {tcOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
               </Select>
             </FormControl>
           </Grid>
@@ -227,6 +279,56 @@ export default function QuotationBuilder() {
             <TextField fullWidth multiline minRows={2} label="Notes"
               value={meta.notes} onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} inputProps={{ style: cellStyle }} />
           </Grid>
+          <Grid item xs={12} md={4}>
+            <TextField fullWidth label="Quote Title / File Name" value={meta.quotationTitle}
+              onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          <Grid item xs={12} md={5}>
+            <TextField fullWidth label="Client Billing Address" value={meta.clientBillingAddress}
+              onChange={e => setMeta(m => ({ ...m, clientBillingAddress: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          <Grid item xs={12} md={3}>
+            <TextField fullWidth label="Client GST Number" value={meta.clientGstNumber}
+              onChange={e => setMeta(m => ({ ...m, clientGstNumber: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+        </Grid>
+      </Paper>
+
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Typography fontWeight={600} sx={{ mb: 2 }}>Template Pricing Controls</Typography>
+        <Grid container spacing={2}>
+          <Grid item xs={12} md={2}>
+            <TextField fullWidth type="number" label="Freight" value={pricing.freightAmount}
+              onChange={e => setPricing(p => ({ ...p, freightAmount: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField fullWidth type="number" label="Installation" value={pricing.installationAmount}
+              onChange={e => setPricing(p => ({ ...p, installationAmount: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField fullWidth type="number" label="Non Equipment Discount %" value={pricing.nonEquipmentDiscountPct}
+              onChange={e => setPricing(p => ({ ...p, nonEquipmentDiscountPct: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          <Grid item xs={12} md={2}>
+            <TextField fullWidth type="number" label="Equipment Discount %" value={pricing.equipmentDiscountPct}
+              onChange={e => setPricing(p => ({ ...p, equipmentDiscountPct: e.target.value }))} inputProps={{ style: cellStyle }} />
+          </Grid>
+          {[
+            ['nonEquipmentGstPct', 'GST Non Equipment'],
+            ['equipmentGstPct', 'GST Equipment'],
+            ['freightInstallGstPct', 'GST Freight + Installation']
+          ].map(([key, label]) => (
+            <Grid item xs={12} md={4} key={key}>
+              <FormControl fullWidth>
+                <InputLabel>{label}</InputLabel>
+                <Select value={pricing[key]} label={label}
+                  onChange={e => setPricing(p => ({ ...p, [key]: e.target.value }))}
+                  sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                  {GST_RATE_OPTIONS.map(rate => <MenuItem key={rate} value={rate}>{rate}%</MenuItem>)}
+                </Select>
+              </FormControl>
+            </Grid>
+          ))}
         </Grid>
       </Paper>
 
@@ -239,7 +341,8 @@ export default function QuotationBuilder() {
           <Grid item xs={12} md={2}><Typography fontWeight={600}>Item Code</Typography></Grid>
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Unit</Typography></Grid>
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Qty</Typography></Grid>
-          <Grid item xs={12} md={1.5}><Typography fontWeight={600}>Rate</Typography></Grid>
+          <Grid item xs={12} md={1}><Typography fontWeight={600}>Rate</Typography></Grid>
+          <Grid item xs={12} md={1.5}><Typography fontWeight={600}>Type</Typography></Grid>
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Image</Typography></Grid>
           <Grid item xs={12} md={1}><Typography fontWeight={600}>Actions</Typography></Grid>
         </Grid>
@@ -288,12 +391,21 @@ export default function QuotationBuilder() {
                   <TextField fullWidth type="number" label="Qty" value={r.qty}
                     onChange={e => handleRowChange(i, 'qty', e.target.value)} inputProps={{ style: cellStyle }} />
                 </Grid>
-                <Grid item xs={12} md={1.5}>
+                <Grid item xs={12} md={1}>
                   <TextField fullWidth type="number" label="Rate"
                     value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
                     onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
                     helperText="Leave blank to use item rate" FormHelperTextProps={{ sx: { m: 0 } }}
                     inputProps={{ style: cellStyle }} />
+                </Grid>
+                <Grid item xs={12} md={1.5}>
+                  <FormControl fullWidth>
+                    <Select value={r.itemType || 'Equipment'}
+                      onChange={e => handleRowChange(i, 'itemType', e.target.value)}
+                      sx={{ fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' }}>
+                      {ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                    </Select>
+                  </FormControl>
                 </Grid>
                 <Grid item xs={12} md={1}>
                   {r.imageUrl ? (
@@ -329,9 +441,12 @@ export default function QuotationBuilder() {
       {/* Totals & Actions */}
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2, flexWrap: 'wrap', gap: 2 }}>
         <Box>
-          <Typography>Subtotal: ₹{totals.subTotal.toLocaleString('en-IN')}</Typography>
-          <Typography>Tax: ₹{totals.tax.toLocaleString('en-IN')}</Typography>
-          <Typography fontWeight={700}>Grand Total: ₹{totals.grand.toLocaleString('en-IN')}</Typography>
+          <Typography>Equipment: ₹{money(totals.equipment)}</Typography>
+          <Typography>Non Equipment: ₹{money(totals.nonEquipment)}</Typography>
+          <Typography>Subtotal: ₹{money(totals.subTotal)}</Typography>
+          <Typography>Discounts: ₹{money(totals.equipmentDiscount + totals.nonEquipmentDiscount)}</Typography>
+          <Typography>GST: ₹{money(totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst)}</Typography>
+          <Typography fontWeight={700}>Grand Total: ₹{money(totals.grand)}</Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button variant="contained" onClick={exportPdf} disabled={exporting}>

@@ -951,6 +951,7 @@ export default function CostingTable() {
   const [advanceLoading, setAdvanceLoading] = useState(false);
   const [advanceForm, setAdvanceForm] = useState({
     "Advance Date": new Date().toISOString().slice(0, 10),
+    "Advance Paid To": "",
     "Advance Amount": "",
     Mode: "",
     "Reference No": "",
@@ -1003,6 +1004,10 @@ export default function CostingTable() {
       alert("Please enter a valid advance amount.");
       return;
     }
+    if (!String(advanceForm["Advance Paid To"] || "").trim()) {
+      alert("Please enter who the advance was paid to.");
+      return;
+    }
 
     setAdvanceLoading(true);
     try {
@@ -1016,6 +1021,7 @@ export default function CostingTable() {
       });
       setAdvanceForm({
         "Advance Date": new Date().toISOString().slice(0, 10),
+        "Advance Paid To": "",
         "Advance Amount": "",
         Mode: "",
         "Reference No": "",
@@ -1937,6 +1943,7 @@ export default function CostingTable() {
     setAdvanceOptions([]);
     setAdvanceForm({
       "Advance Date": new Date().toISOString().slice(0, 10),
+      "Advance Paid To": "",
       "Advance Amount": "",
       Mode: "",
       "Reference No": "",
@@ -3393,7 +3400,7 @@ export default function CostingTable() {
                       </Box>
 
                       <Grid container spacing={1}>
-                        <Grid item xs={12} md={3}>
+                        <Grid item xs={12} md={2.5}>
                           <TextField
                             fullWidth
                             size="small"
@@ -3405,6 +3412,15 @@ export default function CostingTable() {
                           />
                         </Grid>
                         <Grid item xs={12} md={3}>
+                          <TextField
+                            fullWidth
+                            size="small"
+                            label="Advance Paid To"
+                            value={advanceForm["Advance Paid To"]}
+                            onChange={(e) => setAdvanceForm((p) => ({ ...p, "Advance Paid To": e.target.value }))}
+                          />
+                        </Grid>
+                        <Grid item xs={12} md={2.5}>
                           <TextField
                             fullWidth
                             size="small"
@@ -3431,7 +3447,7 @@ export default function CostingTable() {
                             onChange={(e) => setAdvanceForm((p) => ({ ...p, "Reference No": e.target.value }))}
                           />
                         </Grid>
-                        <Grid item xs={12} md={2}>
+                        <Grid item xs={12} md={12}>
                           <Button fullWidth variant="contained" onClick={recordAdvanceForSelectedSheet} disabled={!selectedExistingSheetId || advanceLoading} sx={{ height: 40, bgcolor: cornflowerBlue }}>
                             Record
                           </Button>

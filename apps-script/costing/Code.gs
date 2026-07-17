@@ -36,6 +36,7 @@ const ADVANCE_PAYMENT_HEADERS = [
   'Timestamp',
   'Cost Sheet ID',
   'Advance Date',
+  'Advance Paid To',
   'Advance Amount',
   'Amount Used',
   'Balance Available',
@@ -368,6 +369,7 @@ function getAdvancesForCostSheet_(costSheetId) {
         'Balance Available': balance,
         label: [
           toStr_(r['Advance ID']),
+          toStr_(r['Advance Paid To']),
           '₹ ' + amount.toLocaleString('en-IN'),
           toStr_(r['Reference No'])
         ].filter(Boolean).join(' | ')
@@ -389,6 +391,7 @@ function recordAdvancePayment_(data) {
     'Timestamp': now_(),
     'Cost Sheet ID': costSheetId,
     'Advance Date': data['Advance Date'] || now_(),
+    'Advance Paid To': toStr_(data['Advance Paid To']),
     'Advance Amount': amount,
     'Amount Used': 0,
     'Balance Available': amount,

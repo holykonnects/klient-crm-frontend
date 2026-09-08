@@ -121,7 +121,7 @@ async function ownerEmail(ownerName) {
 }
 
 async function sendOperationalEmail({ owner, subject, intro, headers, data, calendarLink = false }) {
-  if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "true").toLowerCase() === "false") {
+  if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "false").toLowerCase() !== "true") {
     return { sent: false, reason: "disabled" };
   }
 

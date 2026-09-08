@@ -37,6 +37,7 @@ const LEAD_TRANSFER_FIELDS = [
   "Lead ID",
   "Prefilled Link",
 ];
+const SALES_TRACKER_ENTITY_FIELDS = ["Field", "Field Selection"];
 
 export async function getTable(config) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
@@ -123,7 +124,7 @@ export async function handleSalesTrackerPost(config, payload) {
   const data = payload || {};
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName);
-  const headers = values[0] || [];
+  const headers = await ensureSheetHeaders(config, sheetName, values[0] || [], SALES_TRACKER_ENTITY_FIELDS);
   if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
   const row = buildRow(headers, data);
 
@@ -141,6 +142,17 @@ export async function handleSalesTrackerPost(config, payload) {
 
   await appendValues(config.spreadsheetId, sheetName, row);
   return { ok: true, status: "added" };
+}
+
+async function ensureSheetHeaders(config, sheetName, headers, requiredFields) {
+  const next = [...(headers || [])];
+  requiredFields.forEach((field) => {
+    if (!next.includes(field)) next.push(field);
+  });
+  if (next.length !== (headers || []).length) {
+    await updateValues(config.spreadsheetId, sheetName, 1, next);
+  }
+  return next;
 }
 
 function findExistingLeadId(values, headers, mobileNumber) {

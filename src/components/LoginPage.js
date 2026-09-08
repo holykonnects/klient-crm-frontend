@@ -20,7 +20,8 @@ function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogin = async () => {
+  const handleLogin = async (event) => {
+    event?.preventDefault();
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -62,33 +63,37 @@ function LoginPage() {
           <Typography variant="h5" fontWeight="bold" marginBottom={3}>
             Login to Klient Konnect
           </Typography>
-          <TextField
-            fullWidth
-            label="Email"
-            variant="outlined"
-            margin="normal"
-            size="small"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <TextField
-            fullWidth
-            label="Password"
-            type="password"
-            variant="outlined"
-            margin="normal"
-            size="small"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-          <Button
-            variant="contained"
-            fullWidth
-            sx={{ backgroundColor: '#6495ED', marginTop: 2 }}
-            onClick={handleLogin}
-          >
-            Login
-          </Button>
+          <Box component="form" onSubmit={handleLogin}>
+            <TextField
+              fullWidth
+              label="Email"
+              variant="outlined"
+              margin="normal"
+              size="small"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <TextField
+              fullWidth
+              label="Password"
+              type="password"
+              variant="outlined"
+              margin="normal"
+              size="small"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth
+              sx={{ backgroundColor: '#6495ED', marginTop: 2 }}
+            >
+              Login
+            </Button>
+          </Box>
           {error && (
             <Typography color="error" variant="body2" sx={{ marginTop: 1 }}>
               {error}

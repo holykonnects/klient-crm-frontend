@@ -21,6 +21,8 @@ const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 const ENTITY_FIELD_COLUMN = 'Field';
 const ENTITY_SELECTION_COLUMN = 'Field Selection';
 const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
+const ENTITY_FIELD_ALIASES = ['Field', 'Linked Entity Type', 'Entity Type', 'Source Type'];
+const ENTITY_SELECTION_ALIASES = ['Field Selection', 'Linked Entity', 'Linked Entity Name', 'Entity Selection'];
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
@@ -28,7 +30,24 @@ const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 12 };
 
 const num = (v) => parseFloat(String(v ?? '').replace(/[₹,\s]/g, '')) || 0;
 const clean = (v) => String(v ?? '').trim();
+const normalize = (v) => clean(v).toLowerCase().replace(/[^a-z0-9]/g, '');
 const unique = (values) => [...new Set(values.map(clean).filter(Boolean))];
+
+function findColumn(columns, aliases, fallback) {
+  const aliasSet = new Set(aliases.map(normalize));
+  return columns.find((col) => aliasSet.has(normalize(col))) || fallback;
+}
+
+function withEntityColumns(columns) {
+  const next = [...columns];
+  if (!next.some((col) => ENTITY_FIELD_ALIASES.map(normalize).includes(normalize(col)))) {
+    next.push(ENTITY_FIELD_COLUMN);
+  }
+  if (!next.some((col) => ENTITY_SELECTION_ALIASES.map(normalize).includes(normalize(col)))) {
+    next.push(ENTITY_SELECTION_COLUMN);
+  }
+  return next;
+}
 
 function joinLabel(parts) {
   return parts.map(clean).filter(Boolean).join(' - ');
@@ -89,7 +108,7 @@ const SalesTrackerTable = () => {
         setSales(sorted);
         setFilteredSales(sorted);
         if (sorted.length > 0) {
-          const cols = Object.keys(sorted[0]);
+          const cols = withEntityColumns(Object.keys(sorted[0]));
           setColumns(cols);
           setVisibleColumns(cols);
         }
@@ -146,6 +165,18 @@ const SalesTrackerTable = () => {
     Deal: unique(entityRecords.Deal.map(dealLabel)),
     Order: unique(entityRecords.Order.map(orderLabel)),
   }), [entityRecords]);
+  const entityFieldColumn = useMemo(
+    () => findColumn(columns, ENTITY_FIELD_ALIASES, ENTITY_FIELD_COLUMN),
+    [columns]
+  );
+  const entitySelectionColumn = useMemo(
+    () => findColumn(columns, ENTITY_SELECTION_ALIASES, ENTITY_SELECTION_COLUMN),
+    [columns]
+  );
+  const modalColumns = useMemo(
+    () => columns.filter((field) => field !== entityFieldColumn && field !== entitySelectionColumn),
+    [columns, entityFieldColumn, entitySelectionColumn]
+  );
 
   // Search, filter, sort pipeline
   useEffect(() => {
@@ -226,7 +257,7 @@ const SalesTrackerTable = () => {
     setFormData(prev => ({
       ...prev,
       [field]: value,
-      ...(field === ENTITY_FIELD_COLUMN ? { [ENTITY_SELECTION_COLUMN]: '' } : {})
+      ...(field === entityFieldColumn ? { [entitySelectionColumn]: '' } : {})
     }));
   };
 
@@ -398,11 +429,52 @@ const SalesTrackerTable = () => {
             </AccordionSummary>
             <AccordionDetails>
               <Grid container spacing={2}>
-                {columns.map(field => {
-                  const selectedEntityType = clean(formData[ENTITY_FIELD_COLUMN]);
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small">
+                    <InputLabel sx={modalInputStyle}>Field</InputLabel>
+                    <Select
+                      value={formData[entityFieldColumn] || ''}
+                      label="Field"
+                      onChange={(e) => handleFormChange(entityFieldColumn, e.target.value)}
+                      sx={modalInputStyle}
+                      MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
+                    >
+                      {ENTITY_TYPES.map(option => (
+                        <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                <Grid item xs={12} sm={6}>
+                  <FormControl fullWidth size="small" disabled={!clean(formData[entityFieldColumn])}>
+                    <InputLabel sx={modalInputStyle}>Field Selection</InputLabel>
+                    <Select
+                      value={formData[entitySelectionColumn] || ''}
+                      label="Field Selection"
+                      onChange={(e) => handleFormChange(entitySelectionColumn, e.target.value)}
+                      sx={modalInputStyle}
+                      MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
+                    >
+                      {!entitySelectionOptions[clean(formData[entityFieldColumn])]?.length && (
+                        <MenuItem value="" disabled sx={modalInputStyle}>
+                          {clean(formData[entityFieldColumn])
+                            ? `No ${clean(formData[entityFieldColumn]).toLowerCase()} records found`
+                            : 'Select a field first'}
+                        </MenuItem>
+                      )}
+                      {(entitySelectionOptions[clean(formData[entityFieldColumn])] || []).map(option => (
+                        <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                </Grid>
+
+                {modalColumns.map(field => {
+                  const selectedEntityType = clean(formData[entityFieldColumn]);
                   const selectionOptions = entitySelectionOptions[selectedEntityType] || [];
-                  const isEntityTypeField = field === ENTITY_FIELD_COLUMN;
-                  const isEntitySelectionField = field === ENTITY_SELECTION_COLUMN;
+                  const isEntityTypeField = field === entityFieldColumn;
+                  const isEntitySelectionField = field === entitySelectionColumn;
 
                   return (
                   <Grid item xs={12} sm={6} key={field}>

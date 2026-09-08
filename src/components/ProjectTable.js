@@ -4,6 +4,7 @@ import {
   Box,
   Typography,
   Table,
+  TableContainer,
   TableHead,
   TableRow,
   TableCell,
@@ -1091,7 +1092,7 @@ export default function ProjectTable() {
         </Popover>
 
         {/* Table */}
-        <Paper variant="outlined" sx={{ borderRadius: 3, overflow: "hidden" }}>
+        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
           <Table size="small" stickyHeader>
             <TableHead
               sx={{
@@ -1144,7 +1145,7 @@ export default function ProjectTable() {
                 ))}
             </TableBody>
           </Table>
-        </Paper>
+        </TableContainer>
 
         {error && (
           <Typography color="error" sx={{ mt: 2 }}>
@@ -1299,7 +1300,7 @@ export default function ProjectTable() {
                         No changes found for selected project(s) in this date range.
                       </Typography>
                     ) : (
-                      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+                      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
                         <Table size="small" stickyHeader>
                           <TableHead
                             sx={{
@@ -1338,7 +1339,7 @@ export default function ProjectTable() {
                             Showing first 50 rows in preview. Download to get all.
                           </Typography>
                         ) : null}
-                      </Paper>
+                      </TableContainer>
                     )}
                   </Paper>
                 </Grid>
@@ -1401,7 +1402,7 @@ export default function ProjectTable() {
                         No snapshot rows found for selected project(s) in this date range.
                       </Typography>
                     ) : (
-                      <Paper variant="outlined" sx={{ borderRadius: 2, overflow: "hidden" }}>
+                      <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
                         <Table size="small" stickyHeader>
                           <TableHead
                             sx={{
@@ -1434,7 +1435,7 @@ export default function ProjectTable() {
                             Showing first 25 rows in preview. Download to get all.
                           </Typography>
                         ) : null}
-                      </Paper>
+                      </TableContainer>
                     )}
                   </Paper>
                 </Grid>
@@ -1471,44 +1472,46 @@ export default function ProjectTable() {
             {logsRows.length === 0 ? (
               <Typography>No logs available.</Typography>
             ) : (
-              <Table size="small">
-                <TableHead>
-                  <TableRow>
-                    {headers.map((h) => (
-                      <TableCell key={h}>{h}</TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {logsRows.map((row, i) => {
-                    const changedSet = logsChangedSets[i] || new Set();
-                    return (
-                      <TableRow key={i}>
-                        {headers.map((h) => {
-                          const isChanged = changedSet.has(h);
-                          return (
-                            <TableCell
-                              key={h}
-                              sx={
-                                isChanged
-                                  ? {
-                                      backgroundColor: "rgba(100,149,237,0.14)", // ✅ cornflower tint
-                                      fontWeight: 400, // ✅ normal
-                                    }
-                                  : undefined
-                              }
-                            >
-                              {h === "Timestamp"
-                                ? formatDDMMYYYY_HHMMSSS(row[h])
-                                : renderCell(h, row[h])}
-                            </TableCell>
-                          );
-                        })}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+              <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
+                <Table size="small" stickyHeader>
+                  <TableHead>
+                    <TableRow>
+                      {headers.map((h) => (
+                        <TableCell key={h}>{h}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {logsRows.map((row, i) => {
+                      const changedSet = logsChangedSets[i] || new Set();
+                      return (
+                        <TableRow key={i}>
+                          {headers.map((h) => {
+                            const isChanged = changedSet.has(h);
+                            return (
+                              <TableCell
+                                key={h}
+                                sx={
+                                  isChanged
+                                    ? {
+                                        backgroundColor: "rgba(100,149,237,0.14)", // ✅ cornflower tint
+                                        fontWeight: 400, // ✅ normal
+                                      }
+                                    : undefined
+                                }
+                              >
+                                {h === "Timestamp"
+                                  ? formatDDMMYYYY_HHMMSSS(row[h])
+                                  : renderCell(h, row[h])}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </TableContainer>
             )}
           </DialogContent>
           <DialogActions>

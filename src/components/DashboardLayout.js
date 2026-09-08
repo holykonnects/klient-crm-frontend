@@ -168,7 +168,7 @@ function DashboardLayout({ children }) {
       </Drawer>
 
       {/* Main Content */}
-      <Box flexGrow={1} p={3}>
+      <Box flexGrow={1} p={3} minWidth={0} sx={{ overflowX: 'auto' }}>
         {children}
       </Box>
     </Box>

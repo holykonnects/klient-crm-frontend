@@ -4,7 +4,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Button, Popover,
-  Accordion, AccordionSummary, AccordionDetails, TableSortLabel
+  Accordion, AccordionSummary, AccordionDetails, TableSortLabel, TableContainer, Paper
 } from '@mui/material';
 import CurrencyRupee from '@mui/icons-material/CurrencyRupee';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -22,9 +22,9 @@ const ENTITY_FIELD_COLUMN = 'Field';
 const ENTITY_SELECTION_COLUMN = 'Field Selection';
 const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
 
-const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
-const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' };
-const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
+const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
+const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
+const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 12 };
 
 const num = (v) => parseFloat(String(v ?? '').replace(/[₹,\s]/g, '')) || 0;
 const clean = (v) => String(v ?? '').trim();
@@ -350,39 +350,41 @@ const SalesTrackerTable = () => {
       </Popover>
 
       {/* Table */}
-      <Table size="small">
-        <TableHead>
-          <TableRow sx={{ backgroundColor: '#6495ED' }}>
-            {visibleColumns.map(col => (
-              <TableCell key={col} sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>
-                <TableSortLabel
-                  active={orderBy === col}
-                  direction={orderBy === col ? order : 'asc'}
-                  onClick={() => handleSort(col)}
-                  sx={{ color: '#fff' }}
-                >
-                  {col}
-                </TableSortLabel>
-              </TableCell>
-            ))}
-            <TableCell sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>Actions</TableCell>
-          </TableRow>
-        </TableHead>
-        <TableBody>
-          {filteredSales.map((row, idx) => (
-            <TableRow key={idx}>
+      <TableContainer component={Paper} sx={{ borderRadius: 1, border: '1px solid #e4ebf5', maxWidth: '100%' }}>
+        <Table size="small" stickyHeader>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: '#6495ED' }}>
               {visibleColumns.map(col => (
-                <TableCell key={col} sx={fontStyle}>{row[col]}</TableCell>
+                <TableCell key={col} sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>
+                  <TableSortLabel
+                    active={orderBy === col}
+                    direction={orderBy === col ? order : 'asc'}
+                    onClick={() => handleSort(col)}
+                    sx={{ color: '#fff' }}
+                  >
+                    {col}
+                  </TableSortLabel>
+                </TableCell>
               ))}
-              <TableCell>
-                <IconButton onClick={() => openEditModal(row)}>
-                  <EditIcon />
-                </IconButton>
-              </TableCell>
+              <TableCell sx={{ ...fontStyle, color: '#fff', textAlign: 'center' }}>Actions</TableCell>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHead>
+          <TableBody>
+            {filteredSales.map((row, idx) => (
+              <TableRow key={idx} hover>
+                {visibleColumns.map(col => (
+                  <TableCell key={col} sx={fontStyle} title={String(row[col] || '')}>{row[col]}</TableCell>
+                ))}
+                <TableCell>
+                  <IconButton onClick={() => openEditModal(row)}>
+                    <EditIcon />
+                  </IconButton>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
 
       {/* Modal */}
       <Dialog open={modalOpen} onClose={() => setModalOpen(false)} maxWidth="md" fullWidth>

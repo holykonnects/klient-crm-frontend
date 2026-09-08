@@ -19,6 +19,10 @@ Optional overrides:
 - `VALIDATION_SHEET_ID`
 - `EMAIL_SHEET_ID`
 - `EMAIL_TEMPLATE_FOLDER_ID`
+- `RIDO_LOGO_URL`
+- `KLIENT_KONNECT_LOGO_URL`
+- `PUBLIC_APP_URL`
+- `EMAIL_ASSET_BASE_URL`
 - `GMAIL_SENDER_EMAIL`
 - `GOOGLE_DELEGATED_USER_EMAIL`
 - `LEAD_UPDATE_FORM_URL`
@@ -52,6 +56,7 @@ Quick leads created from the communication module use the same `/api/leads` pipe
 
 The single-send communication module now uses `/api/email` instead of the old Apps Script deployment for templates, preview, template versioning, lead lookup, quick lead creation, email logs, and single email send.
 Email sending on Vercel requires Gmail API domain-wide delegation for the service account and `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
+Outgoing emails are wrapped in a branded layout. The header uses `/assets/rido-sports-logo.png` from `PUBLIC_APP_URL` or `VERCEL_URL`, unless `RIDO_LOGO_URL` is set. The footer uses `KLIENT_KONNECT_LOGO_URL` when set, otherwise it uses `/assets/kk-logo.png`.
 The separate bulk email sender iframe is still a separate Apps Script deployment and needs its own migration pass.
 
 ## Nomenclature Manager

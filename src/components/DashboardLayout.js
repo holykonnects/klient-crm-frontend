@@ -64,7 +64,7 @@ function DashboardLayout({ children }) {
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
     { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' },
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
-    { label: 'Nomenclature', icon: <Description />, route: '/nomenclature', show: true },
+    { label: 'Nomenclature', icon: <Description />, route: '/nomenclature', access: 'Nomenclature' },
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Costing', icon: <CurrencyRupee />, route: '/costing', access: 'Costing' },

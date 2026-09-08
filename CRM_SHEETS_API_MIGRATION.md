@@ -64,7 +64,10 @@ The separate bulk email sender iframe is still a separate Apps Script deployment
 The platform route `/nomenclature` lists baseline files from the Drive folder configured by `NOMENCLATURE_FOLDER_ID`.
 If that env var is missing, the API searches for a Drive folder named `Nomenclature`.
 
-Only these users can access the module:
+Users must have `Nomenclature` in the CRM Login sheet `Page Access` value to see this module.
+Users with Nomenclature page access can browse, preview supported files, and download working copies to manage on their own machines.
+
+Only these users get baseline editor controls:
 
 - `sandeep@ridosports.com`
 - `sidhant@ridosports.com`

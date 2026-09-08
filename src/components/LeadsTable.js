@@ -12,7 +12,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover,
-  InputAdornment, TablePagination, Tooltip
+  InputAdornment, TablePagination, Tooltip, Alert
 } from '@mui/material';
 import { Link as MUILink } from '@mui/material';
 import VisibilityIcon from '@mui/icons-material/Visibility';
@@ -38,6 +38,18 @@ function useDebouncedValue(value, delay = 250) {
     return () => clearTimeout(t);
   }, [value, delay]);
   return debounced;
+}
+
+async function fetchJsonArray(url, label) {
+  const res = await fetch(url);
+  const data = await res.json();
+  if (!res.ok) {
+    throw new Error(data?.error || `${label} failed with status ${res.status}`);
+  }
+  if (!Array.isArray(data)) {
+    throw new Error(data?.error || `${label} did not return a row array`);
+  }
+  return data;
 }
 
 /* ---------- URL helpers ---------- */
@@ -193,6 +205,7 @@ const LeadsTable = () => {
   const [viewRow, setViewRow] = useState(null);
   const [editRow, setEditRow] = useState(null);
   const [validationOptions, setValidationOptions] = useState({});
+  const [loadError, setLoadError] = useState('');
   const [selectedEntryRow, setSelectedEntryRow] = useState(null);
   const [showCalendarModal, setShowCalendarModal] = useState(false);
   const [entryType, setEntryType] = useState('');
@@ -216,9 +229,9 @@ const LeadsTable = () => {
   const role = user?.role;
 
   // URLs
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
+  const dataUrl = '/api/leads';
+  const formSubmitUrl = '/api/leads';
+  const validationUrl = '/api/leads?action=validation';
 
   const fetchAbortRef = useRef(null);
   const revalidate = useCallback(async () => {
@@ -228,6 +241,9 @@ const LeadsTable = () => {
       fetchAbortRef.current = ctrl;
       const res = await fetch(dataUrl, { signal: ctrl.signal });
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || `Leads failed with status ${res.status}`);
+      if (!Array.isArray(data)) throw new Error(data?.error || 'Leads did not return a row array');
+      setLoadError('');
       const filteredData = role === 'End User'
         ? data.filter(lead => lead['Lead Owner'] === username)
         : data;
@@ -258,14 +274,14 @@ const LeadsTable = () => {
 
     (async () => {
       try {
-        const res = await fetch(dataUrl);
-        const data = await res.json();
+        const data = await fetchJsonArray(dataUrl, 'Leads');
 
         const filteredData = role === 'End User'
           ? data.filter(lead => lead['Lead Owner'] === username)
           : data;
 
         if (cancelled) return;
+        setLoadError('');
 
         setAllLeads(filteredData);
 
@@ -288,6 +304,7 @@ const LeadsTable = () => {
         );
       } catch (e) {
         console.error('Failed to fetch leads', e);
+        if (!cancelled) setLoadError(e.message || 'Failed to fetch leads');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -297,6 +314,7 @@ const LeadsTable = () => {
       try {
         const res = await fetch(validationUrl);
         const json = await res.json();
+        if (!res.ok) throw new Error(json?.error || `Validation failed with status ${res.status}`);
         if (!cancelled) setValidationOptions(json);
       } catch (e) {
         console.error('Failed to fetch validation options', e);
@@ -528,6 +546,11 @@ const LeadsTable = () => {
     <ThemeProvider theme={theme}>
       {loading && <LoadingOverlay />}
       <Box padding={4}>
+        {loadError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {loadError}
+          </Alert>
+        )}
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
@@ -772,12 +795,12 @@ const LeadsTable = () => {
             if (submitting) return;
             setSubmitting(true);
             try {
-              await fetch(formSubmitUrl, {
+              const res = await fetch(formSubmitUrl, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
               });
+              if (!res.ok) throw new Error(await res.text());
               alert('✅ Lead updated successfully');
               setEditRow(null);
 

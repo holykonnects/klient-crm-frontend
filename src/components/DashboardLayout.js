@@ -31,7 +31,8 @@ import {
   Construction,
   Email,
   ManageSearch,
-  Inventory2
+  Inventory2,
+  Description
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -50,7 +51,6 @@ function DashboardLayout({ children }) {
   }, [location.pathname]);
 
   const toggleDrawer = () => setOpen(prev => !prev);
-
   const menuItems = [
     { label: 'Check Owner', icon: <ManageSearch />, route: '/existence-check', access: 'Existence Check' },
     { label: 'Dashboard', icon: <Dashboard />, route: '/dashboard', access: 'Dashboard' },
@@ -64,6 +64,7 @@ function DashboardLayout({ children }) {
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },
     { label: 'Manage Travel', icon: <FlightTakeoff />, route: '/view-travel', access: 'Travel' },
     { label: 'Sales Tracker', icon: <CurrencyRupee />, route: '/sales-tracker', access: 'Sales Tracker' },
+    { label: 'Nomenclature', icon: <Description />, route: '/nomenclature', access: 'Nomenclature' },
     { label: 'Build Quote', icon: <BusinessCenter />, route: '/quotation-builder', access: 'Quotation' },
     { label: 'Manage Project', icon: <Construction />, route: '/projects', access: 'Project' },
     { label: 'Costing', icon: <CurrencyRupee />, route: '/costing', access: 'Costing' },
@@ -108,7 +109,7 @@ function DashboardLayout({ children }) {
         {/* Menu + Logout (INLINE) */}
         <List>
           {menuItems
-            .filter(item => user?.pageAccess?.includes(item.access))
+            .filter(item => item.show || user?.pageAccess?.includes(item.access))
             .map(({ label, icon, route }) => (
               <Tooltip key={label} title={open ? '' : label} placement="right">
                 <ListItem button component={Link} to={route}>
@@ -167,7 +168,7 @@ function DashboardLayout({ children }) {
       </Drawer>
 
       {/* Main Content */}
-      <Box flexGrow={1} p={3}>
+      <Box flexGrow={1} p={3} minWidth={0} sx={{ overflowX: 'auto' }}>
         {children}
       </Box>
     </Box>

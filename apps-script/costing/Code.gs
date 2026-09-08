@@ -30,6 +30,27 @@ const COST_SHEET_TAB = 'Cost Sheet';
 const COST_LINE_TAB = 'Cost Line Items';
 const COST_VALIDATION_TAB = 'Cost Validation';
 const EXPENSE_REQUESTS_TAB = 'Expense Requests';
+const ADVANCE_PAYMENTS_TAB = 'Advance Payments';
+const ADVANCE_PAYMENT_HEADERS = [
+  'Advance ID',
+  'Timestamp',
+  'Cost Sheet ID',
+  'Advance Date',
+  'Advance Paid To',
+  'Advance Amount',
+  'Amount Used',
+  'Balance Available',
+  'Mode',
+  'Reference No',
+  'Collected By',
+  'Remarks',
+  'Active'
+];
+const COST_LINE_ADVANCE_HEADERS = [
+  'Payment Source',
+  'Advance ID',
+  'Advance Applied Amount'
+];
 /**
  * ENTITY SOURCES — NO ASSUMPTIONS:
  * Using ONLY what you provided.
@@ -209,6 +230,41 @@ function getExpenseRequestsSheet_() {
   return openSheet_(COSTING_SPREADSHEET_ID, EXPENSE_REQUESTS_TAB);
 }
 
+function getOrCreateSheetWithHeaders_(spreadsheetId, sheetName, headers) {
+  const ss = SpreadsheetApp.openById(spreadsheetId);
+  let sheet = ss.getSheetByName(sheetName);
+  if (!sheet) sheet = ss.insertSheet(sheetName);
+
+  if (sheet.getLastRow() < 1 || sheet.getLastColumn() < 1) {
+    sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    return sheet;
+  }
+
+  const existing = getHeaders_(sheet);
+  const missing = headers.filter(h => existing.indexOf(h) < 0);
+  if (missing.length) {
+    sheet.getRange(1, existing.length + 1, 1, missing.length).setValues([missing]);
+    try {
+      cache_().remove("HDR::" + spreadsheetId + "::" + sheetName);
+    } catch (err) {
+      Logger.log("Header cache clear skipped: " + err);
+    }
+  }
+  return sheet;
+}
+
+function getAdvancePaymentsSheet_() {
+  return getOrCreateSheetWithHeaders_(COSTING_SPREADSHEET_ID, ADVANCE_PAYMENTS_TAB, ADVANCE_PAYMENT_HEADERS);
+}
+
+function ensureCostLineAdvanceColumns_() {
+  return getOrCreateSheetWithHeaders_(COSTING_SPREADSHEET_ID, COST_LINE_TAB, COST_LINE_ADVANCE_HEADERS);
+}
+
+function generateAdvanceId_() {
+  return 'ADV-' + new Date().getTime() + '-' + Math.floor(Math.random() * 1000);
+}
+
 function generateBatchId_() {
   return 'BATCH-' + new Date().getTime();
 }
@@ -290,6 +346,118 @@ function getCostValidation_() {
   });
 
   return result;
+}
+
+function getAdvancesForCostSheet_(costSheetId) {
+  const id = toStr_(costSheetId);
+  if (!id) return [];
+
+  const sheet = getAdvancePaymentsSheet_();
+  const headers = getHeaders_(sheet);
+  const rows = getRowsAsObjects_(sheet);
+
+  return rows
+    .filter(r => isActiveYes_(r['Active']) && toStr_(r['Cost Sheet ID']) === id)
+    .map(r => {
+      const amount = toNum_(r['Advance Amount']);
+      const used = calculateAdvanceUsed_(toStr_(r['Advance ID']));
+      const balance = Math.max(amount - used, 0);
+      return {
+        ...r,
+        'Advance Amount': amount,
+        'Amount Used': used,
+        'Balance Available': balance,
+        label: [
+          toStr_(r['Advance ID']),
+          toStr_(r['Advance Paid To']),
+          '₹ ' + amount.toLocaleString('en-IN'),
+          toStr_(r['Reference No'])
+        ].filter(Boolean).join(' | ')
+      };
+    });
+}
+
+function recordAdvancePayment_(data) {
+  const costSheetId = toStr_(data && data['Cost Sheet ID']);
+  const amount = toNum_(data && data['Advance Amount']);
+  if (!costSheetId) throw new Error('recordAdvancePayment_ requires Cost Sheet ID');
+  if (amount <= 0) throw new Error('Advance Amount must be greater than zero');
+
+  const sheet = getAdvancePaymentsSheet_();
+  const headers = getHeaders_(sheet);
+  const advanceId = toStr_(data['Advance ID']) || generateAdvanceId_();
+  const rowObj = {
+    'Advance ID': advanceId,
+    'Timestamp': now_(),
+    'Cost Sheet ID': costSheetId,
+    'Advance Date': data['Advance Date'] || now_(),
+    'Advance Paid To': toStr_(data['Advance Paid To']),
+    'Advance Amount': amount,
+    'Amount Used': 0,
+    'Balance Available': amount,
+    'Mode': toStr_(data.Mode),
+    'Reference No': toStr_(data['Reference No']),
+    'Collected By': toStr_(data['Collected By']),
+    'Remarks': toStr_(data.Remarks),
+    'Active': 'Yes'
+  };
+
+  sheet.getRange(sheet.getLastRow() + 1, 1, 1, headers.length).setValues([buildRowFromHeaders_(headers, rowObj)]);
+  return { success: true, advanceId: advanceId, advances: getAdvancesForCostSheet_(costSheetId) };
+}
+
+function calculateAdvanceUsed_(advanceId) {
+  const id = toStr_(advanceId);
+  if (!id) return 0;
+
+  const sheet = openSheet_(COSTING_SPREADSHEET_ID, COST_LINE_TAB);
+  const headers = getHeaders_(sheet);
+  const lastRow = sheet.getLastRow();
+  if (lastRow < 2 || !headers.length) return 0;
+
+  const idxAdvance = headers.indexOf('Advance ID');
+  const idxApplied = headers.indexOf('Advance Applied Amount');
+  const idxActive = headers.indexOf('Active');
+  if (idxAdvance < 0 || idxApplied < 0) return 0;
+
+  const values = sheet.getRange(2, 1, lastRow - 1, headers.length).getValues();
+  return values.reduce((sum, row) => {
+    if (idxActive >= 0 && !isActiveYes_(row[idxActive])) return sum;
+    if (toStr_(row[idxAdvance]) !== id) return sum;
+    return sum + toNum_(row[idxApplied]);
+  }, 0);
+}
+
+function refreshAdvanceBalance_(advanceId) {
+  const id = toStr_(advanceId);
+  if (!id) return;
+
+  const sheet = getAdvancePaymentsSheet_();
+  const headers = getHeaders_(sheet);
+  const values = sheet.getDataRange().getValues();
+  const idxId = headers.indexOf('Advance ID');
+  const idxAmount = headers.indexOf('Advance Amount');
+  const idxUsed = headers.indexOf('Amount Used');
+  const idxBalance = headers.indexOf('Balance Available');
+  if (idxId < 0) return;
+
+  for (let i = 1; i < values.length; i++) {
+    if (toStr_(values[i][idxId]) !== id) continue;
+    const amount = idxAmount >= 0 ? toNum_(values[i][idxAmount]) : 0;
+    const used = calculateAdvanceUsed_(id);
+    if (idxUsed >= 0) sheet.getRange(i + 1, idxUsed + 1).setValue(used);
+    if (idxBalance >= 0) sheet.getRange(i + 1, idxBalance + 1).setValue(Math.max(amount - used, 0));
+    return;
+  }
+}
+
+function refreshAdvanceBalancesForItems_(items) {
+  const seen = {};
+  (items || []).forEach(item => {
+    const id = toStr_(item && item['Advance ID']);
+    if (id) seen[id] = true;
+  });
+  Object.keys(seen).forEach(refreshAdvanceBalance_);
 }
 
 /**
@@ -961,6 +1129,11 @@ function doGet(e) {
       }
     }
 
+    if (action === 'getAdvancesForCostSheet') {
+      const costSheetId = e.parameter.costSheetId ? String(e.parameter.costSheetId) : '';
+      return jsonOrJsonpResponse_(getAdvancesForCostSheet_(costSheetId), callback);
+    }
+
     if (action === 'searchCostLineItems') {
       return jsonOrJsonpResponse_(searchCostLineItems_(e.parameter || {}), callback);
     }
@@ -1175,7 +1348,7 @@ function addLineItem_(data) {
   Logger.log("==== ADD LINE ITEM START ====");
   Logger.log("Incoming data: " + JSON.stringify(data));
 
-  const sheet = openSheet_(COSTING_SPREADSHEET_ID, COST_LINE_TAB);
+  const sheet = ensureCostLineAdvanceColumns_();
   Logger.log("Opened sheet: " + COST_LINE_TAB);
 
   const headers = getHeaders_(sheet);
@@ -1197,6 +1370,7 @@ function addLineItem_(data) {
   // ✅ Faster than appendRow
   const nextRow = sheet.getLastRow() + 1;
   sheet.getRange(nextRow, 1, 1, row.length).setValues([row]);
+  refreshAdvanceBalancesForItems_([data]);
 
   Logger.log("Row written successfully at row: " + nextRow);
 
@@ -1224,7 +1398,7 @@ function addLineItemsBatch_(data) {
     throw new Error("addLineItemsBatch_ requires data.items array");
   }
 
-  const sheet = openSheet_(COSTING_SPREADSHEET_ID, COST_LINE_TAB);
+  const sheet = ensureCostLineAdvanceColumns_();
   const headers = getHeaders_(sheet);
   if (!headers.length) throw new Error("No headers found in Cost Line Items sheet");
 
@@ -1241,6 +1415,7 @@ function addLineItemsBatch_(data) {
   });
 
   sheet.getRange(startRow, 1, rowsToWrite.length, headers.length).setValues(rowsToWrite);
+  refreshAdvanceBalancesForItems_(data.items);
   Logger.log("Batch rows written: " + rowsToWrite.length);
 
   const ids = {};
@@ -1444,6 +1619,10 @@ function doPost(e) {
       const d = payload.data || {};
       if (d && d.costSheetId) invalidateCostSheetDetailsCache_(d.costSheetId);
       return jsonResponse_(addLineItemsBatch_(d));
+    }
+
+    if (action === "recordAdvancePayment") {
+      return jsonResponse_(recordAdvancePayment_(payload.data || {}));
     }
 
     if (action === "updateLineItem") {

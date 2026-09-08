@@ -14,14 +14,13 @@ import {
   CircularProgress,
   Link,
 } from "@mui/material";
+import { useAuth } from "../AuthContext";
 
 const cornflowerBlue = "#6495ED";
 
-// ✅ Public /macros URL
-const EMAIL_LOGS_URL =
-  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec?action=getEmailEvents";
-
 export default function EmailLogsTable() {
+  const { user } = useAuth();
+  const userEmail = String(user?.username || "").trim().toLowerCase();
   const [logs, setLogs] = useState([]);
   const [filtered, setFiltered] = useState([]);
   const [search, setSearch] = useState("");
@@ -48,7 +47,8 @@ export default function EmailLogsTable() {
       try {
         setLoading(true);
         setErrorMsg("");
-        const res = await fetch(EMAIL_LOGS_URL);
+        const params = new URLSearchParams({ action: "getEmailEvents", user: userEmail });
+        const res = await fetch(`/api/email?${params.toString()}`);
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
@@ -71,7 +71,7 @@ export default function EmailLogsTable() {
     };
 
     fetchLogs();
-  }, []);
+  }, [userEmail]);
 
   // Simple text filter across key fields
   useEffect(() => {

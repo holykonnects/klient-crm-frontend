@@ -1,5 +1,4 @@
-const API =
-  "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
+const API = "/api/email";
 
 function safeJSON(text) {
   try {
@@ -10,8 +9,9 @@ function safeJSON(text) {
 }
 
 const EmailService = {
-  async getTemplates() {
-    const res = await fetch(`${API}?action=getTemplates`);
+  async getTemplates(userEmail = "") {
+    const params = new URLSearchParams({ action: "getTemplates", user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     const json = safeJSON(text);
 
@@ -20,8 +20,9 @@ const EmailService = {
     return json.data; // <-- EXTRACT ARRAY
   },
 
-  async getLeads() {
-    const res = await fetch(`${API}?action=getLeads`);
+  async getLeads(userEmail = "") {
+    const params = new URLSearchParams({ action: "getLeads", user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     const arr = safeJSON(text);
 
@@ -38,38 +39,50 @@ const EmailService = {
     }));
   },
 
-  async previewTemplate(id) {
-    const res = await fetch(`${API}?action=previewTemplate&id=${id}`);
+  async previewTemplate(id, userEmail = "") {
+    const params = new URLSearchParams({ action: "previewTemplate", id, user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     return safeJSON(text);
   },
 
-  async createLead(data) {
-    await fetch(API, {
+  async createLead(data, userEmail = "") {
+    const res = await fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "createLead",
+        user: userEmail,
         ...data
       }),
     });
+    const text = await res.text();
+    const json = safeJSON(text);
+    if (!res.ok || (json && json.ok === false)) {
+      throw new Error(json?.error || text || "Lead creation failed");
+    }
+    return json || { ok: true };
   },
 
-  async sendEmail(payload) {
-  await fetch(API, {
+  async sendEmail(payload, userEmail = "") {
+  const res = await fetch(API, {
     method: "POST",
-    mode: "no-cors",     // 🔥 PREVENTS PREFLIGHT ERROR
     body: JSON.stringify({
       action: "sendEmail",
+      user: userEmail,
       ...payload
     }),
     headers: {
       "Content-Type": "application/json"
     }
   });
+  const text = await res.text();
+  const json = safeJSON(text);
+  if (!res.ok || (json && json.ok === false)) {
+    throw new Error(json?.error || text || "Email send failed");
+  }
 
-  // no response available in no-cors, assume success:
-  return { ok: true };
+  return json || { ok: true };
 }
 };
 export default EmailService;

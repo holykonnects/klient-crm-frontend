@@ -13,8 +13,11 @@ import {
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
 import MinimalLeadModal from "./MinimalLeadModal";
+import { useAuth } from "../AuthContext";
 
 export default function SendEmailModal({ open, onClose }) {
+  const { user } = useAuth();
+  const userEmail = String(user?.username || "").trim().toLowerCase();
   const [mode, setMode] = useState("existing");
   const [leads, setLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -37,18 +40,26 @@ export default function SendEmailModal({ open, onClose }) {
     if (!open) return;
 
     (async () => {
-      const fetchedLeads = await EmailService.getLeads();
-      const fetchedTemplates = await EmailService.getTemplates();
+      const fetchedLeads = await EmailService.getLeads(userEmail);
+      const fetchedTemplates = await EmailService.getTemplates(userEmail);
 
       setLeads(Array.isArray(fetchedLeads) ? fetchedLeads : []);
       setTemplates(Array.isArray(fetchedTemplates) ? fetchedTemplates : []);
     })();
-  }, [open]);
+  }, [open, userEmail]);
 
   /******************************************************
    * NEW LEAD SAVED FROM MinimalLeadModal
    ******************************************************/
-  const handleMinimalLeadSave = (data) => {
+  const handleMinimalLeadSave = async (data) => {
+    try {
+      await EmailService.createLead(data, userEmail);
+    } catch (err) {
+      console.error("Quick lead creation failed:", err);
+      alert(err.message || "Unable to create lead.");
+      return;
+    }
+
     const tempLead = {
       firstName: data.firstName || "",
       lastName: "",
@@ -81,21 +92,27 @@ export default function SendEmailModal({ open, onClose }) {
 
     const today = new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
 
-    await EmailService.sendEmail({
-      to: selectedLead.email,
-      subject,
-      templateId: selectedTemplate.id,
+    try {
+      await EmailService.sendEmail({
+        to: selectedLead.email,
+        subject,
+        templateId: selectedTemplate.id,
+        fromEmail: userEmail,
 
-      placeholders: {
-        FIRST_NAME: minimalValues.firstName || "",
-        COMPANY: minimalValues.company || "",
-        DATE: today,
-        EMAIL: selectedLead.email
-      }
-    });
+        placeholders: {
+          FIRST_NAME: minimalValues.firstName || "",
+          COMPANY: minimalValues.company || "",
+          DATE: today,
+          EMAIL: selectedLead.email
+        }
+      }, userEmail);
 
-    alert("Email Sent Successfully!");
-    onClose();
+      alert("Email Sent Successfully!");
+      onClose();
+    } catch (err) {
+      console.error("Email send failed:", err);
+      alert(err.message || "Email send failed.");
+    }
   };
 
   return (
@@ -211,6 +228,7 @@ export default function SendEmailModal({ open, onClose }) {
             open={previewOpen}
             onClose={() => setPreviewOpen(false)}
             templateId={selectedTemplate.id}
+            userEmail={userEmail}
           />
         )}
       </Dialog>

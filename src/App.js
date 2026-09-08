@@ -24,6 +24,7 @@ import CostingTable from './components/CostingTable';
 import InventoryModule from './components/InventoryModule';
 import StockManagement from './components/StockManagement';
 import ExpenseRequestTable from './components/ExpenseRequestTable';
+import NomenclatureManager from './components/NomenclatureManager';
 
 const AppRoutes = () => {
   const { user } = useAuth();
@@ -39,6 +40,14 @@ const AppRoutes = () => {
         <Route path="add-lead" element={<LeadForm />} />
         <Route path="calendar" element={<CalendarView />} />
         <Route path="sales-tracker" element={<SalesTrackerTable />} />
+        <Route
+          path="nomenclature"
+          element={
+            <ProtectedPage pageKey="Nomenclature">
+              <NomenclatureManager />
+            </ProtectedPage>
+          }
+        />
         <Route path="quotation-builder" element={<QuotationBuilder />} />
         <Route path="projects" element={<ProjectTable />} />
         <Route
@@ -78,8 +87,22 @@ const AppRoutes = () => {
         />
         
 
-        <Route path="email-templates" element={<EmailTemplatesTable />} />
-        <Route path="email-dashboard" element={<EmailDashboard />} />
+        <Route
+          path="email-templates"
+          element={
+            <ProtectedPage pageKey="Email">
+              <EmailTemplatesTable />
+            </ProtectedPage>
+          }
+        />
+        <Route
+          path="email-dashboard"
+          element={
+            <ProtectedPage pageKey="Email">
+              <EmailDashboard />
+            </ProtectedPage>
+          }
+        />
 
         {/* ✅ NEW: Existence Check page (controlled by CRM Login sheet Page Access) */}
         <Route

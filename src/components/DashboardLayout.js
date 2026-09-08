@@ -45,7 +45,9 @@ const cornflowerBlue = '#6495ED';
 const sidebarBackground = '#fdfdfd';
 
 function DashboardLayout({ children }) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(() => (
+    typeof window === 'undefined' ? true : window.innerWidth >= 900
+  ));
   const location = useLocation();
   const { user, logout } = useAuth();
   const theme = useTheme();
@@ -99,7 +101,7 @@ function DashboardLayout({ children }) {
           .filter(item => item.show || user?.pageAccess?.includes(item.access))
           .map(({ label, icon, route }) => (
             <Tooltip key={label} title={open ? '' : label} placement="right">
-              <ListItem button component={Link} to={route}>
+              <ListItem button component={Link} to={route} onClick={() => isMobile && setOpen(false)}>
                 <ListItemIcon sx={{ color: cornflowerBlue, minWidth: open ? 48 : 44 }}>
                   {icon}
                 </ListItemIcon>
@@ -156,7 +158,7 @@ function DashboardLayout({ children }) {
   );
 
   return (
-    <Box display="flex" sx={{ minHeight: '100vh', width: '100%' }}>
+    <Box display="flex" sx={{ minHeight: '100vh', width: '100%', maxWidth: '100vw', overflowX: 'hidden' }}>
       {isMobile && !open && (
         <IconButton
           onClick={toggleDrawer}
@@ -188,7 +190,8 @@ function DashboardLayout({ children }) {
           width: isMobile ? 0 : open ? drawerWidth : 60,
           flexShrink: 0,
           '& .MuiDrawer-paper': {
-            width: isMobile ? drawerWidth : open ? drawerWidth : 60,
+            width: isMobile ? 'min(86vw, 320px)' : open ? drawerWidth : 60,
+            maxWidth: '86vw',
             backgroundColor: sidebarBackground,
             transition: 'width 0.3s ease',
             overflowX: 'hidden',
@@ -206,12 +209,14 @@ function DashboardLayout({ children }) {
       {/* Main Content */}
       <Box
         flexGrow={1}
+        className="crm-main-content"
         minWidth={0}
         sx={{
           overflowX: 'auto',
           p: { xs: 1.25, sm: 2, md: 3 },
           pt: { xs: 7, md: 3 },
-          width: isMobile ? '100%' : 'auto'
+          width: isMobile ? '100vw' : 'auto',
+          maxWidth: '100vw'
         }}
       >
         {children}

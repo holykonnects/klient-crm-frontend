@@ -187,13 +187,29 @@ function LeadForm() {
 
   return (
     <ThemeProvider theme={theme}>
-      <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
+      <Paper
+        elevation={3}
+        sx={{
+          width: '100%',
+          maxWidth: 900,
+          margin: { xs: 0, sm: '1rem auto', md: '2rem auto' },
+          padding: { xs: 2, sm: 3, md: 4 },
+          borderRadius: { xs: 2, md: 3 }
+        }}
+      >
         {/* Klient Konnect Logo */}
-        <Box display="flex" justifyContent="center" mb={3}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+        <Box display="flex" justifyContent="center" mb={{ xs: 2, md: 3 }}>
+          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 'auto', maxHeight: 96, maxWidth: '46vw' }} />
         </Box>
 
-        <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
+        <Typography
+          variant="h5"
+          fontWeight="bold"
+          color="#6495ED"
+          mb={{ xs: 2, md: 3 }}
+          textAlign="center"
+          sx={{ fontSize: { xs: 24, sm: 28 }, lineHeight: 1.2 }}
+        >
           Add New Lead
         </Typography>
 
@@ -245,8 +261,14 @@ function LeadForm() {
             ))}
           </Grid>
 
-          <Box mt={3} display="flex" justifyContent="flex-end">
-            <Button type="submit" variant="contained" sx={{ backgroundColor: '#6495ED' }} disabled={submitting}>
+          <Box mt={3} display="flex" justifyContent={{ xs: 'stretch', sm: 'flex-end' }}>
+            <Button
+              type="submit"
+              variant="contained"
+              fullWidth={false}
+              sx={{ backgroundColor: '#6495ED', width: { xs: '100%', sm: 'auto' } }}
+              disabled={submitting}
+            >
               {submitting ? 'Submitting...' : 'Submit Lead'}
             </Button>
           </Box>

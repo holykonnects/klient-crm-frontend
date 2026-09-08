@@ -4,6 +4,8 @@ const VALIDATION_SPREADSHEET_ID = '1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ'
 const SALES_TRACKER_SPREADSHEET_ID = '1XV4CJLt8nP512e39YK9RmYFO2llxyNCtmuphXgT8p2E';
 const SALES_TRACKER_SHEET_NAME = 'Sheet1';
 const ADMIN_PREVIEW_RECIPIENTS = 'holy@klientkonnect.com,Sandeep@ridosports.com,sidhant@ridosports.com';
+const EMAIL_PUBLIC_APP_URL = 'https://crm.klientkonnect.com';
+const EMAIL_FONT_STACK = 'Montserrat, Arial, sans-serif';
 
 function doGet(e) {
   const query = e.parameter;
@@ -28,10 +30,10 @@ function doGet(e) {
 
 function getHtmlTableFromRows(rows, headers) {
   if (!rows || rows.length === 0) return '<p>No records available.</p>';
-  let html = `<table border="1" cellpadding="4" cellspacing="0" style="border-collapse: collapse; border: 1px solid #888; font-family: Montserrat;">`;
-  html += `<tr style="background-color: #e0e0e0;">${headers.map(h => `<th>${h}</th>`).join('')}</tr>`;
+  let html = `<table cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border-spacing:0;margin:18px 0;border:1px solid #d9e3f0;background:#ffffff;font-family:${EMAIL_FONT_STACK};font-size:12px;">`;
+  html += `<tr>${headers.map(h => `<th style="background:#eef4ff;color:#172033;border:1px solid #d9e3f0;padding:10px 12px;text-align:left;font-size:12px;line-height:1.45;font-weight:700;vertical-align:top;">${escapeHtml_(h)}</th>`).join('')}</tr>`;
   rows.forEach(row => {
-    html += '<tr>' + headers.map(h => `<td>${row[h] || ''}</td>`).join('') + '</tr>';
+    html += '<tr>' + headers.map(h => `<td style="border:1px solid #d9e3f0;padding:9px 12px;color:#243447;font-size:12px;line-height:1.5;vertical-align:top;">${escapeHtml_(row[h] || '')}</td>`).join('') + '</tr>';
   });
   html += '</table>';
   return html;
@@ -69,6 +71,42 @@ function escapeHtml_(value) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function brandedReportEmailHtml_(title, contentHtml) {
+  return `
+    <div style="margin:0;padding:0;background:#f3f6fb;font-family:${EMAIL_FONT_STACK};color:#172033;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;margin:0;padding:28px 12px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:920px;background:#ffffff;border:1px solid #e4ebf5;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:22px 28px;background:#ffffff;border-bottom:4px solid #6495ED;">
+                  <img src="${EMAIL_PUBLIC_APP_URL}/assets/rido-sports-logo.png" alt="Rido Sports" style="display:block;max-width:170px;max-height:64px;width:auto;height:auto;" />
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 28px 24px 28px;font-size:13px;line-height:1.6;color:#172033;">
+                  <h2 style="margin:0 0 16px 0;color:#172033;font-size:20px;line-height:1.3;">${escapeHtml_(title)}</h2>
+                  ${contentHtml || ""}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:18px 28px 22px 28px;background:#f8fbff;border-top:1px solid #e4ebf5;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    <tr>
+                      <td style="font-size:11px;line-height:1.5;color:#6b7280;">Sent via Klient Konnect CRM</td>
+                      <td align="right"><img src="${EMAIL_PUBLIC_APP_URL}/assets/kk-logo.png" alt="Klient Konnect" style="display:inline-block;max-width:120px;max-height:44px;width:auto;height:auto;vertical-align:middle;" /></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
 }
 
 function parseAmount_(value) {
@@ -281,7 +319,7 @@ function previewQuarterlyBillingEmails() {
   html += '</table>';
 
   GmailApp.sendEmail(ADMIN_PREVIEW_RECIPIENTS, `Quarterly Billing Managed Preview - ${quarterInfo.label}`, '', {
-    htmlBody: html,
+    htmlBody: brandedReportEmailHtml_(`Quarterly Billing Managed Preview - ${quarterInfo.label}`, html),
   });
 }
 
@@ -308,7 +346,7 @@ function sendQuarterlyBillingEmails(startDate, endDate, label) {
 
     try {
       GmailApp.sendEmail(email, `Quarterly Billing Managed - ${label}`, '', {
-        htmlBody: html,
+        htmlBody: brandedReportEmailHtml_(`Quarterly Billing Managed - ${label}`, html),
       });
       Logger.log(`✅ Quarterly billing email sent to: ${owner} (${email})`);
     } catch (err) {
@@ -580,7 +618,7 @@ function previewMonthlyPerformanceEmails() {
   //</a>`;
 
   GmailApp.sendEmail('holy@klientkonnect.com,Sandeep@ridosports.com,sidhant@ridosports.com', `CRM Summary Preview – ${month}/${year}`, '', {
-    htmlBody: html
+    htmlBody: brandedReportEmailHtml_(`CRM Summary Preview - ${month}/${year}`, html)
   });
 }
 
@@ -614,7 +652,7 @@ function sendMonthlyPerformanceEmails(startDate, endDate) {
 
     try {
       GmailApp.sendEmail(email, `CRM Summary – ${startDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`, '', {
-        htmlBody: html
+        htmlBody: brandedReportEmailHtml_(`CRM Summary - ${startDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`, html)
       });
       Logger.log(`✅ Email sent to: ${owner} (${email})`);
     } catch (err) {

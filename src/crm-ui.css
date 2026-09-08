@@ -152,6 +152,43 @@ select,
     -webkit-overflow-scrolling: touch;
   }
 
+  .crm-main-content {
+    width: 100vw;
+    max-width: 100vw;
+    overflow-x: hidden;
+  }
+
+  .crm-main-content > * {
+    max-width: 100%;
+  }
+
+  .crm-main-content .MuiPaper-root {
+    max-width: 100%;
+  }
+
+  .MuiGrid-container {
+    width: 100% !important;
+    margin-left: 0 !important;
+  }
+
+  .MuiGrid-item {
+    padding-left: 0 !important;
+  }
+
+  .MuiTextField-root,
+  .MuiFormControl-root {
+    min-width: 0;
+  }
+
+  .MuiFormHelperText-root {
+    white-space: normal;
+    overflow-wrap: break-word;
+  }
+
+  .MuiInputBase-root {
+    min-width: 0;
+  }
+
   .MuiTable-root {
     min-width: 760px;
   }
@@ -206,6 +243,7 @@ select,
 
   .MuiButton-root {
     min-height: 38px;
+    white-space: normal;
   }
 
   .MuiTextField-root .MuiInputBase-input,

@@ -137,3 +137,112 @@ select,
 .MuiInputLabel-root {
   font-size: 12px !important;
 }
+
+@media (max-width: 900px) {
+  html,
+  body,
+  #root {
+    width: 100%;
+    overflow-x: hidden;
+  }
+
+  .MuiTableContainer-root {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .MuiTable-root {
+    min-width: 760px;
+  }
+
+  .MuiTableHead-root .MuiTableCell-root {
+    padding: 9px 10px;
+    font-size: 10px;
+  }
+
+  .MuiTableBody-root .MuiTableCell-root {
+    min-width: 118px;
+    max-width: 220px;
+    height: 40px;
+    padding: 7px 10px;
+    font-size: 10px;
+  }
+
+  .MuiTableCell-root:last-child {
+    position: sticky;
+    right: 0;
+    z-index: 1;
+    background: #ffffff;
+    box-shadow: -8px 0 14px rgba(23, 32, 51, 0.08);
+  }
+
+  .MuiTableHead-root .MuiTableCell-root:last-child {
+    z-index: 2;
+    background: #6495ed;
+  }
+
+  .MuiDialog-paper {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    max-height: calc(100dvh - 20px) !important;
+    margin: 10px !important;
+  }
+
+  .MuiDialogTitle-root {
+    padding: 14px 16px !important;
+    font-size: 14px !important;
+  }
+
+  .MuiDialogContent-root {
+    padding: 14px 16px !important;
+  }
+
+  .MuiDialogActions-root {
+    padding: 10px 16px 14px !important;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .MuiButton-root {
+    min-height: 38px;
+  }
+
+  .MuiTextField-root .MuiInputBase-input,
+  .MuiSelect-select {
+    min-height: 22px;
+    font-size: 12px !important;
+  }
+
+  .MuiTablePagination-toolbar {
+    align-items: flex-start !important;
+    gap: 4px;
+    padding: 8px !important;
+    min-height: auto !important;
+    flex-wrap: wrap;
+  }
+
+  .MuiTablePagination-spacer {
+    display: none;
+  }
+}
+
+@media (max-width: 520px) {
+  .MuiTable-root {
+    min-width: 680px;
+  }
+
+  .MuiTableBody-root .MuiTableCell-root {
+    min-width: 108px;
+    max-width: 190px;
+  }
+
+  .MuiTableCell-root .MuiIconButton-root {
+    width: 30px;
+    height: 30px;
+  }
+
+  .MuiDialogActions-root .MuiButton-root {
+    flex: 1 1 140px;
+  }
+}

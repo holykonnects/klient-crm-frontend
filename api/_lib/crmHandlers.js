@@ -10,6 +10,11 @@ import {
   updateValues,
   uploadDriveFile,
 } from "./googleSheets.js";
+import {
+  notifyDealSubmitted,
+  notifyLeadSubmitted,
+  notifyOrderSubmitted,
+} from "./operationalEmails.js";
 
 const FILE_FIELDS = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
 const LEAD_TRANSFER_FIELDS = [
@@ -67,6 +72,7 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
   data["Prefilled Link"] = data["Prefilled Link"] || buildLeadPrefilledLink(data);
 
   await appendValues(leadsConfig.spreadsheetId, sheetName, buildRow(headers, data));
+  const notification = await notifySafely(() => notifyLeadSubmitted(headers, data));
 
   const qualifiedTransfer = await maybeTransferQualifiedLead({
     accountsConfig,
@@ -77,6 +83,7 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
     ok: true,
     leadId: data["Lead ID"],
     qualifiedTransfer,
+    notification,
   };
 }
 
@@ -91,17 +98,27 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
   const data = payload?.data || payload || {};
 
   if (!action || action === "updateDeal") {
-    await appendTableRow(dealsConfig, data);
-    return { ok: true };
+    const sheetName = await resolveSheetTitle(dealsConfig.spreadsheetId, dealsConfig.sheetNames);
+    const values = await getValues(dealsConfig.spreadsheetId, sheetName, "1:1");
+    const headers = values[0] || [];
+    if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+    await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
+    const notification = await notifySafely(() => notifyDealSubmitted(headers, data));
+    return { ok: true, notification };
   }
 
   if (action === "createOrder") {
     const orderId = data["Order ID"];
     if (!orderId) throw new Error("Missing Order ID in createOrder payload.");
     const uploaded = await withUploadedFiles(data, `ORD ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
-    await appendTableRow(ordersConfig, uploaded);
+    const orderSheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
+    const orderValues = await getValues(ordersConfig.spreadsheetId, orderSheetName, "1:1");
+    const orderHeaders = orderValues[0] || [];
+    if (!orderHeaders.length) throw new Error(`No headers found in ${orderSheetName}`);
+    await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded || {}));
     await appendTableRow(dealsConfig, clearFileFields(uploaded));
-    return { ok: true, orderId };
+    const notification = await notifySafely(() => notifyOrderSubmitted(orderHeaders, uploaded));
+    return { ok: true, orderId, notification };
   }
 
   throw new Error(`Unknown deals action: ${action}`);
@@ -116,8 +133,13 @@ export async function handleOrderPost({ ordersConfig, payload }) {
   if (!orderId) throw new Error("Missing Order ID in updateOrder payload.");
 
   const uploaded = await withUploadedFiles(data, `ORD-UPDATE ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
-  await appendTableRow(ordersConfig, uploaded);
-  return { ok: true, orderId };
+  const sheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
+  const values = await getValues(ordersConfig.spreadsheetId, sheetName, "1:1");
+  const headers = values[0] || [];
+  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+  await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
+  const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded));
+  return { ok: true, orderId, notification };
 }
 
 export async function handleSalesTrackerPost(config, payload) {
@@ -153,6 +175,14 @@ async function ensureSheetHeaders(config, sheetName, headers, requiredFields) {
     await updateValues(config.spreadsheetId, sheetName, 1, next);
   }
   return next;
+}
+
+async function notifySafely(fn) {
+  try {
+    return await fn();
+  } catch (err) {
+    return { sent: false, reason: err.message || String(err) };
+  }
 }
 
 function findExistingLeadId(values, headers, mobileNumber) {

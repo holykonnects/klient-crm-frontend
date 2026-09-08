@@ -25,6 +25,10 @@ Optional overrides:
 - `EMAIL_ASSET_BASE_URL`
 - `GMAIL_SENDER_EMAIL`
 - `GOOGLE_DELEGATED_USER_EMAIL`
+- `OPERATIONAL_EMAIL_CC`
+- `OPERATIONAL_REPLY_TO`
+- `CRM_CALENDAR_URL`
+- `ENABLE_OPERATIONAL_EMAILS`
 - `LEAD_UPDATE_FORM_URL`
 - `ORDER_UPLOAD_FOLDER_ID`
 - `ORDER_PO_FOLDER_ID`
@@ -51,6 +55,11 @@ The frontend modules for Leads, Lead Form, Accounts, Deals, Orders, and Sales Tr
 
 Lead saves through `/api/leads` now generate or reuse `Lead ID` values and copy leads with `Lead Status = Qualified` into the Accounts sheet.
 Quick leads created from the communication module use the same `/api/leads` pipeline.
+
+Operational lead/deal/order notifications now send from the Vercel API flow instead of Apps Script triggers.
+Owner recipient lookup follows the old Apps Script rule: match `Lead Owner` / `Account Owner` against column A of `Validation Tables` and send to column E.
+By default, operational emails CC `Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com`; override with `OPERATIONAL_EMAIL_CC`.
+Set `ENABLE_OPERATIONAL_EMAILS=false` to temporarily disable these notifications without disabling record saves.
 
 ## Communication Engine
 

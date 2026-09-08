@@ -9,8 +9,9 @@ function safeJSON(text) {
 }
 
 const EmailService = {
-  async getTemplates() {
-    const res = await fetch(`${API}?action=getTemplates`);
+  async getTemplates(userEmail = "") {
+    const params = new URLSearchParams({ action: "getTemplates", user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     const json = safeJSON(text);
 
@@ -19,8 +20,9 @@ const EmailService = {
     return json.data; // <-- EXTRACT ARRAY
   },
 
-  async getLeads() {
-    const res = await fetch(`${API}?action=getLeads`);
+  async getLeads(userEmail = "") {
+    const params = new URLSearchParams({ action: "getLeads", user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     const arr = safeJSON(text);
 
@@ -37,18 +39,20 @@ const EmailService = {
     }));
   },
 
-  async previewTemplate(id) {
-    const res = await fetch(`${API}?action=previewTemplate&id=${id}`);
+  async previewTemplate(id, userEmail = "") {
+    const params = new URLSearchParams({ action: "previewTemplate", id, user: userEmail });
+    const res = await fetch(`${API}?${params.toString()}`);
     const text = await res.text();
     return safeJSON(text);
   },
 
-  async createLead(data) {
+  async createLead(data, userEmail = "") {
     const res = await fetch(API, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         action: "createLead",
+        user: userEmail,
         ...data
       }),
     });
@@ -60,11 +64,12 @@ const EmailService = {
     return json || { ok: true };
   },
 
-  async sendEmail(payload) {
+  async sendEmail(payload, userEmail = "") {
   const res = await fetch(API, {
     method: "POST",
     body: JSON.stringify({
       action: "sendEmail",
+      user: userEmail,
       ...payload
     }),
     headers: {

@@ -87,8 +87,22 @@ const AppRoutes = () => {
         />
         
 
-        <Route path="email-templates" element={<EmailTemplatesTable />} />
-        <Route path="email-dashboard" element={<EmailDashboard />} />
+        <Route
+          path="email-templates"
+          element={
+            <ProtectedPage pageKey="Email">
+              <EmailTemplatesTable />
+            </ProtectedPage>
+          }
+        />
+        <Route
+          path="email-dashboard"
+          element={
+            <ProtectedPage pageKey="Email">
+              <EmailDashboard />
+            </ProtectedPage>
+          }
+        />
 
         {/* ✅ NEW: Existence Check page (controlled by CRM Login sheet Page Access) */}
         <Route

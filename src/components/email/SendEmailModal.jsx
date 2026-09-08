@@ -13,8 +13,11 @@ import {
 import EmailService from "./EmailService";
 import TemplatePreviewModal from "./TemplatePreviewModal";
 import MinimalLeadModal from "./MinimalLeadModal";
+import { useAuth } from "../AuthContext";
 
 export default function SendEmailModal({ open, onClose }) {
+  const { user } = useAuth();
+  const userEmail = String(user?.username || "").trim().toLowerCase();
   const [mode, setMode] = useState("existing");
   const [leads, setLeads] = useState([]);
   const [templates, setTemplates] = useState([]);
@@ -37,20 +40,20 @@ export default function SendEmailModal({ open, onClose }) {
     if (!open) return;
 
     (async () => {
-      const fetchedLeads = await EmailService.getLeads();
-      const fetchedTemplates = await EmailService.getTemplates();
+      const fetchedLeads = await EmailService.getLeads(userEmail);
+      const fetchedTemplates = await EmailService.getTemplates(userEmail);
 
       setLeads(Array.isArray(fetchedLeads) ? fetchedLeads : []);
       setTemplates(Array.isArray(fetchedTemplates) ? fetchedTemplates : []);
     })();
-  }, [open]);
+  }, [open, userEmail]);
 
   /******************************************************
    * NEW LEAD SAVED FROM MinimalLeadModal
    ******************************************************/
   const handleMinimalLeadSave = async (data) => {
     try {
-      await EmailService.createLead(data);
+      await EmailService.createLead(data, userEmail);
     } catch (err) {
       console.error("Quick lead creation failed:", err);
       alert(err.message || "Unable to create lead.");
@@ -94,6 +97,7 @@ export default function SendEmailModal({ open, onClose }) {
         to: selectedLead.email,
         subject,
         templateId: selectedTemplate.id,
+        fromEmail: userEmail,
 
         placeholders: {
           FIRST_NAME: minimalValues.firstName || "",
@@ -101,7 +105,7 @@ export default function SendEmailModal({ open, onClose }) {
           DATE: today,
           EMAIL: selectedLead.email
         }
-      });
+      }, userEmail);
 
       alert("Email Sent Successfully!");
       onClose();
@@ -224,6 +228,7 @@ export default function SendEmailModal({ open, onClose }) {
             open={previewOpen}
             onClose={() => setPreviewOpen(false)}
             templateId={selectedTemplate.id}
+            userEmail={userEmail}
           />
         )}
       </Dialog>

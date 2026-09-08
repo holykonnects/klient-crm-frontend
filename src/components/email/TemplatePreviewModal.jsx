@@ -2,16 +2,16 @@ import { useEffect, useState } from "react";
 import { Box, Dialog, Typography } from "@mui/material";
 import EmailService from "./EmailService";
 
-export default function TemplatePreviewModal({ open, onClose, templateId }) {
+export default function TemplatePreviewModal({ open, onClose, templateId, userEmail = "" }) {
   const [html, setHtml] = useState("");
 
   useEffect(() => {
     if (open) {
-      EmailService.previewTemplate(templateId).then((res) => {
+      EmailService.previewTemplate(templateId, userEmail).then((res) => {
         setHtml(res.html || "");
       });
     }
-  }, [open]);
+  }, [open, templateId, userEmail]);
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="md" fullWidth>

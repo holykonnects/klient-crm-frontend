@@ -15,6 +15,7 @@ import {
 import { handleLeadPost } from "./_lib/crmHandlers.js";
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
+const EMAIL_PAGE_KEY = "Email";
 
 function json(res, status, body) {
   return res.status(status).json(body);
@@ -22,6 +23,47 @@ function json(res, status, body) {
 
 function clean(value) {
   return String(value || "").trim();
+}
+
+function splitAccess(value) {
+  return clean(value).split(",").map((item) => clean(item).toLowerCase()).filter(Boolean);
+}
+
+function requestUser(req, body = {}) {
+  return clean(body.user || req.query.user || req.headers["x-kk-user"]).toLowerCase();
+}
+
+async function getLoginRows() {
+  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, ["CRM Login"]);
+  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
+  return rowsToObjects(values);
+}
+
+async function assertCanUseEmail(userEmail) {
+  const user = clean(userEmail).toLowerCase();
+  if (!user) {
+    const err = new Error("Please sign in to use the communication engine.");
+    err.status = 401;
+    throw err;
+  }
+
+  const rows = await getLoginRows();
+  const row = rows.find((r) => clean(r["Login Username"]).toLowerCase() === user);
+  if (!row) {
+    const err = new Error("Unauthorized: user not found in CRM Login.");
+    err.status = 403;
+    throw err;
+  }
+
+  const role = clean(row.Role).toLowerCase();
+  const access = splitAccess(row["Page Access"]);
+  if (role !== "admin" && !access.includes(EMAIL_PAGE_KEY.toLowerCase())) {
+    const err = new Error("Unauthorized: Email page access is required.");
+    err.status = 403;
+    throw err;
+  }
+
+  return { user, role: row.Role, pageAccess: access };
 }
 
 function escapeRegExp(value) {
@@ -103,7 +145,7 @@ function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>${preheader}</title>
   </head>
-  <body style="margin:0;padding:0;background:#f3f6fb;font-family:Arial,Helvetica,sans-serif;color:#172033;">
+  <body style="margin:0;padding:0;background:#f3f6fb;font-family:Montserrat,Arial,Helvetica,sans-serif;color:#172033;">
     <div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">${preheader}</div>
     <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;margin:0;padding:28px 12px;">
       <tr>
@@ -150,17 +192,20 @@ function base64Url(input) {
 }
 
 function mimeMessage({ to, subject, html, replyTo }) {
+  const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
   const headers = [
+    sender ? `From: Klient Konnect CRM <${sender}>` : "",
     `To: ${to}`,
     `Subject: ${subject || ""}`,
     "MIME-Version: 1.0",
     "Content-Type: text/html; charset=UTF-8",
-  ];
+  ].filter(Boolean);
   if (replyTo) headers.push(`Reply-To: ${replyTo}`);
   return `${headers.join("\r\n")}\r\n\r\n${html || ""}`;
 }
 
-async function listTemplates() {
+async function listTemplates(userEmail) {
+  await assertCanUseEmail(userEmail);
   const result = await driveListFiles({
     q: `'${DRIVE_FOLDERS.emailTemplates}' in parents and trashed=false`,
     pageSize: 200,
@@ -178,19 +223,22 @@ async function listTemplates() {
   return { ok: true, data: templates };
 }
 
-async function previewTemplate(id) {
+async function previewTemplate(id, userEmail) {
+  await assertCanUseEmail(userEmail);
   if (!id) throw new Error("Missing template id");
   const exported = await driveExportFile(id, "text/html");
   return { ok: true, html: brandedEmailHtml(exported.body.toString("utf8"), { subject: "Template Preview" }) };
 }
 
-async function openTemplate(id) {
+async function openTemplate(id, userEmail) {
+  await assertCanUseEmail(userEmail);
   if (!id) throw new Error("Missing template id");
   const file = await driveGetFile(id);
   return { ok: true, url: file.webViewLink };
 }
 
-async function versionTemplate(templateId) {
+async function versionTemplate(templateId, userEmail) {
+  await assertCanUseEmail(userEmail);
   if (!templateId) throw new Error("Missing templateId");
   const original = await driveGetFile(templateId);
   const baseName = original.name || "Template";
@@ -212,13 +260,17 @@ async function versionTemplate(templateId) {
   return { ok: true, version, fileId: copy.id, url: copy.webViewLink };
 }
 
-async function getLeads() {
+async function getLeads(userEmail) {
+  const access = await assertCanUseEmail(userEmail);
   const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames);
   const values = await getValues(SHEETS.leads.spreadsheetId, sheetName);
-  return rowsToObjects(values);
+  const leads = rowsToObjects(values);
+  if (clean(access.role).toLowerCase() === "admin") return leads;
+  return leads.filter((lead) => clean(lead["Lead Owner"]).toLowerCase() === access.user);
 }
 
-async function getEvents() {
+async function getEvents(userEmail) {
+  await assertCanUseEmail(userEmail);
   const sheetName = await resolveSheetTitle(SHEETS.email.spreadsheetId, SHEETS.email.eventSheetNames);
   const values = await getValues(SHEETS.email.spreadsheetId, sheetName);
   const rows = rowsToObjects(values);
@@ -245,7 +297,8 @@ async function logEmailEvent(data) {
   await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, data, { timestampFields: ["Timestamp", "timestamp"] }));
 }
 
-async function createLead(data) {
+async function createLead(data, userEmail) {
+  await assertCanUseEmail(userEmail);
   const result = await handleLeadPost({
     leadsConfig: SHEETS.leads,
     accountsConfig: SHEETS.accounts,
@@ -262,6 +315,7 @@ async function createLead(data) {
 }
 
 async function sendEmail(body) {
+  const access = await assertCanUseEmail(body.user);
   const templateId = clean(body.templateId);
   const to = clean(body.to);
   const subject = clean(body.subject);
@@ -275,7 +329,8 @@ async function sendEmail(body) {
 
   const exported = await driveExportFile(templateId, "text/html");
   const html = brandedEmailHtml(applyPlaceholders(exported.body.toString("utf8"), body.placeholders || {}), { subject });
-  const raw = base64Url(mimeMessage({ to, subject, html, replyTo: body.fromEmail }));
+  const replyTo = clean(body.fromEmail) || access.user;
+  const raw = base64Url(mimeMessage({ to, subject, html, replyTo }));
   await gmailSendRawEmail(raw);
 
   await logEmailEvent({
@@ -288,6 +343,8 @@ async function sendEmail(body) {
     templateUrl: templateMeta.webViewLink,
     companyName: body.placeholders?.COMPANY || "",
     firstName: body.placeholders?.FIRST_NAME || "",
+    sentBy: access.user,
+    fromEmail: replyTo,
     status: "SENT",
     error: "",
   });
@@ -299,25 +356,27 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const action = clean(req.query.action);
-      if (action === "getTemplates") return json(res, 200, await listTemplates());
-      if (action === "previewTemplate") return json(res, 200, await previewTemplate(clean(req.query.id)));
-      if (action === "openTemplate") return json(res, 200, await openTemplate(clean(req.query.id)));
-      if (action === "getEvents" || action === "getEmailEvents") return json(res, 200, await getEvents());
-      if (action === "getLeads") return json(res, 200, await getLeads());
+      const userEmail = requestUser(req);
+      if (action === "getTemplates") return json(res, 200, await listTemplates(userEmail));
+      if (action === "previewTemplate") return json(res, 200, await previewTemplate(clean(req.query.id), userEmail));
+      if (action === "openTemplate") return json(res, 200, await openTemplate(clean(req.query.id), userEmail));
+      if (action === "getEvents" || action === "getEmailEvents") return json(res, 200, await getEvents(userEmail));
+      if (action === "getLeads") return json(res, 200, await getLeads(userEmail));
       return json(res, 400, { ok: false, error: "Invalid action" });
     }
 
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       const action = clean(body.action);
-      if (action === "versionTemplate") return json(res, 200, await versionTemplate(clean(body.templateId)));
-      if (action === "createLead") return json(res, 200, await createLead(body));
+      const userEmail = requestUser(req, body);
+      if (action === "versionTemplate") return json(res, 200, await versionTemplate(clean(body.templateId), userEmail));
+      if (action === "createLead") return json(res, 200, await createLead(body, userEmail));
       if (action === "sendEmail") return json(res, 200, await sendEmail(body));
       return json(res, 400, { ok: false, error: "Invalid action" });
     }
 
     return json(res, 405, { ok: false, error: "Method Not Allowed" });
   } catch (err) {
-    return json(res, 500, { ok: false, error: err.message || String(err) });
+    return json(res, err.status || 500, { ok: false, error: err.message || String(err) });
   }
 }

@@ -127,8 +127,8 @@ function LeadForm() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
 
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const dropdownUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
+  const formSubmitUrl = '/api/leads';
+  const dropdownUrl = '/api/leads?action=validation';
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -230,12 +230,12 @@ function LeadForm() {
   const payload = { ...trimmedValues, Timestamp: timestamp };
 
   try {
-    await fetch(formSubmitUrl, {
+    const res = await fetch(formSubmitUrl, {
       method: 'POST',
-      mode: 'no-cors',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
+    if (!res.ok) throw new Error(await res.text());
 
     alert('✅ Lead submitted successfully!');
     // Reset the form

@@ -160,15 +160,15 @@ function OrdersTable() {
 
   // Orders read webapp
   const dataUrl =
-    "https://script.google.com/macros/s/AKfycbznNnYHMwtflHMpomewXf3bwh696WyZUYjJFQ2Vpw8J9nJRetR8RdY8BzLC-MkmHeSf/exec";
+    "/api/orders";
 
   // Submit webapp (supports updateOrder)
   const submitUrl =
-    "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
+    "/api/orders";
 
   // Validation webapp
   const validationUrl =
-    "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+    "/api/orders?action=validation";
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -415,7 +415,7 @@ function OrdersTable() {
 
       const res = await fetch(submitUrl, {
         method: "POST",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateOrder", data: payload }),
       });
 

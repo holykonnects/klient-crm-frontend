@@ -296,11 +296,11 @@ function DealsTable() {
   const role = user?.role;
 
   const dataUrl =
-    "https://script.google.com/macros/s/AKfycbwJvHUNBaOAWf9oPagM1_SOZ4q4n4cV06a1d03C2zv9EBJVDqyK9zSRklZLu2_TZRNd/exec";
+    "/api/deals";
   const submitUrl =
-    "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
+    "/api/deals";
   const validationUrl =
-    "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+    "/api/deals?action=validation";
 
   const fetchDeals = async () => {
     setLoading(true);
@@ -466,12 +466,12 @@ function DealsTable() {
     setSaveMsg("Updating...");
 
     try {
-      await fetch(submitUrl, {
+      const res = await fetch(submitUrl, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "updateDeal", data: dealFormData }),
       });
+      if (!res.ok) throw new Error(await res.text());
 
       setSaveMsg("Updated ✅");
       setSelectedRow(null);
@@ -681,10 +681,9 @@ function DealsTable() {
             }
         : "";
 
-      await fetch(submitUrl, {
+      const res = await fetch(submitUrl, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "createOrder",
           data: payloadRow,
@@ -696,6 +695,7 @@ function DealsTable() {
           },
         }),
       });
+      if (!res.ok) throw new Error(await res.text());
 
       setOrderMsg("Created ✅");
       setOrderOpen(false);

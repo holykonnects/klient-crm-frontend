@@ -216,9 +216,9 @@ const LeadsTable = () => {
   const role = user?.role;
 
   // URLs
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbwCmyJEEbAy4h3SY630yJSaB8Odd2wL_nfAmxvbKKU0oC4jrdWwgHab-KUpPzGzKBaEUA/exec';
-  const validationUrl = 'https://script.google.com/macros/s/AKfycbzDZPePrzWhMv2t_lAeAEkVa-5J4my7xBonm4zIFOne-wtJ-EGKr0zXvBlmNtfuYaFhiQ/exec';
+  const dataUrl = '/api/leads';
+  const formSubmitUrl = '/api/leads';
+  const validationUrl = '/api/leads?action=validation';
 
   const fetchAbortRef = useRef(null);
   const revalidate = useCallback(async () => {
@@ -772,12 +772,12 @@ const LeadsTable = () => {
             if (submitting) return;
             setSubmitting(true);
             try {
-              await fetch(formSubmitUrl, {
+              const res = await fetch(formSubmitUrl, {
                 method: 'POST',
-                mode: 'no-cors',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(payload)
               });
+              if (!res.ok) throw new Error(await res.text());
               alert('✅ Lead updated successfully');
               setEditRow(null);
 

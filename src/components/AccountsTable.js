@@ -337,11 +337,11 @@ function AccountsTable() {
   const role = user?.role;
 
   const dataUrl =
-    "https://script.google.com/macros/s/AKfycbyh1_hms_eAcY40DZi6BXJAQe2tnD65nUTxtC6bX9S7s4TAh-Yh3psBZmhiPm_OAe6w/exec";
+    "/api/accounts";
   const validationUrl =
-    "https://script.google.com/macros/s/AKfycbyaSwpMpH0RCTQkgwzme0N5WYgNP9aERhQs7mQCFX3CvBBFARne_jsM5YW6L705TdET/exec";
+    "/api/deals?action=validation";
   const submitUrl =
-    "https://script.google.com/macros/s/AKfycbxZ87qfE6u-2jT8xgSlYJu5dG6WduY0lG4LmlXSOk2EGkWBH4CbZIwEJxEHI-Bmduoh/exec";
+    "/api/deals";
 
   useEffect(() => {
     fetch(dataUrl)
@@ -450,12 +450,12 @@ function AccountsTable() {
       };
 
       try {
-        await fetch(submitUrl, {
+        const res = await fetch(submitUrl, {
           method: "POST",
-          mode: "no-cors",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload),
         });
+        if (!res.ok) throw new Error(await res.text());
 
         alert("✅ Deal submitted successfully");
         setCreateDealRow(null);

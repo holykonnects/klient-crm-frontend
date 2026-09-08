@@ -15,7 +15,7 @@ import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
 import '@fontsource/montserrat';
 
-const SHEET_URL = 'https://script.google.com/macros/s/AKfycbyRvS3mX3n0VoNgSPhaHUe44AtSTacJGYUcnoI593_XqEZ7g-Oi1vu_3TKyOjVuD_We/exec';
+const SHEET_URL = '/api/sales-tracker';
 const FORM_SHEET_NAME = 'Sheet1';
 const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 
@@ -171,17 +171,24 @@ const SalesTrackerTable = () => {
     };
 
     try {
-      await fetch(SHEET_URL, {
+      const res = await fetch(SHEET_URL, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
+      if (!res.ok) throw new Error(await res.text());
+
       alert(`✅ Sale ${selectedRow ? 'updated' : 'added'} successfully`);
       setModalOpen(false);
-      window.location.reload();
+      setSales(prev => {
+        const next = selectedRow
+          ? prev.map(row => String(row['S.No']) === String(originalSNo) ? payload : row)
+          : [payload, ...prev];
+        return [...next].sort((a, b) => num(b['S.No']) - num(a['S.No']));
+      });
     } catch (err) {
       console.error('❌ Submission error:', err);
+      alert('❌ Submission failed. Please try again.');
     } finally {
       setSubmitting(false);
     }

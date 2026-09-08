@@ -1,85 +1,8 @@
-function doGet() {
-  const sheet = SpreadsheetApp.openById('1vJbB0fmBQhd6XGTNbjUAi7Bt71lHNyau2TBMXTCdoM0').getSheetByName('Form responses 1');
-  const data = sheet.getDataRange().getValues();
-  const headers = data.shift();
-  const jsonData = data.map(row => {
-    const obj = {};
-    headers.forEach((header, index) => {
-      obj[header] = row[index];
-    });
-    return obj;
-  });
-  return ContentService.createTextOutput(JSON.stringify(jsonData)).setMimeType(ContentService.MimeType.JSON);
-}
-
-function sanitizeLeadMobile_(value) {
-  const raw = String(value || '').trim();
-  let digits = raw.replace(/\D/g, '');
-
-  if (raw.indexOf('+91') === 0) {
-    digits = digits.slice(2);
-  } else if (digits.length > 10 && digits.indexOf('91') === 0) {
-    digits = digits.slice(2);
-  }
-
-  if (digits.length > 10) {
-    digits = digits.slice(-10);
-  }
-
-  return digits;
-}
-
-function doPost(e) {
-  try {
-    Logger.log('✅ doPost triggered');
-    Logger.log('📦 Payload received: ' + e.postData.contents);
-
-    const sheetId = '1vJbB0fmBQhd6XGTNbjUAi7Bt71lHNyau2TBMXTCdoM0';
-    const sheetName = 'Form Responses 1';
-    const ss = SpreadsheetApp.openById(sheetId);
-    const sheet = ss.getSheetByName(sheetName);
-
-    if (!sheet) {
-      Logger.log('❌ Sheet not found');
-      return ContentService.createTextOutput('Sheet not found').setMimeType(ContentService.MimeType.TEXT);
-    }
-
-    const body = JSON.parse(e.postData.contents);
-    const fields = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-
-    const newRow = [];
-
-    const now = new Date();
-    const timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), "dd/MM/yyyy HH:mm:ss.SSS");
-
-    fields.forEach(field => {
-      if (field === 'Timestamp') {
-        newRow.push(timestamp);
-      } else if (String(field).trim().toLowerCase() === 'mobile number') {
-        const mobile = sanitizeLeadMobile_(body[field]);
-        newRow.push(mobile ? "'" + mobile : '');
-      } else {
-        newRow.push(body[field] || '');
-      }
-    });
-
-    Logger.log('✅ New row prepared: ' + JSON.stringify(newRow));
-    sheet.appendRow(newRow);
-    Logger.log('✅ Row appended successfully');
-
-    return ContentService.createTextOutput('Success').setMimeType(ContentService.MimeType.TEXT);
-
-  } catch (error) {
-    Logger.log('❌ Error in doPost: ' + error);
-    return ContentService.createTextOutput('Error').setMimeType(ContentService.MimeType.TEXT);
-  }
-}
-
 import React, { useEffect, useState } from 'react';
 import {
   Box, Typography, TextField, Button, Grid, MenuItem,
   createTheme, ThemeProvider, Paper, Select, InputLabel, FormControl,
-  InputAdornment
+  InputAdornment, Alert
 } from '@mui/material';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 
@@ -126,6 +49,7 @@ function LeadForm() {
   const [formValues, setFormValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [loadError, setLoadError] = useState('');
 
   const formSubmitUrl = '/api/leads';
   const dropdownUrl = '/api/leads?action=validation';
@@ -135,11 +59,16 @@ function LeadForm() {
       try {
         const response = await fetch(formSubmitUrl);
         const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || `Leads failed with status ${response.status}`);
+        if (!Array.isArray(data)) throw new Error(data?.error || 'Leads did not return a row array');
         const fieldNames = Object.keys(data[0] || {});
+        setLoadError('');
         setFields(fieldNames);
         initializeForm(fieldNames);
       } catch (error) {
         console.error('Error fetching fields:', error);
+        setLoadError(error.message || 'Error fetching fields');
+        setLoading(false);
       }
     };
 
@@ -147,6 +76,7 @@ function LeadForm() {
       try {
         const response = await fetch(dropdownUrl);
         const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || `Validation failed with status ${response.status}`);
         const dropdowns = {};
         for (let field in data) {
           if (data[field].length > 0) {
@@ -266,6 +196,12 @@ function LeadForm() {
         <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">
           Add New Lead
         </Typography>
+
+        {loadError && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {loadError}
+          </Alert>
+        )}
 
         <Box component="form" onSubmit={handleSubmit}>
           <Grid container spacing={2}>

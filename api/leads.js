@@ -1,5 +1,5 @@
 import { SHEETS } from "./_lib/crmConfig.js";
-import { appendTableRow, getTable, getValidationOptions } from "./_lib/crmHandlers.js";
+import { getTable, getValidationOptions, handleLeadPost } from "./_lib/crmHandlers.js";
 
 export default async function handler(req, res) {
   try {
@@ -12,8 +12,12 @@ export default async function handler(req, res) {
 
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-      await appendTableRow(SHEETS.leads, body);
-      return res.status(200).json({ ok: true, status: "added" });
+      const result = await handleLeadPost({
+        leadsConfig: SHEETS.leads,
+        accountsConfig: SHEETS.accounts,
+        payload: body,
+      });
+      return res.status(200).json({ ...result, status: "added" });
     }
 
     return res.status(405).json({ ok: false, error: "Method Not Allowed" });

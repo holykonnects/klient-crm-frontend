@@ -2,9 +2,11 @@ import crypto from "crypto";
 
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+const GMAIL_SEND_SCOPE = "https://www.googleapis.com/auth/gmail.send";
 const TOKEN_URL = "https://oauth2.googleapis.com/token";
 
-let cachedToken = null;
+const DEFAULT_SCOPES = [SHEETS_SCOPE, DRIVE_SCOPE];
+const cachedTokens = new Map();
 
 function base64Url(input) {
   return Buffer.from(input)
@@ -31,20 +33,24 @@ function assertGoogleEnv() {
   }
 }
 
-async function getAccessToken() {
+export async function getAccessToken({ scopes = DEFAULT_SCOPES, subject = "" } = {}) {
   assertGoogleEnv();
 
   const now = Math.floor(Date.now() / 1000);
+  const scopeText = Array.isArray(scopes) ? scopes.join(" ") : String(scopes || "");
+  const cacheKey = `${subject || ""}::${scopeText}`;
+  const cachedToken = cachedTokens.get(cacheKey);
   if (cachedToken && cachedToken.expiresAt - 60 > now) return cachedToken.token;
 
   const header = { alg: "RS256", typ: "JWT" };
   const claim = {
     iss: getServiceAccountEmail(),
-    scope: `${SHEETS_SCOPE} ${DRIVE_SCOPE}`,
+    scope: scopeText,
     aud: TOKEN_URL,
     exp: now + 3600,
     iat: now,
   };
+  if (subject) claim.sub = subject;
 
   const unsigned = `${base64Url(JSON.stringify(header))}.${base64Url(JSON.stringify(claim))}`;
   const signer = crypto.createSign("RSA-SHA256");
@@ -68,8 +74,9 @@ async function getAccessToken() {
   const json = await res.json();
   if (!res.ok) throw new Error(json.error_description || json.error || "Google auth failed");
 
-  cachedToken = { token: json.access_token, expiresAt: now + Number(json.expires_in || 3600) };
-  return cachedToken.token;
+  const nextToken = { token: json.access_token, expiresAt: now + Number(json.expires_in || 3600) };
+  cachedTokens.set(cacheKey, nextToken);
+  return nextToken.token;
 }
 
 function sheetRange(sheetName, a1 = "") {
@@ -77,8 +84,8 @@ function sheetRange(sheetName, a1 = "") {
   return `'${escaped}'${a1 ? `!${a1}` : ""}`;
 }
 
-async function googleFetch(url, init = {}) {
-  const token = await getAccessToken();
+export async function googleFetch(url, init = {}, auth = {}) {
+  const token = await getAccessToken(auth);
   const res = await fetch(url, {
     ...init,
     headers: {
@@ -90,6 +97,93 @@ async function googleFetch(url, init = {}) {
   const json = text ? JSON.parse(text) : {};
   if (!res.ok) throw new Error(json.error?.message || text || `Google API failed: ${res.status}`);
   return json;
+}
+
+export async function driveListFiles({ q, fields, pageSize = 100, orderBy = "name" }) {
+  const params = new URLSearchParams({
+    q,
+    pageSize: String(pageSize),
+    orderBy,
+    fields:
+      fields ||
+      "files(id,name,mimeType,modifiedTime,size,webViewLink,webContentLink,thumbnailLink,parents)",
+    supportsAllDrives: "true",
+    includeItemsFromAllDrives: "true",
+  });
+  return googleFetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
+}
+
+export async function driveGetFile(fileId, fields = "id,name,mimeType,modifiedTime,size,webViewLink,webContentLink") {
+  const params = new URLSearchParams({
+    fields,
+    supportsAllDrives: "true",
+  });
+  return googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`);
+}
+
+export async function driveDownloadFile(fileId) {
+  const token = await getAccessToken();
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Drive download failed: ${res.status}`);
+  }
+  return {
+    contentType: res.headers.get("content-type") || "application/octet-stream",
+    body: Buffer.from(await res.arrayBuffer()),
+  };
+}
+
+export async function driveExportFile(fileId, mimeType) {
+  const token = await getAccessToken();
+  const params = new URLSearchParams({
+    mimeType,
+    supportsAllDrives: "true",
+  });
+  const res = await fetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/export?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${token}` } }
+  );
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(text || `Drive export failed: ${res.status}`);
+  }
+  return {
+    contentType: res.headers.get("content-type") || mimeType,
+    body: Buffer.from(await res.arrayBuffer()),
+  };
+}
+
+export async function driveCopyFile(fileId, body) {
+  return googleFetch(
+    `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?supportsAllDrives=true&fields=id,name,webViewLink,modifiedTime`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body || {}),
+    }
+  );
+}
+
+export async function gmailSendRawEmail(raw, subject) {
+  const sender = process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "";
+  if (!sender) {
+    throw new Error(
+      "Email sending is not configured. Set GMAIL_SENDER_EMAIL or GOOGLE_DELEGATED_USER_EMAIL and enable Gmail API domain-wide delegation."
+    );
+  }
+  return googleFetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ raw }),
+    },
+    { scopes: [GMAIL_SEND_SCOPE], subject: sender }
+  );
 }
 
 export async function getSpreadsheet(spreadsheetId) {

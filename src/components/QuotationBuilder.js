@@ -10,7 +10,8 @@ import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 
-const WEB_APP_URL = '/api/gas';
+const QUOTATION_API_URL = '/api/quotations';
+const QUOTATION_EXPORT_URL = '/api/gas';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff' },
@@ -107,7 +108,7 @@ export default function QuotationBuilder() {
   // Load catalog
   useEffect(() => {
     (async () => {
-      const j = await fetchJSON(`${WEB_APP_URL}?action=getCatalog`);
+      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog`);
       if (j.ok) setCatalog(j.data);
       else console.error('getCatalog error:', j.error);
     })().catch(console.error);
@@ -117,7 +118,7 @@ export default function QuotationBuilder() {
   useEffect(() => {
     if (!user?.username) return;
     (async () => {
-      const j = await fetchJSON(`${WEB_APP_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
+      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
       if (j.ok && Array.isArray(j.entries)) {
         setLeadOptions(j.entries);
         setLeadLookupError('');
@@ -233,7 +234,7 @@ export default function QuotationBuilder() {
       };
 
       const j = await fetchJSON(
-        `${WEB_APP_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
+        `${QUOTATION_EXPORT_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
         { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
       );
 

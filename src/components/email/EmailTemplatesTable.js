@@ -16,8 +16,7 @@ import BackupIcon from "@mui/icons-material/Backup";
 import PreviewIcon from "@mui/icons-material/Preview";
 import CloseIcon from "@mui/icons-material/Close";
 
-const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbzPNVeqRlTRcb_sCa_PU_EGW_EW8uZ9ClevCQRcKfa5KYR5-OpGyzp1Wsw4Sxb_x2vfqg/exec";
+const EMAIL_API = "/api/email";
 
 export default function EmailTemplatesTable() {
   const [rows, setRows] = useState([]);
@@ -32,7 +31,7 @@ export default function EmailTemplatesTable() {
 
   const fetchTemplates = async () => {
     try {
-      const res = await fetch(`${GAS_URL}?action=getTemplates`);
+      const res = await fetch(`${EMAIL_API}?action=getTemplates`);
       const data = await res.json();
       if (data.ok) {
         const list = data.data.map((t, i) => ({
@@ -52,7 +51,7 @@ export default function EmailTemplatesTable() {
   // Preview template (HTML export)
   const handlePreview = async (id) => {
     try {
-      const res = await fetch(`${GAS_URL}?action=previewTemplate&id=${id}`);
+      const res = await fetch(`${EMAIL_API}?action=previewTemplate&id=${id}`);
       const data = await res.json();
       if (data.ok) {
         setPreviewHtml(data.html);
@@ -69,8 +68,9 @@ export default function EmailTemplatesTable() {
   // Create version (.X)
   const handleVersion = async (id) => {
     try {
-      const res = await fetch(GAS_URL, {
+      const res = await fetch(EMAIL_API, {
         method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "versionTemplate",
           templateId: id,

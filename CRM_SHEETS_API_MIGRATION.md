@@ -17,11 +17,17 @@ Optional overrides:
 - `ORDERS_SHEET_ID`
 - `SALES_TRACKER_SHEET_ID`
 - `VALIDATION_SHEET_ID`
+- `EMAIL_SHEET_ID`
+- `EMAIL_TEMPLATE_FOLDER_ID`
+- `GMAIL_SENDER_EMAIL`
+- `GOOGLE_DELEGATED_USER_EMAIL`
+- `LEAD_UPDATE_FORM_URL`
 - `ORDER_UPLOAD_FOLDER_ID`
 - `ORDER_PO_FOLDER_ID`
 - `ORDER_DRAWING_FOLDER_ID`
 - `ORDER_BOQ_FOLDER_ID`
 - `ORDER_PROFORMA_FOLDER_ID`
+- `NOMENCLATURE_FOLDER_ID`
 
 The service account must have access to the relevant Google Sheets and Drive folders.
 Enable Google Sheets API and Google Drive API in the Google Cloud project.
@@ -34,5 +40,27 @@ Enable Google Sheets API and Google Drive API in the Google Cloud project.
 - `/api/orders`
 - `/api/sales-tracker`
 - `/api/order-invoices?orderId=...`
+- `/api/nomenclature`
+- `/api/email`
 
 The frontend modules for Leads, Lead Form, Accounts, Deals, Orders, and Sales Tracker now call these same-origin routes instead of deployed Apps Script URLs.
+
+Lead saves through `/api/leads` now generate or reuse `Lead ID` values and copy leads with `Lead Status = Qualified` into the Accounts sheet.
+Quick leads created from the communication module use the same `/api/leads` pipeline.
+
+## Communication Engine
+
+The single-send communication module now uses `/api/email` instead of the old Apps Script deployment for templates, preview, template versioning, lead lookup, quick lead creation, email logs, and single email send.
+Email sending on Vercel requires Gmail API domain-wide delegation for the service account and `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
+The separate bulk email sender iframe is still a separate Apps Script deployment and needs its own migration pass.
+
+## Nomenclature Manager
+
+The platform route `/nomenclature` lists baseline files from the Drive folder configured by `NOMENCLATURE_FOLDER_ID`.
+If that env var is missing, the API searches for a Drive folder named `Nomenclature`.
+
+Only these users can access the module:
+
+- `sandeep@ridosports.com`
+- `sidhant@ridosports.com`
+- `holy@klientkonnect.com`

@@ -48,7 +48,15 @@ export default function SendEmailModal({ open, onClose }) {
   /******************************************************
    * NEW LEAD SAVED FROM MinimalLeadModal
    ******************************************************/
-  const handleMinimalLeadSave = (data) => {
+  const handleMinimalLeadSave = async (data) => {
+    try {
+      await EmailService.createLead(data);
+    } catch (err) {
+      console.error("Quick lead creation failed:", err);
+      alert(err.message || "Unable to create lead.");
+      return;
+    }
+
     const tempLead = {
       firstName: data.firstName || "",
       lastName: "",
@@ -81,21 +89,26 @@ export default function SendEmailModal({ open, onClose }) {
 
     const today = new Date().toLocaleDateString("en-GB"); // DD/MM/YYYY
 
-    await EmailService.sendEmail({
-      to: selectedLead.email,
-      subject,
-      templateId: selectedTemplate.id,
+    try {
+      await EmailService.sendEmail({
+        to: selectedLead.email,
+        subject,
+        templateId: selectedTemplate.id,
 
-      placeholders: {
-        FIRST_NAME: minimalValues.firstName || "",
-        COMPANY: minimalValues.company || "",
-        DATE: today,
-        EMAIL: selectedLead.email
-      }
-    });
+        placeholders: {
+          FIRST_NAME: minimalValues.firstName || "",
+          COMPANY: minimalValues.company || "",
+          DATE: today,
+          EMAIL: selectedLead.email
+        }
+      });
 
-    alert("Email Sent Successfully!");
-    onClose();
+      alert("Email Sent Successfully!");
+      onClose();
+    } catch (err) {
+      console.error("Email send failed:", err);
+      alert(err.message || "Email send failed.");
+    }
   };
 
   return (

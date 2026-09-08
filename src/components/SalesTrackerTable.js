@@ -1,5 +1,5 @@
 // SalesTrackerTable.js
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -18,12 +18,45 @@ import '@fontsource/montserrat';
 const SHEET_URL = '/api/sales-tracker';
 const FORM_SHEET_NAME = 'Sheet1';
 const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
+const ENTITY_FIELD_COLUMN = 'Field';
+const ENTITY_SELECTION_COLUMN = 'Field Selection';
+const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.65rem' };
 const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' };
 
 const num = (v) => parseFloat(String(v ?? '').replace(/[₹,\s]/g, '')) || 0;
+const clean = (v) => String(v ?? '').trim();
+const unique = (values) => [...new Set(values.map(clean).filter(Boolean))];
+
+function joinLabel(parts) {
+  return parts.map(clean).filter(Boolean).join(' - ');
+}
+
+function accountLabel(row = {}) {
+  return joinLabel([
+    row['Account ID'] || row['Lead ID'],
+    row['Company'],
+    [row['First Name'], row['Last Name']].map(clean).filter(Boolean).join(' '),
+  ]);
+}
+
+function dealLabel(row = {}) {
+  return joinLabel([
+    row['Deal ID'],
+    row['Deal Name'],
+    row['Company'],
+  ]);
+}
+
+function orderLabel(row = {}) {
+  return joinLabel([
+    row['Order ID'],
+    row['Deal Name'] || row['Order Name'],
+    row['Company'],
+  ]);
+}
 
 const SalesTrackerTable = () => {
   const { user } = useAuth();
@@ -43,6 +76,7 @@ const SalesTrackerTable = () => {
   const [loading, setLoading] = useState(true);
   const [orderBy, setOrderBy] = useState('S.No');
   const [order, setOrder] = useState('desc');
+  const [entityRecords, setEntityRecords] = useState({ Account: [], Deal: [], Order: [] });
 
   // Fetch table data
   useEffect(() => {
@@ -75,6 +109,43 @@ const SalesTrackerTable = () => {
       .then(data => setValidationOptions(data))
       .catch(() => {});
   }, []);
+
+  // Fetch CRM records for Sales Tracker entity linking.
+  useEffect(() => {
+    let cancelled = false;
+
+    async function fetchEntityRecords() {
+      try {
+        const [accountsRes, dealsRes, ordersRes] = await Promise.all([
+          fetch('/api/accounts'),
+          fetch('/api/deals'),
+          fetch('/api/orders'),
+        ]);
+        const [accounts, deals, orders] = await Promise.all([
+          accountsRes.ok ? accountsRes.json() : [],
+          dealsRes.ok ? dealsRes.json() : [],
+          ordersRes.ok ? ordersRes.json() : [],
+        ]);
+        if (cancelled) return;
+        setEntityRecords({
+          Account: Array.isArray(accounts) ? accounts : [],
+          Deal: Array.isArray(deals) ? deals : [],
+          Order: Array.isArray(orders) ? orders : [],
+        });
+      } catch (err) {
+        if (!cancelled) console.error('Error loading Sales Tracker entity options', err);
+      }
+    }
+
+    fetchEntityRecords();
+    return () => { cancelled = true; };
+  }, []);
+
+  const entitySelectionOptions = useMemo(() => ({
+    Account: unique(entityRecords.Account.map(accountLabel)),
+    Deal: unique(entityRecords.Deal.map(dealLabel)),
+    Order: unique(entityRecords.Order.map(orderLabel)),
+  }), [entityRecords]);
 
   // Search, filter, sort pipeline
   useEffect(() => {
@@ -151,7 +222,13 @@ const SalesTrackerTable = () => {
     setModalOpen(true);
   };
 
-  const handleFormChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
+  const handleFormChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: value,
+      ...(field === ENTITY_FIELD_COLUMN ? { [ENTITY_SELECTION_COLUMN]: '' } : {})
+    }));
+  };
 
   const handleSubmit = async () => {
     setSubmitting(true);
@@ -319,9 +396,15 @@ const SalesTrackerTable = () => {
             </AccordionSummary>
             <AccordionDetails>
               <Grid container spacing={2}>
-                {columns.map(field => (
+                {columns.map(field => {
+                  const selectedEntityType = clean(formData[ENTITY_FIELD_COLUMN]);
+                  const selectionOptions = entitySelectionOptions[selectedEntityType] || [];
+                  const isEntityTypeField = field === ENTITY_FIELD_COLUMN;
+                  const isEntitySelectionField = field === ENTITY_SELECTION_COLUMN;
+
+                  return (
                   <Grid item xs={12} sm={6} key={field}>
-                    {field === 'S No' ? (
+                    {field === 'S No' || field === 'S.No' ? (
                       <TextField
                         label={field}
                         value={formData[field] || ''}
@@ -330,6 +413,41 @@ const SalesTrackerTable = () => {
                         InputProps={{ sx: modalInputStyle, readOnly: true }}
                         InputLabelProps={{ sx: modalInputStyle }}
                       />
+                    ) : isEntityTypeField ? (
+                      <FormControl fullWidth size="small">
+                        <InputLabel sx={modalInputStyle}>{field}</InputLabel>
+                        <Select
+                          value={formData[field] || ''}
+                          label={field}
+                          onChange={(e) => handleFormChange(field, e.target.value)}
+                          sx={modalInputStyle}
+                          MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
+                        >
+                          {ENTITY_TYPES.map(option => (
+                            <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
+                    ) : isEntitySelectionField ? (
+                      <FormControl fullWidth size="small" disabled={!selectedEntityType}>
+                        <InputLabel sx={modalInputStyle}>{field}</InputLabel>
+                        <Select
+                          value={formData[field] || ''}
+                          label={field}
+                          onChange={(e) => handleFormChange(field, e.target.value)}
+                          sx={modalInputStyle}
+                          MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
+                        >
+                          {!selectionOptions.length && (
+                            <MenuItem value="" disabled sx={modalInputStyle}>
+                              {selectedEntityType ? `No ${selectedEntityType.toLowerCase()} records found` : 'Select a field first'}
+                            </MenuItem>
+                          )}
+                          {selectionOptions.map(option => (
+                            <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
+                          ))}
+                        </Select>
+                      </FormControl>
                     ) : validationOptions[field] ? (
                       <FormControl fullWidth size="small">
                         <InputLabel sx={modalInputStyle}>{field}</InputLabel>
@@ -356,7 +474,8 @@ const SalesTrackerTable = () => {
                       />
                     )}
                   </Grid>
-                ))}
+                  );
+                })}
               </Grid>
             </AccordionDetails>
           </Accordion>

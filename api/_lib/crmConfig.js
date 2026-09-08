@@ -27,9 +27,21 @@ export const SHEETS = {
     dealSheetNames: ["Deal Validation Tables"],
     salesTrackerSheetNames: ["Sales Tracker Validation Tables"],
   },
+  email: {
+    spreadsheetId: process.env.EMAIL_SHEET_ID || "1Ys7WI5ar4N1C6Q3-LeAOOys9q8vd3Bx34bBetYEmxpM",
+    eventSheetNames: ["Email_Events"],
+    settingsSheetNames: ["Email_Settings"],
+  },
+  quotations: {
+    referenceSpreadsheetId:
+      process.env.QUOTATION_REFERENCE_SHEET_ID || "1t-8DRUh4NjRTQhpO6ZTpeYyZUjkwfU6DNoRaIGkdCkc",
+    equipmentSheetNames: ["Equipment BD"],
+    termsSheetNames: ["tc"],
+  },
 };
 
 export const DRIVE_FOLDERS = {
+  emailTemplates: process.env.EMAIL_TEMPLATE_FOLDER_ID || "1uKApnHOJVkOuXc7ayrxLyrkwgkjuUGt1",
   defaultUpload:
     process.env.ORDER_UPLOAD_FOLDER_ID ||
     "1NxWIZserHmgDu3HpWS1tTy050qh9XW1bgOPrccHMVQ9Vve74t4NWuoUf-DQOT93IU5MyxZ1N",

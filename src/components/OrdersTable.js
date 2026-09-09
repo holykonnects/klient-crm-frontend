@@ -229,8 +229,8 @@ function OrdersTable() {
       setOrders(deduped);
 
       setVisibleColumns(
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-orders`)) ||
-          (deduped.length ? Object.keys(deduped[0]) : [])
+        JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-orders`)) ||
+          ['Order ID', 'Deal Name', 'Company', 'Order Status', 'Order Amount', 'Account Owner'].filter((key) => Object.keys(deduped[0] || {}).includes(key))
       );
     } catch (e) {
       console.error("Orders fetch error:", e);
@@ -312,7 +312,7 @@ function OrdersTable() {
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
       const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify(updated));
+      localStorage.setItem(`visibleColumns-v2-${username}-orders`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -320,12 +320,12 @@ function OrdersTable() {
   const handleSelectAll = () => {
     const all = Object.keys(orders[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify(all));
+    localStorage.setItem(`visibleColumns-v2-${username}-orders`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-orders`, JSON.stringify([]));
+    localStorage.setItem(`visibleColumns-v2-${username}-orders`, JSON.stringify([]));
   };
 
   const renderCell = (col, value) => {
@@ -450,7 +450,7 @@ function OrdersTable() {
     <ThemeProvider theme={theme}>
       <Box padding={4}>
         <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">
             Orders Records
           </Typography>

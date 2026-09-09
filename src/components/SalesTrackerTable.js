@@ -311,7 +311,7 @@ const SalesTrackerTable = () => {
       {/* Header with total */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
         <Box display="flex" alignItems="center" gap={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.2rem', color: '#333' }}>
             Sales Tracker
           </Typography>

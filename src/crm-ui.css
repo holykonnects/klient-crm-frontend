@@ -42,6 +42,15 @@ select,
   border-radius: 12px;
   overflow: hidden;
   box-shadow: 0 3px 14px rgba(23, 32, 51, 0.06);
+  table-layout: fixed;
+}
+
+.crm-primary-logo {
+  display: block;
+  width: 190px;
+  max-width: 34vw;
+  height: 64px;
+  object-fit: contain;
 }
 
 .MuiTableHead-root .MuiTableRow-root:first-of-type .MuiTableCell-root:first-of-type {
@@ -70,6 +79,7 @@ select,
   padding: 10px 12px;
   white-space: nowrap;
   border-bottom: 1px solid #5283dc;
+  width: 156px;
 }
 
 .MuiTableBody-root .MuiTableCell-root {
@@ -85,6 +95,7 @@ select,
   text-overflow: ellipsis;
   white-space: nowrap;
   vertical-align: middle;
+  width: 156px;
 }
 
 .MuiTableBody-root .MuiTableRow-root:hover .MuiTableCell-root {
@@ -247,9 +258,9 @@ select,
     padding-right: 12px;
   }
 
-  .crm-main-content img[src*="/assets/kk-logo.png"] {
+  .crm-main-content .crm-primary-logo {
     width: auto;
-    max-width: 96px;
+    max-width: 120px;
     height: auto !important;
     max-height: 64px;
     object-fit: contain;
@@ -262,15 +273,11 @@ select,
   }
 
   .MuiTableCell-root:last-child {
-    position: sticky;
-    right: 0;
-    z-index: 1;
-    background: #ffffff;
-    box-shadow: -8px 0 14px rgba(23, 32, 51, 0.08);
+    position: static;
+    box-shadow: none;
   }
 
   .MuiTableHead-root .MuiTableCell-root:last-child {
-    z-index: 2;
     background: #6495ed;
   }
 

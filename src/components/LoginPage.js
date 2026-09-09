@@ -56,9 +56,10 @@ function LoginPage() {
       >
         <Paper elevation={3} sx={{ padding: 4, width: 300, textAlign: 'center' }}>
           <img
-            src="/assets/kk-logo.png"
-            alt="Klient Konnect"
-            style={{ height: 100, marginBottom: 20 }}
+            className="crm-primary-logo"
+            src="/assets/rido-sports-logo.png"
+            alt="Rido Sports"
+            style={{ margin: '0 auto 20px' }}
           />
           <Typography variant="h5" fontWeight="bold" marginBottom={3}>
             Login to Klient Konnect

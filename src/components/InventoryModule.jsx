@@ -760,7 +760,7 @@ function computeLocally({ category, variant, inputs, configRows, stockRows }) {
 
 export default function InventoryModule({
   apiUrl = INVENTORY_API_URL,
-  logoSrc = "/assets/kk-logo.png",
+  logoSrc = "/assets/rido-sports-logo.png",
   title = "Inventory Calculator",
 }) {
   const user = useMemo(() => getUserFromLocalStorage(), []);

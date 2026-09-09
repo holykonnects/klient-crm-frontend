@@ -48,9 +48,9 @@ export default function EmailDashboard() {
       >
         <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
           <img
-            src="/assets/kk-logo.png"
-            alt="Klient Konnect"
-            style={{ height: 40 }}
+            className="crm-primary-logo"
+            src="/assets/rido-sports-logo.png"
+            alt="Rido Sports"
           />
           <Box>
             <Typography

@@ -973,7 +973,7 @@ export default function ProjectTable() {
           sx={{ p: 1.5, mb: 2, borderRadius: 3, border: "1px solid", borderColor: "divider" }}
         >
           <Box display="flex" alignItems="center" justifyContent="center" gap={2}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 72 }} />
+            <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           </Box>
 
           <Box display="flex" alignItems="center" justifyContent="center" mt={1}>

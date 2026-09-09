@@ -12,9 +12,10 @@ function Dashboard() {
       }}
     >
       <img
-        src="/assets/kk-logo.png"
-        alt="Klient Konnect"
-        style={{ height: 100, marginBottom: '1rem' }}
+        className="crm-primary-logo"
+        src="/assets/rido-sports-logo.png"
+        alt="Rido Sports"
+        style={{ marginBottom: '1rem' }}
       />
 
       <iframe

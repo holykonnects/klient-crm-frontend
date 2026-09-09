@@ -199,7 +199,7 @@ function LeadForm() {
       >
         {/* Klient Konnect Logo */}
         <Box display="flex" justifyContent="center" mb={{ xs: 2, md: 3 }}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 'auto', maxHeight: 96, maxWidth: '46vw' }} />
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
         </Box>
 
         <Typography

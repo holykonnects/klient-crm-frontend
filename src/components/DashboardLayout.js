@@ -96,7 +96,7 @@ function DashboardLayout({ children }) {
       </Box>
 
       {/* Menu + Logout (INLINE) */}
-      <List>
+      <List sx={{ flexGrow: 1 }}>
         {menuItems
           .filter(item => item.show || user?.pageAccess?.includes(item.access))
           .map(({ label, icon, route }) => (
@@ -154,6 +154,10 @@ function DashboardLayout({ children }) {
           </ListItem>
         </Tooltip>
       </List>
+      <Box sx={{ mt: 'auto', px: open ? 2 : 0.5, py: 2, textAlign: 'center', borderTop: '1px solid #e7edf5' }}>
+        {open && <Typography sx={{ mb: 0.75, fontSize: 9, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.8 }}>Empowered by</Typography>}
+        <img src="/assets/kk-logo.png" alt="Empowered by Klient Konnect" style={{ width: open ? 72 : 42, height: 'auto', maxHeight: 48, objectFit: 'contain' }} />
+      </Box>
     </>
   );
 
@@ -196,6 +200,8 @@ function DashboardLayout({ children }) {
             transition: 'width 0.3s ease',
             overflowX: 'hidden',
             overflowY: 'auto',
+            display: 'flex',
+            flexDirection: 'column',
             boxShadow: '2px 0 6px rgba(0,0,0,0.05)',
             position: isMobile ? 'fixed' : 'relative',
             zIndex: 1200,

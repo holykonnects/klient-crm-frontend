@@ -362,7 +362,7 @@ function buildNewMaterialState(defaultCategory = "") {
 
 export default function StockManagement({
   apiUrl = INVENTORY_API_URL,
-  logoSrc = "/assets/kk-logo.png",
+  logoSrc = "/assets/rido-sports-logo.png",
   title = "Stock Management",
 }) {
   const user = useMemo(() => getUserFromLocalStorage(), []);

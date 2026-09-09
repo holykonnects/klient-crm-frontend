@@ -356,7 +356,7 @@ const TenderTable = () => {
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <Box p={4}>
           <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+            <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
             <Typography variant="h5" fontWeight="bold">Tender Records</Typography>
           </Box>
 

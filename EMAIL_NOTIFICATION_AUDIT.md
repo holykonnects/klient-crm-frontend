@@ -10,26 +10,38 @@ This checklist tracks email senders that must use the updated Klient Konnect / R
   - Sends through Gmail API using `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
 
 - `/api/leads`
-  - Lead added / updated operational notification.
+  - Lead added operational notification plus quotation status transitions.
   - Owner recipient lookup matches the old GAS rule: `Lead Owner` in `Validation Tables` column A, recipient email in column E.
+  - Persists `Sent`, `Quotation Update Sent`, or `Quotation Prepared & Update sent` on the exact appended row.
+  - `Pre-Qualified - Prepare Quote` emails the sales team; `Pre-Qualified - Quote Ready` emails the owner with an optional quotation link.
   - Guarded by `ENABLE_OPERATIONAL_EMAILS=true`.
 
 - `/api/deals`
   - Deal added operational notification.
   - Create-order path also sends order notification after order row save.
   - Guarded by `ENABLE_OPERATIONAL_EMAILS=true`.
+  - Skips rows whose `Notification Status` is already populated and marks successful new notifications as `Sent`.
 
 - `/api/orders`
   - Order updated operational notification.
   - Guarded by `ENABLE_OPERATIONAL_EMAILS=true`.
+  - Adds the order-only CC recipient and marks successful new notifications as `Sent`.
+
+- Qualified account transfer
+  - A newly qualified lead copied into Accounts sends the Account notification through the same server-side Gmail sender.
+  - Marks the appended Account row as `Sent` after a successful send.
 
 ## Remaining Apps Script email senders
 
 These must be disabled or migrated before `ENABLE_OPERATIONAL_EMAILS=true` is enabled in Vercel if they overlap with the same event.
 
 - `apps-script/leads/Code.gs`
-  - `onFormSubmit(e)` sends lead notification through `GmailApp.sendEmail`.
-  - Disable this trigger once `/api/leads` operational email is confirmed.
+  - `onFormSubmit(e)` is retained as a non-sending compatibility stub.
+  - The installed trigger must remain deleted after `/api/leads` is enabled.
+
+- Legacy `notifyCRMEntry` / `notifyQuotation` Apps Script
+  - Its Lead, Deal, Account, Order, and quotation state behavior is now handled at the corresponding server write.
+  - Delete its time-driven trigger after deploying the server migration; do not run it alongside the server notifications.
 
 - `apps-script/deals/Code.gs`
   - `onFormSubmit(e)` sends deal notification through `GmailApp.sendEmail`.

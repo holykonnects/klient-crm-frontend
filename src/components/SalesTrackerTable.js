@@ -313,7 +313,7 @@ const SalesTrackerTable = () => {
       {loading && <LoadingOverlay />}
 
       {/* Header with total */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
+      <Box className="crm-page-header" display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
         <Box display="flex" alignItems="center" gap={2} minWidth={0}>
           <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.2rem', color: '#333' }}>
@@ -331,7 +331,7 @@ const SalesTrackerTable = () => {
       </Box>
 
       {/* Filters */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2} gap={1} flexWrap="wrap">
+      <Box className="crm-filter-bar" display="flex" justifyContent="space-between" alignItems="center" mb={2} gap={1} flexWrap="wrap">
         <Box display="flex" gap={2} flexWrap="wrap" sx={{ flex: '1 1 520px', minWidth: 0 }}>
           <TextField
             variant="outlined"

@@ -355,12 +355,12 @@ const TenderTable = () => {
     <ThemeProvider theme={theme}>
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <Box p={4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
             <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
             <Typography variant="h5" fontWeight="bold">Tender Records</Typography>
           </Box>
 
-          <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+          <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
             <Box display="flex" alignItems="center">
               <TextField
                 size="small"

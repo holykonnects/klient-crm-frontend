@@ -1018,7 +1018,7 @@ export default function ExpenseRequestTable() {
       <Box sx={{ p: isMobile ? 1 : 2 }}>
         {/* HEADER */}
         <Box padding={isMobile ? 1.5 : 4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2} gap={1}>
+          <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2} gap={1}>
             <img
               className="crm-primary-logo"
               src="/assets/rido-sports-logo.png"

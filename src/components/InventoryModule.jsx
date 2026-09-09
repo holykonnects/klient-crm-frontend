@@ -1697,9 +1697,9 @@ export default function InventoryModule({
           border: "1px solid rgba(100,149,237,0.25)",
         }}
       >
-        <Box display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
-          <Box display="flex" alignItems="center" gap={2}>
-            <img src={logoSrc} alt="Klient Konnect" style={{ height: 56, objectFit: "contain" }} />
+        <Box className="crm-module-hero" display="flex" alignItems="center" justifyContent="space-between" gap={2} flexWrap="wrap">
+          <Box className="crm-module-hero-copy" display="flex" alignItems="center" gap={2}>
+            <img src={logoSrc} alt="Rido Sports" style={{ height: 56, objectFit: "contain" }} />
             <Box>
               <Typography variant="h5" sx={{ fontFamily, fontWeight: 700, color: cornflowerBlue }}>
                 {title}

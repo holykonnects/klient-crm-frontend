@@ -990,6 +990,7 @@ export default function ProjectTable() {
           </Box>
 
           <Box
+            className="crm-filter-bar"
             display="flex"
             justifyContent="flex-start"
             gap={2}

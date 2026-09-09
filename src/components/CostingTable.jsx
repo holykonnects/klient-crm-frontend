@@ -2379,7 +2379,7 @@ export default function CostingTable() {
       <Box sx={{ p: 2 }}>
         {/* ✅ HEADER (Logo Left, Title Right) */}
         <Box padding={4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
             <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
@@ -2402,7 +2402,7 @@ export default function CostingTable() {
             </Box>
           </Box>
 
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <Box className="crm-action-bar" sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
@@ -2452,7 +2452,7 @@ export default function CostingTable() {
             </Button>
           </Box>
 
-          <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
+          <Typography className="crm-keyboard-shortcuts" sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
             Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter
             (Submit/Save) • Esc (Close)
           </Typography>

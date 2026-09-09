@@ -720,7 +720,7 @@ function DealsTable() {
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">
             Deals Records
@@ -728,7 +728,7 @@ function DealsTable() {
         </Box>
 
         {/* Filters and Search */}
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+        <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
             variant="outlined"

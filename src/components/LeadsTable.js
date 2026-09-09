@@ -551,12 +551,12 @@ const LeadsTable = () => {
             {loadError}
           </Alert>
         )}
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+        <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           {/* Search (deferred + debounced) */}
           <Box display="flex" alignItems="center" gap={2}>
             <TextField

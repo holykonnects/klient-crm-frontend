@@ -73,6 +73,15 @@ select,
   object-fit: contain;
 }
 
+.crm-page-header,
+.crm-filter-bar,
+.crm-module-hero,
+.crm-module-hero-copy,
+.crm-action-bar {
+  width: 100%;
+  min-width: 0;
+}
+
 .MuiTableHead-root .MuiTableRow-root:first-of-type .MuiTableCell-root:first-of-type {
   border-top-left-radius: 11px;
 }
@@ -276,6 +285,87 @@ select,
   .crm-main-content > .MuiBox-root {
     padding-left: 12px;
     padding-right: 12px;
+  }
+
+  .crm-page-header {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    gap: 10px !important;
+    text-align: center;
+  }
+
+  .crm-page-header > * {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .crm-page-header .MuiTypography-root {
+    overflow-wrap: anywhere;
+  }
+
+  .crm-page-header > .MuiBox-root {
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+  }
+
+  .crm-filter-bar {
+    display: grid !important;
+    grid-template-columns: minmax(0, 1fr);
+    align-items: stretch !important;
+    gap: 10px !important;
+  }
+
+  .crm-filter-bar > *,
+  .crm-filter-bar > .MuiBox-root {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0 !important;
+  }
+
+  .crm-filter-bar > .MuiBox-root {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 10px;
+  }
+
+  .crm-filter-bar .MuiIconButton-root {
+    justify-self: end;
+  }
+
+  .crm-keyboard-shortcuts {
+    display: none !important;
+  }
+
+  .crm-module-hero,
+  .crm-module-hero-copy {
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: center !important;
+    width: 100%;
+    text-align: center;
+  }
+
+  .crm-module-hero-copy > img {
+    width: min(220px, 70vw);
+    height: auto !important;
+    max-height: 64px;
+  }
+
+  .crm-module-hero-copy .MuiTypography-root {
+    max-width: 100%;
+    overflow-wrap: anywhere;
+  }
+
+  .crm-action-bar {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .crm-action-bar .MuiButton-root {
+    width: 100%;
+    min-width: 0;
   }
 
   .crm-main-content .crm-primary-logo {

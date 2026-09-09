@@ -45,6 +45,26 @@ select,
   table-layout: fixed;
 }
 
+.MuiTableContainer-root,
+.crm-table-shell {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #dce5f0;
+  border-radius: 12px !important;
+  background: #ffffff;
+  box-shadow: 0 3px 14px rgba(23, 32, 51, 0.06);
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.MuiTableContainer-root .MuiTable-root {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
 .crm-primary-logo {
   display: block;
   width: 190px;

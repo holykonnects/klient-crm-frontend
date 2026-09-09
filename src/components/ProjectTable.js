@@ -55,8 +55,7 @@ import {
   extractMobileFromLinkedClient,
 } from "../utils/linkedClientContact";
 
-const WEB_APP_BASE =
-  "https://script.google.com/macros/s/AKfycbxLsPfXtpRuKOoB956pb6VfO4_Hx1cPEVpiZApTMKjxig0iL3EwodQaHCGItGyUwMnhzQ/exec";
+const WEB_APP_BASE = "/api/projects";
 
 const theme = createTheme({
   typography: { fontFamily: "Montserrat, sans-serif", fontSize: 10.5 },
@@ -172,6 +171,11 @@ const normalizeOptions = (val) => toStringArray(val);
 // control header from Validation sheet
 const MULTI_KEY = "Project Multiselect Fields"; // exact header name
 const FALLBACK_MULTI = new Set([norm("Vendors"), norm("Assigned Team")]);
+const PROJECT_OVERVIEW_HIDDEN = new Set([norm("Vendors")]);
+const PROJECT_OVERVIEW_COLUMNS = [
+  "Project ID (unique, auto-generated)", "Project Name", "Project Status",
+  "Project Stage", "Project Manager", "Project Progress %",
+];
 
 /** CSV helpers */
 const csvEscape = (v) => {
@@ -305,7 +309,7 @@ export default function ProjectTable() {
       setRawHeaders(data.headers || []);
 
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
-        const saved = JSON.parse(localStorage.getItem("visibleColumns-projects") || "null");
+        const saved = JSON.parse(localStorage.getItem("visibleColumns-v2-projects") || "null");
         if (saved) setVisibleColumns(saved);
       }
     } catch (err) {
@@ -329,8 +333,11 @@ export default function ProjectTable() {
       setValidation(normalizedValidation);
 
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
-        setVisibleColumns(data.visibleColumns);
-        localStorage.setItem("visibleColumns-projects", JSON.stringify(data.visibleColumns));
+        const available = data.visibleColumns.filter((header) => !PROJECT_OVERVIEW_HIDDEN.has(norm(header)));
+        const preferred = PROJECT_OVERVIEW_COLUMNS.filter((header) => available.includes(header));
+        const defaults = preferred.length ? preferred : available.slice(0, 6);
+        const saved = JSON.parse(localStorage.getItem("visibleColumns-v2-projects") || "null");
+        setVisibleColumns(saved || defaults);
       }
 
       if (Array.isArray(data?.readonlyColumns)) setReadonlyColumns(new Set(data.readonlyColumns));
@@ -359,7 +366,7 @@ export default function ProjectTable() {
   useEffect(() => {
     if (!rawHeaders.length) return;
 
-    const visible = rawHeaders.filter((h) => !isControlHeader(h)); // hide "Project Multiselect Fields"
+    const visible = rawHeaders.filter((h) => !isControlHeader(h) && !PROJECT_OVERVIEW_HIDDEN.has(norm(h)));
     if (columnOrder && columnOrder.length) {
       const orderFiltered = columnOrder.filter((h) => visible.includes(h));
       const set = new Set(orderFiltered);
@@ -368,8 +375,7 @@ export default function ProjectTable() {
 
       if (visibleColumns.length) {
         const vis = visibleColumns.filter((h) => ordered.includes(h));
-        const rest = ordered.filter((h) => !vis.includes(h));
-        setVisibleColumns([...vis, ...rest]);
+        setVisibleColumns(vis);
       }
     } else {
       setHeaders(visible);
@@ -441,19 +447,19 @@ export default function ProjectTable() {
   const toggleColumn = (col) => {
     setVisibleColumns((prev) => {
       const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
-      localStorage.setItem("visibleColumns-projects", JSON.stringify(updated));
+      localStorage.setItem("visibleColumns-v2-projects", JSON.stringify(updated));
       return updated;
     });
   };
 
   const handleSelectAll = () => {
     setVisibleColumns(headers);
-    localStorage.setItem("visibleColumns-projects", JSON.stringify(headers));
+    localStorage.setItem("visibleColumns-v2-projects", JSON.stringify(headers));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem("visibleColumns-projects", JSON.stringify([]));
+    localStorage.setItem("visibleColumns-v2-projects", JSON.stringify([]));
   };
 
   const onAdd = () => {
@@ -501,12 +507,13 @@ export default function ProjectTable() {
 
     try {
       const payload = { action: "addOrUpdateProject", data: serializeRow(editingRow || {}) };
-      await fetch(WEB_APP_BASE, {
+      const response = await fetch(WEB_APP_BASE, {
         method: "POST",
-        mode: "no-cors",
-        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
+      const result = await response.json();
+      if (!response.ok || !result?.ok) throw new Error(result?.error || `Server returned ${response.status}`);
 
       setModalOpen(false);
       setEditingRow(null);
@@ -1092,7 +1099,7 @@ export default function ProjectTable() {
         </Popover>
 
         {/* Table */}
-        <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
+        <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
           <Table size="small" stickyHeader>
             <TableHead
               sx={{

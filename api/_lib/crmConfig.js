@@ -15,6 +15,11 @@ export const SHEETS = {
     spreadsheetId: process.env.ORDERS_SHEET_ID || "11hW2rcd5x4gmXFn2AO03FgOQ0Ec8wd3Ot8yTbAh7P2k",
     sheetNames: ["Form responses 1", "Form Responses 1"],
   },
+  projects: {
+    spreadsheetId: process.env.PROJECTS_SHEET_ID || "1L9yGqk0NCXDYAB7TeyOyXBEhSMs1f1aU0jbDOWzr9_s",
+    sheetNames: ["Project"],
+    validationSheetNames: ["Validation Tables"],
+  },
   salesTracker: {
     spreadsheetId:
       process.env.SALES_TRACKER_SHEET_ID || "1XV4CJLt8nP512e39YK9RmYFO2llxyNCtmuphXgT8p2E",

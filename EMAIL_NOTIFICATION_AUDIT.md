@@ -31,6 +31,12 @@ This checklist tracks email senders that must use the updated Klient Konnect / R
   - A newly qualified lead copied into Accounts sends the Account notification through the same server-side Gmail sender.
   - Marks the appended Account row as `Sent` after a successful send.
 
+- `/api/projects`
+  - Replaces the Projects UI dependency on the Apps Script web endpoint.
+  - Preserves append-only project history and sends the branded project update with latest-first history.
+  - Resolves Project Manager/owner recipients plus configured CC/BCC values from the validation sheet.
+  - Guarded by `ENABLE_OPERATIONAL_EMAILS=true`.
+
 ## Remaining Apps Script email senders
 
 These must be disabled or migrated before `ENABLE_OPERATIONAL_EMAILS=true` is enabled in Vercel if they overlap with the same event.
@@ -68,3 +74,10 @@ Enable `ENABLE_OPERATIONAL_EMAILS=true` only after the matching Apps Script trig
 
 Set `PUBLIC_APP_URL=https://crm.klientkonnect.com` in Vercel so email logos resolve from deployed public assets.
 Alternatively set direct public URLs with `RIDO_LOGO_URL` and `KLIENT_KONNECT_LOGO_URL`.
+
+## Mobile email layout
+
+- First notifications use stacked label/value cards instead of wide HTML tables.
+- Later Lead, Deal, and Order notifications compare against the latest matching record and show only changed fields with previous and updated values.
+- Update emails include a compact current snapshot; the complete audit history remains in each CRM module's Actions → History view.
+- Projects retain their dedicated summary and latest-first history-card design.

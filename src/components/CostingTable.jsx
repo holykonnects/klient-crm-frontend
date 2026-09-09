@@ -74,6 +74,10 @@ const COST_SHEET_LIST_FIELDS = [
   "Last Calculated At",
   "Notes",
 ];
+const COST_SHEET_OVERVIEW_FIELDS = [
+  "Cost Sheet ID", "Linked Entity Name", "Client Name", "Project Type",
+  "Status", "Grand Total", "Last Calculated At",
+];
 
 const COST_SHEET_RENDER_LIMIT = 200;
 const LINE_ITEM_RENDER_LIMIT = 100;
@@ -1261,7 +1265,10 @@ export default function CostingTable() {
   }, [costSheets]);
 
   const visibleCostSheetColumns = useMemo(() => {
-    return costSheetColumns.filter((c) => !String(c).startsWith("__") && visibleCols[c] !== false);
+    return costSheetColumns.filter((c) =>
+      !String(c).startsWith("__") &&
+      (visibleCols[c] === true || (COST_SHEET_OVERVIEW_FIELDS.includes(c) && visibleCols[c] !== false))
+    );
   }, [costSheetColumns, visibleCols]);
 
   function openColumns(e) {
@@ -2564,7 +2571,7 @@ export default function CostingTable() {
                       control={
                         <Checkbox
                           size="small"
-                          checked={visibleCols[c] !== false}
+                          checked={visibleCols[c] === true || (COST_SHEET_OVERVIEW_FIELDS.includes(c) && visibleCols[c] !== false)}
                           onChange={(e) => setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))}
                         />
                       }
@@ -2578,7 +2585,7 @@ export default function CostingTable() {
 
           <Divider sx={{ my: 1 }} />
 
-          <TableContainer>
+          <TableContainer className="crm-table-shell">
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ background: "#f6f9ff" }}>

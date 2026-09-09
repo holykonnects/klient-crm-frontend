@@ -4,7 +4,7 @@ import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover,
-  FormControlLabel
+  FormControlLabel, TableContainer, Paper
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -101,8 +101,8 @@ const TenderTable = () => {
         seen.forEach(v => deduped.push(v));
         setTenders(deduped);
         setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${user.username}-tenders`)) ||
-          (deduped.length ? Object.keys(deduped[0]) : [])
+          JSON.parse(localStorage.getItem(`visibleColumns-v2-${user.username}-tenders`)) ||
+          ['Bid Number', 'Tender Status', 'Ministry/State Name', 'Bid Type', 'Owner'].filter((key) => Object.keys(deduped[0] || {}).includes(key))
         );
         setLoading(false);
       })
@@ -130,7 +130,7 @@ const TenderTable = () => {
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev => {
       const updated = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
-      localStorage.setItem(`visibleColumns-${user.username}-tenders`, JSON.stringify(updated));
+      localStorage.setItem(`visibleColumns-v2-${user.username}-tenders`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -402,7 +402,7 @@ const TenderTable = () => {
                     if (!tenders[0]) return;
                     const cols = Object.keys(tenders[0]);
                     setVisibleColumns(cols);
-                    localStorage.setItem(`visibleColumns-${user.username}-tenders`, JSON.stringify(cols));
+                    localStorage.setItem(`visibleColumns-v2-${user.username}-tenders`, JSON.stringify(cols));
                   }}
                 >
                   Select All
@@ -411,7 +411,7 @@ const TenderTable = () => {
                   size="small"
                   onClick={() => {
                     setVisibleColumns([]);
-                    localStorage.setItem(`visibleColumns-${user.username}-tenders`, JSON.stringify([]));
+                    localStorage.setItem(`visibleColumns-v2-${user.username}-tenders`, JSON.stringify([]));
                   }}
                 >
                   Deselect All
@@ -429,32 +429,34 @@ const TenderTable = () => {
             </Popover>
           </Box>
 
-          <Table>
-            <TableHead>
-              <TableRow style={{ backgroundColor: '#6495ED' }}>
-                {visibleColumns.map(header => (
-                  <TableCell key={header} style={{ color: 'white', cursor: 'pointer' }}>{header}</TableCell>
-                ))}
-                <TableCell style={{ color: 'white' }}>Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {filteredTenders.map((row, index) => (
-                <TableRow key={index}>
-                  {visibleColumns.map((key, i) => (
-                    <TableCell key={i}>
-                      {formatValue(key, row[key])}
-                    </TableCell>
+          <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
+            <Table size="small">
+              <TableHead>
+                <TableRow style={{ backgroundColor: '#6495ED' }}>
+                  {visibleColumns.map(header => (
+                    <TableCell key={header} style={{ color: 'white', cursor: 'pointer' }}>{header}</TableCell>
                   ))}
-                  <TableCell>
-                    <IconButton onClick={() => setViewRow(row)}><VisibilityIcon /></IconButton>
-                    <IconButton onClick={() => setEditRow(row)}><EditIcon /></IconButton>
-                    <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon /></IconButton>
-                  </TableCell>
+                  <TableCell style={{ color: 'white' }}>Actions</TableCell>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHead>
+              <TableBody>
+                {filteredTenders.map((row, index) => (
+                  <TableRow key={index}>
+                    {visibleColumns.map((key, i) => (
+                      <TableCell key={i}>
+                        {formatValue(key, row[key])}
+                      </TableCell>
+                    ))}
+                    <TableCell>
+                      <IconButton onClick={() => setViewRow(row)}><VisibilityIcon /></IconButton>
+                      <IconButton onClick={() => setEditRow(row)}><EditIcon /></IconButton>
+                      <IconButton onClick={() => handleViewLogs(row)}><HistoryIcon /></IconButton>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </TableContainer>
 
           {/* View Modal */}
           <Dialog open={!!viewRow} onClose={() => setViewRow(null)} maxWidth="md" fullWidth>

@@ -105,6 +105,46 @@ export function recordDetailsTable(headers, data) {
   </table>`;
 }
 
+export function recordDetailsCards(headers, data, { limit = 0 } = {}) {
+  const populated = (headers || []).filter((header) => clean(header) && clean(data?.[header]));
+  const selected = limit > 0 ? populated.slice(0, limit) : populated;
+  return `<div style="width:100%;margin:16px 0;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+    ${selected.map((header) => detailCardRow(header, data?.[header])).join("")}
+  </div>`;
+}
+
+export function changedFieldsCards(headers, previousData, data) {
+  const ignored = new Set(["Timestamp", "Notification Status", "Prefilled Link"]);
+  const changed = (headers || []).filter((header) =>
+    clean(header) && !ignored.has(header) && clean(previousData?.[header]) !== clean(data?.[header])
+  );
+  if (!changed.length) {
+    return '<div style="padding:14px 16px;border:1px solid #dbe4f0;border-radius:10px;background:#f9fbff;color:#4b5563;">No field-level changes were detected.</div>';
+  }
+  return `<div style="width:100%;margin:14px 0;">
+    ${changed.map((header) => `<div style="margin:0 0 10px;border:1px solid #dbe4f0;border-radius:10px;overflow:hidden;">
+      <div style="padding:9px 12px;background:#eaf3ff;color:#172033;font-size:12px;font-weight:700;">${escapeHtml(header)}</div>
+      <div style="padding:10px 12px;font-size:12px;line-height:1.5;"><span style="display:block;color:#6b7280;font-size:10px;text-transform:uppercase;">Previous</span>${emailValue(previousData?.[header])}</div>
+      <div style="padding:10px 12px;border-top:1px solid #eef2f7;font-size:12px;line-height:1.5;"><span style="display:block;color:#6b7280;font-size:10px;text-transform:uppercase;">Updated</span>${emailValue(data?.[header])}</div>
+    </div>`).join("")}
+  </div>`;
+}
+
+function detailCardRow(label, value) {
+  return `<div style="padding:10px 12px;border-bottom:1px solid #e2e8f0;background:#ffffff;overflow-wrap:anywhere;">
+    <div style="margin-bottom:3px;color:#6b7280;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.3px;">${escapeHtml(label)}</div>
+    <div style="color:#172033;font-size:12px;line-height:1.5;">${emailValue(value)}</div>
+  </div>`;
+}
+
+function emailValue(value) {
+  const text = clean(value);
+  if (/^https?:\/\//i.test(text)) {
+    return `<a href="${escapeHtml(text)}" target="_blank" style="color:#2563eb;text-decoration:none;word-break:break-all;">Open link</a>`;
+  }
+  return escapeHtml(text) || '<span style="color:#9ca3af;">—</span>';
+}
+
 export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
   const ridoLogo = logoSrc("RIDO_LOGO_URL", "rido-sports-logo.png", "rido-logo");
   const kkLogo = logoSrc("KLIENT_KONNECT_LOGO_URL", "kk-logo.png", "kk-logo");
@@ -156,13 +196,14 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
 </html>`;
 }
 
-export function mimeMessage({ to, cc = "", subject = "", html = "", replyTo = "" }) {
+export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "" }) {
   const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
   const attachments = inlineLogoAttachments(html);
   const headers = [
     sender ? `From: Klient Konnect CRM <${sender}>` : "",
     `To: ${to}`,
     cc ? `Cc: ${cc}` : "",
+    bcc ? `Bcc: ${bcc}` : "",
     `Subject: ${subject || ""}`,
     "MIME-Version: 1.0",
   ].filter(Boolean);

@@ -1,6 +1,6 @@
 import { SHEETS } from "./crmConfig.js";
 import { getValues, gmailSendRawEmail, resolveSheetTitle } from "./googleSheets.js";
-import { base64Url, brandedEmailHtml, escapeHtml, mimeMessage, recordDetailsTable } from "./emailRenderer.js";
+import { base64Url, brandedEmailHtml, changedFieldsCards, escapeHtml, mimeMessage, recordDetailsCards, recordDetailsTable } from "./emailRenderer.js";
 
 const DEFAULT_CC = "Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com";
 
@@ -15,18 +15,24 @@ function getPublicBaseUrl() {
   return vercelUrl ? `https://${vercelUrl.replace(/\/+$/g, "")}` : "";
 }
 
-function brandedHtml({ greeting, intro, subject, headers, data, calendarLink = false, actionUrl = "", actionLabel = "" }) {
+function brandedHtml({ greeting, intro, subject, headers, data, previousData = null, calendarLink = false, actionUrl = "", actionLabel = "" }) {
   const meetingUrl = clean(process.env.CRM_CALENDAR_URL) || `${getPublicBaseUrl()}/calendar`;
 
   const content = `
     <p style="margin:0 0 14px 0;">${escapeHtml(greeting)}</p>
     <p style="margin:0 0 18px 0;">${escapeHtml(intro)}</p>
-    ${recordDetailsTable(headers, data)}
+    ${previousData ? `<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">What changed</div>${changedFieldsCards(headers, previousData, data)}<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">Current snapshot</div>${recordDetailsCards(priorityHeaders(headers, data), data, { limit: 8 })}` : recordDetailsCards(headers, data)}
     ${actionUrl ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(actionUrl)}" target="_blank" style="display:inline-block;background:#12315c;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">${escapeHtml(actionLabel || "Open Link")}</a></p>` : ""}
     ${calendarLink ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(meetingUrl)}" target="_blank" style="display:inline-block;background:#6495ED;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">Schedule a Meeting</a></p>` : ""}
     <p style="margin:22px 0 0 0;">Regards,<br>Klient Konnect Team</p>
   `;
   return brandedEmailHtml(content, { subject });
+}
+
+function priorityHeaders(headers, data) {
+  const preferred = ["Lead ID", "Account ID", "Deal ID", "Order ID", "Company", "First Name", "Last Name", "Deal Name", "Lead Status", "Stage", "Deal Stage", "Order Status", "Lead Owner", "Account Owner"];
+  const available = new Set(headers || []);
+  return [...preferred.filter((header) => available.has(header) && clean(data?.[header])), ...(headers || []).filter((header) => !preferred.includes(header))];
 }
 
 export async function ownerEmail(ownerName) {
@@ -39,7 +45,7 @@ export async function ownerEmail(ownerName) {
   return match ? clean(match[4]) : "";
 }
 
-async function sendOperationalEmail({ owner, subject, intro, headers, data, calendarLink = false, cc: ccOverride = "" }) {
+async function sendOperationalEmail({ owner, subject, intro, headers, data, previousData = null, calendarLink = false, cc: ccOverride = "" }) {
   if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "false").toLowerCase() !== "true") {
     return { sent: false, reason: "disabled" };
   }
@@ -54,6 +60,7 @@ async function sendOperationalEmail({ owner, subject, intro, headers, data, cale
     subject,
     headers,
     data,
+    previousData,
     calendarLink,
   });
   const raw = base64Url(mimeMessage({ to, cc, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "" }));
@@ -82,20 +89,21 @@ async function sendDirectOperationalEmail({ to, cc, subject, greeting = "Hello T
   return { sent: true, to, cc };
 }
 
-export async function notifyLeadSubmitted(headers, data) {
+export async function notifyLeadSubmitted(headers, data, previousData = null) {
   const owner = data["Lead Owner"];
   const subject = `Lead Updated: ${clean(data["First Name"])} ${clean(data["Last Name"])} | ${clean(data["Mobile Number"])} | ${clean(data.Company)} | Source: ${clean(data["Lead Source"])}`;
   return sendOperationalEmail({
     owner,
     subject,
-    intro: "A new lead form has been submitted with the following details:",
+    intro: previousData ? "A lead record has been updated. The changes are shown below:" : "A new lead form has been submitted with the following details:",
     headers,
     data,
+    previousData,
     calendarLink: true,
   });
 }
 
-export async function notifyAccountSubmitted(headers, data) {
+export async function notifyAccountSubmitted(headers, data, previousData = null) {
   const owner = data["Account Owner"] || data["Lead Owner"];
   const subject = `New/Updated Account Notification: ${clean(data.Company)}`;
   return sendOperationalEmail({
@@ -104,18 +112,99 @@ export async function notifyAccountSubmitted(headers, data) {
     intro: "A new or updated account record is available:",
     headers,
     data,
+    previousData,
     calendarLink: true,
   });
 }
 
-export async function notifyLeadWorkflow(headers, data) {
+export async function notifyProjectSubmitted(headers, data, historyRows = []) {
+  if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "false").toLowerCase() !== "true") {
+    return { sent: false, reason: "disabled" };
+  }
+
+  const validationSheet = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
+  const validationValues = await getValues(SHEETS.validation.spreadsheetId, validationSheet);
+  const [validationHeaders = [], ...validationRows] = validationValues;
+  const ownerIndex = findHeader(validationHeaders, "Lead Owner");
+  const emailIndex = findHeader(validationHeaders, "Email");
+  const ccIndex = findHeader(validationHeaders, "CC");
+  const bccIndex = findHeader(validationHeaders, "BCC");
+  const wantedOwners = new Set(
+    [data["Project Manager"], data["Account Owner"], data["Lead Owner"], data.Owner]
+      .map((value) => clean(value).toLowerCase())
+      .filter(Boolean)
+  );
+  const ownerRecipients = validationRows
+    .filter((row) => wantedOwners.has(clean(row[ownerIndex]).toLowerCase()))
+    .map((row) => clean(row[emailIndex]));
+  const clientRecipients = clean(data["Client Email ID"]).split(",").map(clean);
+  const ccRecipients = validationRows.map((row) => clean(row[ccIndex]));
+  const bccRecipients = validationRows.map((row) => clean(row[bccIndex]));
+  const to = uniqueEmails([...ownerRecipients, ...clientRecipients]).join(",");
+  const cc = uniqueEmails([...ccRecipients, "sarabjeet@ridosports.com"]).join(",");
+  const bcc = uniqueEmails(bccRecipients).join(",");
+  if (!to) return { sent: false, reason: "missing_recipient" };
+
+  const projectId = clean(data["Project ID (unique, auto-generated)"]);
+  const projectName = clean(data["Project Name"]) || "Untitled Project";
+  const excluded = new Set([
+    "Vendors", "Timestamp", "Task Name", "Task Owner", "Start Date", "End Date", "Budget (₹)",
+    "Actual Cost (₹)", "Variance (₹)", "PO Link", "Invoice Link", "Payment Receipt Link",
+    "Other Documents", "Assigned Team", "Task Status", "Project Manager",
+  ]);
+  const historyHtml = historyRows
+    .slice()
+    .reverse()
+    .map((row, index) => `<div style="margin:0 0 14px;border:1px solid #dbe4f0;border-radius:10px;overflow:hidden;">
+      <div style="padding:10px 12px;background:${index === 0 ? "#eaf3ff" : "#f8fafc"};font-weight:700;">${index === 0 ? "Latest Update" : "Previous Update"} — ${escapeHtml(row.Timestamp)}</div>
+      <div style="padding:2px 12px 10px;">${recordDetailsTable(headers.filter((header) => !excluded.has(header)), row)}</div>
+    </div>`)
+    .join("");
+  const content = `
+    <div style="margin:0 0 20px;background:#6495ED;border-radius:10px;padding:18px 20px;color:#ffffff;">
+      <div style="font-size:20px;font-weight:700;line-height:1.3;">Rido Sports | Project Update</div>
+      <div style="font-size:13px;line-height:1.5;margin-top:4px;">${escapeHtml(projectName)}</div>
+    </div>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">A project entry was <strong>added or updated</strong>.</p>
+    <div style="border:1px solid #dbe4f0;border-radius:10px;padding:14px 16px;background:#f9fbff;margin-bottom:20px;">
+      ${projectSummaryRow("Project Name", projectName)}
+      ${projectSummaryRow("Project ID", projectId)}
+      ${projectSummaryRow("Project Manager", data["Project Manager"] || data["Account Owner"])}
+      ${projectSummaryRow("Project Status", data["Project Status"])}
+      ${projectSummaryRow("Project Stage", data["Project Stage"] || data.Stage)}
+      ${projectSummaryRow("Client Email ID", data["Client Email ID"])}
+    </div>
+    <div style="font-size:15px;font-weight:700;color:#111827;margin:0 0 6px;">Project History</div>
+    <div style="font-size:12px;color:#4b5563;line-height:1.6;margin-bottom:14px;">Latest update appears first.</div>
+    ${historyHtml}`;
+  const subject = `Project Update: ${projectName} [${projectId}]`;
+  const html = brandedEmailHtml(content, { subject });
+  const raw = base64Url(mimeMessage({ to, cc, bcc, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "" }));
+  await gmailSendRawEmail(raw);
+  return { sent: true, to, cc, bcc };
+}
+
+function findHeader(headers, name) {
+  return headers.findIndex((header) => clean(header).toLowerCase() === name.toLowerCase());
+}
+
+function uniqueEmails(values) {
+  return [...new Set(values.map(clean).filter((value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.toLowerCase())))];
+}
+
+function projectSummaryRow(label, value) {
+  if (!clean(value)) return "";
+  return `<div style="margin-bottom:8px;font-size:13px;line-height:1.5;"><span style="font-weight:700;color:#374151;">${escapeHtml(label)}:</span> <span style="color:#111827;">${escapeHtml(value)}</span></div>`;
+}
+
+export async function notifyLeadWorkflow(headers, data, previousData = null) {
   const current = clean(data["Notification Status"]);
   let nextStatus = current;
   const results = {};
 
-  if (!current) {
-    results.lead = await notifyLeadSubmitted(headers, data);
-    if (results.lead.sent) nextStatus = "Sent";
+  if (!current || previousData) {
+    results.lead = await notifyLeadSubmitted(headers, data, previousData);
+    if (results.lead.sent && !current) nextStatus = "Sent";
   }
 
   const leadStatus = clean(data["Lead Status"]);
@@ -182,8 +271,8 @@ function isHttpUrl(value) {
   }
 }
 
-export async function notifyDealSubmitted(headers, data) {
-  if (clean(data["Notification Status"])) return { sent: false, reason: "already_processed" };
+export async function notifyDealSubmitted(headers, data, previousData = null) {
+  if (clean(data["Notification Status"]) && !previousData) return { sent: false, reason: "already_processed" };
   const owner = data["Account Owner"] || data["Lead Owner"];
   const amount = data["Deal Value"] || data["Deal Amount"] || "";
   const stage = data["Deal Stage"] || data.Stage || "";
@@ -191,22 +280,24 @@ export async function notifyDealSubmitted(headers, data) {
   return sendOperationalEmail({
     owner,
     subject,
-    intro: "A new deal form has been submitted with the following details:",
+    intro: previousData ? "A deal record has been updated. The changes are shown below:" : "A new deal form has been submitted with the following details:",
     headers,
     data,
+    previousData,
   });
 }
 
-export async function notifyOrderSubmitted(headers, data) {
-  if (clean(data["Notification Status"])) return { sent: false, reason: "already_processed" };
+export async function notifyOrderSubmitted(headers, data, previousData = null) {
+  if (clean(data["Notification Status"]) && !previousData) return { sent: false, reason: "already_processed" };
   const owner = data["Account Owner"] || data["Lead Owner"] || data.Owner;
   const subject = `Order Updated: ${clean(data["Order ID"])} | ${clean(data["Deal Name"] || data.Company)} | ${clean(data["Order Status"] || data.Status)}`;
   return sendOperationalEmail({
     owner,
     subject,
-    intro: "An order record has been submitted with the following details:",
+    intro: previousData ? "An order record has been updated. The changes are shown below:" : "An order record has been submitted with the following details:",
     headers,
     data,
+    previousData,
     cc: process.env.ORDER_OPERATIONAL_EMAIL_CC || `${DEFAULT_CC},sudeep@ridosports.com`,
   });
 }

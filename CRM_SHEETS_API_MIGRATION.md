@@ -66,7 +66,7 @@ When this value is unset, server-side operational emails stay disabled so record
 
 The single-send communication module now uses `/api/email` instead of the old Apps Script deployment for templates, preview, template versioning, lead lookup, quick lead creation, email logs, and single email send.
 Email sending on Vercel requires Gmail API domain-wide delegation for the service account and `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
-Outgoing emails are wrapped in a branded layout. The header uses `/assets/rido-sports-logo.png` from `PUBLIC_APP_URL` or `VERCEL_URL`, unless `RIDO_LOGO_URL` is set. The footer uses `KLIENT_KONNECT_LOGO_URL` when set, otherwise it uses `/assets/kk-logo.png`.
+Outgoing emails are wrapped in a branded layout. The Vercel Gmail sender embeds `/assets/rido-sports-logo.png` and `/assets/kk-logo.png` as inline email images when those public assets are available in the deployment. Set `RIDO_LOGO_URL` or `KLIENT_KONNECT_LOGO_URL` only when you intentionally want to use externally hosted logo URLs instead.
 The separate bulk email sender iframe is still a separate Apps Script deployment and needs its own migration pass.
 
 ## Nomenclature Manager

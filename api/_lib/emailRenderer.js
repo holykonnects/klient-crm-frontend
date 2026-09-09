@@ -1,3 +1,6 @@
+import fs from "fs";
+import path from "path";
+
 function clean(value) {
   return String(value || "").trim();
 }
@@ -30,6 +33,25 @@ function assetUrl(path) {
 function logoImg(src, alt, style) {
   if (!src) return "";
   return `<img src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" style="${style}" />`;
+}
+
+function localAssetPath(assetName) {
+  return path.join(process.cwd(), "public", "assets", assetName);
+}
+
+function localAssetExists(assetName) {
+  try {
+    return fs.existsSync(localAssetPath(assetName));
+  } catch {
+    return false;
+  }
+}
+
+function logoSrc(envName, assetName, cid) {
+  const explicit = clean(process.env[envName]);
+  if (explicit) return explicit;
+  if (localAssetExists(assetName)) return `cid:${cid}`;
+  return assetUrl(`/assets/${assetName}`);
 }
 
 function extractBodyHtml(html) {
@@ -84,8 +106,8 @@ export function recordDetailsTable(headers, data) {
 }
 
 export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
-  const ridoLogo = clean(process.env.RIDO_LOGO_URL) || assetUrl("/assets/rido-sports-logo.png");
-  const kkLogo = clean(process.env.KLIENT_KONNECT_LOGO_URL) || assetUrl("/assets/kk-logo.png");
+  const ridoLogo = logoSrc("RIDO_LOGO_URL", "rido-sports-logo.png", "rido-logo");
+  const kkLogo = logoSrc("KLIENT_KONNECT_LOGO_URL", "kk-logo.png", "kk-logo");
   const preheader = escapeHtml(clean(subject) || "Rido Sports communication");
   const bodyHtml = enhanceEmailTables(contentHtml);
 
@@ -136,14 +158,67 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
 
 export function mimeMessage({ to, cc = "", subject = "", html = "", replyTo = "" }) {
   const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
+  const attachments = inlineLogoAttachments(html);
   const headers = [
     sender ? `From: Klient Konnect CRM <${sender}>` : "",
     `To: ${to}`,
     cc ? `Cc: ${cc}` : "",
     `Subject: ${subject || ""}`,
     "MIME-Version: 1.0",
-    "Content-Type: text/html; charset=UTF-8",
   ].filter(Boolean);
   if (replyTo) headers.push(`Reply-To: ${replyTo}`);
-  return `${headers.join("\r\n")}\r\n\r\n${html || ""}`;
+
+  if (!attachments.length) {
+    headers.push("Content-Type: text/html; charset=UTF-8");
+    return `${headers.join("\r\n")}\r\n\r\n${html || ""}`;
+  }
+
+  const boundary = `kk_related_${Date.now().toString(36)}`;
+  headers.push(`Content-Type: multipart/related; boundary="${boundary}"`);
+
+  const parts = [
+    `--${boundary}`,
+    "Content-Type: text/html; charset=UTF-8",
+    "Content-Transfer-Encoding: base64",
+    "",
+    base64Mime(html || ""),
+    ...attachments.flatMap((attachment) => [
+      `--${boundary}`,
+      `Content-Type: ${attachment.contentType}; name="${attachment.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      `Content-ID: <${attachment.cid}>`,
+      `Content-Disposition: inline; filename="${attachment.filename}"`,
+      "",
+      attachment.content,
+    ]),
+    `--${boundary}--`,
+  ];
+
+  return `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+}
+
+function inlineLogoAttachments(html) {
+  const specs = [
+    { cid: "rido-logo", filename: "rido-sports-logo.png", contentType: "image/png" },
+    { cid: "kk-logo", filename: "kk-logo.png", contentType: "image/png" },
+  ];
+
+  return specs
+    .filter((spec) => String(html || "").includes(`cid:${spec.cid}`))
+    .map((spec) => {
+      try {
+        const body = fs.readFileSync(localAssetPath(spec.filename));
+        return {
+          ...spec,
+          content: base64Mime(body),
+        };
+      } catch {
+        return null;
+      }
+    })
+    .filter(Boolean);
+}
+
+function base64Mime(input) {
+  return Buffer.from(input).toString("base64").replace(/(.{76})/g, "$1\r\n");
 }

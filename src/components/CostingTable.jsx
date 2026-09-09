@@ -56,9 +56,7 @@ const theme = createTheme({
 
 const cornflowerBlue = "#6495ED";
 
-// ✅ Your deployed Costing Web App URL
-const BACKEND =
-  "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
+const BACKEND = "/api/costing";
 
 const COST_SHEET_LIST_FIELDS = [
   "Cost Sheet ID",
@@ -156,48 +154,24 @@ function getCostSheetUpdatedMs(row) {
 }
 
 /**
- * ✅ JSONP GET (no-cors friendly)
- * Backend supports: ?action=...&callback=cb
+ * Same-origin Costing API reader.
  */
-function jsonpGet(url) {
-  return new Promise((resolve, reject) => {
-    const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    let scriptEl = null;
-
-    const cleanup = () => {
-      try {
-        delete window[cbName];
-      } catch {}
-      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-    };
-
-    window[cbName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    scriptEl = document.createElement("script");
-    scriptEl.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
-    scriptEl.async = true;
-
-    scriptEl.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP load failed"));
-    };
-
-    document.body.appendChild(scriptEl);
-  });
+async function jsonpGet(url) {
+  const response = await fetch(url, { method: "GET" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `Costing request failed (${response.status})`);
+  return data;
 }
 
-// ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
 async function apiPost(payload) {
-  await fetch(BACKEND, {
+  const response = await fetch(BACKEND, {
     method: "POST",
-    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return { success: true };
+  const data = await response.json();
+  if (!response.ok || data?.success === false) throw new Error(data?.error || `Costing update failed (${response.status})`);
+  return data;
 }
 
 /**
@@ -1144,7 +1118,7 @@ export default function CostingTable() {
       }
     } catch (e) {
       console.error("COSTING_REFRESH_FAST_ERROR", e);
-      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+      alert("Failed to load costing data. Check the server API and Google Sheets permissions.");
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -1319,13 +1293,13 @@ export default function CostingTable() {
         console.error("GET_ENTITIES_ERROR", res);
         setEntityOptions([]);
         alert(
-          "Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response)."
+          "Entities could not be loaded. Check the source sheet header mapping."
         );
       }
     } catch (e) {
       console.error("GET_ENTITIES_FETCH_ERROR", e);
       setEntityOptions([]);
-      alert("Entities could not be loaded (JSONP). Check deployment access.");
+      alert("Entities could not be loaded. Check server access and sheet permissions.");
     } finally {
       setEntityLoading(false);
     }

@@ -20,6 +20,14 @@ export const SHEETS = {
     sheetNames: ["Project"],
     validationSheetNames: ["Validation Tables"],
   },
+  costing: {
+    spreadsheetId: process.env.COSTING_SHEET_ID || "1S3pMki4TDiCBXdgkBGQ4qjyUUp9uo4mpMwQAUDvul6c",
+    costSheetNames: ["Cost Sheet"],
+    lineItemSheetNames: ["Cost Line Items"],
+    advanceSheetNames: ["Advance Payments"],
+    validationSpreadsheetId: process.env.VALIDATION_SHEET_ID || "1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ",
+    validationSheetNames: ["Cost Validation"],
+  },
   salesTracker: {
     spreadsheetId:
       process.env.SALES_TRACKER_SHEET_ID || "1XV4CJLt8nP512e39YK9RmYFO2llxyNCtmuphXgT8p2E",

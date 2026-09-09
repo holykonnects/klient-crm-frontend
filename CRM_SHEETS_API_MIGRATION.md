@@ -15,6 +15,8 @@ Optional overrides:
 - `ACCOUNTS_SHEET_ID`
 - `DEALS_SHEET_ID`
 - `ORDERS_SHEET_ID`
+- `COSTING_SHEET_ID`
+- `COSTING_GAS_URL` (temporary fallback for Costing mutations and exports)
 - `SALES_TRACKER_SHEET_ID`
 - `VALIDATION_SHEET_ID`
 - `EMAIL_SHEET_ID`
@@ -50,8 +52,11 @@ Enable Google Sheets API and Google Drive API in the Google Cloud project.
 - `/api/order-invoices?orderId=...`
 - `/api/nomenclature`
 - `/api/email`
+- `/api/costing`
 
 The frontend modules for Leads, Lead Form, Accounts, Deals, Orders, and Sales Tracker now call these same-origin routes instead of deployed Apps Script URLs.
+
+Costing uses a hybrid migration route: high-frequency validation, cost-sheet, line-item search/detail, and linked-entity reads use the server-side Sheets API with short-lived caching. Calculation-heavy mutations and exports are temporarily proxied to the existing GAS engine through the same `/api/costing` route.
 
 Lead saves through `/api/leads` now generate or reuse `Lead ID` values and copy leads with `Lead Status = Qualified` into the Accounts sheet.
 Quick leads created from the communication module use the same `/api/leads` pipeline.

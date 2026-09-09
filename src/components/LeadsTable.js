@@ -558,10 +558,10 @@ const LeadsTable = () => {
 
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           {/* Search (deferred + debounced) */}
-          <Box display="flex" alignItems="center" gap={2}>
+          <Box className="crm-search-tools" display="flex" alignItems="center" gap={1}>
             <TextField
               size="small"
-              label="Search"
+              label="Search all lead fields"
               value={searchInput}
               onChange={onSearchChange}
               sx={{ minWidth: 240 }}
@@ -589,6 +589,7 @@ const LeadsTable = () => {
 
             {/* Lead ID quick search (exact or partial) */}
             <TextField
+              className="crm-secondary-search"
               size="small"
               label="Lead ID"
               value={leadIdInput}
@@ -605,6 +606,12 @@ const LeadsTable = () => {
                   <RefreshIcon />
                 </IconButton>
               </span>
+            </Tooltip>
+
+            <Tooltip title="Choose columns">
+              <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} aria-label="Choose columns">
+                <ViewColumnIcon />
+              </IconButton>
             </Tooltip>
           </Box>
 
@@ -636,9 +643,6 @@ const LeadsTable = () => {
             </FormControl>
           ))}
 
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box padding={2} sx={selectorStyle}>
               <Button size="small" onClick={handleSelectAll}>Select All</Button>
@@ -656,6 +660,7 @@ const LeadsTable = () => {
           </Popover>
         </Box>
 
+        <Box className="crm-table-shell">
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
@@ -673,6 +678,7 @@ const LeadsTable = () => {
           </TableHead>
           {tableBodyMemo}
         </Table>
+        </Box>
 
         <TablePagination
           component="div"

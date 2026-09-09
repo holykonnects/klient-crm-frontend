@@ -77,8 +77,20 @@ select,
 .crm-filter-bar,
 .crm-module-hero,
 .crm-module-hero-copy,
-.crm-action-bar {
+.crm-action-bar,
+.crm-search-tools {
   width: 100%;
+  min-width: 0;
+}
+
+.crm-search-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.crm-search-tools .MuiTextField-root:first-child {
+  flex: 1 1 auto;
   min-width: 0;
 }
 
@@ -328,6 +340,28 @@ select,
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 10px;
+  }
+
+  .crm-filter-bar > .crm-search-tools {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+  }
+
+  .crm-search-tools .MuiTextField-root:first-child {
+    width: auto !important;
+    flex: 1 1 auto !important;
+  }
+
+  .crm-search-tools > .MuiIconButton-root,
+  .crm-search-tools > span {
+    flex: 0 0 auto;
+    width: auto !important;
+  }
+
+  .crm-secondary-search {
+    display: none !important;
   }
 
   .crm-filter-bar .MuiIconButton-root {

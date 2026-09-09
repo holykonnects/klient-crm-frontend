@@ -458,14 +458,19 @@ function OrdersTable() {
 
         {/* Filters */}
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
+          <Box className="crm-search-tools">
+            <TextField
+              label="Search all order fields"
+              variant="outlined"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              size="small"
+              sx={{ minWidth: 200 }}
+            />
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} aria-label="Choose columns">
+              <ViewColumnIcon />
+            </IconButton>
+          </Box>
 
           {["Stage", "Type", "Lead Source", "Account Owner"].map((label, index) => (
             <FormControl size="small" sx={{ minWidth: 200 }} key={index}>
@@ -499,10 +504,6 @@ function OrdersTable() {
           ))}
 
           {/* Column selector */}
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
-
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box p={2} sx={selectorStyle}>
               <Typography variant="subtitle2">Column Visibility</Typography>
@@ -527,6 +528,7 @@ function OrdersTable() {
         </Box>
 
         {/* Table */}
+        <Box className="crm-table-shell">
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: "#6495ED" }}>
@@ -562,6 +564,7 @@ function OrdersTable() {
             ))}
           </TableBody>
         </Table>
+        </Box>
 
         {/* -------------------- EDIT / UPDATE ORDER MODAL -------------------- */}
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>

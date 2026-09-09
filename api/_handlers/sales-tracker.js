@@ -1,5 +1,5 @@
-import { SHEETS } from "./_lib/crmConfig.js";
-import { getTable, getValidationOptions, handleSalesTrackerPost } from "./_lib/crmHandlers.js";
+import { SHEETS } from "../_lib/crmConfig.js";
+import { getTable, getValidationOptions, handleSalesTrackerPost } from "../_lib/crmHandlers.js";
 
 export default async function handler(req, res) {
   try {

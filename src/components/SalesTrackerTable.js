@@ -23,6 +23,7 @@ const ENTITY_SELECTION_COLUMN = 'Field Selection';
 const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
 const ENTITY_FIELD_ALIASES = ['Field', 'Linked Entity Type', 'Entity Type', 'Source Type'];
 const ENTITY_SELECTION_ALIASES = ['Field Selection', 'Linked Entity', 'Linked Entity Name', 'Entity Selection'];
+const SALES_OVERVIEW_COLUMNS = ['S.No', 'Field', 'Field Selection', 'Company', 'Basic Value'];
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
@@ -110,7 +111,8 @@ const SalesTrackerTable = () => {
         if (sorted.length > 0) {
           const cols = withEntityColumns(Object.keys(sorted[0]));
           setColumns(cols);
-          setVisibleColumns(cols);
+          const saved = JSON.parse(localStorage.getItem('visibleColumns-v2-sales-tracker') || 'null');
+          setVisibleColumns(saved || SALES_OVERVIEW_COLUMNS.filter((column) => cols.includes(column)));
         }
       } catch (err) {
         console.error('Error loading sales data', err);
@@ -225,9 +227,11 @@ const SalesTrackerTable = () => {
 
   const handleFilterChange = (field, value) => setFilters(prev => ({ ...prev, [field]: value }));
 
-  const handleColumnToggle = (column) => setVisibleColumns(prev => (
-    prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column]
-  ));
+  const handleColumnToggle = (column) => setVisibleColumns(prev => {
+    const next = prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column];
+    localStorage.setItem('visibleColumns-v2-sales-tracker', JSON.stringify(next));
+    return next;
+  });
 
   const openColumnSelector = (e) => setAnchorEl(e.currentTarget);
   const closeColumnSelector = () => setAnchorEl(null);
@@ -309,9 +313,9 @@ const SalesTrackerTable = () => {
       {loading && <LoadingOverlay />}
 
       {/* Header with total */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={3}>
-        <Box display="flex" alignItems="center" gap={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100 }} />
+      <Box className="crm-page-header" display="flex" justifyContent="space-between" alignItems="center" mb={3} gap={2} flexWrap="wrap">
+        <Box display="flex" alignItems="center" gap={2} minWidth={0}>
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h6" sx={{ fontFamily: 'Montserrat, sans-serif', fontWeight: 600, fontSize: '1.2rem', color: '#333' }}>
             Sales Tracker
           </Typography>
@@ -327,8 +331,8 @@ const SalesTrackerTable = () => {
       </Box>
 
       {/* Filters */}
-      <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
-        <Box display="flex" gap={2}>
+      <Box className="crm-filter-bar" display="flex" justifyContent="space-between" alignItems="center" mb={2} gap={1} flexWrap="wrap">
+        <Box display="flex" gap={2} flexWrap="wrap" sx={{ flex: '1 1 520px', minWidth: 0 }}>
           <TextField
             variant="outlined"
             placeholder="Search"
@@ -381,7 +385,7 @@ const SalesTrackerTable = () => {
       </Popover>
 
       {/* Table */}
-      <TableContainer component={Paper} sx={{ borderRadius: 1, border: '1px solid #e4ebf5', maxWidth: '100%' }}>
+      <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
         <Table size="small" stickyHeader>
           <TableHead>
             <TableRow sx={{ backgroundColor: '#6495ED' }}>

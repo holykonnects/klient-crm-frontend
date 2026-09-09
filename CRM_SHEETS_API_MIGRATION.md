@@ -15,6 +15,8 @@ Optional overrides:
 - `ACCOUNTS_SHEET_ID`
 - `DEALS_SHEET_ID`
 - `ORDERS_SHEET_ID`
+- `COSTING_SHEET_ID`
+- `COSTING_GAS_URL` (temporary fallback for Costing mutations and exports)
 - `SALES_TRACKER_SHEET_ID`
 - `VALIDATION_SHEET_ID`
 - `EMAIL_SHEET_ID`
@@ -28,7 +30,7 @@ Optional overrides:
 - `OPERATIONAL_EMAIL_CC`
 - `OPERATIONAL_REPLY_TO`
 - `CRM_CALENDAR_URL`
-- `ENABLE_OPERATIONAL_EMAILS`
+- `ENABLE_OPERATIONAL_EMAILS` (`true` enables server-side lead/deal/order emails)
 - `LEAD_UPDATE_FORM_URL`
 - `ORDER_UPLOAD_FOLDER_ID`
 - `ORDER_PO_FOLDER_ID`
@@ -50,8 +52,11 @@ Enable Google Sheets API and Google Drive API in the Google Cloud project.
 - `/api/order-invoices?orderId=...`
 - `/api/nomenclature`
 - `/api/email`
+- `/api/costing`
 
 The frontend modules for Leads, Lead Form, Accounts, Deals, Orders, and Sales Tracker now call these same-origin routes instead of deployed Apps Script URLs.
+
+Costing uses a hybrid migration route: high-frequency validation, cost-sheet, line-item search/detail, and linked-entity reads use the server-side Sheets API with short-lived caching. Calculation-heavy mutations and exports are temporarily proxied to the existing GAS engine through the same `/api/costing` route.
 
 Lead saves through `/api/leads` now generate or reuse `Lead ID` values and copy leads with `Lead Status = Qualified` into the Accounts sheet.
 Quick leads created from the communication module use the same `/api/leads` pipeline.
@@ -59,13 +64,14 @@ Quick leads created from the communication module use the same `/api/leads` pipe
 Operational lead/deal/order notifications now send from the Vercel API flow instead of Apps Script triggers.
 Owner recipient lookup follows the old Apps Script rule: match `Lead Owner` / `Account Owner` against column A of `Validation Tables` and send to column E.
 By default, operational emails CC `Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com`; override with `OPERATIONAL_EMAIL_CC`.
-Set `ENABLE_OPERATIONAL_EMAILS=false` to temporarily disable these notifications without disabling record saves.
+Set `ENABLE_OPERATIONAL_EMAILS=true` only after the old Apps Script lead/deal/order email triggers are disabled or you intentionally want to test for duplicates.
+When this value is unset, server-side operational emails stay disabled so record saves cannot accidentally create duplicate notifications while Apps Script triggers remain active.
 
 ## Communication Engine
 
 The single-send communication module now uses `/api/email` instead of the old Apps Script deployment for templates, preview, template versioning, lead lookup, quick lead creation, email logs, and single email send.
 Email sending on Vercel requires Gmail API domain-wide delegation for the service account and `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
-Outgoing emails are wrapped in a branded layout. The header uses `/assets/rido-sports-logo.png` from `PUBLIC_APP_URL` or `VERCEL_URL`, unless `RIDO_LOGO_URL` is set. The footer uses `KLIENT_KONNECT_LOGO_URL` when set, otherwise it uses `/assets/kk-logo.png`.
+Outgoing emails are wrapped in a branded layout. The Vercel Gmail sender embeds `/assets/rido-sports-logo.png` and `/assets/kk-logo.png` as inline email images when those public assets are available in the deployment. Set `RIDO_LOGO_URL` or `KLIENT_KONNECT_LOGO_URL` only when you intentionally want to use externally hosted logo URLs instead.
 The separate bulk email sender iframe is still a separate Apps Script deployment and needs its own migration pass.
 
 ## Nomenclature Manager

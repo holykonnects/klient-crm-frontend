@@ -241,6 +241,24 @@ export async function updateValues(spreadsheetId, sheetName, rowNumber, row) {
   });
 }
 
+export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value) {
+  const cell = `${columnName(columnNumber)}${rowNumber}`;
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
+    sheetRange(sheetName, cell)
+  )}?valueInputOption=USER_ENTERED`;
+  return googleFetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ values: [[value]] }),
+  });
+}
+
+export function appendedRowNumber(appendResult) {
+  const range = String(appendResult?.updates?.updatedRange || "");
+  const match = range.match(/![A-Z]+(\d+)(?::[A-Z]+\d+)?$/i);
+  return match ? Number(match[1]) : 0;
+}
+
 export function rowsToObjects(values) {
   const [headers = [], ...rows] = values;
   return rows.map((row) => {

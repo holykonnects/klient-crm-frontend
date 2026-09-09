@@ -1018,11 +1018,11 @@ export default function ExpenseRequestTable() {
       <Box sx={{ p: isMobile ? 1 : 2 }}>
         {/* HEADER */}
         <Box padding={isMobile ? 1.5 : 4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2} gap={1}>
+          <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2} gap={1}>
             <img
-              src="/assets/kk-logo.png"
-              alt="Klient Konnect"
-              style={{ height: isMobile ? 60 : 100 }}
+              className="crm-primary-logo"
+              src="/assets/rido-sports-logo.png"
+              alt="Rido Sports"
             />
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>

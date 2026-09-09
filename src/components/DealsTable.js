@@ -361,9 +361,9 @@ function DealsTable() {
       setDeals(dedupedLatest);
 
       const stored =
-        JSON.parse(localStorage.getItem(`visibleColumns-${username}-deals`)) || null;
+        JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-deals`)) || null;
 
-      setVisibleColumns(stored || (dedupedLatest.length ? Object.keys(dedupedLatest[0]) : []));
+      setVisibleColumns(stored || ['Deal Name', 'Company', 'Deal Stage', 'Deal Value', 'Account Owner', 'Order ID'].filter((key) => Object.keys(dedupedLatest[0] || {}).includes(key)));
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -430,7 +430,7 @@ function DealsTable() {
   const handleColumnToggle = (col) => {
     setVisibleColumns((prev) => {
       const updated = prev.includes(col) ? prev.filter((c) => c !== col) : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(updated));
+      localStorage.setItem(`visibleColumns-v2-${username}-deals`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -438,12 +438,12 @@ function DealsTable() {
   const handleSelectAll = () => {
     const all = Object.keys(deals[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify(all));
+    localStorage.setItem(`visibleColumns-v2-${username}-deals`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-deals`, JSON.stringify([]));
+    localStorage.setItem(`visibleColumns-v2-${username}-deals`, JSON.stringify([]));
   };
 
   // ----------------------------
@@ -720,15 +720,15 @@ function DealsTable() {
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">
             Deals Records
           </Typography>
         </Box>
 
         {/* Filters and Search */}
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+        <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
             variant="outlined"

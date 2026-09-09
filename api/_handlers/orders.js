@@ -1,5 +1,5 @@
-import { SHEETS } from "./_lib/crmConfig.js";
-import { getTable, getValidationOptions, handleDealPost } from "./_lib/crmHandlers.js";
+import { SHEETS } from "../_lib/crmConfig.js";
+import { getTable, getValidationOptions, handleOrderPost } from "../_lib/crmHandlers.js";
 
 export default async function handler(req, res) {
   try {
@@ -7,15 +7,12 @@ export default async function handler(req, res) {
       if (req.query.action === "validation") {
         return res.status(200).json(await getValidationOptions(SHEETS.validation, SHEETS.validation.dealSheetNames));
       }
-      return res.status(200).json(await getTable(SHEETS.deals));
+      return res.status(200).json(await getTable(SHEETS.orders));
     }
 
     if (req.method === "POST") {
-      const result = await handleDealPost({
-        dealsConfig: SHEETS.deals,
-        ordersConfig: SHEETS.orders,
-        payload: typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {},
-      });
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      const result = await handleOrderPost({ ordersConfig: SHEETS.orders, payload: body });
       return res.status(200).json(result);
     }
 

@@ -327,7 +327,7 @@ const CalendarView = ({ open, onClose, entryType: externalEntryType, selectedEnt
       {/* header */}
       <Box display="flex" justifyContent="space-between" alignItems="center" mb={2}>
         <Box display="flex" alignItems="center">
-          <img src="/assets/kk-logo.png" alt="Klient Konnect Logo" style={{ height: 100, marginRight: 12 }} />
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" style={{ marginRight: 12 }} />
           <Typography variant="h6" sx={{ fontWeight: 600, color: '#2f80ed' }}>Calendar Schedule</Typography>
         </Box>
         <Button

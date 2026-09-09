@@ -31,8 +31,6 @@ function LoginPage() {
 
 
       const result = await res.json();
-      console.log('Login result:', result);
-
       if (result.success) {
         login({ username: result.username, role: result.role, pageAccess: result.pageAccess });
         navigate('/dashboard');
@@ -56,12 +54,13 @@ function LoginPage() {
       >
         <Paper elevation={3} sx={{ padding: 4, width: 300, textAlign: 'center' }}>
           <img
-            src="/assets/kk-logo.png"
-            alt="Klient Konnect"
-            style={{ height: 100, marginBottom: 20 }}
+            className="crm-primary-logo"
+            src="/assets/rido-sports-logo.png"
+            alt="Rido Sports"
+            style={{ margin: '0 auto 20px' }}
           />
           <Typography variant="h5" fontWeight="bold" marginBottom={3}>
-            Login to Klient Konnect
+            Login to Rido Sports
           </Typography>
           <Box component="form" onSubmit={handleLogin}>
             <TextField
@@ -91,7 +90,7 @@ function LoginPage() {
               fullWidth
               sx={{ backgroundColor: '#6495ED', marginTop: 2 }}
             >
-              Login
+              Login to Rido Sports
             </Button>
           </Box>
           {error && (
@@ -99,6 +98,16 @@ function LoginPage() {
               {error}
             </Typography>
           )}
+          <Box sx={{ mt: 3, pt: 2, borderTop: '1px solid #e7edf5' }}>
+            <Typography sx={{ mb: 0.75, fontSize: 9, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.8 }}>
+              Empowered by
+            </Typography>
+            <img
+              src="/assets/kk-logo.png"
+              alt="Klient Konnect"
+              style={{ width: 64, height: 'auto', maxHeight: 44, objectFit: 'contain' }}
+            />
+          </Box>
         </Paper>
       </Box>
     </ThemeProvider>

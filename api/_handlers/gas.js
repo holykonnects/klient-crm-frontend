@@ -1,4 +1,4 @@
-// klient-crm-frontend/api/gas.js
+// GAS proxy handler, dispatched through api/index.js.
 export const config = {
   maxDuration: 60
 };

@@ -1,6 +1,11 @@
 {
+  "functions": {
+    "api/*.js": {
+      "includeFiles": "public/assets/*.png"
+    }
+  },
   "rewrites": [
-    { "source": "/api/:path*", "destination": "/api/:path*" },
+    { "source": "/api/:route", "destination": "/api?route=:route" },
     { "source": "/:path*", "destination": "/index.html" }
   ]
 }

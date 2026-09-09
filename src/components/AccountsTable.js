@@ -361,8 +361,8 @@ function AccountsTable() {
         setAccounts(filtered);
 
         setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${username}-accounts`)) ||
-            (filtered.length ? Object.keys(filtered[0]) : [])
+          JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-accounts`)) ||
+            ['Account ID', 'Company', 'First Name', 'Mobile Number', 'Account Owner', 'Lead Source'].filter((key) => Object.keys(filtered[0] || {}).includes(key))
         );
 
         setLoading(false);
@@ -390,7 +390,7 @@ function AccountsTable() {
         ? prev.filter((c) => c !== col)
         : [...prev, col];
       localStorage.setItem(
-        `visibleColumns-${username}-accounts`,
+        `visibleColumns-v2-${username}-accounts`,
         JSON.stringify(updated)
       );
       return updated;
@@ -400,12 +400,12 @@ function AccountsTable() {
   const handleSelectAll = () => {
     const all = Object.keys(accounts[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify(all));
+    localStorage.setItem(`visibleColumns-v2-${username}-accounts`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-accounts`, JSON.stringify([]));
+    localStorage.setItem(`visibleColumns-v2-${username}-accounts`, JSON.stringify([]));
   };
 
   const filteredAccounts = useMemo(() => {
@@ -479,14 +479,14 @@ function AccountsTable() {
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">
             Accounts Records
           </Typography>
         </Box>
 
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+        <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           <TextField
             label="Search"
             value={searchTerm}

@@ -1,6 +1,7 @@
 import { DRIVE_FOLDERS } from "./crmConfig.js";
 import {
   appendValues,
+  appendedRowNumber,
   buildRow,
   formatTimestamp,
   getValues,
@@ -8,11 +9,13 @@ import {
   resolveSheetTitle,
   rowsToObjects,
   updateValues,
+  updateCell,
   uploadDriveFile,
 } from "./googleSheets.js";
 import {
+  notifyAccountSubmitted,
   notifyDealSubmitted,
-  notifyLeadSubmitted,
+  notifyLeadWorkflow,
   notifyOrderSubmitted,
 } from "./operationalEmails.js";
 
@@ -70,9 +73,17 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
   data.Timestamp = timestamp;
   data["Lead ID"] = data["Lead ID"] || findExistingLeadId(values, headers, data["Mobile Number"]) || generateLeadId(timestamp);
   data["Prefilled Link"] = data["Prefilled Link"] || buildLeadPrefilledLink(data);
+  const previousLead = findPreviousRecord(values, headers, data, [["Lead ID"], ["Mobile Number"]]);
 
-  await appendValues(leadsConfig.spreadsheetId, sheetName, buildRow(headers, data));
-  const notification = await notifySafely(() => notifyLeadSubmitted(headers, data));
+  const appendResult = await appendValues(leadsConfig.spreadsheetId, sheetName, buildRow(headers, data));
+  const notification = await notifySafely(() => notifyLeadWorkflow(headers, data, previousLead));
+  await persistNotificationStatus({
+    config: leadsConfig,
+    sheetName,
+    headers,
+    appendResult,
+    status: notification.notificationStatus,
+  });
 
   const qualifiedTransfer = await maybeTransferQualifiedLead({
     accountsConfig,
@@ -99,11 +110,13 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
 
   if (!action || action === "updateDeal") {
     const sheetName = await resolveSheetTitle(dealsConfig.spreadsheetId, dealsConfig.sheetNames);
-    const values = await getValues(dealsConfig.spreadsheetId, sheetName, "1:1");
+    const values = await getValues(dealsConfig.spreadsheetId, sheetName);
     const headers = values[0] || [];
     if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
-    await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
-    const notification = await notifySafely(() => notifyDealSubmitted(headers, data));
+    const previousDeal = findPreviousRecord(values, headers, data, [["Deal ID"], ["Order Distribution ID"], ["Account ID", "Deal Name"]]);
+    const appendResult = await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
+    const notification = await notifySafely(() => notifyDealSubmitted(headers, data, previousDeal));
+    await persistSentStatus({ config: dealsConfig, sheetName, headers, appendResult, notification });
     return { ok: true, notification };
   }
 
@@ -112,12 +125,14 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     if (!orderId) throw new Error("Missing Order ID in createOrder payload.");
     const uploaded = await withUploadedFiles(data, `ORD ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
     const orderSheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
-    const orderValues = await getValues(ordersConfig.spreadsheetId, orderSheetName, "1:1");
+    const orderValues = await getValues(ordersConfig.spreadsheetId, orderSheetName);
     const orderHeaders = orderValues[0] || [];
     if (!orderHeaders.length) throw new Error(`No headers found in ${orderSheetName}`);
-    await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded || {}));
+    const appendResult = await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded || {}));
     await appendTableRow(dealsConfig, clearFileFields(uploaded));
-    const notification = await notifySafely(() => notifyOrderSubmitted(orderHeaders, uploaded));
+    const previousOrder = findPreviousRecord(orderValues, orderHeaders, uploaded, [["Order ID"]]);
+    const notification = await notifySafely(() => notifyOrderSubmitted(orderHeaders, uploaded, previousOrder));
+    await persistSentStatus({ config: ordersConfig, sheetName: orderSheetName, headers: orderHeaders, appendResult, notification });
     return { ok: true, orderId, notification };
   }
 
@@ -134,11 +149,13 @@ export async function handleOrderPost({ ordersConfig, payload }) {
 
   const uploaded = await withUploadedFiles(data, `ORD-UPDATE ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
   const sheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
-  const values = await getValues(ordersConfig.spreadsheetId, sheetName, "1:1");
+  const values = await getValues(ordersConfig.spreadsheetId, sheetName);
   const headers = values[0] || [];
   if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
-  await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
-  const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded));
+  const previousOrder = findPreviousRecord(values, headers, uploaded, [["Order ID"]]);
+  const appendResult = await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
+  const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded, previousOrder));
+  await persistSentStatus({ config: ordersConfig, sheetName, headers, appendResult, notification });
   return { ok: true, orderId, notification };
 }
 
@@ -185,6 +202,18 @@ async function notifySafely(fn) {
   }
 }
 
+async function persistSentStatus({ config, sheetName, headers, appendResult, notification }) {
+  if (!notification?.sent) return;
+  return persistNotificationStatus({ config, sheetName, headers, appendResult, status: "Sent" });
+}
+
+async function persistNotificationStatus({ config, sheetName, headers, appendResult, status }) {
+  const columnIndex = headers.indexOf("Notification Status");
+  const rowNumber = appendedRowNumber(appendResult);
+  if (!status || columnIndex < 0 || !rowNumber) return;
+  await updateCell(config.spreadsheetId, sheetName, rowNumber, columnIndex + 1, status);
+}
+
 function findExistingLeadId(values, headers, mobileNumber) {
   const mobile = String(mobileNumber || "").trim();
   if (!mobile) return "";
@@ -199,6 +228,26 @@ function findExistingLeadId(values, headers, mobileNumber) {
     }
   }
   return "";
+}
+
+function findPreviousRecord(values, headers, data, keySets) {
+  const rows = (values || []).slice(1);
+  for (const keys of keySets || []) {
+    if (!keys.every((key) => cleanRecordValue(data?.[key]))) continue;
+    for (let index = rows.length - 1; index >= 0; index -= 1) {
+      const row = rows[index] || [];
+      const matches = keys.every((key) => {
+        const columnIndex = headers.indexOf(key);
+        return columnIndex >= 0 && cleanRecordValue(row[columnIndex]) === cleanRecordValue(data?.[key]);
+      });
+      if (matches) return Object.fromEntries(headers.map((header, columnIndex) => [header, row[columnIndex] ?? ""]));
+    }
+  }
+  return null;
+}
+
+function cleanRecordValue(value) {
+  return String(value ?? "").trim().toLowerCase();
 }
 
 function generateLeadId(timestamp) {
@@ -285,8 +334,10 @@ async function maybeTransferQualifiedLead({ accountsConfig, lead }) {
   accountData.Timestamp = formatTimestamp();
   accountData["Account Owner"] = lead["Lead Owner"] || lead["Account Owner"] || "";
 
-  await appendValues(accountsConfig.spreadsheetId, sheetName, buildRow(headers, accountData));
-  return { ok: true, transferred: true };
+  const appendResult = await appendValues(accountsConfig.spreadsheetId, sheetName, buildRow(headers, accountData));
+  const notification = await notifySafely(() => notifyAccountSubmitted(headers, accountData));
+  await persistSentStatus({ config: accountsConfig, sheetName, headers, appendResult, notification });
+  return { ok: true, transferred: true, notification };
 }
 
 async function withUploadedFiles(data, prefix) {

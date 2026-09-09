@@ -50,6 +50,7 @@ const INVENTORY_BOOKING_REQUIREMENT_TO = [
 const EMAIL_FONT_STACK = "Montserrat, Arial, sans-serif";
 const EMAIL_BODY_FONT_SIZE = "11px";
 const EMAIL_TABLE_FONT_SIZE = "10px";
+const EMAIL_PUBLIC_APP_URL = "https://crm.klientkonnect.com";
 const CALC_MATRIX_ADMIN_EMAILS = [
   "holy@klientkonnect.com",
   "sidhant@ridosports.com",
@@ -92,6 +93,42 @@ function getSheet_(ssId, name) {
 
 function safeStr_(v) {
   return String(v ?? "").trim();
+}
+
+function brandedInventoryEmailHtml_(title, contentHtml) {
+  return `
+    <div style="margin:0;padding:0;background:#f3f6fb;font-family:${EMAIL_FONT_STACK};color:#172033;">
+      <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background:#f3f6fb;margin:0;padding:28px 12px;">
+        <tr>
+          <td align="center">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border:1px solid #e4ebf5;border-radius:8px;overflow:hidden;">
+              <tr>
+                <td style="padding:22px 28px;background:#ffffff;border-bottom:4px solid #6495ED;">
+                  <img src="${EMAIL_PUBLIC_APP_URL}/assets/rido-sports-logo.png" alt="Rido Sports" style="display:block;max-width:170px;max-height:64px;width:auto;height:auto;" />
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:30px 28px 24px 28px;font-size:${EMAIL_BODY_FONT_SIZE};line-height:1.6;color:#172033;">
+                  <h2 style="margin:0 0 16px 0;color:#172033;font-size:18px;line-height:1.3;">${htmlEscape_(title)}</h2>
+                  ${contentHtml || ""}
+                </td>
+              </tr>
+              <tr>
+                <td style="padding:18px 28px 22px 28px;background:#f8fbff;border-top:1px solid #e4ebf5;">
+                  <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    <tr>
+                      <td style="font-size:11px;line-height:1.5;color:#6b7280;">Sent via Klient Konnect CRM</td>
+                      <td align="right"><img src="${EMAIL_PUBLIC_APP_URL}/assets/kk-logo.png" alt="Klient Konnect" style="display:inline-block;max-width:120px;max-height:44px;width:auto;height:auto;vertical-align:middle;" /></td>
+                    </tr>
+                  </table>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </table>
+    </div>
+  `;
 }
 
 function normalizeKey_(v) {
@@ -2166,7 +2203,7 @@ function sendBookingStatusEmail_(bookingValues, bm, bookingRows, status, updated
       "Regards,",
       "Rido Sports Inventory Team",
     ].filter((line) => line !== "").join("\n");
-    const htmlBody = `
+    const htmlBody = brandedInventoryEmailHtml_("Inventory Booking Update", `
       <div style="font-family:${EMAIL_FONT_STACK};color:#111827;font-size:${EMAIL_BODY_FONT_SIZE};line-height:1.5;">
         <div style="border-bottom:3px solid #6495ED;padding-bottom:10px;margin-bottom:18px;">
           <h2 style="margin:0;color:#6495ED;font-size:20px;">Inventory Booking Update</h2>
@@ -2191,7 +2228,7 @@ function sendBookingStatusEmail_(bookingValues, bm, bookingRows, status, updated
 
         <p style="margin-top:20px;">Regards,<br/>Rido Sports Inventory Team</p>
       </div>
-    `;
+    `);
 
     GmailApp.sendEmail(
       to,
@@ -2223,12 +2260,12 @@ function authorizeInventoryEmail() {
     "Inventory email authorization test",
     "Inventory email authorization is working.",
     {
-      htmlBody: `
+      htmlBody: brandedInventoryEmailHtml_("Inventory Email Authorization", `
         <div style="font-family:${EMAIL_FONT_STACK};">
           <h3>Inventory Email Authorization</h3>
           <p>Gmail authorization is working for the inventory workflow.</p>
         </div>
-      `,
+      `),
       name: "Rido Sports Inventory",
     }
   );
@@ -2321,7 +2358,7 @@ function sendBookingRequirementEmail_(bookingId, data, childData) {
       "Rido Sports Inventory",
     ].filter((line) => line !== "").join("\n");
 
-    const htmlBody = `
+    const htmlBody = brandedInventoryEmailHtml_("New Inventory Booking Requirement", `
       <div style="font-family:${EMAIL_FONT_STACK};color:#111827;font-size:${EMAIL_BODY_FONT_SIZE};line-height:1.45;">
         <div style="border-bottom:3px solid #6495ED;padding-bottom:10px;margin-bottom:18px;">
           <h2 style="margin:0;color:#6495ED;font-size:16px;">New Inventory Booking Requirement</h2>
@@ -2347,7 +2384,7 @@ function sendBookingRequirementEmail_(bookingId, data, childData) {
 
         <p style="margin-top:20px;">Regards,<br/>Rido Sports Inventory</p>
       </div>
-    `;
+    `);
 
     GmailApp.sendEmail(
       to,

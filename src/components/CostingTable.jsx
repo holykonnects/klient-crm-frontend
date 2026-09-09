@@ -56,9 +56,7 @@ const theme = createTheme({
 
 const cornflowerBlue = "#6495ED";
 
-// ✅ Your deployed Costing Web App URL
-const BACKEND =
-  "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
+const BACKEND = "/api/costing";
 
 const COST_SHEET_LIST_FIELDS = [
   "Cost Sheet ID",
@@ -73,6 +71,10 @@ const COST_SHEET_LIST_FIELDS = [
   "Grand Total",
   "Last Calculated At",
   "Notes",
+];
+const COST_SHEET_OVERVIEW_FIELDS = [
+  "Cost Sheet ID", "Linked Entity Name", "Client Name", "Project Type",
+  "Status", "Grand Total", "Last Calculated At",
 ];
 
 const COST_SHEET_RENDER_LIMIT = 200;
@@ -152,48 +154,24 @@ function getCostSheetUpdatedMs(row) {
 }
 
 /**
- * ✅ JSONP GET (no-cors friendly)
- * Backend supports: ?action=...&callback=cb
+ * Same-origin Costing API reader.
  */
-function jsonpGet(url) {
-  return new Promise((resolve, reject) => {
-    const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-
-    let scriptEl = null;
-
-    const cleanup = () => {
-      try {
-        delete window[cbName];
-      } catch {}
-      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-    };
-
-    window[cbName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    scriptEl = document.createElement("script");
-    scriptEl.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
-    scriptEl.async = true;
-
-    scriptEl.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP load failed"));
-    };
-
-    document.body.appendChild(scriptEl);
-  });
+async function jsonpGet(url) {
+  const response = await fetch(url, { method: "GET" });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data?.error || `Costing request failed (${response.status})`);
+  return data;
 }
 
-// ✅ NO-CORS SAFE POST (NO HEADERS, NO res.json())
 async function apiPost(payload) {
-  await fetch(BACKEND, {
+  const response = await fetch(BACKEND, {
     method: "POST",
-    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return { success: true };
+  const data = await response.json();
+  if (!response.ok || data?.success === false) throw new Error(data?.error || `Costing update failed (${response.status})`);
+  return data;
 }
 
 /**
@@ -1140,7 +1118,7 @@ export default function CostingTable() {
       }
     } catch (e) {
       console.error("COSTING_REFRESH_FAST_ERROR", e);
-      alert("Failed to load costing data (JSONP). Check deployed URL and permissions.");
+      alert("Failed to load costing data. Check the server API and Google Sheets permissions.");
     } finally {
       if (seq === loadSeq.current) setLoading(false);
     }
@@ -1261,7 +1239,10 @@ export default function CostingTable() {
   }, [costSheets]);
 
   const visibleCostSheetColumns = useMemo(() => {
-    return costSheetColumns.filter((c) => !String(c).startsWith("__") && visibleCols[c] !== false);
+    return costSheetColumns.filter((c) =>
+      !String(c).startsWith("__") &&
+      (visibleCols[c] === true || (COST_SHEET_OVERVIEW_FIELDS.includes(c) && visibleCols[c] !== false))
+    );
   }, [costSheetColumns, visibleCols]);
 
   function openColumns(e) {
@@ -1312,13 +1293,13 @@ export default function CostingTable() {
         console.error("GET_ENTITIES_ERROR", res);
         setEntityOptions([]);
         alert(
-          "Entities could not be loaded. Check headers mapping in GAS (availableHeaders logged in response)."
+          "Entities could not be loaded. Check the source sheet header mapping."
         );
       }
     } catch (e) {
       console.error("GET_ENTITIES_FETCH_ERROR", e);
       setEntityOptions([]);
-      alert("Entities could not be loaded (JSONP). Check deployment access.");
+      alert("Entities could not be loaded. Check server access and sheet permissions.");
     } finally {
       setEntityLoading(false);
     }
@@ -2398,8 +2379,8 @@ export default function CostingTable() {
       <Box sx={{ p: 2 }}>
         {/* ✅ HEADER (Logo Left, Title Right) */}
         <Box padding={4}>
-          <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+          <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+            <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
 
             <Box sx={{ display: "flex", alignItems: "center", gap: 1 }}>
               <CurrencyRupeeIcon sx={{ color: cornflowerBlue }} />
@@ -2421,7 +2402,7 @@ export default function CostingTable() {
             </Box>
           </Box>
 
-          <Box sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
+          <Box className="crm-action-bar" sx={{ display: "flex", gap: 1, flexWrap: "wrap" }}>
             <Button
               variant="outlined"
               startIcon={<RefreshIcon />}
@@ -2471,7 +2452,7 @@ export default function CostingTable() {
             </Button>
           </Box>
 
-          <Typography sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
+          <Typography className="crm-keyboard-shortcuts" sx={{ fontSize: 11, opacity: 0.75, mt: 1 }}>
             Shortcuts: Ctrl+Shift+E (Add Expense) • Ctrl+Shift+C (Create Cost Sheet) • Ctrl+Enter
             (Submit/Save) • Esc (Close)
           </Typography>
@@ -2564,7 +2545,7 @@ export default function CostingTable() {
                       control={
                         <Checkbox
                           size="small"
-                          checked={visibleCols[c] !== false}
+                          checked={visibleCols[c] === true || (COST_SHEET_OVERVIEW_FIELDS.includes(c) && visibleCols[c] !== false)}
                           onChange={(e) => setVisibleCols((p) => ({ ...p, [c]: e.target.checked }))}
                         />
                       }
@@ -2578,7 +2559,7 @@ export default function CostingTable() {
 
           <Divider sx={{ my: 1 }} />
 
-          <TableContainer>
+          <TableContainer className="crm-table-shell">
             <Table size="small">
               <TableHead>
                 <TableRow sx={{ background: "#f6f9ff" }}>

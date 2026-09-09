@@ -362,7 +362,7 @@ function buildNewMaterialState(defaultCategory = "") {
 
 export default function StockManagement({
   apiUrl = INVENTORY_API_URL,
-  logoSrc = "/assets/kk-logo.png",
+  logoSrc = "/assets/rido-sports-logo.png",
   title = "Stock Management",
 }) {
   const user = useMemo(() => getUserFromLocalStorage(), []);
@@ -1514,16 +1514,17 @@ export default function StockManagement({
         }}
       >
         <Box
+          className="crm-module-hero"
           display="flex"
           alignItems="center"
           justifyContent="space-between"
           gap={2}
           flexWrap="wrap"
         >
-          <Box display="flex" alignItems="center" gap={2}>
+          <Box className="crm-module-hero-copy" display="flex" alignItems="center" gap={2}>
             <img
               src={logoSrc}
-              alt="Klient Konnect"
+              alt="Rido Sports"
               style={{ height: 56, objectFit: "contain" }}
             />
             <Box>

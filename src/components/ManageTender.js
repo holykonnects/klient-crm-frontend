@@ -208,7 +208,7 @@ function ManageTender() {
       <LocalizationProvider dateAdapter={AdapterDayjs}>
         <Paper elevation={3} sx={{ maxWidth: 900, margin: '2rem auto', padding: 4 }}>
           <Box display="flex" justifyContent="center" mb={3}>
-            <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+            <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           </Box>
 
           <Typography variant="h5" fontWeight="bold" color="#6495ED" mb={3} textAlign="center">

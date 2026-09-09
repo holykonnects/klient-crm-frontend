@@ -1,4 +1,4 @@
-import { driveDownloadFile, driveExportFile, driveGetFile, driveListFiles } from "./_lib/googleSheets.js";
+import { driveDownloadFile, driveExportFile, driveGetFile, driveListFiles } from "../_lib/googleSheets.js";
 
 const EDITOR_USERS = new Set([
   "sandeep@ridosports.com",

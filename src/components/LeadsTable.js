@@ -299,8 +299,8 @@ const LeadsTable = () => {
         setLeads(deduplicated);
 
         setVisibleColumns(
-          JSON.parse(localStorage.getItem(`visibleColumns-${username}-leads`)) ||
-          (deduplicated.length ? Object.keys(deduplicated[0]) : [])
+          JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-leads`)) ||
+          ['Lead ID', 'Company', 'First Name', 'Mobile Number', 'Lead Status', 'Lead Owner'].filter((key) => Object.keys(deduplicated[0] || {}).includes(key))
         );
       } catch (e) {
         console.error('Failed to fetch leads', e);
@@ -420,7 +420,7 @@ const LeadsTable = () => {
   const handleColumnToggle = (col) => {
     setVisibleColumns(prev => {
       const updated = prev.includes(col) ? prev.filter(c => c !== col) : [...prev, col];
-      localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(updated));
+      localStorage.setItem(`visibleColumns-v2-${username}-leads`, JSON.stringify(updated));
       return updated;
     });
   };
@@ -428,12 +428,12 @@ const LeadsTable = () => {
   const handleSelectAll = () => {
     const all = Object.keys(leads[0] || {});
     setVisibleColumns(all);
-    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify(all));
+    localStorage.setItem(`visibleColumns-v2-${username}-leads`, JSON.stringify(all));
   };
 
   const handleDeselectAll = () => {
     setVisibleColumns([]);
-    localStorage.setItem(`visibleColumns-${username}-leads`, JSON.stringify([]));
+    localStorage.setItem(`visibleColumns-v2-${username}-leads`, JSON.stringify([]));
   };
 
   /* ---------- Logs: show full rows, newest first ---------- */
@@ -551,12 +551,12 @@ const LeadsTable = () => {
             {loadError}
           </Alert>
         )}
-        <Box display="flex" alignItems="center" justifyContent="space-between" mb={2}>
-          <img src="/assets/kk-logo.png" alt="Klient Konnect" style={{ height: 100 }} />
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
         </Box>
 
-        <Box display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
+        <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
           {/* Search (deferred + debounced) */}
           <Box display="flex" alignItems="center" gap={2}>
             <TextField

@@ -1,5 +1,5 @@
-import { SHEETS } from "./_lib/crmConfig.js";
-import { getValues, resolveSheetTitle, rowsToObjects } from "./_lib/googleSheets.js";
+import { SHEETS } from "../_lib/crmConfig.js";
+import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
 
 function clean(value) {
   return String(value || "").trim();

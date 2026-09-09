@@ -1,6 +1,6 @@
-import { SHEETS } from "./_lib/crmConfig.js";
-import { appendValues, buildRow, formatTimestamp, getValues, resolveSheetTitle, rowsToObjects } from "./_lib/googleSheets.js";
-import { notifyProjectSubmitted } from "./_lib/operationalEmails.js";
+import { SHEETS } from "../_lib/crmConfig.js";
+import { appendValues, buildRow, formatTimestamp, getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
+import { notifyProjectSubmitted } from "../_lib/operationalEmails.js";
 
 const PROJECT_ID = "Project ID (unique, auto-generated)";
 

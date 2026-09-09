@@ -1,4 +1,4 @@
-import { DRIVE_FOLDERS, SHEETS } from "./_lib/crmConfig.js";
+import { DRIVE_FOLDERS, SHEETS } from "../_lib/crmConfig.js";
 import {
   appendValues,
   buildRow,
@@ -11,9 +11,9 @@ import {
   gmailSendRawEmail,
   resolveSheetTitle,
   rowsToObjects,
-} from "./_lib/googleSheets.js";
-import { handleLeadPost } from "./_lib/crmHandlers.js";
-import { base64Url, brandedEmailHtml, mimeMessage } from "./_lib/emailRenderer.js";
+} from "../_lib/googleSheets.js";
+import { handleLeadPost } from "../_lib/crmHandlers.js";
+import { base64Url, brandedEmailHtml, mimeMessage } from "../_lib/emailRenderer.js";
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const EMAIL_PAGE_KEY = "Email";

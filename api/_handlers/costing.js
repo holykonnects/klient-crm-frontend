@@ -1,5 +1,5 @@
-import { SHEETS } from "./_lib/crmConfig.js";
-import { getValues, resolveSheetTitle, rowsToObjects } from "./_lib/googleSheets.js";
+import { SHEETS } from "../_lib/crmConfig.js";
+import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
 
 const GAS_URL = process.env.COSTING_GAS_URL || "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
 const cache = new Map();

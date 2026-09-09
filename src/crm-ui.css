@@ -38,6 +38,26 @@ select,
   border-collapse: separate;
   border-spacing: 0;
   background: #ffffff;
+  border: 1px solid #dce5f0;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 3px 14px rgba(23, 32, 51, 0.06);
+}
+
+.MuiTableHead-root .MuiTableRow-root:first-of-type .MuiTableCell-root:first-of-type {
+  border-top-left-radius: 11px;
+}
+
+.MuiTableHead-root .MuiTableRow-root:first-of-type .MuiTableCell-root:last-of-type {
+  border-top-right-radius: 11px;
+}
+
+.MuiTableBody-root .MuiTableRow-root:last-of-type .MuiTableCell-root:first-of-type {
+  border-bottom-left-radius: 11px;
+}
+
+.MuiTableBody-root .MuiTableRow-root:last-of-type .MuiTableCell-root:last-of-type {
+  border-bottom-right-radius: 11px;
 }
 
 .MuiTableHead-root .MuiTableCell-root {
@@ -150,6 +170,8 @@ select,
     width: 100%;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    border-radius: 12px;
+    scrollbar-width: thin;
   }
 
   .crm-main-content {
@@ -190,7 +212,21 @@ select,
   }
 
   .MuiTable-root {
+    display: block;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .MuiTableHead-root,
+  .MuiTableBody-root {
+    display: table;
+    width: 100%;
     min-width: 760px;
+    table-layout: auto;
   }
 
   .MuiTableHead-root .MuiTableCell-root {
@@ -204,6 +240,25 @@ select,
     height: 40px;
     padding: 7px 10px;
     font-size: 10px;
+  }
+
+  .crm-main-content > .MuiBox-root {
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+
+  .crm-main-content img[src*="/assets/kk-logo.png"] {
+    width: auto;
+    max-width: 96px;
+    height: auto !important;
+    max-height: 64px;
+    object-fit: contain;
+  }
+
+  .crm-main-content .MuiTextField-root,
+  .crm-main-content .MuiFormControl-root {
+    flex: 1 1 180px;
+    width: 100%;
   }
 
   .MuiTableCell-root:last-child {
@@ -266,7 +321,8 @@ select,
 }
 
 @media (max-width: 520px) {
-  .MuiTable-root {
+  .MuiTableHead-root,
+  .MuiTableBody-root {
     min-width: 680px;
   }
 

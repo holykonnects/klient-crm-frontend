@@ -187,6 +187,8 @@ export function mimeMessage({ to, cc = "", subject = "", html = "", replyTo = ""
       `Content-Type: ${attachment.contentType}; name="${attachment.filename}"`,
       "Content-Transfer-Encoding: base64",
       `Content-ID: <${attachment.cid}>`,
+      `Content-Location: ${attachment.filename}`,
+      `X-Attachment-Id: ${attachment.cid}`,
       `Content-Disposition: inline; filename="${attachment.filename}"`,
       "",
       attachment.content,

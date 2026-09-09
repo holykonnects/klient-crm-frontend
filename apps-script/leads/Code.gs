@@ -508,70 +508,8 @@ function updateTimestampForAllLeads(sheet) {
 }
 
 function onFormSubmit(e) {
-  try {
-    const validationSheetId = '1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ';
-    const validationSheetName = 'Validation Tables';
-
-    const sheet = e.range.getSheet();
-    const submittedRow = e.range.getRow();
-    const lastCol = sheet.getLastColumn();
-
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    const values = sheet.getRange(submittedRow, 1, 1, lastCol).getValues()[0];
-
-    // Get values for dynamic subject
-    const firstName = values[headers.indexOf('First Name')] || '';
-    const lastName = values[headers.indexOf('Last Name')] || '';
-    const mobile = values[headers.indexOf('Mobile Number')] || '';
-    const company = values[headers.indexOf('Company')] || '';
-    const leadSource = values[headers.indexOf('Lead Source')] || '';
-    const accountOwner = values[headers.indexOf('Lead Owner')] || '';
-
-    if (!accountOwner) {
-      Logger.log("❌ Account Owner is missing.");
-      return;
-    }
-
-    // Lookup email from validation sheet
-    const validationSheet = SpreadsheetApp.openById(validationSheetId).getSheetByName(validationSheetName);
-    const validationData = validationSheet.getRange(2, 1, validationSheet.getLastRow() - 1, 5).getValues(); // A to E
-
-    const matchedRow = validationData.find(row => row[0] == accountOwner); // Column A = Account Owner
-    const recipientEmail = matchedRow ? matchedRow[4] : null; // Column E = Email
-
-    if (!recipientEmail) {
-      Logger.log(`❌ No email found for Lead Owner: ${accountOwner}`);
-      return;
-    }
-
-    // Compose email content
-    const subject = `Lead Updated: ${firstName} ${lastName} | ${mobile} | ${company} | Source: ${leadSource}`;
-    const htmlTable = headers.map((h, i) =>
-      `<tr><td style="padding:4px;border:1px solid #ccc;"><b>${h}</b></td><td style="padding:4px;border:1px solid #ccc;">${values[i]}</td></tr>`
-    ).join('');
-    const htmlBody = `
-      <p>Hello ${accountOwner},</p>
-      <p>A new lead form has been submitted with the following details:</p>
-      <table style="border-collapse:collapse;border:1px solid #ccc;">${htmlTable}</table>
-      <p>Click on the link to set up a meeting:</p>
-      <p><a href="https://crm.klientkonnect.com/calendar" target="_blank"> Schedule a Meeting</a></p>
-      <p>Regards,<br/>Klient Konnect Team</p>
-    `;
-
-    // Send using GmailApp
-    GmailApp.sendEmail(recipientEmail, subject, '', {
-      htmlBody: htmlBody,
-      cc: 'Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com'
-    });
-
-    Logger.log(`✅ Email sent to ${recipientEmail} with subject: ${subject}`);
-
-  } catch (err) {
-    Logger.log("❗ Error in onFormSubmit: " + err.stack);
-  }
+  // Lead notifications are owned by the CRM server in
+  // api/_lib/operationalEmails.js. Keep this handler non-sending so an old
+  // installed Sheets trigger cannot produce a duplicate notification.
+  Logger.log('Lead email skipped: server-side operational email is authoritative.');
 }
-
-function authorizeGmailApp() {
-  GmailApp.sendEmail(Session.getActiveUser().getEmail(), 'Authorization Test', 'This is a one-time permission check.');
-}
-

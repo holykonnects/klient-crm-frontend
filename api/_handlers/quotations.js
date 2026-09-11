@@ -49,9 +49,9 @@ async function getCatalog() {
   const items = {};
 
   rows.forEach((row) => {
-    const category = clean(pick(row, ["Category", "Cat"]));
+    const category = clean(pick(row, ["Court", "Category", "Cat"]));
     const subCategory = clean(pick(row, ["SubCategory", "Sub Category", "Sub-Category", "Sub"]));
-    const itemCode = clean(pick(row, ["ItemCode", "Item Code", "Code"]));
+    const itemCode = clean(pick(row, ["Item", "ItemCode", "Item Code", "Code"]));
     if (!category || !subCategory || !itemCode) return;
 
     categories.add(category);
@@ -62,11 +62,11 @@ async function getCatalog() {
     if (!items[key]) items[key] = [];
     items[key].push({
       code: itemCode,
-      name: clean(pick(row, ["Item Name", "Name"])) || itemCode,
+      name: clean(pick(row, ["Item Definition", "Item Name", "Name"])) || itemCode,
       unit: clean(pick(row, ["Unit"])),
-      rate: Number(clean(pick(row, ["Rate"])).replace(/[,\s₹]/g, "")) || 0,
+      rate: Number(clean(pick(row, ["Unit Price", "Rate"])).replace(/[,\s₹]/g, "")) || 0,
       desc: clean(pick(row, ["Description", "Item Definition"])),
-      imageUrl: clean(pick(row, ["ImageURL", "Image URL"])),
+      imageUrl: clean(pick(row, ["Images", "ImageURL", "Image URL"])),
       itemType: category === "Flooring" ? "Non Equipment" : "Equipment",
     });
   });
@@ -80,6 +80,21 @@ async function getCatalog() {
       tcOptions: await getTcOptions(),
     },
   };
+}
+
+async function getAthleticCatalog() {
+  const spreadsheetId = SHEETS.quotations.athleticSpreadsheetId;
+  const presetsSheet = await resolveSheetTitle(spreadsheetId, ["Presets"]);
+  const listsSheet = await resolveSheetTitle(spreadsheetId, ["Lists"]);
+  const presets = rowsToObjects(await getValues(spreadsheetId, presetsSheet))
+    .filter((row) => clean(row.Preset));
+  const listValues = await getValues(spreadsheetId, listsSheet);
+  const [headers = [], ...rows] = listValues;
+  const lists = Object.fromEntries(headers.map((header, columnIndex) => [
+    clean(header),
+    [...new Set(rows.map((row) => clean(row[columnIndex])).filter(Boolean))],
+  ]).filter(([header]) => header));
+  return { ok: true, data: { presets, lists } };
 }
 
 async function getTcOptions() {
@@ -115,7 +130,9 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
     const action = clean(req.query.action);
-    if (action === "getCatalog") return res.status(200).json(await getCatalog());
+    if (action === "getCatalog") {
+      return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
+    }
     if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
     return res.status(400).json({ ok: false, error: "Invalid action" });
   } catch (err) {

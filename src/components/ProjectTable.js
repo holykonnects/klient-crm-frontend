@@ -43,6 +43,7 @@ import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import HistoryIcon from "@mui/icons-material/History";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import { useAuth } from "./AuthContext";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
@@ -79,6 +80,8 @@ const TASK_STATUS_COLORS = {
 const DATE_FIELDS = new Set(["Timestamp", "Start Date", "End Date"]);
 const MONEY_FIELDS = new Set(["Budget (₹)", "Actual Cost (₹)", "Variance (₹)"]);
 const PERCENT_FIELDS = new Set(["Project Progress %"]);
+const CLIENT_EMAIL_HEADER = "Client Email ID";
+const EMAIL_PATTERN = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
 
 // ----------------- helpers -----------------
 const norm = (s) =>
@@ -168,6 +171,25 @@ const toStringArray = (val) => {
 
 const normalizeOptions = (val) => toStringArray(val);
 
+const parseClientEmails = (value) => {
+  const seen = new Set();
+  return String(value ?? "")
+    .split(",")
+    .map((email) => email.trim())
+    .filter(Boolean)
+    .filter((email) => {
+      const key = email.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+};
+
+const invalidClientEmails = (value) =>
+  parseClientEmails(value).filter((email) => !EMAIL_PATTERN.test(email));
+
+const normalizeClientEmails = (value) => parseClientEmails(value).join(", ");
+
 // control header from Validation sheet
 const MULTI_KEY = "Project Multiselect Fields"; // exact header name
 const FALLBACK_MULTI = new Set([norm("Vendors"), norm("Assigned Team")]);
@@ -225,6 +247,7 @@ const inDateRange = (value, fromYMD, toYMD) => {
 };
 
 export default function ProjectTable() {
+  const { user } = useAuth();
   const [rows, setRows] = useState([]);
   const [headers, setHeaders] = useState([]);
   const [rawHeaders, setRawHeaders] = useState([]);
@@ -489,7 +512,9 @@ export default function ProjectTable() {
     const out = {};
     headers.forEach((h) => {
       const v = rowObj[h];
-      if (isMulti(h)) {
+      if (h === CLIENT_EMAIL_HEADER) {
+        out[h] = normalizeClientEmails(v);
+      } else if (isMulti(h)) {
         out[h] = Array.isArray(v) ? v.join(", ") : v ?? "";
       } else if (typeof v === "string") {
         out[h] = v.trim();
@@ -503,10 +528,22 @@ export default function ProjectTable() {
   // ✅ submit guard + "Saving..." button state (prevents multiple submits)
   const handleSubmit = async () => {
     if (submitting) return; // hard guard
+    const invalidEmails = invalidClientEmails(editingRow?.[CLIENT_EMAIL_HEADER]);
+    if (invalidEmails.length) {
+      alert(`Please correct the invalid client email address${invalidEmails.length === 1 ? "" : "es"}:\n${invalidEmails.join("\n")}`);
+      return;
+    }
     setSubmitting(true);
 
     try {
-      const payload = { action: "addOrUpdateProject", data: serializeRow(editingRow || {}) };
+      const payload = {
+        action: "addOrUpdateProject",
+        data: {
+          ...serializeRow(editingRow || {}),
+          updatedByName: user?.username || user?.email || "",
+          updatedByEmail: user?.email || user?.username || "",
+        },
+      };
       const response = await fetch(WEB_APP_BASE, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1560,6 +1597,30 @@ export default function ProjectTable() {
                             ...(OWNER_HEADER && owner ? { [OWNER_HEADER]: owner } : {}),
                           }))
                         }
+                      />
+                    </Grid>
+                  );
+                }
+
+                if (h === CLIENT_EMAIL_HEADER) {
+                  const invalidEmails = invalidClientEmails(editingRow?.[h]);
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <TextField
+                        fullWidth
+                        size="small"
+                        label={h}
+                        value={editingRow?.[h] || ""}
+                        onChange={(e) => setFieldValue(h, e.target.value)}
+                        onBlur={(e) => setFieldValue(h, normalizeClientEmails(e.target.value))}
+                        placeholder="client@example.com, accounts@example.com"
+                        helperText={
+                          invalidEmails.length
+                            ? `Invalid: ${invalidEmails.join(", ")}`
+                            : "Enter multiple email addresses separated by commas."
+                        }
+                        error={invalidEmails.length > 0}
+                        disabled={isReadonly || submitting}
                       />
                     </Grid>
                   );

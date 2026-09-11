@@ -469,7 +469,14 @@ function DealsTable() {
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "updateDeal", data: dealFormData }),
+        body: JSON.stringify({
+          action: "updateDeal",
+          data: {
+            ...dealFormData,
+            updatedByName: user?.username || user?.email || "",
+            updatedByEmail: user?.email || user?.username || "",
+          },
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
 
@@ -680,6 +687,8 @@ function DealsTable() {
               label: "Proforma Invoice",
             }
         : "";
+      payloadRow.updatedByName = user?.username || user?.email || "";
+      payloadRow.updatedByEmail = user?.email || user?.username || "";
 
       const res = await fetch(submitUrl, {
         method: "POST",
@@ -729,14 +738,19 @@ function DealsTable() {
 
         {/* Filters and Search */}
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            variant="outlined"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
+          <Box className="crm-search-tools">
+            <TextField
+              label="Search all deal fields"
+              variant="outlined"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              size="small"
+              sx={{ minWidth: 200 }}
+            />
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} aria-label="Choose columns">
+              <ViewColumnIcon />
+            </IconButton>
+          </Box>
 
           {["Stage", "Type", "Lead Source", "Account Owner"].map((label, index) => (
             <FormControl size="small" sx={{ minWidth: 200 }} key={index}>
@@ -769,10 +783,6 @@ function DealsTable() {
             </FormControl>
           ))}
 
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
-
           <Popover open={Boolean(anchorEl)} anchorEl={anchorEl} onClose={() => setAnchorEl(null)}>
             <Box p={2} sx={selectorStyle}>
               <Typography variant="subtitle2">Column Visibility</Typography>
@@ -797,6 +807,7 @@ function DealsTable() {
         </Box>
 
         {/* Table */}
+        <Box className="crm-table-shell">
         <Table>
           <TableHead>
             <TableRow style={{ backgroundColor: "#6495ED" }}>
@@ -854,6 +865,7 @@ function DealsTable() {
             ))}
           </TableBody>
         </Table>
+        </Box>
 
         {/* -------------------- Edit Deal Modal -------------------- */}
         <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>

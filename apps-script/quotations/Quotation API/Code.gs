@@ -12,6 +12,7 @@
 
 // Reference spreadsheet (template + Equipment BD)
 const DEFAULT_REFERENCE_ID = '1t-8DRUh4NjRTQhpO6ZTpeYyZUjkwfU6DNoRaIGkdCkc'; // Quotation Management (Responses)
+const ATHLETIC_REFERENCE_ID = '11rMTRdeLJNihYK3o2eHAVMpJ2bVvD9ZmhunE_Ygay3c';
 
 // Template sheet name + export region
 const TEMPLATE_SHEET_NAME = 'New Template';
@@ -274,7 +275,9 @@ function doPost(e){
       assertCanUseQuotation_(username);
 
       const payload = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
-      const out = buildQuotationAndExport_(payload);
+      const out = payload.quoteType === 'athletic'
+        ? buildAthleticQuotationAndExport_(payload)
+        : buildQuotationAndExport_(payload);
 
       if (payload.attach && payload.attach.leadDisplay && out.pdfUrl){
         try { updateLeadQuotationLink_(payload.attach.leadDisplay, out.pdfUrl, username); }
@@ -289,6 +292,53 @@ function doPost(e){
     Logger.log(err.stack||err);
     return respond_({ ok:false, error:String(err) });
   }
+}
+
+/** ====== Athletic quotation builder ====== **/
+function buildAthleticQuotationAndExport_(payload) {
+  const meta = payload.meta || {};
+  const athletic = payload.athletic || {};
+  const copyName = buildQuoteFileName_({
+    quotationTitle: meta.quotationTitle || 'Athletic Track Quotation',
+    quotationNo: meta.quotationNo,
+    clientName: meta.clientName,
+    projectName: meta.projectName
+  });
+  const source = SpreadsheetApp.openById(ATHLETIC_REFERENCE_ID);
+  const workingCopy = copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+
+  const estimator = workingCopy.getSheetByName('Estimator');
+  const printable = workingCopy.getSheetByName('Printable Quote');
+  if (!estimator || !printable) throw new Error('Athletic Estimator or Printable Quote sheet not found');
+
+  const cells = {
+    D5: meta.clientName || '', D6: meta.projectName || '', D7: meta.quotationNo || '',
+    D8: meta.dateISO ? new Date(meta.dateISO) : new Date(), D9: meta.preparedBy || '',
+    G5: athletic.preset || '400m - 8 lane benchmark',
+    G6: athletic.surfaceSystem || 'Sandwich System',
+    G7: athletic.areaMethod || 'Preset benchmark area',
+    G8: athletic.civilWorks || 'Yes', G9: athletic.drainageWorks || 'Yes',
+    G10: athletic.trackEquipment || 'No', G11: athletic.installation || 'Inclusive',
+    D13: num_(athletic.lengthPerimeter), D14: num_(athletic.breadth),
+    D15: num_(athletic.laneWidth) || 1.22, D16: num_(athletic.laneQuantity),
+    D17: num_(athletic.manualArea), D18: num_(athletic.drainPerimeter),
+    D22: percent_(athletic.gstPct === undefined ? 18 : athletic.gstPct),
+    D23: percent_(athletic.discountPct || 0), D24: num_(athletic.freightAmount),
+    D25: num_(athletic.certificationAmount), D26: num_(athletic.validityDays) || 30,
+    D27: athletic.paymentTerms || '50% advance; balance as agreed'
+  };
+  Object.keys(cells).forEach(function(a1) { estimator.getRange(a1).setValue(cells[a1]); });
+  SpreadsheetApp.flush();
+
+  const pdfFile = exportTemplateRegion_(printable, EXPORT_PDF_FOLDER_ID, meta.layout || 'portrait', 'B4:H49', copyName);
+  try { pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_) {}
+  return {
+    pdfFileId: pdfFile.getId(),
+    pdfFileName: pdfFile.getName(),
+    pdfUrl: `https://drive.google.com/file/d/${pdfFile.getId()}/view`,
+    workingCopyUrl: `https://docs.google.com/spreadsheets/d/${workingCopy.getId()}/edit`,
+    displayName: copyName
+  };
 }
 
 /** ====== Main builder (copy-on-export) ====== **/
@@ -309,15 +359,7 @@ function buildQuotationAndExport_(payload){
     clientName,
     projectName
   });
-  const workingCopy = ref.copy(copyName);
-  const workingFile = DriveApp.getFileById(workingCopy.getId());
-
-  // Move to working copies folder (optional but tidy)
-  try {
-    const folder = DriveApp.getFolderById(WORKING_COPIES_FOLDER_ID);
-    folder.addFile(workingFile);
-    DriveApp.getRootFolder().removeFile(workingFile);
-  } catch (_) {}
+  const workingCopy = copySpreadsheetWithoutBoundScript_(ref, copyName, WORKING_COPIES_FOLDER_ID);
 
   // 2) Fill the copy’s template
   const template = workingCopy.getSheetByName(TEMPLATE_SHEET_NAME);
@@ -489,9 +531,9 @@ function updateLeadQuotationLink_(leadDisplay, pdfUrl, actingUser){
 }
 
 /** ====== Export helpers ====== **/
-function exportTemplateRegion_(sheet, folderId, layout, rangeA1){
+function exportTemplateRegion_(sheet, folderId, layout, rangeA1, fileNameOverride){
   const ss = sheet.getParent();
-  const fileName = String(sheet.getRange(META_MAP.displayName).getValue() || 'ExportedQuotation').trim();
+  const fileName = String(fileNameOverride || sheet.getRange(META_MAP.displayName).getValue() || 'ExportedQuotation').trim();
 
   const url =
     `https://docs.google.com/spreadsheets/d/${ss.getId()}/export?format=pdf` +
@@ -504,6 +546,33 @@ function exportTemplateRegion_(sheet, folderId, layout, rangeA1){
   const blob = res.getBlob().setName(`${fileName}.pdf`);
   const folder = DriveApp.getFolderById(folderId);
   return folder.createFile(blob);
+}
+
+/**
+ * Build a spreadsheet-only working copy. Spreadsheet.copy()/Drive makeCopy()
+ * can duplicate a container-bound Apps Script project; copying tabs into a
+ * newly created spreadsheet preserves sheet content without creating another
+ * quotation script deployment for every client.
+ */
+function copySpreadsheetWithoutBoundScript_(source, copyName, folderId) {
+  const destination = SpreadsheetApp.create(copyName);
+  const placeholder = destination.getSheets()[0];
+
+  source.getSheets().forEach(function(sourceSheet) {
+    const copied = sourceSheet.copyTo(destination);
+    copied.setName(sourceSheet.getName());
+    if (sourceSheet.isSheetHidden()) copied.hideSheet();
+  });
+
+  destination.deleteSheet(placeholder);
+  try {
+    const file = DriveApp.getFileById(destination.getId());
+    const folder = DriveApp.getFolderById(folderId);
+    folder.addFile(file);
+    DriveApp.getRootFolder().removeFile(file);
+  } catch (_) {}
+  SpreadsheetApp.flush();
+  return destination;
 }
 
 function toDirectLink_(url){

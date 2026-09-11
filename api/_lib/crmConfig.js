@@ -1,4 +1,9 @@
 export const SHEETS = {
+  auth: {
+    spreadsheetId:
+      process.env.VALIDATION_SHEET_ID || "1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ",
+    sheetNames: ["CRM Login"],
+  },
   leads: {
     spreadsheetId: process.env.LEADS_SHEET_ID || "1vJbB0fmBQhd6XGTNbjUAi7Bt71lHNyau2TBMXTCdoM0",
     sheetNames: ["Form responses 1", "Form Responses 1"],
@@ -19,6 +24,14 @@ export const SHEETS = {
     spreadsheetId: process.env.PROJECTS_SHEET_ID || "1L9yGqk0NCXDYAB7TeyOyXBEhSMs1f1aU0jbDOWzr9_s",
     sheetNames: ["Project"],
     validationSheetNames: ["Validation Tables"],
+  },
+  tenders: {
+    spreadsheetId:
+      process.env.TENDERS_SHEET_ID || "1XCO4ycfxAIhZdNr9qGZluAEH7BwPbF-rSfhQc1yvszI",
+    sheetNames: ["Form responses 1", "Form Responses 1"],
+    validationSpreadsheetId:
+      process.env.VALIDATION_SHEET_ID || "1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ",
+    validationSheetNames: ["Tender Validation Tables"],
   },
   costing: {
     spreadsheetId: process.env.COSTING_SHEET_ID || "1S3pMki4TDiCBXdgkBGQ4qjyUUp9uo4mpMwQAUDvul6c",
@@ -50,6 +63,8 @@ export const SHEETS = {
       process.env.QUOTATION_REFERENCE_SHEET_ID || "1t-8DRUh4NjRTQhpO6ZTpeYyZUjkwfU6DNoRaIGkdCkc",
     equipmentSheetNames: ["Equipment BD"],
     termsSheetNames: ["tc"],
+    athleticSpreadsheetId:
+      process.env.ATHLETIC_QUOTATION_SHEET_ID || "11rMTRdeLJNihYK3o2eHAVMpJ2bVvD9ZmhunE_Ygay3c",
   },
 };
 
@@ -57,6 +72,9 @@ export const DRIVE_FOLDERS = {
   emailTemplates: process.env.EMAIL_TEMPLATE_FOLDER_ID || "1uKApnHOJVkOuXc7ayrxLyrkwgkjuUGt1",
   defaultUpload:
     process.env.ORDER_UPLOAD_FOLDER_ID ||
+    "1NxWIZserHmgDu3HpWS1tTy050qh9XW1bgOPrccHMVQ9Vve74t4NWuoUf-DQOT93IU5MyxZ1N",
+  tenderUploads:
+    process.env.TENDER_UPLOAD_FOLDER_ID ||
     "1NxWIZserHmgDu3HpWS1tTy050qh9XW1bgOPrccHMVQ9Vve74t4NWuoUf-DQOT93IU5MyxZ1N",
   attachments: {
     "Attach Purchase Order":

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Box, Button, TextField, Typography, Paper
+  Box, Button, CircularProgress, TextField, Typography, Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
@@ -17,11 +17,15 @@ function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
 
   const handleLogin = async (event) => {
     event?.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setError('');
     try {
       const res = await fetch('/api/login', {
         method: 'POST',
@@ -31,8 +35,8 @@ function LoginPage() {
 
 
       const result = await res.json();
-      if (result.success) {
-        login({ username: result.username, role: result.role, pageAccess: result.pageAccess });
+      if (res.ok && result.success) {
+        login({ username: result.username, email: result.email || email, role: result.role, pageAccess: result.pageAccess });
         navigate('/dashboard');
       } else {
         setError('Invalid email or password');
@@ -40,6 +44,8 @@ function LoginPage() {
     } catch (err) {
       console.error('Login error:', err);
       setError('Unable to login. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -72,6 +78,7 @@ function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
+              disabled={submitting}
             />
             <TextField
               fullWidth
@@ -83,14 +90,16 @@ function LoginPage() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="current-password"
+              disabled={submitting}
             />
             <Button
               type="submit"
               variant="contained"
               fullWidth
+              disabled={submitting || !email.trim() || !password}
               sx={{ backgroundColor: '#6495ED', marginTop: 2 }}
             >
-              Login to Rido Sports
+              {submitting ? <><CircularProgress size={16} color="inherit" sx={{ mr: 1 }} />Signing in...</> : 'Login to Rido Sports'}
             </Button>
           </Box>
           {error && (

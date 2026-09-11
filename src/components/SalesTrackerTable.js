@@ -23,7 +23,17 @@ const ENTITY_SELECTION_COLUMN = 'Field Selection';
 const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
 const ENTITY_FIELD_ALIASES = ['Field', 'Linked Entity Type', 'Entity Type', 'Source Type'];
 const ENTITY_SELECTION_ALIASES = ['Field Selection', 'Linked Entity', 'Linked Entity Name', 'Entity Selection'];
-const SALES_OVERVIEW_COLUMNS = ['S.No', 'Field', 'Field Selection', 'Company', 'Basic Value'];
+const SALES_OVERVIEW_COLUMNS = [
+  'S.No',
+  'Company',
+  'Date',
+  'Invoice No.',
+  'Description',
+  'Sale Type',
+  'Basic Value',
+  'Sales Person Name',
+];
+const SALES_VISIBLE_COLUMNS_KEY = 'visibleColumns-v3-sales-tracker';
 
 const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
@@ -111,7 +121,7 @@ const SalesTrackerTable = () => {
         if (sorted.length > 0) {
           const cols = withEntityColumns(Object.keys(sorted[0]));
           setColumns(cols);
-          const saved = JSON.parse(localStorage.getItem('visibleColumns-v2-sales-tracker') || 'null');
+          const saved = JSON.parse(localStorage.getItem(SALES_VISIBLE_COLUMNS_KEY) || 'null');
           setVisibleColumns(saved || SALES_OVERVIEW_COLUMNS.filter((column) => cols.includes(column)));
         }
       } catch (err) {
@@ -229,7 +239,7 @@ const SalesTrackerTable = () => {
 
   const handleColumnToggle = (column) => setVisibleColumns(prev => {
     const next = prev.includes(column) ? prev.filter(col => col !== column) : [...prev, column];
-    localStorage.setItem('visibleColumns-v2-sales-tracker', JSON.stringify(next));
+    localStorage.setItem(SALES_VISIBLE_COLUMNS_KEY, JSON.stringify(next));
     return next;
   });
 
@@ -279,7 +289,9 @@ const SalesTrackerTable = () => {
       ...formData,
       mode: selectedRow ? 'edit' : 'add',
       originalSNo: selectedRow ? originalSNo : undefined,
-      Timestamp: selectedRow ? (formData.Timestamp || selectedRow.Timestamp) : (formData.Timestamp || timestamp)
+      Timestamp: selectedRow ? (formData.Timestamp || selectedRow.Timestamp) : (formData.Timestamp || timestamp),
+      updatedByName: user?.username || user?.email || '',
+      updatedByEmail: user?.email || user?.username || ''
     };
 
     try {

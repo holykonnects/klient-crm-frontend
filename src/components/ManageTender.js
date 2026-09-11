@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import { useAuth } from './AuthContext';
 
 // ✅ ADDED: MUI Date Picker imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -32,6 +33,7 @@ const theme = createTheme({
 });
 
 function ManageTender() {
+  const { user } = useAuth();
   const [fields, setFields] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [formValues, setFormValues] = useState({});
@@ -39,9 +41,8 @@ function ManageTender() {
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState({});
 
-  // URLs – UPDATE with your deployed Web App endpoint base
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
-  const dropdownUrl = `https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns`;
+  const formSubmitUrl = '/api/tenders';
+  const dropdownUrl = '/api/tenders?action=dropdowns';
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -144,7 +145,9 @@ function ManageTender() {
 
     const payload = {
       ...formValues,
-      Timestamp: timestamp
+      Timestamp: timestamp,
+      updatedByName: user?.username || user?.name || '',
+      updatedByEmail: user?.email || user?.username || ''
     };
 
     try {
@@ -179,11 +182,12 @@ function ManageTender() {
 
       await fetch(formSubmitUrl, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
+      }).then(async response => {
+        if (!response.ok) throw new Error(await response.text());
       });
 
       alert('✅ Tender submitted successfully!');

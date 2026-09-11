@@ -53,8 +53,7 @@ const theme = createTheme({
 const cornflowerBlue = "#6495ED";
 
 // ✅ Same costing backend
-const BACKEND =
-  "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
+const BACKEND = "/api/costing";
 
 const DEFAULT_PAYMENT_STATUSES = ["Pending", "Partially Paid", "Paid", "Hold/Disputed"];
 
@@ -81,43 +80,23 @@ function toStr(v) {
  * ✅ JSONP GET (no-cors friendly)
  */
 function jsonpGet(url) {
-  return new Promise((resolve, reject) => {
-    const cbName = `cb_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
-    let scriptEl = null;
-
-    const cleanup = () => {
-      try {
-        delete window[cbName];
-      } catch {}
-      if (scriptEl && scriptEl.parentNode) scriptEl.parentNode.removeChild(scriptEl);
-    };
-
-    window[cbName] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    scriptEl = document.createElement("script");
-    scriptEl.src = `${url}${url.includes("?") ? "&" : "?"}callback=${encodeURIComponent(cbName)}`;
-    scriptEl.async = true;
-
-    scriptEl.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP load failed"));
-    };
-
-    document.body.appendChild(scriptEl);
+  return fetch(url).then(async (response) => {
+    const data = await response.json();
+    if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
+    return data;
   });
 }
 
 // ✅ NO-CORS SAFE POST
 async function apiPost(payload) {
-  await fetch(BACKEND, {
+  const response = await fetch(BACKEND, {
     method: "POST",
-    mode: "no-cors",
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return { success: true };
+  const data = await response.json();
+  if (!response.ok || data?.success === false) throw new Error(data?.error || `Request failed (${response.status})`);
+  return data;
 }
 
 function getRoleBucket(role) {

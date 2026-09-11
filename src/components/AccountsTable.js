@@ -447,6 +447,8 @@ function AccountsTable() {
         "Account Owner": form["Account Owner"] || form["Lead Owner"] || "",
         "Lead Owner": form["Lead Owner"] || form["Account Owner"] || "",
         Timestamp: form["Timestamp"],
+        updatedByName: user?.username || user?.email || "",
+        updatedByEmail: user?.email || user?.username || "",
       };
 
       try {
@@ -487,13 +489,18 @@ function AccountsTable() {
         </Box>
 
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">
-          <TextField
-            label="Search"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            size="small"
-            sx={{ minWidth: 200 }}
-          />
+          <Box className="crm-search-tools">
+            <TextField
+              label="Search all account fields"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              size="small"
+              sx={{ minWidth: 200 }}
+            />
+            <IconButton onClick={(e) => setAnchorEl(e.currentTarget)} aria-label="Choose columns">
+              <ViewColumnIcon />
+            </IconButton>
+          </Box>
 
           <FormControl size="small" sx={{ minWidth: 160 }}>
             <InputLabel>Lead Source</InputLabel>
@@ -527,10 +534,6 @@ function AccountsTable() {
             </Select>
           </FormControl>
 
-          <IconButton onClick={(e) => setAnchorEl(e.currentTarget)}>
-            <ViewColumnIcon />
-          </IconButton>
-
           <Popover
             open={Boolean(anchorEl)}
             anchorEl={anchorEl}
@@ -558,6 +561,7 @@ function AccountsTable() {
           </Popover>
         </Box>
 
+        <Box className="crm-table-shell">
         <AccountsGrid
           rows={filteredAccounts}
           visibleColumns={visibleColumns}
@@ -566,6 +570,7 @@ function AccountsTable() {
           onOpenDeal={openDealModal}
           onOpenMeeting={handleOpenMeetingFromRow}
         />
+        </Box>
 
         <DealModal
           open={!!createDealRow}

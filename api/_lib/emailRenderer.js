@@ -196,11 +196,11 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
 </html>`;
 }
 
-export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "" }) {
+export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "", fromName = "Klient Konnect CRM" }) {
   const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
   const attachments = inlineLogoAttachments(html);
   const headers = [
-    sender ? `From: Klient Konnect CRM <${sender}>` : "",
+    sender ? `From: ${clean(fromName) || "Klient Konnect CRM"} <${sender}>` : "",
     `To: ${to}`,
     cc ? `Cc: ${cc}` : "",
     bcc ? `Bcc: ${bcc}` : "",

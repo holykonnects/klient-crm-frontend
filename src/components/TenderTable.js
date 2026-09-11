@@ -77,7 +77,7 @@ const TenderTable = () => {
   const [logColAnchorEl, setLogColAnchorEl] = useState(null);
   const [showOnlyChanges, setShowOnlyChanges] = useState(true);
 
-  const dataUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
+  const dataUrl = '/api/tenders';
 
   useEffect(() => {
     fetch(dataUrl)
@@ -293,9 +293,10 @@ const TenderTable = () => {
     try {
       await fetch(dataUrl, {
         method: 'POST',
-        mode: 'no-cors',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(updated)
+      }).then(async response => {
+        if (!response.ok) throw new Error(await response.text());
       });
       alert('✅ Tender updated successfully');
       setEditRow(null);

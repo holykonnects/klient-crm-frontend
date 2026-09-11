@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Grid, Typography, Button, TextField, IconButton,
-  MenuItem, Select, FormControl, InputLabel, Paper
+  MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip
 } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
@@ -14,11 +15,11 @@ const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
-  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff' },
+  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 },
   '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
   '& .MuiInputLabel-root': { fontFamily: 'Montserrat, sans-serif' }
 };
-const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff' };
+const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 };
 const panelSx = {
   p: 2,
   border: '1px solid #dbe3ef',
@@ -76,7 +77,10 @@ function pctValue(value) {
 export default function QuotationBuilder() {
   const { user } = useAuth();
 
+  const [quoteType, setQuoteType] = useState('standard');
   const [catalog, setCatalog] = useState(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
@@ -96,6 +100,14 @@ export default function QuotationBuilder() {
   });
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
+  const [athletic, setAthletic] = useState({
+    preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
+    areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
+    trackEquipment: 'No', installation: 'Inclusive', lengthPerimeter: '', breadth: '',
+    laneWidth: 1.22, laneQuantity: '', manualArea: '', drainPerimeter: '',
+    gstPct: 18, discountPct: 0, freightAmount: 0, certificationAmount: 0,
+    validityDays: 30, paymentTerms: '50% advance; balance as agreed'
+  });
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -108,11 +120,17 @@ export default function QuotationBuilder() {
   // Load catalog
   useEffect(() => {
     (async () => {
-      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog`);
-      if (j.ok) setCatalog(j.data);
-      else console.error('getCatalog error:', j.error);
-    })().catch(console.error);
-  }, []);
+      setCatalogLoading(true);
+      setCatalogError('');
+      setCatalog(null);
+      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog&type=${quoteType}`);
+      if (!j.ok) throw new Error(j.error || 'Quotation catalogue could not be loaded');
+      setCatalog(j.data);
+    })().catch(err => {
+      console.error(err);
+      setCatalogError(err.message || 'Quotation catalogue could not be loaded');
+    }).finally(() => setCatalogLoading(false));
+  }, [quoteType]);
 
   // Load leads
   useEffect(() => {
@@ -167,6 +185,37 @@ export default function QuotationBuilder() {
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
   const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
 
+  const handleAthleticPreset = (preset) => {
+    const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
+    const customMethod = preset === 'Manual surveyed area'
+      ? 'Manual surveyed area'
+      : preset === 'Rectangular/custom facility'
+        ? 'Length × breadth'
+        : preset === 'Custom geometry'
+          ? 'Perimeter × lane width × lanes'
+          : 'Preset benchmark area';
+    const usable = (value) => toNumber(value) || '';
+    setAthletic(current => ({
+      ...current,
+      preset,
+      areaMethod: customMethod,
+      lengthPerimeter: record ? usable(record['Track Length']) : current.lengthPerimeter,
+      laneQuantity: record ? usable(record.Lanes) : current.laneQuantity,
+      laneWidth: record ? (toNumber(record['Lane Width']) || 1.22) : current.laneWidth,
+      drainPerimeter: record ? usable(record['Drain Perimeter']) : current.drainPerimeter,
+      manualArea: preset === 'Manual surveyed area' ? current.manualArea : '',
+      breadth: preset === 'Rectangular/custom facility' ? current.breadth : '',
+    }));
+  };
+
+  const athleticArea = useMemo(() => {
+    const preset = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === athletic.preset);
+    if (athletic.areaMethod === 'Preset benchmark area') return toNumber(preset?.['Benchmark Surface Area']);
+    if (athletic.areaMethod === 'Manual surveyed area') return toNumber(athletic.manualArea);
+    if (athletic.areaMethod === 'Length × breadth') return toNumber(athletic.lengthPerimeter) * toNumber(athletic.breadth);
+    return toNumber(athletic.lengthPerimeter) * toNumber(athletic.laneWidth) * toNumber(athletic.laneQuantity);
+  }, [athletic, catalog]);
+
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
       const next = [...prev];
@@ -214,10 +263,12 @@ export default function QuotationBuilder() {
     setExporting(true);
     try {
       const payload = {
+        quoteType,
         meta,
         pricing,
+        athletic: quoteType === 'athletic' ? athletic : undefined,
         items: rows
-          .filter(r => r.category && r.subCategory && r.itemCode)
+          .filter(r => quoteType === 'standard' && r.category && r.subCategory && r.itemCode)
           .map(r => ({
             category: r.category,
             subCategory: r.subCategory,
@@ -246,7 +297,7 @@ export default function QuotationBuilder() {
         return;
       }
       safeOpen(url);
-      setLastExport({ url, name: j.pdfFileName });
+      setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
     } catch (e) {
       console.error(e);
       alert('Export failed. See console for details.');
@@ -279,13 +330,27 @@ export default function QuotationBuilder() {
             Build Quote
           </Typography>
           <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
-            {rows.filter(r => r.category && r.subCategory && r.itemCode).length} line item{rows.length === 1 ? '' : 's'} ready for export
+            {quoteType === 'athletic'
+              ? 'Configuration-driven athletic track estimate and automatic BOQ'
+              : `${rows.filter(r => r.category && r.subCategory && r.itemCode).length} line items ready for export`}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
+            <InputLabel>Quotation Type</InputLabel>
+            <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
+              <MenuItem value="standard">Standard Sports / Equipment</MenuItem>
+              <MenuItem value="athletic">Athletic Track / Automatic BOQ</MenuItem>
+            </Select>
+          </FormControl>
           {lastExport && isHttpUrl(lastExport.url) && (
             <Button variant="outlined" onClick={() => safeOpen(lastExport.url)} sx={{ borderRadius: 1.5 }}>
               Open Last PDF
+            </Button>
+          )}
+          {lastExport && isHttpUrl(lastExport.workingCopyUrl) && (
+            <Button variant="outlined" onClick={() => safeOpen(lastExport.workingCopyUrl)} sx={{ borderRadius: 1.5 }}>
+              Open Working Quote
             </Button>
           )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
@@ -357,7 +422,7 @@ export default function QuotationBuilder() {
             </Grid>
           </Paper>
 
-          <Paper sx={{ ...panelSx, mb: 2.5 }}>
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5 }}>
             <Typography sx={sectionTitleSx}>Pricing Controls</Typography>
             <Grid container spacing={1.5}>
               <Grid item xs={6} md={3}>
@@ -393,110 +458,124 @@ export default function QuotationBuilder() {
                 </Grid>
               ))}
             </Grid>
-          </Paper>
+          </Paper>}
 
-          <Paper sx={panelSx}>
+          {quoteType === 'athletic' && (
+            <Paper sx={{ ...panelSx, mb: 2.5 }}>
+              <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
+              <Grid container spacing={1.5}>
+                {[
+                  ['surfaceSystem', 'Surface System', catalog?.lists?.['Track Systems'] || []],
+                  ['areaMethod', 'Area Calculation Method', catalog?.lists?.['Area Calculation Methods'] || []],
+                  ['civilWorks', 'Civil Base Works', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['drainageWorks', 'Drainage Works', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['trackEquipment', 'Track Equipment', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['installation', 'Installation', catalog?.lists?.Installation || ['Inclusive', 'Extra']],
+                ].map(([key, label, options]) => (
+                  <Grid item xs={12} md={6} key={key}>
+                    <FormControl fullWidth size="medium" sx={fieldSx}>
+                      <InputLabel>{label}</InputLabel>
+                      <Select value={athletic[key]} label={label} onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={selectSx}>
+                        {options.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                ))}
+                <Grid item xs={12} md={6} sx={{ order: -1 }}>
+                  <FormControl fullWidth size="medium" sx={fieldSx}>
+                    <InputLabel>Preset / Benchmark</InputLabel>
+                    <Select value={athletic.preset} label="Preset / Benchmark" onChange={e => handleAthleticPreset(e.target.value)} sx={selectSx}>
+                      {(catalog?.lists?.['Preset / Benchmark'] || []).map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
+                {[
+                  ['lengthPerimeter', 'Length / Perimeter (m)'], ['breadth', 'Breadth (m)'],
+                  ['laneWidth', 'Lane Width (m)'], ['laneQuantity', 'Lane Quantity'],
+                  ['manualArea', 'Manual Surveyed Area (sqm)'], ['drainPerimeter', 'Drain / Edge Perimeter (rmt)'],
+                  ['gstPct', 'GST %'], ['discountPct', 'Discount %'],
+                  ['freightAmount', 'Freight / Mobilisation'], ['certificationAmount', 'Certification / Testing'],
+                  ['validityDays', 'Validity (days)'],
+                ].map(([key, label]) => (
+                  <Grid item xs={12} md={6} key={key}>
+                    <TextField fullWidth size="medium" type="number" label={label} value={athletic[key]}
+                      onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={fieldSx} />
+                  </Grid>
+                ))}
+                <Grid item xs={12} md={6}>
+                  <TextField fullWidth size="medium" label="Calculated Quoted Surface Area (sqm)" value={athleticArea ? athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
+                    helperText="Calculated from the selected preset and area method" inputProps={{ readOnly: true }} sx={fieldSx} />
+                </Grid>
+                <Grid item xs={12}>
+                  <TextField fullWidth size="medium" label="Payment Terms" value={athletic.paymentTerms}
+                    onChange={e => setAthletic(a => ({ ...a, paymentTerms: e.target.value }))} sx={fieldSx} />
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
-              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Line Items</Typography>
-              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
+              <Box sx={{ px: 2, pt: 2 }}>
+                <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quotation Items</Typography>
+                <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: '#64748b' }}>
+                  Dropdowns and item details are supplied by Equipment BD.
+                </Typography>
+              </Box>
+              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5, mr: 2, mt: 2 }}>
                 Add Line
               </Button>
             </Box>
-
-            {rows.map((r, i) => {
-              const subcats = subCatsFor(r.category);
-              const items = itemsFor(r.category, r.subCategory);
-              const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
-              const lineTotal = toNumber(r.qty) * lineRate;
-              return (
-                <Box key={i} sx={{
-                  mb: 1.5,
-                  p: 1.5,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 1.5,
-                  bgcolor: '#fbfdff'
-                }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25, gap: 1 }}>
-                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-                      Line {i + 1}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                        ₹{money(lineTotal)}
-                      </Typography>
-                      {r.imageUrl && (
-                        <IconButton size="small" onClick={() => safeOpen(r.imageUrl)} title="Open image"><PictureInPictureAlt fontSize="small" /></IconButton>
-                      )}
-                      <IconButton size="small" onClick={() => removeRow(i)} title="Remove">
-                        <DeleteOutline fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={2.2}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.category} displayEmpty onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Category</em></MenuItem>
-                          {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={2.2}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.subCategory} displayEmpty disabled={!r.category}
-                          onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Sub-category</em></MenuItem>
-                          {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={2.4}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
-                          onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Item</em></MenuItem>
-                          {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={6} md={1.1}>
-                      <TextField fullWidth size="small" value={r.unit || ''} label="Unit" InputLabelProps={{ shrink: true }}
-                        inputProps={{ readOnly: true }} sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1}>
-                      <TextField fullWidth size="small" type="number" label="Qty" value={r.qty}
-                        onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1.3}>
-                      <TextField fullWidth size="small" type="number" label="Rate"
-                        value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
-                        onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
-                        sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1.8}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>
-                          {ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField fullWidth size="small" multiline minRows={2} label="Description"
-                        value={r.desc || ''} onChange={e => handleRowChange(i, 'desc', e.target.value)}
-                        sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.35 } }} />
-                    </Grid>
-                  </Grid>
-                </Box>
-              );
-            })}
-          </Paper>
+            {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
+            {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
+            {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
+              <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
+            )}
+            <TableContainer sx={{ overflowX: 'auto', borderTop: '1px solid #e2e8f0' }}>
+              <Table size="small" sx={{ minWidth: 1320, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
+                <TableHead><TableRow>
+                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
+                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
+                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ minWidth: 270 }}>Description</TableCell>
+                  <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
+                  <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
+                  <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
+                </TableRow></TableHead>
+                <TableBody>
+                  {rows.map((r, i) => {
+                    const subcats = subCatsFor(r.category);
+                    const items = itemsFor(r.category, r.subCategory);
+                    const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
+                    const lineTotal = toNumber(r.qty) * lineRate;
+                    return <TableRow key={i} hover>
+                      <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
+                      <TableCell><TextField fullWidth size="small" multiline minRows={2} value={r.desc || ''} placeholder="Populated from Equipment BD" onChange={e => handleRowChange(i, 'desc', e.target.value)} sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.3 } }} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
+                    </TableRow>;
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>Select Category, then Sub Category, then Item Code—matching the New Template sheet.</Typography>
+              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(totals.subTotal)}</Typography>
+            </Box>
+          </Paper>}
         </Grid>
 
         <Grid item xs={12} lg={3.5}>
           <Paper sx={{ ...panelSx, position: { lg: 'sticky' }, top: { lg: 24 } }}>
             <Typography sx={sectionTitleSx}>Quote Summary</Typography>
-            {[
+            {quoteType === 'standard' ? [
               ['Equipment', totals.equipment],
               ['Non Equipment', totals.nonEquipment],
               ['Subtotal', totals.subTotal],
@@ -510,7 +589,26 @@ export default function QuotationBuilder() {
                   {value < 0 ? '-' : ''}₹{money(Math.abs(value))}
                 </Typography>
               </Box>
-            ))}
+            )) : (
+              <>
+                {[
+                  ['Preset', athletic.preset], ['Surface System', athletic.surfaceSystem],
+                  ['Area Method', athletic.areaMethod], ['Civil Works', athletic.civilWorks],
+                  ['Drainage', athletic.drainageWorks], ['Track Equipment', athletic.trackEquipment],
+                  ['Quoted Surface Area', athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'],
+                  ['GST', `${athletic.gstPct || 0}%`], ['Discount', `${athletic.discountPct || 0}%`],
+                ].map(([label, value]) => (
+                  <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.85, borderBottom: '1px solid #e2e8f0' }}>
+                    <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{label}</Typography>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, textAlign: 'right' }}>{value}</Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ mt: 1.5, fontSize: '0.78rem', color: '#64748b' }}>
+                  Exact quantities and totals are calculated by the Athletic workbook’s preserved formulas during export.
+                </Typography>
+              </>
+            )}
+            {quoteType === 'standard' && (
             <Box sx={{ mt: 2, p: 1.5, bgcolor: '#0f172a', borderRadius: 1.5, color: '#fff' }}>
               <Typography sx={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0 }}>
                 Grand Total
@@ -519,6 +617,7 @@ export default function QuotationBuilder() {
                 ₹{money(totals.grand)}
               </Typography>
             </Box>
+            )}
           </Paper>
         </Grid>
       </Grid>

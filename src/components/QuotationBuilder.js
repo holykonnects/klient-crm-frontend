@@ -76,6 +76,7 @@ function pctValue(value) {
 export default function QuotationBuilder() {
   const { user } = useAuth();
 
+  const [quoteType, setQuoteType] = useState('standard');
   const [catalog, setCatalog] = useState(null);
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [meta, setMeta] = useState({
@@ -96,6 +97,14 @@ export default function QuotationBuilder() {
   });
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
+  const [athletic, setAthletic] = useState({
+    preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
+    areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
+    trackEquipment: 'No', installation: 'Inclusive', lengthPerimeter: '', breadth: '',
+    laneWidth: 1.22, laneQuantity: '', manualArea: '', drainPerimeter: '',
+    gstPct: 18, discountPct: 0, freightAmount: 0, certificationAmount: 0,
+    validityDays: 30, paymentTerms: '50% advance; balance as agreed'
+  });
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -108,11 +117,11 @@ export default function QuotationBuilder() {
   // Load catalog
   useEffect(() => {
     (async () => {
-      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog`);
+      const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog&type=${quoteType}`);
       if (j.ok) setCatalog(j.data);
       else console.error('getCatalog error:', j.error);
     })().catch(console.error);
-  }, []);
+  }, [quoteType]);
 
   // Load leads
   useEffect(() => {
@@ -214,10 +223,12 @@ export default function QuotationBuilder() {
     setExporting(true);
     try {
       const payload = {
+        quoteType,
         meta,
         pricing,
+        athletic: quoteType === 'athletic' ? athletic : undefined,
         items: rows
-          .filter(r => r.category && r.subCategory && r.itemCode)
+          .filter(r => quoteType === 'standard' && r.category && r.subCategory && r.itemCode)
           .map(r => ({
             category: r.category,
             subCategory: r.subCategory,
@@ -246,7 +257,7 @@ export default function QuotationBuilder() {
         return;
       }
       safeOpen(url);
-      setLastExport({ url, name: j.pdfFileName });
+      setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
     } catch (e) {
       console.error(e);
       alert('Export failed. See console for details.');
@@ -279,13 +290,27 @@ export default function QuotationBuilder() {
             Build Quote
           </Typography>
           <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
-            {rows.filter(r => r.category && r.subCategory && r.itemCode).length} line item{rows.length === 1 ? '' : 's'} ready for export
+            {quoteType === 'athletic'
+              ? 'Configuration-driven athletic track estimate and automatic BOQ'
+              : `${rows.filter(r => r.category && r.subCategory && r.itemCode).length} line items ready for export`}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
+            <InputLabel>Quotation Type</InputLabel>
+            <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
+              <MenuItem value="standard">Standard Sports / Equipment</MenuItem>
+              <MenuItem value="athletic">Athletic Track / Automatic BOQ</MenuItem>
+            </Select>
+          </FormControl>
           {lastExport && isHttpUrl(lastExport.url) && (
             <Button variant="outlined" onClick={() => safeOpen(lastExport.url)} sx={{ borderRadius: 1.5 }}>
               Open Last PDF
+            </Button>
+          )}
+          {lastExport && isHttpUrl(lastExport.workingCopyUrl) && (
+            <Button variant="outlined" onClick={() => safeOpen(lastExport.workingCopyUrl)} sx={{ borderRadius: 1.5 }}>
+              Open Working Quote
             </Button>
           )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
@@ -357,7 +382,7 @@ export default function QuotationBuilder() {
             </Grid>
           </Paper>
 
-          <Paper sx={{ ...panelSx, mb: 2.5 }}>
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5 }}>
             <Typography sx={sectionTitleSx}>Pricing Controls</Typography>
             <Grid container spacing={1.5}>
               <Grid item xs={6} md={3}>
@@ -393,9 +418,52 @@ export default function QuotationBuilder() {
                 </Grid>
               ))}
             </Grid>
-          </Paper>
+          </Paper>}
 
-          <Paper sx={panelSx}>
+          {quoteType === 'athletic' && (
+            <Paper sx={{ ...panelSx, mb: 2.5 }}>
+              <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
+              <Grid container spacing={1.5}>
+                {[
+                  ['preset', 'Preset / Benchmark', catalog?.lists?.['Preset / Benchmark'] || []],
+                  ['surfaceSystem', 'Surface System', catalog?.lists?.['Track Systems'] || []],
+                  ['areaMethod', 'Area Calculation Method', catalog?.lists?.['Area Calculation Methods'] || []],
+                  ['civilWorks', 'Civil Base Works', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['drainageWorks', 'Drainage Works', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['trackEquipment', 'Track Equipment', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
+                  ['installation', 'Installation', catalog?.lists?.Installation || ['Inclusive', 'Extra']],
+                ].map(([key, label, options]) => (
+                  <Grid item xs={12} md={4} key={key}>
+                    <FormControl fullWidth size="small" sx={fieldSx}>
+                      <InputLabel>{label}</InputLabel>
+                      <Select value={athletic[key]} label={label} onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={selectSx}>
+                        {options.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                      </Select>
+                    </FormControl>
+                  </Grid>
+                ))}
+                {[
+                  ['lengthPerimeter', 'Length / Perimeter (m)'], ['breadth', 'Breadth (m)'],
+                  ['laneWidth', 'Lane Width (m)'], ['laneQuantity', 'Lane Quantity'],
+                  ['manualArea', 'Manual Surveyed Area (sqm)'], ['drainPerimeter', 'Drain / Edge Perimeter (rmt)'],
+                  ['gstPct', 'GST %'], ['discountPct', 'Discount %'],
+                  ['freightAmount', 'Freight / Mobilisation'], ['certificationAmount', 'Certification / Testing'],
+                  ['validityDays', 'Validity (days)'],
+                ].map(([key, label]) => (
+                  <Grid item xs={6} md={4} key={key}>
+                    <TextField fullWidth size="small" type="number" label={label} value={athletic[key]}
+                      onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={fieldSx} />
+                  </Grid>
+                ))}
+                <Grid item xs={12}>
+                  <TextField fullWidth size="small" label="Payment Terms" value={athletic.paymentTerms}
+                    onChange={e => setAthletic(a => ({ ...a, paymentTerms: e.target.value }))} sx={fieldSx} />
+                </Grid>
+              </Grid>
+            </Paper>
+          )}
+
+          {quoteType === 'standard' && <Paper sx={panelSx}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Line Items</Typography>
               <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
@@ -490,13 +558,13 @@ export default function QuotationBuilder() {
                 </Box>
               );
             })}
-          </Paper>
+          </Paper>}
         </Grid>
 
         <Grid item xs={12} lg={3.5}>
           <Paper sx={{ ...panelSx, position: { lg: 'sticky' }, top: { lg: 24 } }}>
             <Typography sx={sectionTitleSx}>Quote Summary</Typography>
-            {[
+            {quoteType === 'standard' ? [
               ['Equipment', totals.equipment],
               ['Non Equipment', totals.nonEquipment],
               ['Subtotal', totals.subTotal],
@@ -510,7 +578,25 @@ export default function QuotationBuilder() {
                   {value < 0 ? '-' : ''}₹{money(Math.abs(value))}
                 </Typography>
               </Box>
-            ))}
+            )) : (
+              <>
+                {[
+                  ['Preset', athletic.preset], ['Surface System', athletic.surfaceSystem],
+                  ['Area Method', athletic.areaMethod], ['Civil Works', athletic.civilWorks],
+                  ['Drainage', athletic.drainageWorks], ['Track Equipment', athletic.trackEquipment],
+                  ['GST', `${athletic.gstPct || 0}%`], ['Discount', `${athletic.discountPct || 0}%`],
+                ].map(([label, value]) => (
+                  <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.85, borderBottom: '1px solid #e2e8f0' }}>
+                    <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{label}</Typography>
+                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, textAlign: 'right' }}>{value}</Typography>
+                  </Box>
+                ))}
+                <Typography sx={{ mt: 1.5, fontSize: '0.78rem', color: '#64748b' }}>
+                  Exact quantities and totals are calculated by the Athletic workbook’s preserved formulas during export.
+                </Typography>
+              </>
+            )}
+            {quoteType === 'standard' && (
             <Box sx={{ mt: 2, p: 1.5, bgcolor: '#0f172a', borderRadius: 1.5, color: '#fff' }}>
               <Typography sx={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0 }}>
                 Grand Total
@@ -519,6 +605,7 @@ export default function QuotationBuilder() {
                 ₹{money(totals.grand)}
               </Typography>
             </Box>
+            )}
           </Paper>
         </Grid>
       </Grid>

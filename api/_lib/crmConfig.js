@@ -50,6 +50,8 @@ export const SHEETS = {
       process.env.QUOTATION_REFERENCE_SHEET_ID || "1t-8DRUh4NjRTQhpO6ZTpeYyZUjkwfU6DNoRaIGkdCkc",
     equipmentSheetNames: ["Equipment BD"],
     termsSheetNames: ["tc"],
+    athleticSpreadsheetId:
+      process.env.ATHLETIC_QUOTATION_SHEET_ID || "11rMTRdeLJNihYK3o2eHAVMpJ2bVvD9ZmhunE_Ygay3c",
   },
 };
 

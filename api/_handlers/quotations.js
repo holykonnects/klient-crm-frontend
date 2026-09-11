@@ -82,6 +82,21 @@ async function getCatalog() {
   };
 }
 
+async function getAthleticCatalog() {
+  const spreadsheetId = SHEETS.quotations.athleticSpreadsheetId;
+  const presetsSheet = await resolveSheetTitle(spreadsheetId, ["Presets"]);
+  const listsSheet = await resolveSheetTitle(spreadsheetId, ["Lists"]);
+  const presets = rowsToObjects(await getValues(spreadsheetId, presetsSheet))
+    .filter((row) => clean(row.Preset));
+  const listValues = await getValues(spreadsheetId, listsSheet);
+  const [headers = [], ...rows] = listValues;
+  const lists = Object.fromEntries(headers.map((header, columnIndex) => [
+    clean(header),
+    [...new Set(rows.map((row) => clean(row[columnIndex])).filter(Boolean))],
+  ]).filter(([header]) => header));
+  return { ok: true, data: { presets, lists } };
+}
+
 async function getTcOptions() {
   try {
     const sheetName = await resolveSheetTitle(SHEETS.quotations.referenceSpreadsheetId, SHEETS.quotations.termsSheetNames);
@@ -115,7 +130,9 @@ export default async function handler(req, res) {
   try {
     if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
     const action = clean(req.query.action);
-    if (action === "getCatalog") return res.status(200).json(await getCatalog());
+    if (action === "getCatalog") {
+      return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
+    }
     if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
     return res.status(400).json({ ok: false, error: "Invalid action" });
   } catch (err) {

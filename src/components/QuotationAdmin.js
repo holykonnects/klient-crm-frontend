@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
   DialogTitle, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
@@ -36,16 +36,16 @@ export default function QuotationAdmin({ user, onClose }) {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
       const next = await jsonRequest(`${API}?action=getAdminTable&table=${encodeURIComponent(table)}&user=${encodeURIComponent(user?.username || '')}`);
       setData(next); setPage(0);
     } catch (err) { setError(err.message); }
     finally { setLoading(false); }
-  };
+  }, [table, user?.username]);
 
-  useEffect(() => { load(); }, [table]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { load(); }, [load]);
 
   const editableHeaders = useMemo(() => data.headers.filter(header => header && !data.readOnly.includes(header)), [data]);
   const visibleRows = useMemo(() => {

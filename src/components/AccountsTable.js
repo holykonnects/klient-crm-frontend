@@ -447,6 +447,8 @@ function AccountsTable() {
         "Account Owner": form["Account Owner"] || form["Lead Owner"] || "",
         "Lead Owner": form["Lead Owner"] || form["Account Owner"] || "",
         Timestamp: form["Timestamp"],
+        updatedByName: user?.username || user?.email || "",
+        updatedByEmail: user?.email || user?.username || "",
       };
 
       try {

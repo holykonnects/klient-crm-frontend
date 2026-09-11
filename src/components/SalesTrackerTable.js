@@ -279,7 +279,9 @@ const SalesTrackerTable = () => {
       ...formData,
       mode: selectedRow ? 'edit' : 'add',
       originalSNo: selectedRow ? originalSNo : undefined,
-      Timestamp: selectedRow ? (formData.Timestamp || selectedRow.Timestamp) : (formData.Timestamp || timestamp)
+      Timestamp: selectedRow ? (formData.Timestamp || selectedRow.Timestamp) : (formData.Timestamp || timestamp),
+      updatedByName: user?.username || user?.email || '',
+      updatedByEmail: user?.email || user?.username || ''
     };
 
     try {

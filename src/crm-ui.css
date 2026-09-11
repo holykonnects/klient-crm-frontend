@@ -323,23 +323,26 @@ select,
   }
 
   .crm-filter-bar {
-    display: grid !important;
-    grid-template-columns: minmax(0, 1fr);
-    align-items: stretch !important;
-    gap: 10px !important;
+    display: flex !important;
+    flex-flow: row nowrap !important;
+    align-items: center !important;
+    gap: 8px !important;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    padding-bottom: 4px;
   }
 
   .crm-filter-bar > *,
   .crm-filter-bar > .MuiBox-root {
-    width: 100%;
-    max-width: 100%;
-    min-width: 0 !important;
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 150px !important;
   }
 
   .crm-filter-bar > .MuiBox-root {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr);
-    gap: 10px;
+    display: flex;
+    flex-flow: row nowrap;
+    gap: 8px;
   }
 
   .crm-filter-bar > .crm-search-tools {
@@ -350,8 +353,8 @@ select,
   }
 
   .crm-search-tools .MuiTextField-root:first-child {
-    width: auto !important;
-    flex: 1 1 auto !important;
+    width: min(72vw, 320px) !important;
+    flex: 0 0 auto !important;
   }
 
   .crm-search-tools > .MuiIconButton-root,

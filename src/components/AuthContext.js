@@ -13,9 +13,10 @@ export function AuthProvider({ children }) {
     }
   }, []);
 
-  const login = ({ username, role, pageAccess }) => {
+  const login = ({ username, email, role, pageAccess }) => {
     const userData = {
       username,
+      email: email || username,
       role,
       pageAccess: Array.isArray(pageAccess)
         ? pageAccess

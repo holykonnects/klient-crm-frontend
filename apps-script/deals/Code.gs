@@ -663,6 +663,11 @@ function trackLeadActionsv2() {
 }
 
 function onFormSubmit(e) {
+  // Deal notifications are owned by the CRM server. This no-op protects
+  // against duplicate messages from an existing installed Sheets trigger.
+  Logger.log('Deal email skipped: server-side operational email is authoritative.');
+  return;
+
   try {
     const validationSheetId = '1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ';
     const validationSheetName = 'Validation Tables';
@@ -730,7 +735,6 @@ function onFormSubmit(e) {
     Logger.log("❗ Error in onFormSubmit: " + err.stack);
   }
 }
-
 
 
 

@@ -804,7 +804,11 @@ const LeadsTable = () => {
               const res = await fetch(formSubmitUrl, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+                body: JSON.stringify({
+                  ...payload,
+                  updatedByName: user?.username || user?.email || '',
+                  updatedByEmail: user?.email || user?.username || ''
+                })
               });
               if (!res.ok) throw new Error(await res.text());
               alert('✅ Lead updated successfully');

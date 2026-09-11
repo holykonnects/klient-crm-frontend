@@ -4,62 +4,12 @@
 //Accounts -- https://docs.google.com/spreadsheets/d/1K9JT7C88oOVdAvapDOieWaiYj6Wd_XRZ1CCNiYzUhG8/edit?gid=1121509308#gid=1121509308
 
 function notifyCRMEntry() {
-  const sheetConfigs = [
-    { sheetId: '1vJbB0fmBQhd6XGTNbjUAi7Bt71lHNyau2TBMXTCdoM0', sheetName: 'Form responses 1', type: 'Lead', ownerField: 'Lead Owner' },
-    { sheetId: '1GoZiI3HMDA_Ohkr50wwQlCiYWnT5EcNgDW3dWiZAJU4', sheetName: 'Form responses 1', type: 'Deal', ownerField: 'Account Owner' },
-    { sheetId: '1K9JT7C88oOVdAvapDOieWaiYj6Wd_XRZ1CCNiYzUhG8', sheetName: 'Qualified Leads', type: 'Account', ownerField: 'Lead Owner' },
-    { sheetId: '11hW2rcd5x4gmXFn2AO03FgOQ0Ec8wd3Ot8yTbAh7P2k', sheetName: 'Form responses 1', type: 'Order', ownerField: 'Account Owner' }
-  ];
+  // Operational Lead, Account, Deal and Order notifications are now sent only
+  // by the CRM server. Keeping this installed trigger non-sending prevents old
+  // GAS deployments from duplicating the server message.
+  Logger.log('CRM entry emails skipped: server-side operational email is authoritative.');
 
-  const adminEmail = 'sidhant@ridosports.com, sandeep@ridosports.com, info@klientkonnect.com';
-  const schedulerLink = 'https://crm.klientkonnect.com/calendar';
-
-  for (let config of sheetConfigs) {
-    Logger.log(`Checking sheet: ${config.type} (${config.sheetName})`);
-    const sheet = SpreadsheetApp.openById(config.sheetId).getSheetByName(config.sheetName);
-    const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const notificationIndex = headers.indexOf('Notification Status');
-
-    if (notificationIndex < 0) {
-      Logger.log(`❌ 'Notification Status' column not found in ${config.type}`);
-      continue;
-    }
-
-    for (let i = 1; i < data.length; i++) {
-      const row = data[i];
-      const processed = row[notificationIndex];
-      
-      if (processed && processed.toString().trim() !== '') {
-        Logger.log(`⏭️ Skipping row ${i + 1} — already processed with status: ${processed}`);
-        continue;
-      }
-
-      const ownerName = row[headers.indexOf(config.ownerField)];
-      const ownerEmail = getEmailFromValidation(ownerName);
-      if (!ownerEmail) {
-        Logger.log(`⚠️ No email found for ${ownerName} in ${config.type} row ${i + 1}`);
-        continue;
-      }
-
-      const htmlTable = buildHTMLTable(headers, row);
-      const subject = `New/Updated ${config.type} Notification`;
-      const body = `Hi ${ownerName},<br><br>A new or updated ${config.type} record is available:<br><br>${htmlTable}<br><br>Click on the link to set up a meeting: <a href="${schedulerLink}" target="_blank">Schedule a Meeting</a><br><br>Regards,<br>Your CRM Team`;
-
-      const conditionalCc = config.type === 'Order' ? `${adminEmail}, sudeep@ridosports.com` : adminEmail;
-      if(config.type === 'Order'){
-        Logger.log('Order Notification includes sudeep@ridosports.com in cc');
-      }
-      GmailApp.sendEmail(ownerEmail, subject, '', {
-        cc: conditionalCc,
-        htmlBody: body
-      });
-
-      Logger.log(`✅ Email sent to ${ownerEmail} for ${config.type} row ${i + 1}`);
-      sheet.getRange(i + 1, notificationIndex + 1).setValue('Sent');
-      Logger.log(`📌 Row ${i + 1} in ${config.type} marked as 'Sent'`);
-    }
-  }
+  // Quotation workflow remains callable here until it is separately retired.
   notifyQuotation();
 }
 
@@ -340,5 +290,4 @@ function isAtLeast_(current, target) {
   Logger.log(`      • isAtLeast? current="${current}" (${pos(current)}) vs target="${target}" (${pos(target)}) => ${res}`);
   return res;
 }
-
 

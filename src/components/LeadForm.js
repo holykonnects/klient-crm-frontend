@@ -5,6 +5,7 @@ import {
   InputAdornment, Alert
 } from '@mui/material';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import { useAuth } from './AuthContext';
 
 const theme = createTheme({
   typography: {
@@ -44,6 +45,7 @@ const sanitizeMobileFields = (values = {}) => {
 };
 
 function LeadForm() {
+  const { user } = useAuth();
   const [fields, setFields] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [formValues, setFormValues] = useState({});
@@ -157,7 +159,12 @@ function LeadForm() {
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false
   });
 
-  const payload = { ...trimmedValues, Timestamp: timestamp };
+  const payload = {
+    ...trimmedValues,
+    Timestamp: timestamp,
+    updatedByName: user?.username || user?.email || '',
+    updatedByEmail: user?.email || user?.username || ''
+  };
 
   try {
     const res = await fetch(formSubmitUrl, {

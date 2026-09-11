@@ -412,6 +412,8 @@ function OrdersTable() {
       if (drawingObj) payload["Attach Drawing"] = drawingObj;
       if (boqObj) payload["Attach BOQ"] = boqObj;
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
+      payload.updatedByName = user?.username || user?.email || "";
+      payload.updatedByEmail = user?.email || user?.username || "";
 
       const res = await fetch(submitUrl, {
         method: "POST",

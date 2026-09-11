@@ -32,7 +32,7 @@ function LoginPage() {
 
       const result = await res.json();
       if (result.success) {
-        login({ username: result.username, role: result.role, pageAccess: result.pageAccess });
+        login({ username: result.username, email: result.email || email, role: result.role, pageAccess: result.pageAccess });
         navigate('/dashboard');
       } else {
         setError('Invalid email or password');

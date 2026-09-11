@@ -17,6 +17,7 @@ import {
   notifyDealSubmitted,
   notifyLeadWorkflow,
   notifyOrderSubmitted,
+  notifySalesTrackerSubmitted,
 } from "./operationalEmails.js";
 
 const FILE_FIELDS = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
@@ -45,7 +46,7 @@ const LEAD_TRANSFER_FIELDS = [
   "Lead ID",
   "Prefilled Link",
 ];
-const SALES_TRACKER_ENTITY_FIELDS = ["Field", "Field Selection"];
+const SALES_TRACKER_ENTITY_FIELDS = ["Field", "Field Selection", "Notification Status"];
 
 export async function getTable(config) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
@@ -172,15 +173,24 @@ export async function handleSalesTrackerPost(config, payload) {
     if (snoIndex >= 0) {
       for (let i = 1; i < values.length; i++) {
         if (String(values[i][snoIndex]) === String(data.originalSNo)) {
-          await updateValues(config.spreadsheetId, sheetName, i + 1, row);
-          return { ok: true, status: "updated" };
+          const previousData = Object.fromEntries(headers.map((header, columnIndex) => [header, values[i][columnIndex] ?? ""]));
+          data["Notification Status"] = "";
+          const updatedRow = buildRow(headers, data);
+          await updateValues(config.spreadsheetId, sheetName, i + 1, updatedRow);
+          const notification = await notifySafely(() => notifySalesTrackerSubmitted(headers, data, previousData));
+          if (notification.sent) {
+            await updateCell(config.spreadsheetId, sheetName, i + 1, headers.indexOf("Notification Status") + 1, "Sent");
+          }
+          return { ok: true, status: "updated", notification };
         }
       }
     }
   }
 
-  await appendValues(config.spreadsheetId, sheetName, row);
-  return { ok: true, status: "added" };
+  const appendResult = await appendValues(config.spreadsheetId, sheetName, row);
+  const notification = await notifySafely(() => notifySalesTrackerSubmitted(headers, data));
+  await persistSentStatus({ config, sheetName, headers, appendResult, notification });
+  return { ok: true, status: "added", notification };
 }
 
 async function ensureSheetHeaders(config, sheetName, headers, requiredFields) {
@@ -333,6 +343,8 @@ async function maybeTransferQualifiedLead({ accountsConfig, lead }) {
   });
   accountData.Timestamp = formatTimestamp();
   accountData["Account Owner"] = lead["Lead Owner"] || lead["Account Owner"] || "";
+  accountData.updatedByName = lead.updatedByName || "";
+  accountData.updatedByEmail = lead.updatedByEmail || "";
 
   const appendResult = await appendValues(accountsConfig.spreadsheetId, sheetName, buildRow(headers, accountData));
   const notification = await notifySafely(() => notifyAccountSubmitted(headers, accountData));

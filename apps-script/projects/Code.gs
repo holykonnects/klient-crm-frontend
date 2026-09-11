@@ -133,8 +133,9 @@ function addOrUpdateProject_(data) {
   const newRowObj = {};
   headers.forEach((h, i) => newRowObj[h] = rowValues[i]);
 
-  // Send email
-  sendProjectUpdateEmail_(newRowObj);
+  // Project notifications are sent only by the CRM server. Do not send from
+  // GAS, even if an older web-app deployment is still receiving submissions.
+  console.log('Project email skipped: server-side operational email is authoritative.');
 
   return { created: true, projectId: data[idHeader], row: newRow };
 }
@@ -499,6 +500,24 @@ function getGlobalList_(colName) {
   return Array.from(out);
 }
 
+function isValidProjectEmail_(value) {
+  return /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/.test(String(value || '').trim());
+}
+
+function parseProjectClientEmails_(value) {
+  const seen = {};
+  return String(value || '')
+    .split(',')
+    .map(email => String(email || '').trim())
+    .filter(email => isValidProjectEmail_(email))
+    .filter(email => {
+      const key = email.toLowerCase();
+      if (seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+}
+
 function sendProjectUpdateEmail_(newRowObj) {
   const { sheet, headers } = getSheetAndHeaders_(PROJECT_SHEET);
   const lastRow = sheet.getLastRow();
@@ -527,13 +546,7 @@ function sendProjectUpdateEmail_(newRowObj) {
   // Supports multiple comma-separated email IDs
   const clientEmailRaw = String(newRowObj['Client Email ID'] || '').trim();
 
-  const clientToList = clientEmailRaw
-    ? clientEmailRaw
-        .split(',')
-        .map(email => String(email || '').trim())
-        .filter(Boolean)
-        .filter(email => email.indexOf('@') > -1)
-    : [];
+  const clientToList = parseProjectClientEmails_(clientEmailRaw);
 
   const ccList  = getGlobalList_(COL_CC);
   const bccList = getGlobalList_(COL_BCC);
@@ -563,7 +576,7 @@ function sendProjectUpdateEmail_(newRowObj) {
       <div style="max-width:680px;margin:0 auto;background:#ffffff;font-family:Arial,sans-serif;color:#1f2937;">
         
         <div style="background:#6495ED;padding:18px 20px;color:#ffffff;">
-          <div style="font-size:20px;font-weight:bold;line-height:1.3;">Rido Sports | Project Update</div>
+          <div style="font-size:20px;font-weight:bold;line-height:1.3;">Rido Sport Project Update</div>
           <div style="font-size:13px;opacity:0.95;margin-top:4px;">
             ${htmlEscape_(projName || '(Untitled Project)')}
           </div>
@@ -614,7 +627,7 @@ function sendProjectUpdateEmail_(newRowObj) {
         htmlBody: htmlSummary,
         cc: cc || '',
         bcc: bcc || '',
-        name: 'Rido Sports | Desan International'
+        name: 'Rido Sport Project Update'
       }
     );
   } catch (e) {
@@ -738,5 +751,3 @@ function buildProjectHistoryMobileHtml_(headers, rows2D, projectId) {
 
   return `<div style="width:100%;">${cards}</div>`;
 }
-
-

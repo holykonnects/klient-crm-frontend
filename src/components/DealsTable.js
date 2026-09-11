@@ -469,7 +469,14 @@ function DealsTable() {
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "updateDeal", data: dealFormData }),
+        body: JSON.stringify({
+          action: "updateDeal",
+          data: {
+            ...dealFormData,
+            updatedByName: user?.username || user?.email || "",
+            updatedByEmail: user?.email || user?.username || "",
+          },
+        }),
       });
       if (!res.ok) throw new Error(await res.text());
 
@@ -680,6 +687,8 @@ function DealsTable() {
               label: "Proforma Invoice",
             }
         : "";
+      payloadRow.updatedByName = user?.username || user?.email || "";
+      payloadRow.updatedByEmail = user?.email || user?.username || "";
 
       const res = await fetch(submitUrl, {
         method: "POST",

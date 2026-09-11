@@ -21,6 +21,7 @@ function brandedHtml({ greeting, intro, subject, headers, data, previousData = n
   const content = `
     <p style="margin:0 0 14px 0;">${escapeHtml(greeting)}</p>
     <p style="margin:0 0 18px 0;">${escapeHtml(intro)}</p>
+    ${clean(data?.updatedByEmail) ? `<p style="margin:0 0 18px 0;font-size:13px;color:#4b5563;"><strong>Updated by:</strong> ${escapeHtml(data.updatedByName || data.updatedByEmail)} (${escapeHtml(data.updatedByEmail)})</p>` : ""}
     ${previousData ? `<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">What changed</div>${changedFieldsCards(headers, previousData, data)}<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">Current snapshot</div>${recordDetailsCards(priorityHeaders(headers, data), data, { limit: 8 })}` : recordDetailsCards(headers, data)}
     ${actionUrl ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(actionUrl)}" target="_blank" style="display:inline-block;background:#12315c;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">${escapeHtml(actionLabel || "Open Link")}</a></p>` : ""}
     ${calendarLink ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(meetingUrl)}" target="_blank" style="display:inline-block;background:#6495ED;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">Schedule a Meeting</a></p>` : ""}
@@ -45,6 +46,18 @@ export async function ownerEmail(ownerName) {
   return match ? clean(match[4]) : "";
 }
 
+async function validatedUpdaterEmail(data) {
+  const submitted = clean(data?.updatedByEmail).toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submitted)) return "";
+  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
+  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
+  const [headers = [], ...rows] = values;
+  const emailIndex = findHeader(headers, "Email");
+  if (emailIndex < 0) return "";
+  const match = rows.find((row) => clean(row[emailIndex]).toLowerCase() === submitted);
+  return match ? clean(match[emailIndex]) : "";
+}
+
 async function sendOperationalEmail({ owner, subject, intro, headers, data, previousData = null, calendarLink = false, cc: ccOverride = "" }) {
   if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "false").toLowerCase() !== "true") {
     return { sent: false, reason: "disabled" };
@@ -53,13 +66,21 @@ async function sendOperationalEmail({ owner, subject, intro, headers, data, prev
   const to = await ownerEmail(owner);
   if (!to) return { sent: false, reason: "missing_owner_email" };
 
-  const cc = ccOverride || process.env.OPERATIONAL_EMAIL_CC || DEFAULT_CC;
+  const updaterEmail = await validatedUpdaterEmail(data);
+  const cc = uniqueEmails([
+    ...splitEmails(ccOverride || process.env.OPERATIONAL_EMAIL_CC || DEFAULT_CC),
+    updaterEmail,
+  ]).filter((email) => email.toLowerCase() !== to.toLowerCase()).join(",");
   const html = brandedHtml({
     greeting: `Hello ${owner},`,
     intro,
     subject,
     headers,
-    data,
+    data: {
+      ...data,
+      updatedByName: updaterEmail ? data.updatedByName : "",
+      updatedByEmail: updaterEmail,
+    },
     previousData,
     calendarLink,
   });
@@ -74,19 +95,29 @@ async function sendDirectOperationalEmail({ to, cc, subject, greeting = "Hello T
   }
   if (!clean(to)) return { sent: false, reason: "missing_recipient" };
 
+  const updaterEmail = await validatedUpdaterEmail(data);
+  const toKeys = new Set(splitEmails(to).map((email) => email.toLowerCase()));
+  const resolvedCc = uniqueEmails([...splitEmails(cc), updaterEmail])
+    .filter((email) => !toKeys.has(email.toLowerCase()))
+    .join(",");
+
   const html = brandedHtml({
     greeting,
     intro,
     subject,
     headers,
-    data,
+    data: {
+      ...data,
+      updatedByName: updaterEmail ? data.updatedByName : "",
+      updatedByEmail: updaterEmail,
+    },
     calendarLink,
     actionUrl,
     actionLabel,
   });
-  const raw = base64Url(mimeMessage({ to, cc, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "" }));
+  const raw = base64Url(mimeMessage({ to, cc: resolvedCc, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "" }));
   await gmailSendRawEmail(raw);
-  return { sent: true, to, cc };
+  return { sent: true, to, cc: resolvedCc };
 }
 
 export async function notifyLeadSubmitted(headers, data, previousData = null) {
@@ -122,6 +153,15 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
     return { sent: false, reason: "disabled" };
   }
 
+  const projectId = clean(data["Project ID (unique, auto-generated)"]);
+  const previousProject = historyRows
+    .slice(0, -1)
+    .reverse()
+    .find((row) => clean(row["Project ID (unique, auto-generated)"]) === projectId);
+  if (previousProject && !hasMaterialChanges(headers, previousProject, data)) {
+    return { sent: false, reason: "no_material_changes" };
+  }
+
   const validationSheet = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
   const validationValues = await getValues(SHEETS.validation.spreadsheetId, validationSheet);
   const [validationHeaders = [], ...validationRows] = validationValues;
@@ -137,15 +177,22 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
   const ownerRecipients = validationRows
     .filter((row) => wantedOwners.has(clean(row[ownerIndex]).toLowerCase()))
     .map((row) => clean(row[emailIndex]));
-  const clientRecipients = clean(data["Client Email ID"]).split(",").map(clean);
+  const clientRecipients = splitEmails(data["Client Email ID"]);
+  const submittedUpdater = clean(data.updatedByEmail).toLowerCase();
+  const updaterEmail = validationRows
+    .map((row) => clean(row[emailIndex]))
+    .find((email) => email.toLowerCase() === submittedUpdater) || "";
   const ccRecipients = validationRows.map((row) => clean(row[ccIndex]));
   const bccRecipients = validationRows.map((row) => clean(row[bccIndex]));
-  const to = uniqueEmails([...ownerRecipients, ...clientRecipients]).join(",");
-  const cc = uniqueEmails([...ccRecipients, "sarabjeet@ridosports.com"]).join(",");
+  const toList = uniqueEmails(clientRecipients.length ? clientRecipients : ownerRecipients);
+  const toKeys = new Set(toList.map((email) => email.toLowerCase()));
+  const to = toList.join(",");
+  const cc = uniqueEmails([...ownerRecipients, ...ccRecipients, updaterEmail])
+    .filter((email) => !toKeys.has(email.toLowerCase()))
+    .join(",");
   const bcc = uniqueEmails(bccRecipients).join(",");
   if (!to) return { sent: false, reason: "missing_recipient" };
 
-  const projectId = clean(data["Project ID (unique, auto-generated)"]);
   const projectName = clean(data["Project Name"]) || "Untitled Project";
   const excluded = new Set([
     "Vendors", "Timestamp", "Task Name", "Task Owner", "Start Date", "End Date", "Budget (₹)",
@@ -162,10 +209,11 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
     .join("");
   const content = `
     <div style="margin:0 0 20px;background:#6495ED;border-radius:10px;padding:18px 20px;color:#ffffff;">
-      <div style="font-size:20px;font-weight:700;line-height:1.3;">Rido Sports | Project Update</div>
+      <div style="font-size:20px;font-weight:700;line-height:1.3;">Rido Sport Project Update</div>
       <div style="font-size:13px;line-height:1.5;margin-top:4px;">${escapeHtml(projectName)}</div>
     </div>
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">A project entry was <strong>added or updated</strong>.</p>
+    ${updaterEmail ? `<p style="margin:0 0 16px;font-size:13px;color:#4b5563;"><strong>Updated by:</strong> ${escapeHtml(data.updatedByName || updaterEmail)} (${escapeHtml(updaterEmail)})</p>` : ""}
     <div style="border:1px solid #dbe4f0;border-radius:10px;padding:14px 16px;background:#f9fbff;margin-bottom:20px;">
       ${projectSummaryRow("Project Name", projectName)}
       ${projectSummaryRow("Project ID", projectId)}
@@ -179,7 +227,15 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
     ${historyHtml}`;
   const subject = `Project Update: ${projectName} [${projectId}]`;
   const html = brandedEmailHtml(content, { subject });
-  const raw = base64Url(mimeMessage({ to, cc, bcc, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "" }));
+  const raw = base64Url(mimeMessage({
+    to,
+    cc,
+    bcc,
+    subject,
+    html,
+    replyTo: process.env.OPERATIONAL_REPLY_TO || "",
+    fromName: "Rido Sport Project Update",
+  }));
   await gmailSendRawEmail(raw);
   return { sent: true, to, cc, bcc };
 }
@@ -192,6 +248,10 @@ function uniqueEmails(values) {
   return [...new Set(values.map(clean).filter((value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.toLowerCase())))];
 }
 
+function splitEmails(value) {
+  return clean(value).split(/[;,]/).map(clean).filter(Boolean);
+}
+
 function projectSummaryRow(label, value) {
   if (!clean(value)) return "";
   return `<div style="margin-bottom:8px;font-size:13px;line-height:1.5;"><span style="font-weight:700;color:#374151;">${escapeHtml(label)}:</span> <span style="color:#111827;">${escapeHtml(value)}</span></div>`;
@@ -202,7 +262,7 @@ export async function notifyLeadWorkflow(headers, data, previousData = null) {
   let nextStatus = current;
   const results = {};
 
-  if (!current || previousData) {
+  if ((!current || previousData) && (!previousData || hasMaterialChanges(headers, previousData, data))) {
     results.lead = await notifyLeadSubmitted(headers, data, previousData);
     if (results.lead.sent && !current) nextStatus = "Sent";
   }
@@ -272,6 +332,7 @@ function isHttpUrl(value) {
 }
 
 export async function notifyDealSubmitted(headers, data, previousData = null) {
+  if (previousData && !hasMaterialChanges(headers, previousData, data)) return { sent: false, reason: "no_material_changes" };
   if (clean(data["Notification Status"]) && !previousData) return { sent: false, reason: "already_processed" };
   const owner = data["Account Owner"] || data["Lead Owner"];
   const amount = data["Deal Value"] || data["Deal Amount"] || "";
@@ -288,6 +349,7 @@ export async function notifyDealSubmitted(headers, data, previousData = null) {
 }
 
 export async function notifyOrderSubmitted(headers, data, previousData = null) {
+  if (previousData && !hasMaterialChanges(headers, previousData, data)) return { sent: false, reason: "no_material_changes" };
   if (clean(data["Notification Status"]) && !previousData) return { sent: false, reason: "already_processed" };
   const owner = data["Account Owner"] || data["Lead Owner"] || data.Owner;
   const subject = `Order Updated: ${clean(data["Order ID"])} | ${clean(data["Deal Name"] || data.Company)} | ${clean(data["Order Status"] || data.Status)}`;
@@ -300,4 +362,31 @@ export async function notifyOrderSubmitted(headers, data, previousData = null) {
     previousData,
     cc: process.env.ORDER_OPERATIONAL_EMAIL_CC || `${DEFAULT_CC},sudeep@ridosports.com`,
   });
+}
+
+export async function notifySalesTrackerSubmitted(headers, data, previousData = null) {
+  if (previousData && !hasMaterialChanges(headers, previousData, data)) {
+    return { sent: false, reason: "no_material_changes" };
+  }
+  if (clean(data["Notification Status"]) && !previousData) {
+    return { sent: false, reason: "already_processed" };
+  }
+
+  const owner = data["Sales Person Name"] || data["Account Owner"] || data.Owner;
+  const subject = `Sales Tracker Updated: ${clean(data.Company)} | ${clean(data["Invoice No."])} | ${clean(data["Sale Type"])}`;
+  return sendOperationalEmail({
+    owner,
+    subject,
+    intro: previousData ? "A sales tracker record has been updated. The changes are shown below:" : "A sales tracker record has been added with the following details:",
+    headers,
+    data,
+    previousData,
+  });
+}
+
+function hasMaterialChanges(headers, previousData, data) {
+  const ignored = new Set(["Timestamp", "Notification Status", "Prefilled Link", "mode", "originalSNo"]);
+  return (headers || []).some((header) =>
+    !ignored.has(header) && clean(previousData?.[header]) !== clean(data?.[header])
+  );
 }

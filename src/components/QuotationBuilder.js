@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Grid, Typography, Button, TextField, IconButton,
-  MenuItem, Select, FormControl, InputLabel, Paper
+  MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip
 } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
@@ -78,6 +79,8 @@ export default function QuotationBuilder() {
 
   const [quoteType, setQuoteType] = useState('standard');
   const [catalog, setCatalog] = useState(null);
+  const [catalogLoading, setCatalogLoading] = useState(true);
+  const [catalogError, setCatalogError] = useState('');
   const [rows, setRows] = useState([{ ...emptyRow }]);
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
@@ -117,10 +120,16 @@ export default function QuotationBuilder() {
   // Load catalog
   useEffect(() => {
     (async () => {
+      setCatalogLoading(true);
+      setCatalogError('');
+      setCatalog(null);
       const j = await fetchJSON(`${QUOTATION_API_URL}?action=getCatalog&type=${quoteType}`);
-      if (j.ok) setCatalog(j.data);
-      else console.error('getCatalog error:', j.error);
-    })().catch(console.error);
+      if (!j.ok) throw new Error(j.error || 'Quotation catalogue could not be loaded');
+      setCatalog(j.data);
+    })().catch(err => {
+      console.error(err);
+      setCatalogError(err.message || 'Quotation catalogue could not be loaded');
+    }).finally(() => setCatalogLoading(false));
   }, [quoteType]);
 
   // Load leads
@@ -463,101 +472,61 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
-          {quoteType === 'standard' && <Paper sx={panelSx}>
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
-              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Line Items</Typography>
-              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
+              <Box sx={{ px: 2, pt: 2 }}>
+                <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quotation Items</Typography>
+                <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: '#64748b' }}>
+                  Dropdowns and item details are supplied by Equipment BD.
+                </Typography>
+              </Box>
+              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5, mr: 2, mt: 2 }}>
                 Add Line
               </Button>
             </Box>
-
-            {rows.map((r, i) => {
-              const subcats = subCatsFor(r.category);
-              const items = itemsFor(r.category, r.subCategory);
-              const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
-              const lineTotal = toNumber(r.qty) * lineRate;
-              return (
-                <Box key={i} sx={{
-                  mb: 1.5,
-                  p: 1.5,
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 1.5,
-                  bgcolor: '#fbfdff'
-                }}>
-                  <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.25, gap: 1 }}>
-                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#334155' }}>
-                      Line {i + 1}
-                    </Typography>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#0f172a' }}>
-                        ₹{money(lineTotal)}
-                      </Typography>
-                      {r.imageUrl && (
-                        <IconButton size="small" onClick={() => safeOpen(r.imageUrl)} title="Open image"><PictureInPictureAlt fontSize="small" /></IconButton>
-                      )}
-                      <IconButton size="small" onClick={() => removeRow(i)} title="Remove">
-                        <DeleteOutline fontSize="small" />
-                      </IconButton>
-                    </Box>
-                  </Box>
-
-                  <Grid container spacing={1.25}>
-                    <Grid item xs={12} md={2.2}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.category} displayEmpty onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Category</em></MenuItem>
-                          {(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={2.2}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.subCategory} displayEmpty disabled={!r.category}
-                          onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Sub-category</em></MenuItem>
-                          {subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12} md={2.4}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.itemCode} displayEmpty disabled={!r.category || !r.subCategory}
-                          onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}>
-                          <MenuItem value=""><em>Item</em></MenuItem>
-                          {items.map(it => <MenuItem key={it.code} value={it.code}>{it.code}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={6} md={1.1}>
-                      <TextField fullWidth size="small" value={r.unit || ''} label="Unit" InputLabelProps={{ shrink: true }}
-                        inputProps={{ readOnly: true }} sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1}>
-                      <TextField fullWidth size="small" type="number" label="Qty" value={r.qty}
-                        onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1.3}>
-                      <TextField fullWidth size="small" type="number" label="Rate"
-                        value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')}
-                        onChange={e => handleRowChange(i, 'rateOverride', e.target.value)}
-                        sx={fieldSx} />
-                    </Grid>
-                    <Grid item xs={6} md={1.8}>
-                      <FormControl fullWidth size="small" sx={fieldSx}>
-                        <Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>
-                          {ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                        </Select>
-                      </FormControl>
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField fullWidth size="small" multiline minRows={2} label="Description"
-                        value={r.desc || ''} onChange={e => handleRowChange(i, 'desc', e.target.value)}
-                        sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.35 } }} />
-                    </Grid>
-                  </Grid>
-                </Box>
-              );
-            })}
+            {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
+            {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
+            {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
+              <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
+            )}
+            <TableContainer sx={{ overflowX: 'auto', borderTop: '1px solid #e2e8f0' }}>
+              <Table size="small" sx={{ minWidth: 1320, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
+                <TableHead><TableRow>
+                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Category</TableCell>
+                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
+                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ minWidth: 270 }}>Description</TableCell>
+                  <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
+                  <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
+                  <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
+                </TableRow></TableHead>
+                <TableBody>
+                  {rows.map((r, i) => {
+                    const subcats = subCatsFor(r.category);
+                    const items = itemsFor(r.category, r.subCategory);
+                    const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
+                    const lineTotal = toNumber(r.qty) * lineRate;
+                    return <TableRow key={i} hover>
+                      <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
+                      <TableCell><TextField fullWidth size="small" multiline minRows={2} value={r.desc || ''} placeholder="Populated from Equipment BD" onChange={e => handleRowChange(i, 'desc', e.target.value)} sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.3 } }} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>
+                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell><Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
+                    </TableRow>;
+                  })}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
+              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>Select Category, then Sub Category, then Item Code—matching the New Template sheet.</Typography>
+              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(totals.subTotal)}</Typography>
+            </Box>
           </Paper>}
         </Grid>
 

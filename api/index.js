@@ -11,6 +11,7 @@ import orders from "./_handlers/orders.js";
 import projects from "./_handlers/projects.js";
 import quotations from "./_handlers/quotations.js";
 import salesTracker from "./_handlers/sales-tracker.js";
+import tenders from "./_handlers/tenders.js";
 
 export const config = {
   maxDuration: 60,
@@ -30,6 +31,7 @@ const handlers = {
   projects,
   quotations,
   "sales-tracker": salesTracker,
+  tenders,
 };
 
 export default async function handler(req, res) {

@@ -39,9 +39,8 @@ function ManageTender() {
   const [submitting, setSubmitting] = useState(false);
   const [files, setFiles] = useState({});
 
-  // URLs – UPDATE with your deployed Web App endpoint base
-  const formSubmitUrl = 'https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec';
-  const dropdownUrl = `https://script.google.com/macros/s/AKfycbyJqBc20hrZLKiPuKanwxDhqqbeqWW7-8x57Kvwjuep0bzRzRbDtD2wnuA1-VjaP1QfHQ/exec?action=dropdowns`;
+  const formSubmitUrl = '/api/tenders';
+  const dropdownUrl = '/api/tenders?action=dropdowns';
 
   useEffect(() => {
     const fetchFields = async () => {
@@ -179,11 +178,12 @@ function ManageTender() {
 
       await fetch(formSubmitUrl, {
         method: 'POST',
-        mode: 'no-cors',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
+      }).then(async response => {
+        if (!response.ok) throw new Error(await response.text());
       });
 
       alert('✅ Tender submitted successfully!');

@@ -15,11 +15,11 @@ const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
-  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff' },
+  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 },
   '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
   '& .MuiInputLabel-root': { fontFamily: 'Montserrat, sans-serif' }
 };
-const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff' };
+const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 };
 const panelSx = {
   p: 2,
   border: '1px solid #dbe3ef',
@@ -184,6 +184,37 @@ export default function QuotationBuilder() {
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
   const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
+
+  const handleAthleticPreset = (preset) => {
+    const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
+    const customMethod = preset === 'Manual surveyed area'
+      ? 'Manual surveyed area'
+      : preset === 'Rectangular/custom facility'
+        ? 'Length × breadth'
+        : preset === 'Custom geometry'
+          ? 'Perimeter × lane width × lanes'
+          : 'Preset benchmark area';
+    const usable = (value) => toNumber(value) || '';
+    setAthletic(current => ({
+      ...current,
+      preset,
+      areaMethod: customMethod,
+      lengthPerimeter: record ? usable(record['Track Length']) : current.lengthPerimeter,
+      laneQuantity: record ? usable(record.Lanes) : current.laneQuantity,
+      laneWidth: record ? (toNumber(record['Lane Width']) || 1.22) : current.laneWidth,
+      drainPerimeter: record ? usable(record['Drain Perimeter']) : current.drainPerimeter,
+      manualArea: preset === 'Manual surveyed area' ? current.manualArea : '',
+      breadth: preset === 'Rectangular/custom facility' ? current.breadth : '',
+    }));
+  };
+
+  const athleticArea = useMemo(() => {
+    const preset = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === athletic.preset);
+    if (athletic.areaMethod === 'Preset benchmark area') return toNumber(preset?.['Benchmark Surface Area']);
+    if (athletic.areaMethod === 'Manual surveyed area') return toNumber(athletic.manualArea);
+    if (athletic.areaMethod === 'Length × breadth') return toNumber(athletic.lengthPerimeter) * toNumber(athletic.breadth);
+    return toNumber(athletic.lengthPerimeter) * toNumber(athletic.laneWidth) * toNumber(athletic.laneQuantity);
+  }, [athletic, catalog]);
 
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
@@ -434,7 +465,6 @@ export default function QuotationBuilder() {
               <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
               <Grid container spacing={1.5}>
                 {[
-                  ['preset', 'Preset / Benchmark', catalog?.lists?.['Preset / Benchmark'] || []],
                   ['surfaceSystem', 'Surface System', catalog?.lists?.['Track Systems'] || []],
                   ['areaMethod', 'Area Calculation Method', catalog?.lists?.['Area Calculation Methods'] || []],
                   ['civilWorks', 'Civil Base Works', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
@@ -442,8 +472,8 @@ export default function QuotationBuilder() {
                   ['trackEquipment', 'Track Equipment', catalog?.lists?.['Yes / No'] || ['Yes', 'No']],
                   ['installation', 'Installation', catalog?.lists?.Installation || ['Inclusive', 'Extra']],
                 ].map(([key, label, options]) => (
-                  <Grid item xs={12} md={4} key={key}>
-                    <FormControl fullWidth size="small" sx={fieldSx}>
+                  <Grid item xs={12} md={6} key={key}>
+                    <FormControl fullWidth size="medium" sx={fieldSx}>
                       <InputLabel>{label}</InputLabel>
                       <Select value={athletic[key]} label={label} onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={selectSx}>
                         {options.map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
@@ -451,6 +481,14 @@ export default function QuotationBuilder() {
                     </FormControl>
                   </Grid>
                 ))}
+                <Grid item xs={12} md={6} sx={{ order: -1 }}>
+                  <FormControl fullWidth size="medium" sx={fieldSx}>
+                    <InputLabel>Preset / Benchmark</InputLabel>
+                    <Select value={athletic.preset} label="Preset / Benchmark" onChange={e => handleAthleticPreset(e.target.value)} sx={selectSx}>
+                      {(catalog?.lists?.['Preset / Benchmark'] || []).map(value => <MenuItem key={value} value={value}>{value}</MenuItem>)}
+                    </Select>
+                  </FormControl>
+                </Grid>
                 {[
                   ['lengthPerimeter', 'Length / Perimeter (m)'], ['breadth', 'Breadth (m)'],
                   ['laneWidth', 'Lane Width (m)'], ['laneQuantity', 'Lane Quantity'],
@@ -459,13 +497,17 @@ export default function QuotationBuilder() {
                   ['freightAmount', 'Freight / Mobilisation'], ['certificationAmount', 'Certification / Testing'],
                   ['validityDays', 'Validity (days)'],
                 ].map(([key, label]) => (
-                  <Grid item xs={6} md={4} key={key}>
-                    <TextField fullWidth size="small" type="number" label={label} value={athletic[key]}
+                  <Grid item xs={12} md={6} key={key}>
+                    <TextField fullWidth size="medium" type="number" label={label} value={athletic[key]}
                       onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={fieldSx} />
                   </Grid>
                 ))}
+                <Grid item xs={12} md={6}>
+                  <TextField fullWidth size="medium" label="Calculated Quoted Surface Area (sqm)" value={athleticArea ? athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
+                    helperText="Calculated from the selected preset and area method" inputProps={{ readOnly: true }} sx={fieldSx} />
+                </Grid>
                 <Grid item xs={12}>
-                  <TextField fullWidth size="small" label="Payment Terms" value={athletic.paymentTerms}
+                  <TextField fullWidth size="medium" label="Payment Terms" value={athletic.paymentTerms}
                     onChange={e => setAthletic(a => ({ ...a, paymentTerms: e.target.value }))} sx={fieldSx} />
                 </Grid>
               </Grid>
@@ -492,7 +534,7 @@ export default function QuotationBuilder() {
             <TableContainer sx={{ overflowX: 'auto', borderTop: '1px solid #e2e8f0' }}>
               <Table size="small" sx={{ minWidth: 1320, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
                 <TableHead><TableRow>
-                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Category</TableCell>
+                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
                   <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ minWidth: 270 }}>Description</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
@@ -553,6 +595,7 @@ export default function QuotationBuilder() {
                   ['Preset', athletic.preset], ['Surface System', athletic.surfaceSystem],
                   ['Area Method', athletic.areaMethod], ['Civil Works', athletic.civilWorks],
                   ['Drainage', athletic.drainageWorks], ['Track Equipment', athletic.trackEquipment],
+                  ['Quoted Surface Area', athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'],
                   ['GST', `${athletic.gstPct || 0}%`], ['Discount', `${athletic.discountPct || 0}%`],
                 ].map(([label, value]) => (
                   <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.85, borderBottom: '1px solid #e2e8f0' }}>

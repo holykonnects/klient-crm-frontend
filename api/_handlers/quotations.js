@@ -49,9 +49,9 @@ async function getCatalog() {
   const items = {};
 
   rows.forEach((row) => {
-    const category = clean(pick(row, ["Category", "Cat"]));
+    const category = clean(pick(row, ["Court", "Category", "Cat"]));
     const subCategory = clean(pick(row, ["SubCategory", "Sub Category", "Sub-Category", "Sub"]));
-    const itemCode = clean(pick(row, ["ItemCode", "Item Code", "Code"]));
+    const itemCode = clean(pick(row, ["Item", "ItemCode", "Item Code", "Code"]));
     if (!category || !subCategory || !itemCode) return;
 
     categories.add(category);
@@ -62,11 +62,11 @@ async function getCatalog() {
     if (!items[key]) items[key] = [];
     items[key].push({
       code: itemCode,
-      name: clean(pick(row, ["Item Name", "Name"])) || itemCode,
+      name: clean(pick(row, ["Item Definition", "Item Name", "Name"])) || itemCode,
       unit: clean(pick(row, ["Unit"])),
-      rate: Number(clean(pick(row, ["Rate"])).replace(/[,\s₹]/g, "")) || 0,
+      rate: Number(clean(pick(row, ["Unit Price", "Rate"])).replace(/[,\s₹]/g, "")) || 0,
       desc: clean(pick(row, ["Description", "Item Definition"])),
-      imageUrl: clean(pick(row, ["ImageURL", "Image URL"])),
+      imageUrl: clean(pick(row, ["Images", "ImageURL", "Image URL"])),
       itemType: category === "Flooring" ? "Non Equipment" : "Equipment",
     });
   });

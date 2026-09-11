@@ -10,9 +10,11 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
+import QuotationAdmin from './QuotationAdmin';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
+const QUOTATION_ENGINE_VERSION = 'quotation-v1';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 },
@@ -100,6 +102,7 @@ export default function QuotationBuilder() {
   });
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
+  const [adminOpen, setAdminOpen] = useState(false);
   const [athletic, setAthletic] = useState({
     preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
     areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
@@ -264,6 +267,7 @@ export default function QuotationBuilder() {
     try {
       const payload = {
         quoteType,
+        engineVersion: QUOTATION_ENGINE_VERSION,
         meta,
         pricing,
         athletic: quoteType === 'athletic' ? athletic : undefined,
@@ -306,6 +310,10 @@ export default function QuotationBuilder() {
     }
   };
 
+  if (adminOpen && user?.role === 'Admin') {
+    return <QuotationAdmin user={user} onClose={() => setAdminOpen(false)} />;
+  }
+
   if (!canUseQuotation) {
     return (
       <Box sx={{ p: 3, fontFamily: 'Montserrat, sans-serif' }}>
@@ -336,6 +344,7 @@ export default function QuotationBuilder() {
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {user?.role === 'Admin' && <Button variant="outlined" onClick={() => setAdminOpen(true)} sx={{ borderRadius: 1.5 }}>Manage Quote Data</Button>}
           <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
             <InputLabel>Quotation Type</InputLabel>
             <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>

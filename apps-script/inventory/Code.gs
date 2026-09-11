@@ -103,8 +103,10 @@ function brandedInventoryEmailHtml_(title, contentHtml) {
           <td align="center">
             <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border:1px solid #e4ebf5;border-radius:8px;overflow:hidden;">
               <tr>
-                <td style="padding:22px 28px;background:#ffffff;border-bottom:4px solid #6495ED;">
-                  <img src="${EMAIL_PUBLIC_APP_URL}/assets/rido-sports-logo.png" alt="Rido Sports" style="display:block;max-width:170px;max-height:64px;width:auto;height:auto;" />
+                <td bgcolor="#ffffff" style="padding:18px 24px;background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border-bottom:4px solid #6495ED;">
+                  <table role="presentation" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border:1px solid #e4ebf5;border-radius:8px;"><tr><td bgcolor="#ffffff" style="padding:10px 14px;background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);">
+                    <img src="${EMAIL_PUBLIC_APP_URL}/assets/rido-sports-logo.png" alt="Rido Sports" style="display:block;max-width:170px;max-height:64px;width:auto;height:auto;" />
+                  </td></tr></table>
                 </td>
               </tr>
               <tr>

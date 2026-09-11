@@ -156,6 +156,8 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="color-scheme" content="light">
+    <meta name="supported-color-schemes" content="light">
     <title>${preheader}</title>
   </head>
   <body style="margin:0;padding:0;background:#f3f6fb;font-family:Montserrat,Arial,Helvetica,sans-serif;color:#172033;">
@@ -165,10 +167,14 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
         <td align="center">
           <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:720px;background:#ffffff;border:1px solid #e4ebf5;border-radius:8px;overflow:hidden;">
             <tr>
-              <td style="padding:22px 28px;background:#ffffff;border-bottom:4px solid #6495ED;">
-                ${ridoLogo
-                  ? logoImg(ridoLogo, "Rido Sports", "display:block;max-width:170px;max-height:64px;width:auto;height:auto;")
-                  : '<div style="font-size:20px;font-weight:700;color:#12315c;letter-spacing:0;">Rido Sports</div>'}
+              <td bgcolor="#ffffff" style="padding:18px 24px;background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border-bottom:4px solid #6495ED;">
+                <table role="presentation" cellspacing="0" cellpadding="0" bgcolor="#ffffff" style="background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);border:1px solid #e4ebf5;border-radius:8px;">
+                  <tr><td bgcolor="#ffffff" style="padding:10px 14px;background-color:#ffffff;background-image:linear-gradient(#ffffff,#ffffff);">
+                    ${ridoLogo
+                      ? logoImg(ridoLogo, "Rido Sports", "display:block;max-width:170px;max-height:64px;width:auto;height:auto;color:#12315c;")
+                      : '<div style="font-size:20px;font-weight:700;color:#12315c;letter-spacing:0;">Rido Sports</div>'}
+                  </td></tr>
+                </table>
               </td>
             </tr>
             <tr>

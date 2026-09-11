@@ -8,6 +8,8 @@ import {
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
+import ExpandMore from '@mui/icons-material/ExpandMore';
+import ExpandLess from '@mui/icons-material/ExpandLess';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
@@ -17,11 +19,11 @@ const QUOTATION_EXPORT_URL = '/api/gas';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
 const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
-  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 },
+  '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 },
   '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
   '& .MuiInputLabel-root': { fontFamily: 'Montserrat, sans-serif' }
 };
-const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff', minHeight: 48 };
+const selectSx = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem', borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 };
 const panelSx = {
   p: 2,
   border: '1px solid #dbe3ef',
@@ -103,6 +105,7 @@ export default function QuotationBuilder() {
   const [exporting, setExporting] = useState(false);
   const [lastExport, setLastExport] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [athletic, setAthletic] = useState({
     preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
     areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
@@ -369,8 +372,41 @@ export default function QuotationBuilder() {
         </Box>
       </Box>
 
+      <Paper sx={{ ...panelSx, p: 0, mb: 2.5, overflow: 'hidden' }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, px: 2, py: 1.25 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: { xs: 1.5, md: 3 }, flexWrap: 'wrap', minWidth: 0 }}>
+            <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Summary</Typography>
+            {quoteType === 'standard' ? <>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Subtotal <strong style={{ color: '#0f172a' }}>₹{money(totals.subTotal)}</strong></Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>GST <strong style={{ color: '#0f172a' }}>₹{money(totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst)}</strong></Typography>
+              <Box sx={{ px: 1.5, py: 0.7, bgcolor: '#0f172a', color: '#fff', borderRadius: 1.25 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(totals.grand)}</Typography></Box>
+            </> : <>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{athletic.preset}</Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Area <strong style={{ color: '#0f172a' }}>{athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
+            </>}
+          </Box>
+          <Button size="small" endIcon={summaryExpanded ? <ExpandLess /> : <ExpandMore />} onClick={() => setSummaryExpanded(value => !value)} sx={{ whiteSpace: 'nowrap' }}>
+            {summaryExpanded ? 'Hide details' : 'View details'}
+          </Button>
+        </Box>
+        {summaryExpanded && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr 1fr', md: 'repeat(4, minmax(0, 1fr))' }, gap: 0, borderTop: '1px solid #e2e8f0', bgcolor: '#f8fafc' }}>
+          {(quoteType === 'standard' ? [
+            ['Equipment', `₹${money(totals.equipment)}`], ['Non Equipment', `₹${money(totals.nonEquipment)}`],
+            ['Discounts', `-₹${money(totals.equipmentDiscount + totals.nonEquipmentDiscount)}`],
+            ['Freight + Installation', `₹${money(totals.freight + totals.installation)}`]
+          ] : [
+            ['Surface System', athletic.surfaceSystem], ['Area Method', athletic.areaMethod],
+            ['Civil / Drainage', `${athletic.civilWorks} / ${athletic.drainageWorks}`],
+            ['GST / Discount', `${athletic.gstPct || 0}% / ${athletic.discountPct || 0}%`]
+          ]).map(([label, value]) => <Box key={label} sx={{ px: 2, py: 1.25, borderRight: '1px solid #e2e8f0' }}>
+            <Typography sx={{ fontSize: '0.68rem', color: '#64748b', textTransform: 'uppercase', fontWeight: 700 }}>{label}</Typography>
+            <Typography sx={{ mt: 0.25, fontSize: '0.86rem', fontWeight: 800, color: '#0f172a' }}>{value}</Typography>
+          </Box>)}
+        </Box>}
+      </Paper>
+
       <Grid container spacing={2.5} alignItems="flex-start">
-        <Grid item xs={12} lg={8.5}>
+        <Grid item xs={12}>
           <Paper sx={{ ...panelSx, mb: 2.5 }}>
             <Typography sx={sectionTitleSx}>Quote Details</Typography>
             <Grid container spacing={1.5}>
@@ -434,19 +470,19 @@ export default function QuotationBuilder() {
           {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5 }}>
             <Typography sx={sectionTitleSx}>Pricing Controls</Typography>
             <Grid container spacing={1.5}>
-              <Grid item xs={6} md={3}>
+              <Grid item xs={6} md={12 / 7}>
                 <TextField fullWidth size="small" type="number" label="Freight" value={pricing.freightAmount}
                   onChange={e => setPricing(p => ({ ...p, freightAmount: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid item xs={6} md={12 / 7}>
                 <TextField fullWidth size="small" type="number" label="Installation" value={pricing.installationAmount}
                   onChange={e => setPricing(p => ({ ...p, installationAmount: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid item xs={6} md={12 / 7}>
                 <TextField fullWidth size="small" type="number" label="Equipment Discount %" value={pricing.equipmentDiscountPct}
                   onChange={e => setPricing(p => ({ ...p, equipmentDiscountPct: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={6} md={3}>
+              <Grid item xs={6} md={12 / 7}>
                 <TextField fullWidth size="small" type="number" label="Non Equipment Discount %" value={pricing.nonEquipmentDiscountPct}
                   onChange={e => setPricing(p => ({ ...p, nonEquipmentDiscountPct: e.target.value }))} sx={fieldSx} />
               </Grid>
@@ -455,7 +491,7 @@ export default function QuotationBuilder() {
                 ['nonEquipmentGstPct', 'GST Non Equipment'],
                 ['freightInstallGstPct', 'GST Freight + Installation']
               ].map(([key, label]) => (
-                <Grid item xs={12} md={4} key={key}>
+                <Grid item xs={6} md={12 / 7} key={key}>
                   <FormControl fullWidth size="small" sx={fieldSx}>
                     <InputLabel>{label}</InputLabel>
                     <Select value={pricing[key]} label={label}
@@ -579,55 +615,6 @@ export default function QuotationBuilder() {
               <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(totals.subTotal)}</Typography>
             </Box>
           </Paper>}
-        </Grid>
-
-        <Grid item xs={12} lg={3.5}>
-          <Paper sx={{ ...panelSx, position: { lg: 'sticky' }, top: { lg: 24 } }}>
-            <Typography sx={sectionTitleSx}>Quote Summary</Typography>
-            {quoteType === 'standard' ? [
-              ['Equipment', totals.equipment],
-              ['Non Equipment', totals.nonEquipment],
-              ['Subtotal', totals.subTotal],
-              ['Discounts', -(totals.equipmentDiscount + totals.nonEquipmentDiscount)],
-              ['GST', totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst],
-              ['Freight + Installation', totals.freight + totals.installation]
-            ].map(([label, value]) => (
-              <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', py: 0.85, borderBottom: '1px solid #e2e8f0' }}>
-                <Typography sx={{ fontSize: '0.86rem', color: '#64748b' }}>{label}</Typography>
-                <Typography sx={{ fontSize: '0.86rem', fontWeight: 700, color: value < 0 ? '#b91c1c' : '#0f172a' }}>
-                  {value < 0 ? '-' : ''}₹{money(Math.abs(value))}
-                </Typography>
-              </Box>
-            )) : (
-              <>
-                {[
-                  ['Preset', athletic.preset], ['Surface System', athletic.surfaceSystem],
-                  ['Area Method', athletic.areaMethod], ['Civil Works', athletic.civilWorks],
-                  ['Drainage', athletic.drainageWorks], ['Track Equipment', athletic.trackEquipment],
-                  ['Quoted Surface Area', athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'],
-                  ['GST', `${athletic.gstPct || 0}%`], ['Discount', `${athletic.discountPct || 0}%`],
-                ].map(([label, value]) => (
-                  <Box key={label} sx={{ display: 'flex', justifyContent: 'space-between', gap: 1, py: 0.85, borderBottom: '1px solid #e2e8f0' }}>
-                    <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{label}</Typography>
-                    <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, textAlign: 'right' }}>{value}</Typography>
-                  </Box>
-                ))}
-                <Typography sx={{ mt: 1.5, fontSize: '0.78rem', color: '#64748b' }}>
-                  Exact quantities and totals are calculated by the Athletic workbook’s preserved formulas during export.
-                </Typography>
-              </>
-            )}
-            {quoteType === 'standard' && (
-            <Box sx={{ mt: 2, p: 1.5, bgcolor: '#0f172a', borderRadius: 1.5, color: '#fff' }}>
-              <Typography sx={{ fontSize: '0.75rem', color: '#cbd5e1', fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0 }}>
-                Grand Total
-              </Typography>
-              <Typography sx={{ mt: 0.5, fontSize: '1.45rem', fontWeight: 800 }}>
-                ₹{money(totals.grand)}
-              </Typography>
-            </Box>
-            )}
-          </Paper>
         </Grid>
       </Grid>
     </Box>

@@ -384,6 +384,18 @@ export async function notifySalesTrackerSubmitted(headers, data, previousData = 
   });
 }
 
+export async function notifyTenderSubmitted(headers, data) {
+  const bidNumber = clean(data["Bid Number"]) || "Unnumbered Tender";
+  return sendDirectOperationalEmail({
+    to: process.env.TENDER_OPERATIONAL_EMAIL_TO || "info@ridosports.com,Sidhant@ridosports.com,Sandeep@ridosports.com",
+    cc: process.env.TENDER_OPERATIONAL_EMAIL_CC || "info@klientkonnect.com",
+    subject: `New/Update Tender Submission - ${bidNumber}`,
+    intro: "A new or updated tender has been submitted with the following details:",
+    headers,
+    data,
+  });
+}
+
 function hasMaterialChanges(headers, previousData, data) {
   const ignored = new Set(["Timestamp", "Notification Status", "Prefilled Link", "mode", "originalSNo"]);
   return (headers || []).some((header) =>

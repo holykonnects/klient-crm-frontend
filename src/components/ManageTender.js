@@ -5,6 +5,7 @@ import {
 } from '@mui/material';
 import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import { useAuth } from './AuthContext';
 
 // ✅ ADDED: MUI Date Picker imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -32,6 +33,7 @@ const theme = createTheme({
 });
 
 function ManageTender() {
+  const { user } = useAuth();
   const [fields, setFields] = useState([]);
   const [dropdownOptions, setDropdownOptions] = useState({});
   const [formValues, setFormValues] = useState({});
@@ -143,7 +145,9 @@ function ManageTender() {
 
     const payload = {
       ...formValues,
-      Timestamp: timestamp
+      Timestamp: timestamp,
+      updatedByName: user?.username || user?.name || '',
+      updatedByEmail: user?.email || user?.username || ''
     };
 
     try {

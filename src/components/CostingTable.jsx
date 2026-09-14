@@ -169,7 +169,13 @@ async function apiPost(payload) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  const data = await response.json();
+  const text = await response.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch {
+    throw new Error(`Costing update returned invalid JSON (${response.status})`);
+  }
   if (!response.ok || data?.success === false) throw new Error(data?.error || `Costing update failed (${response.status})`);
   return data;
 }
@@ -2086,7 +2092,7 @@ export default function CostingTable() {
       alert("New Cost Sheet created and line items added.");
     } catch (e) {
       console.error("ADD_EXPENSE_ERROR", e);
-      alert("Failed to submit expense.");
+      alert(e?.message || "Failed to submit expense.");
     } finally {
       setLoading(false);
       setSubmitProgress(null);

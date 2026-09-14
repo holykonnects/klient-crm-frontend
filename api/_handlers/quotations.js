@@ -1,5 +1,14 @@
 import { SHEETS } from "../_lib/crmConfig.js";
-import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
+import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
+
+export const QUOTATION_ENGINE_VERSION = "quotation-v1";
+const ADMIN_TABLES = {
+  equipment: { book: "standard", sheetNames: ["Equipment BD"], readOnly: ["concat"] },
+  terms: { book: "standard", sheetNames: ["tc"], readOnly: [] },
+  rates: { book: "athletic", sheetNames: ["Rate Library"], readOnly: [] },
+  presets: { book: "athletic", sheetNames: ["Presets"], readOnly: [] },
+  lists: { book: "athletic", sheetNames: ["Lists"], readOnly: [] },
+};
 
 function clean(value) {
   return String(value || "").trim();
@@ -28,6 +37,56 @@ function canUseQuotation(user, rows) {
   if (!row) return false;
   if (clean(row.Role).toLowerCase() === "admin") return true;
   return clean(row["Page Access"]).split(",").map((x) => clean(x).toLowerCase()).includes("quotation");
+}
+
+function isAdmin(user, rows) {
+  const username = clean(user).toLowerCase();
+  return rows.some((row) => clean(row["Login Username"]).toLowerCase() === username && clean(row.Role).toLowerCase() === "admin");
+}
+
+function tableSpreadsheet(definition) {
+  return definition.book === "athletic"
+    ? SHEETS.quotations.athleticSpreadsheetId
+    : SHEETS.quotations.referenceSpreadsheetId;
+}
+
+async function getAdminTable(table, user) {
+  const definition = ADMIN_TABLES[table];
+  if (!definition) throw new Error(`Unknown quotation configuration table: ${table}`);
+  const loginRows = await getLoginRows();
+  if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
+  const spreadsheetId = tableSpreadsheet(definition);
+  const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
+  const values = await getValues(spreadsheetId, sheetName);
+  const headers = values[0] || [];
+  const rows = rowsToObjects(values).map((row, index) => ({ ...row, __rowNumber: index + 2 }));
+  return { ok: true, table, sheetName, headers, readOnly: definition.readOnly, rows, engineVersion: QUOTATION_ENGINE_VERSION };
+}
+
+async function saveAdminRow(table, user, submitted) {
+  const definition = ADMIN_TABLES[table];
+  if (!definition) throw new Error(`Unknown quotation configuration table: ${table}`);
+  const loginRows = await getLoginRows();
+  if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
+  const spreadsheetId = tableSpreadsheet(definition);
+  const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
+  const values = await getValues(spreadsheetId, sheetName);
+  const headers = values[0] || [];
+  const editableHeaders = headers.filter((header) => header && !definition.readOnly.includes(header));
+  const rowNumber = Number(submitted.__rowNumber) || 0;
+
+  if (rowNumber >= 2) {
+    await Promise.all(editableHeaders.map((header) => updateCell(spreadsheetId, sheetName, rowNumber, headers.indexOf(header) + 1, submitted[header] ?? "")));
+    return { ok: true, created: false, rowNumber, engineVersion: QUOTATION_ENGINE_VERSION };
+  }
+
+  const appended = await appendValues(spreadsheetId, sheetName, buildRow(headers, submitted, { timestampFields: [] }));
+  const createdRow = appendedRowNumber(appended);
+  if (table === "equipment" && createdRow && headers.includes("concat")) {
+    const concatColumn = headers.indexOf("concat") + 1;
+    await updateCell(spreadsheetId, sheetName, createdRow, concatColumn, `=A${createdRow}&" : "&B${createdRow}&" : "&C${createdRow}`);
+  }
+  return { ok: true, created: true, rowNumber: createdRow, engineVersion: QUOTATION_ENGINE_VERSION };
 }
 
 async function getLoginRows() {
@@ -128,14 +187,22 @@ async function getLeadsForUser(user) {
 
 export default async function handler(req, res) {
   try {
-    if (req.method !== "GET") return res.status(405).json({ ok: false, error: "Method Not Allowed" });
-    const action = clean(req.query.action);
-    if (action === "getCatalog") {
-      return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
+    if (req.method === "GET") {
+      const action = clean(req.query.action);
+      if (action === "getCatalog") {
+        return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
+      }
+      if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
+      if (action === "getAdminTable") return res.status(200).json(await getAdminTable(clean(req.query.table), req.query.user));
+      return res.status(400).json({ ok: false, error: "Invalid action" });
     }
-    if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
-    return res.status(400).json({ ok: false, error: "Invalid action" });
+    if (req.method === "POST") {
+      const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
+      if (body.action === "saveAdminRow") return res.status(200).json(await saveAdminRow(clean(body.table), body.user, body.row || {}));
+      return res.status(400).json({ ok: false, error: "Invalid action" });
+    }
+    return res.status(405).json({ ok: false, error: "Method Not Allowed" });
   } catch (err) {
-    return res.status(500).json({ ok: false, error: err.message || String(err) });
+    return res.status(err.status || 500).json({ ok: false, error: err.message || String(err) });
   }
 }

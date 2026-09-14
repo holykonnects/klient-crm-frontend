@@ -132,7 +132,18 @@ async function sheetObjects(spreadsheetId, sheetNames, key, ttl) {
 }
 
 async function proxyPost(req, res) {
-  const response = await fetch(GAS_URL, { method: "POST", headers: { "Content-Type": "text/plain;charset=utf-8" }, body: JSON.stringify(req.body || {}) });
+  let response = await fetch(GAS_URL, {
+    method: "POST",
+    redirect: "manual",
+    headers: { "Content-Type": "text/plain;charset=utf-8" },
+    body: JSON.stringify(req.body || {}),
+  });
+
+  const redirectUrl = response.headers.get("location");
+  if (response.status >= 300 && response.status < 400 && redirectUrl) {
+    response = await fetch(redirectUrl, { method: "GET" });
+  }
+
   const text = await response.text();
   cache.clear();
   res.status(response.ok ? 200 : response.status);

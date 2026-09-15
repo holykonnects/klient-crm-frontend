@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import {
   Box, Button, CircularProgress, TextField, Typography, Paper
 } from '@mui/material';
 import { createTheme, ThemeProvider } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from './AuthContext'; // adjust path accordingly
+import { useAuth } from './AuthContext';
+import { createLoginRequest } from '../utils/loginRequest';
 
 const theme = createTheme({
   typography: {
@@ -18,33 +19,26 @@ function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const inFlight = useRef(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [submitLogin] = useState(() => createLoginRequest());
 
   const handleLogin = async (event) => {
     event?.preventDefault();
-    if (submitting) return;
+    if (inFlight.current) return;
+    inFlight.current = true;
     setSubmitting(true);
     setError('');
     try {
-      const res = await fetch('/api/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password })
-      });
-
-
-      const result = await res.json();
-      if (res.ok && result.success) {
-        login({ username: result.username, email: result.email || email, role: result.role, pageAccess: result.pageAccess });
-        navigate('/dashboard');
-      } else {
-        setError('Invalid email or password');
-      }
+      const result = await submitLogin(email, password);
+      if (!result) return;
+      login({ username: result.username, email: result.email || email, role: result.role, pageAccess: result.pageAccess });
+      navigate('/dashboard');
     } catch (err) {
-      console.error('Login error:', err);
-      setError('Unable to login. Please try again.');
+      setError(err.message || 'Unable to login. Please try again.');
     } finally {
+      inFlight.current = false;
       setSubmitting(false);
     }
   };
@@ -71,13 +65,13 @@ function LoginPage() {
           <Box component="form" onSubmit={handleLogin}>
             <TextField
               fullWidth
-              label="Email"
+              label="Email or username"
               variant="outlined"
               margin="normal"
               size="small"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              autoComplete="email"
+              autoComplete="username"
               disabled={submitting}
             />
             <TextField

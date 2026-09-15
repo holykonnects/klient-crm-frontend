@@ -1,4 +1,5 @@
 // src/components/CostingTable.jsx
+import { postCosting as apiPost } from "../utils/costingApi";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   Box,
@@ -160,23 +161,6 @@ async function jsonpGet(url) {
   const response = await fetch(url, { method: "GET" });
   const data = await response.json();
   if (!response.ok) throw new Error(data?.error || `Costing request failed (${response.status})`);
-  return data;
-}
-
-async function apiPost(payload) {
-  const response = await fetch(BACKEND, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const text = await response.text();
-  let data = null;
-  try {
-    data = text ? JSON.parse(text) : null;
-  } catch {
-    throw new Error(`Costing update returned invalid JSON (${response.status})`);
-  }
-  if (!response.ok || data?.success === false) throw new Error(data?.error || `Costing update failed (${response.status})`);
   return data;
 }
 
@@ -359,6 +343,7 @@ function normalizeTsForKey(v) {
 }
 
 function makeLineItemKey(costSheetId, item) {
+  if (item?.["Line Item ID"]) return String(item["Line Item ID"]);
   const csid = String(costSheetId || item?.["Cost Sheet ID"] || "").trim();
   const ts = normalizeTsForKey(
     item?.["Entry Timestamp"] || item?.["EntryTimestamp"] || item?.["Timestamp"]
@@ -868,37 +853,26 @@ export default function CostingTable() {
 
     const url = `${BACKEND}?${params.toString()}`;
 
-    if (String(extractForm.format || "").toLowerCase() !== "xlsx") {
-      window.open(url, "_blank");
-      setOpenExtract(false);
-      return;
-    }
-
     try {
       setLoading(true);
-
-      const res = await fetch(url, { method: "GET" });
-      const text = await res.text();
-
-      let data = null;
-      try {
-        data = JSON.parse(text);
-      } catch (parseErr) {
-        console.error("XLSX_EXPORT_NON_JSON_RESPONSE", text);
-        throw new Error("Backend did not return valid JSON for XLSX export.");
+      const response = await fetch(url);
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        throw new Error(data.error || "Export failed");
       }
-
-      if (data?.success && data?.downloadUrl) {
-        window.open(data.downloadUrl, "_blank");
-        setOpenExtract(false);
-        return;
-      }
-
-      console.error("XLSX_EXPORT_BAD_RESPONSE", data);
-      alert(data?.error || "Excel export failed.");
-    } catch (e) {
-      console.error("XLSX_EXPORT_ERROR", e);
-      alert("Failed to generate Excel export.");
+      const blob = await response.blob();
+      const downloadUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = downloadUrl;
+      link.download = `${extractForm.exportType || "costing"}_${new Date().toISOString().slice(0, 10)}.${extractForm.format || "csv"}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setOpenExtract(false);
+    } catch (error) {
+      console.error("COSTING_EXPORT_ERROR", error);
+      alert(error.message || "Failed to generate export");
     } finally {
       setLoading(false);
     }
@@ -1074,8 +1048,8 @@ export default function CostingTable() {
   }
 
   /**
-   * ✅ FAST REFRESH (GAS efficiency update)
-   * GAS now recomputes totals when line items are added/updated (batch endpoints),
+   * Refresh committed costing data
+   * The native API updates totals with each line-item mutation,
    * so the UI should NOT JSONP fan-out per cost sheet anymore.
    */
   async function refreshFast(options = {}) {
@@ -1130,7 +1104,7 @@ export default function CostingTable() {
     }
   }
 
-  // ✅ Slightly more robust post-mutation refresh (helps when GAS recompute is async)
+  // Refresh the committed Sheets values after a mutation.
   async function refreshAfterMutation({ refreshValidation = false } = {}) {
     await refreshFast({ refreshValidation });
     setLineSearchLoaded(false);
@@ -1510,16 +1484,13 @@ export default function CostingTable() {
   }
 
   /**
-   * ✅ Efficiency update (GAS batch endpoint)
-   * We now write line items via:
-   *   POST { action:"addLineItemsBatch", data:{ costSheetId, items:[...] } }
-   * (single write + recompute once)
+   * Adds and audit-preserving edits commit through the native Sheets API.
    */
-  async function addLineItemRow(row) {
+  async function addLineItemRow(row, original = null) {
     if (!activeSheet) return;
     const costSheetId = activeSheet["Cost Sheet ID"];
 
-    let payloadRow = { ...(row || {}) };
+    let payloadRow = computeRowTotals({ ...(row || {}) });
 
     // strip UI-only flags before POST
     const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
@@ -1542,7 +1513,6 @@ export default function CostingTable() {
 
     payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
 
-    payloadRow = computeRowTotals(payloadRow);
 
     const hasSome =
       String(payloadRow.Particular || "").trim() ||
@@ -1558,19 +1528,27 @@ export default function CostingTable() {
     setLoading(true);
     try {
       await apiPost({
-        action: "addLineItemsBatch",
-        data: { costSheetId, items: [payloadRow] },
+        action: original ? "updateLineItem" : "addLineItemsBatch",
+        data: original ? {
+          costSheetId,
+          lineItemId: original["Line Item ID"],
+          particular: original.Particular,
+          entryTimestamp: original["Entry Timestamp"],
+          updated: payloadRow,
+        } : { costSheetId, items: [payloadRow] },
       });
 
       delete costSheetDetailsCache.current[costSheetId];
       setTimeout(async () => {
         const tasks = [refreshAfterMutation()];
         if (lineItemsRequested) tasks.unshift(refreshLineItemsForActiveSheet(costSheetId));
-        await Promise.all(tasks);
-      }, 150);
+        await Promise.all(tasks).catch((error) => console.error("COSTING_REFRESH_ERROR", error));
+      }, 0);
+      return true;
     } catch (e) {
       console.error("ADD_LINE_ITEM_ERROR", e);
-      alert("Failed to add line item.");
+      alert(e.message || "Failed to save line item.");
+      return false;
     } finally {
       setLoading(false);
     }
@@ -1601,6 +1579,7 @@ export default function CostingTable() {
         action: "softDeleteLineItem",
         data: {
           costSheetId,
+          lineItemId: item["Line Item ID"],
           particular,
           entryTimestamp,
           lineKey,
@@ -1617,9 +1596,7 @@ export default function CostingTable() {
       }, 150);
     } catch (e) {
       console.error("SOFT_DELETE_ERROR", e);
-      alert(
-        "Failed to delete line item. If two rows share the same Particular, delete can be ambiguous without Entry Timestamp support."
-      );
+      alert(e.message || "Failed to delete line item.");
     } finally {
       setLoading(false);
     }
@@ -1785,65 +1762,21 @@ export default function CostingTable() {
    * old row -> Active=No, new row -> append
    */
   async function saveDrawer() {
-    if (!activeSheet) return;
-
-    if (drawerMode === "edit" && drawerOriginal) {
-      const costSheetId = activeSheet["Cost Sheet ID"];
-      const oldParticular = String(drawerOriginal["Particular"] || "").trim();
-      const oldEntryTimestamp = String(drawerOriginal?.["Entry Timestamp"] ?? "").trim();
-      const oldKey = drawerOriginal?.__lineKey || makeLineItemKey(costSheetId, drawerOriginal);
-
-      if (!oldParticular && !oldEntryTimestamp) {
-        alert("Cannot edit: Original row has no Particular and no Entry Timestamp.");
-        return;
-      }
-
-      setLoading(true);
-      try {
-        await apiPost({
-          action: "softDeleteLineItem",
-          data: {
-            costSheetId,
-            particular: oldParticular,
-            entryTimestamp: oldEntryTimestamp,
-            lineKey: oldKey,
-          },
-        });
-
-        setLineItems((p) => (p || []).filter((x) => (x?.__lineKey || "") !== oldKey));
-
-        setDrawerOpen(false);
-        await addLineItemRow(drawerDraft);
-      } catch (e) {
-        console.error("EDIT_SAVE_ERROR", e);
-        alert(
-          "Failed to save edit. If duplicates exist (same Particular), ensure backend supports Entry Timestamp matching for precise deletes."
-        );
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
-    setDrawerOpen(false);
-    await addLineItemRow(drawerDraft);
+    if (!activeSheet || loading) return false;
+    const saved = await addLineItemRow(drawerDraft, drawerMode === "edit" ? drawerOriginal : null);
+    if (saved) setDrawerOpen(false);
+    return Boolean(saved);
   }
 
   async function saveDrawerAndNew() {
-    if (!activeSheet) return;
-
+    if (!activeSheet || loading) return;
     const headKeep = String(drawerDraft?.["Head Name"] || "").trim();
-
-    if (drawerMode === "edit") {
-      await saveDrawer();
-      setTimeout(() => {
-        openDrawerAdd(headKeep);
-      }, 0);
-      return;
+    const saved = await addLineItemRow(drawerDraft, drawerMode === "edit" ? drawerOriginal : null);
+    if (saved) {
+      setDrawerMode("add");
+      setDrawerOriginal(null);
+      setDrawerDraft(blankDraft(headKeep));
     }
-
-    await addLineItemRow(drawerDraft);
-    setDrawerDraft(blankDraft(headKeep));
   }
 
   /* ===================== Add Expense Modal helpers (MULTI ITEMS) ===================== */
@@ -1964,14 +1897,13 @@ export default function CostingTable() {
     }
 
     const cleanedItems = items.map((it) => {
-      let payloadRow = { ...(it || {}) };
+      let payloadRow = computeRowTotals({ ...(it || {}) });
 
       const uiKeys = ["__hasQtyRate", "__useAutoAmount", "__useManualTotal", "__lineKey"];
       uiKeys.forEach((k) => {
         if (k in payloadRow) delete payloadRow[k];
       });
 
-      payloadRow = computeRowTotals(payloadRow);
       payloadRow["Entered By"] = loggedInName || payloadRow["Entered By"] || "";
       return payloadRow;
     });

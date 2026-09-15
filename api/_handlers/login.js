@@ -1,52 +1,25 @@
-import crypto from "crypto";
 import { SHEETS } from "../_lib/crmConfig.js";
 import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
-
-const clean = (value) => String(value ?? "").trim();
-const normalize = (value) => clean(value).toLowerCase();
-
-function valueFrom(row, aliases) {
-  const keys = Object.keys(row || {});
-  for (const alias of aliases) {
-    const key = keys.find((candidate) => normalize(candidate) === normalize(alias));
-    if (key && clean(row[key])) return clean(row[key]);
-  }
-  return "";
-}
-
-function safeEqual(left, right) {
-  const a = Buffer.from(String(left));
-  const b = Buffer.from(String(right));
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
-}
+import { authenticateLogin } from "../_lib/loginCredentials.js";
 
 export default async function loginHandler(req, res) {
+  res.setHeader("Cache-Control", "no-store");
   if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method Not Allowed" });
 
   try {
     const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
-    const email = normalize(body.email);
-    const password = String(body.password ?? "");
-    if (!email || !password) return res.status(400).json({ success: false, error: "Email and password are required" });
+    const identifier = String(body.email ?? "").trim();
+    const password = body.password;
+    if (!identifier || typeof password !== "string" || !password) return res.status(400).json({ success: false, error: "Email or username and password are required" });
 
     const sheetName = await resolveSheetTitle(SHEETS.auth.spreadsheetId, SHEETS.auth.sheetNames);
     const rows = rowsToObjects(await getValues(SHEETS.auth.spreadsheetId, sheetName));
-    const user = rows.find((row) => normalize(valueFrom(row, ["Email", "Login Email", "Login Username", "Username"])) === email);
-    const storedPassword = valueFrom(user, ["Password", "Login Password", "Passcode"]);
+    const user = authenticateLogin(rows, identifier, password);
+    if (!user) return res.status(401).json({ success: false, error: "Invalid email, username or password" });
 
-    if (!user || !storedPassword || !safeEqual(storedPassword, password)) {
-      return res.status(401).json({ success: false, error: "Invalid email or password" });
-    }
-
-    const username = valueFrom(user, ["Login Username", "Username", "Name", "Email"]);
-    const role = valueFrom(user, ["Role", "User Role"]);
-    const pageAccess = valueFrom(user, ["Page Access", "Pages", "Access"])
-      .split(",")
-      .map(clean)
-      .filter(Boolean);
-    res.setHeader("Cache-Control", "no-store");
-    return res.status(200).json({ success: true, username, email, role, pageAccess });
+    return res.status(200).json({ success: true, ...user });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message || String(error) });
+    console.error("LOGIN_SERVICE_ERROR", error.message);
+    return res.status(500).json({ success: false, error: "Sign-in is temporarily unavailable. Please try again later." });
   }
 }

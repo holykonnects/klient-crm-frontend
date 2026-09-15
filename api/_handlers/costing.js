@@ -1,10 +1,14 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
 
-const GAS_URL = process.env.COSTING_GAS_URL || "https://script.google.com/macros/s/AKfycbzqSTBoeAPCKx9GD9V3Dx7M8YobMzrwkOft49w2SQG3e25tlIW2SysmmuqnQXsAuvP4/exec";
+import { mutateCosting, POST_ACTIONS } from "../_lib/costingMutations.js";
+import { readCosting, EXTRA_GET_ACTIONS } from "../_lib/costingReads.js";
+import { exportCosting } from "../_lib/costingExports.js";
+import { dateMs } from "../_lib/costingStore.js";
 const cache = new Map();
 
 export default async function handler(req, res) {
+  res.setHeader("Cache-Control", "no-store");
   try {
     if (req.method === "GET") {
       const action = String(req.query.action || "");
@@ -13,13 +17,27 @@ export default async function handler(req, res) {
       if (action === "getCostSheetDetails") return res.status(200).json(await getCostSheetDetails(req.query.costSheetId));
       if (action === "searchCostLineItems") return res.status(200).json(await searchCostLineItems(req.query));
       if (action === "getEntities") return res.status(200).json(await getEntities(req.query));
-      return proxyGet(req, res);
+      if (action === "recomputeTotals") {
+        return res.status(200).json(await mutateCosting({ action, data: { costSheetId: req.query.costSheetId } }, await getValidation()));
+      }
+      if (EXTRA_GET_ACTIONS.has(action)) return res.status(200).json(await readCosting(action, req.query, getCostSheets));
+      if (["exportCosting", "exportFinance", "exportCostSheetLineItems"].includes(action)) return await exportCosting(req.query, res);
+      return res.status(400).json({ success: false, error: `Unknown costing action: ${action}` });
     }
 
-    if (req.method === "POST") return proxyPost(req, res);
+    if (req.method === "POST") {
+      const payload = typeof req.body === "string" ? JSON.parse(req.body) : req.body || {};
+      if (!POST_ACTIONS.has(payload.action)) return res.status(400).json({ success: false, error: `Unknown costing action: ${payload.action || "(empty)"}` });
+      const started = Date.now();
+      const result = await mutateCosting(payload, await getValidation());
+      cache.clear();
+      res.setHeader("Server-Timing", `costing;dur=${Date.now() - started}`);
+      return res.status(200).json(result);
+    }
     return res.status(405).json({ success: false, error: "Method Not Allowed" });
   } catch (error) {
-    return res.status(500).json({ success: false, error: error.message || String(error) });
+    console.error("COSTING_API_ERROR", error.cause?.message || error.message);
+    return res.status(error.code === "SAVE_UNCONFIRMED" ? 502 : 500).json({ success: false, error: error.message || String(error), code: error.code });
   }
 }
 
@@ -41,7 +59,7 @@ async function getValidation() {
 }
 
 async function getCostSheets(fields) {
-  const objects = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.costSheetNames, "cost-sheets", 15000);
+  const objects = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.costSheetNames, "cost-sheets", 0);
   const wanted = parseFields(fields);
   if (!wanted.length) return objects;
   return objects.map((row) => Object.fromEntries(wanted.filter((field) => field in row).map((field) => [field, row[field]])));
@@ -50,12 +68,12 @@ async function getCostSheets(fields) {
 async function getCostSheetDetails(costSheetId) {
   const id = clean(costSheetId);
   if (!id) return [];
-  const objects = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.lineItemSheetNames, "cost-lines", 10000);
+  const objects = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.lineItemSheetNames, "cost-lines", 0);
   return objects.filter((row) => clean(row["Cost Sheet ID"]) === id);
 }
 
 async function searchCostLineItems(query) {
-  const rows = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.lineItemSheetNames, "cost-lines", 10000);
+  const rows = await sheetObjects(SHEETS.costing.spreadsheetId, SHEETS.costing.lineItemSheetNames, "cost-lines", 0);
   const q = clean(query.q).toLowerCase();
   const searchColumn = clean(query.searchColumn || "all");
   const matchMode = clean(query.matchMode || "contains");
@@ -131,37 +149,8 @@ async function sheetObjects(spreadsheetId, sheetNames, key, ttl) {
   });
 }
 
-async function proxyPost(req, res) {
-  let response = await fetch(GAS_URL, {
-    method: "POST",
-    redirect: "manual",
-    headers: { "Content-Type": "text/plain;charset=utf-8" },
-    body: JSON.stringify(req.body || {}),
-  });
-
-  const redirectUrl = response.headers.get("location");
-  if (response.status >= 300 && response.status < 400 && redirectUrl) {
-    response = await fetch(redirectUrl, { method: "GET" });
-  }
-
-  const text = await response.text();
-  cache.clear();
-  res.status(response.ok ? 200 : response.status);
-  res.setHeader("Content-Type", response.headers.get("content-type") || "application/json; charset=utf-8");
-  return res.send(text);
-}
-
-async function proxyGet(req, res) {
-  const params = new URLSearchParams();
-  Object.entries(req.query || {}).forEach(([key, value]) => { if (key !== "callback" && value != null) params.set(key, String(value)); });
-  const response = await fetch(`${GAS_URL}?${params.toString()}`);
-  const body = Buffer.from(await response.arrayBuffer());
-  res.status(response.ok ? 200 : response.status);
-  res.setHeader("Content-Type", response.headers.get("content-type") || "application/octet-stream");
-  return res.send(body);
-}
-
 async function cached(key, ttl, loader) {
+  if (!ttl) return loader();
   const hit = cache.get(key);
   if (hit && hit.expiresAt > Date.now()) return hit.value;
   const value = await loader();
@@ -172,7 +161,6 @@ async function cached(key, ttl, loader) {
 function parseFields(value) { try { const parsed = JSON.parse(value || "[]"); return Array.isArray(parsed) ? parsed : []; } catch { return clean(value).split(",").filter(Boolean); } }
 function clean(value) { return String(value ?? "").trim(); }
 function number(value) { return Number(String(value ?? "").replace(/[,₹\s]/g, "")) || 0; }
-function dateMs(value) { const parsed = new Date(value); return Number.isFinite(parsed.getTime()) ? parsed.getTime() : 0; }
-function isActive(value) { return ["yes", "true", "active", "1"].includes(clean(value).toLowerCase()); }
+function isActive(value) { return clean(value).toLowerCase() !== "no"; }
 function matches(value, q, mode) { return mode === "exact" ? value === q : mode === "startsWith" ? value.startsWith(q) : value.includes(q); }
 function first(row, keys) { for (const key of keys) if (clean(row[key])) return clean(row[key]); return ""; }

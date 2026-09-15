@@ -1,3 +1,4 @@
+import { postCosting as apiPost } from "../utils/costingApi";
 // src/components/ExpenseRequestTable.jsx
 import React, { useEffect, useMemo, useState } from "react";
 import {
@@ -77,7 +78,7 @@ function toStr(v) {
 }
 
 /**
- * ✅ JSONP GET (no-cors friendly)
+ * Same-origin costing API reader.
  */
 function jsonpGet(url) {
   return fetch(url).then(async (response) => {
@@ -85,18 +86,6 @@ function jsonpGet(url) {
     if (!response.ok) throw new Error(data?.error || `Request failed (${response.status})`);
     return data;
   });
-}
-
-// ✅ NO-CORS SAFE POST
-async function apiPost(payload) {
-  const response = await fetch(BACKEND, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  const data = await response.json();
-  if (!response.ok || data?.success === false) throw new Error(data?.error || `Request failed (${response.status})`);
-  return data;
 }
 
 function getRoleBucket(role) {

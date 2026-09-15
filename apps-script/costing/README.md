@@ -1,10 +1,5 @@
-# Costing Google Apps Script
+# Legacy costing Google Apps Script
 
-This folder contains the Google Apps Script backend used by the CRM costing module.
+This directory retains the former costing backend for reference. The CRM costing module now uses the native server API in `api/_handlers/costing.js`; it does not execute these scripts.
 
-- `Code.gs` - RIDO Costing Engine master backend.
-- `expense-requests/ExpenseRequestBulkActions.gs` - Expense request bulk action helpers that belong to the costing backend.
-- `appsscript.json` - Basic Apps Script manifest for version control.
-
-The frontend currently points to the deployed Apps Script web app URL from `src/components/CostingTable.jsx`.
-When updating the deployed script, copy or push the contents of `Code.gs` into the corresponding Apps Script project.
+Do not deploy these files to update CRM costing. See [the native costing API guide](../../COSTING_NATIVE_API.md). Existing external Apps Script triggers or consumers must be checked separately before retiring the old deployment.

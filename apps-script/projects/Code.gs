@@ -558,7 +558,7 @@ function sendProjectUpdateEmail_(newRowObj) {
 
   const to = (toList.length ? toList : (ccList.length ? ccList : bccList)).join(',');
 
-  const EXTRA_CC = ['sarabjeet@ridosports.com'];
+  const EXTRA_CC = ['sarabjeet@ridosports.com','chanchal@ridosports.com','navneet@ridosports.com'];
 
   const ccCombined = [...ccList, ...EXTRA_CC]
     .filter(Boolean)

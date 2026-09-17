@@ -1,3 +1,4 @@
+import { resolveProjectRecipients } from "./projectRecipients.js";
 import { SHEETS } from "./crmConfig.js";
 import { getValues, gmailSendRawEmail, resolveSheetTitle } from "./googleSheets.js";
 import { base64Url, brandedEmailHtml, changedFieldsCards, escapeHtml, mimeMessage, recordDetailsCards, recordDetailsTable } from "./emailRenderer.js";
@@ -165,32 +166,7 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
   const validationSheet = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
   const validationValues = await getValues(SHEETS.validation.spreadsheetId, validationSheet);
   const [validationHeaders = [], ...validationRows] = validationValues;
-  const ownerIndex = findHeader(validationHeaders, "Lead Owner");
-  const emailIndex = findHeader(validationHeaders, "Email");
-  const ccIndex = findHeader(validationHeaders, "CC");
-  const bccIndex = findHeader(validationHeaders, "BCC");
-  const wantedOwners = new Set(
-    [data["Project Manager"], data["Account Owner"], data["Lead Owner"], data.Owner]
-      .map((value) => clean(value).toLowerCase())
-      .filter(Boolean)
-  );
-  const ownerRecipients = validationRows
-    .filter((row) => wantedOwners.has(clean(row[ownerIndex]).toLowerCase()))
-    .map((row) => clean(row[emailIndex]));
-  const clientRecipients = splitEmails(data["Client Email ID"]);
-  const submittedUpdater = clean(data.updatedByEmail).toLowerCase();
-  const updaterEmail = validationRows
-    .map((row) => clean(row[emailIndex]))
-    .find((email) => email.toLowerCase() === submittedUpdater) || "";
-  const ccRecipients = validationRows.map((row) => clean(row[ccIndex]));
-  const bccRecipients = validationRows.map((row) => clean(row[bccIndex]));
-  const toList = uniqueEmails(clientRecipients.length ? clientRecipients : ownerRecipients);
-  const toKeys = new Set(toList.map((email) => email.toLowerCase()));
-  const to = toList.join(",");
-  const cc = uniqueEmails([...ownerRecipients, ...ccRecipients, updaterEmail])
-    .filter((email) => !toKeys.has(email.toLowerCase()))
-    .join(",");
-  const bcc = uniqueEmails(bccRecipients).join(",");
+  const { to, cc, bcc, updaterEmail } = resolveProjectRecipients(validationHeaders, validationRows, data);
   if (!to) return { sent: false, reason: "missing_recipient" };
 
   const projectName = clean(data["Project Name"]) || "Untitled Project";

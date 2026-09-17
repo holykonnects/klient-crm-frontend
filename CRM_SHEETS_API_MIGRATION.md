@@ -63,6 +63,7 @@ Quick leads created from the communication module use the same `/api/leads` pipe
 Operational lead/deal/order notifications now send from the Vercel API flow instead of Apps Script triggers.
 Owner recipient lookup follows the old Apps Script rule: match `Lead Owner` / `Account Owner` against column A of `Validation Tables` and send to column E.
 By default, operational emails CC `Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com`; override with `OPERATIONAL_EMAIL_CC`.
+Project group recipients use separate `Project CC` and `Project BCC` columns in the common Validation Tables sheet. They never fall back to shared CC/BCC lists or `OPERATIONAL_EMAIL_CC`. See [Project notification group](PROJECT_EMAIL_RECIPIENTS.md) for sheet setup before deployment.
 Set `ENABLE_OPERATIONAL_EMAILS=true` only after the old Apps Script lead/deal/order email triggers are disabled or you intentionally want to test for duplicates.
 When this value is unset, server-side operational emails stay disabled so record saves cannot accidentally create duplicate notifications while Apps Script triggers remain active.
 

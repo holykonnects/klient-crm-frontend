@@ -49,6 +49,28 @@ const LEAD_TRANSFER_FIELDS = [
 ];
 const SALES_TRACKER_ENTITY_FIELDS = ["Field", "Field Selection", "Notification Status"];
 
+const amountNumber = (value) => {
+  const parsed = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+export function applyAmountUpdate(data, previous, field) {
+  const update = data?.amountUpdate;
+  if (!update) return data;
+  if (update.field !== field || !["keep", "add"].includes(update.mode)) {
+    throw new Error(`Invalid ${field} update choice`);
+  }
+  if (!previous) throw new Error(`Cannot update ${field} without an existing record`);
+  if (update.mode === "keep") {
+    data[field] = previous[field] ?? "";
+    return data;
+  }
+  const addition = amountNumber(update.addition);
+  if (addition <= 0) throw new Error(`${field} addition must be greater than zero`);
+  data[field] = amountNumber(previous[field]) + addition;
+  return data;
+}
+
 export async function getTable(config) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName);
@@ -119,6 +141,7 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
     const headers = await ensureUpdateAuditHeaders(dealsConfig, sheetName, existingHeaders);
     const previousDeal = findPreviousRecord(values, headers, data, [["Deal ID"], ["Order Distribution ID"], ["Account ID", "Deal Name"]]);
+    applyAmountUpdate(data, previousDeal, "Deal Amount");
     const appendResult = await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
     const notification = await notifySafely(() => notifyDealSubmitted(headers, data, previousDeal));
     await persistSentStatus({ config: dealsConfig, sheetName, headers, appendResult, notification });
@@ -160,6 +183,7 @@ export async function handleOrderPost({ ordersConfig, payload }) {
   if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
   const headers = await ensureUpdateAuditHeaders(ordersConfig, sheetName, existingHeaders);
   const previousOrder = findPreviousRecord(values, headers, uploaded, [["Order ID"]]);
+  applyAmountUpdate(uploaded, previousOrder, "Order Amount");
   const appendResult = await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
   const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded, previousOrder));
   await persistSentStatus({ config: ordersConfig, sheetName, headers, appendResult, notification });

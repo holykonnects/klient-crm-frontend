@@ -28,6 +28,8 @@ import {
   FormGroup,
   FormControlLabel,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -62,6 +64,11 @@ const isMobileColumn = (key = "") => {
     normalizedKey.includes("mobile") ||
     normalizedKey.includes("phone")
   );
+};
+
+const amountNumber = (value) => {
+  const parsed = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 // ✅ Drive Folder (your shared link folder)
@@ -261,6 +268,8 @@ function DealsTable() {
   // edit deal modal
   const [selectedRow, setSelectedRow] = useState(null);
   const [dealFormData, setDealFormData] = useState({});
+  const [dealAmountMode, setDealAmountMode] = useState("keep");
+  const [dealAmountAddition, setDealAmountAddition] = useState("");
   const [validationData, setValidationData] = useState({});
 
   // ✅ saving UX for deal update
@@ -452,6 +461,8 @@ function DealsTable() {
   const handleEditClick = (deal) => {
     setSelectedRow(deal);
     setDealFormData({ ...(deal || {}) });
+    setDealAmountMode("keep");
+    setDealAmountAddition("");
     setSaveMsg("");
   };
 
@@ -461,6 +472,10 @@ function DealsTable() {
 
   const handleSubmitDeal = async () => {
     if (savingDeal) return;
+    if (dealAmountMode === "add" && amountNumber(dealAmountAddition) <= 0) {
+      setSaveMsg("Enter an amount greater than zero.");
+      return;
+    }
 
     setSavingDeal(true);
     setSaveMsg("Updating...");
@@ -473,6 +488,11 @@ function DealsTable() {
           action: "updateDeal",
           data: {
             ...dealFormData,
+            amountUpdate: {
+              field: "Deal Amount",
+              mode: dealAmountMode,
+              addition: dealAmountMode === "add" ? dealAmountAddition : "",
+            },
             updatedByName: user?.username || user?.email || "",
             updatedByEmail: user?.email || user?.username || "",
           },
@@ -953,13 +973,45 @@ function DealsTable() {
                   <Grid container spacing={2}>
                     {section.fields.map((field) => (
                       <Grid item xs={6} key={field}>
-                        <DealField
-                          field={field}
-                          value={dealFormData?.[field] || ""}
-                          validationData={validationData}
-                          disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
-                          onCommit={commitDealField}
-                        />
+                        {field === "Deal Amount" ? (
+                          <Box>
+                            <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.75 }}>
+                              Deal Amount: ₹ {amountNumber(selectedRow?.[field]).toLocaleString("en-IN")}
+                            </Typography>
+                            <ToggleButtonGroup
+                              exclusive
+                              fullWidth
+                              size="small"
+                              value={dealAmountMode}
+                              onChange={(_, value) => value && setDealAmountMode(value)}
+                              aria-label="Deal amount update choice"
+                            >
+                              <ToggleButton value="keep">Keep existing</ToggleButton>
+                              <ToggleButton value="add">Add amount</ToggleButton>
+                            </ToggleButtonGroup>
+                            {dealAmountMode === "add" ? (
+                              <TextField
+                                fullWidth
+                                size="small"
+                                type="number"
+                                label="Amount to add"
+                                value={dealAmountAddition}
+                                onChange={(event) => setDealAmountAddition(event.target.value)}
+                                inputProps={{ min: 0, step: "0.01" }}
+                                helperText={`New total: ₹ ${(amountNumber(selectedRow?.[field]) + amountNumber(dealAmountAddition)).toLocaleString("en-IN")}`}
+                                sx={{ mt: 1 }}
+                              />
+                            ) : null}
+                          </Box>
+                        ) : (
+                          <DealField
+                            field={field}
+                            value={dealFormData?.[field] || ""}
+                            validationData={validationData}
+                            disabled={field === "Account Owner" || field === "Account ID" || field === "Timestamp"}
+                            onCommit={commitDealField}
+                          />
+                        )}
                       </Grid>
                     ))}
                   </Grid>

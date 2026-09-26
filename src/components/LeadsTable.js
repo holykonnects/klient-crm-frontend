@@ -29,6 +29,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import CalendarView from './CalendarView';
 import MobileActionMenu from './MobileActionMenu';
+import { getLeadSaveMessage } from '../utils/leadTransferStatus';
 
 /* ---------- small debounce helper (no extra deps) ---------- */
 function useDebouncedValue(value, delay = 250) {
@@ -810,8 +811,10 @@ const LeadsTable = () => {
                   updatedByEmail: user?.email || user?.username || ''
                 })
               });
-              if (!res.ok) throw new Error(await res.text());
-              alert('✅ Lead updated successfully');
+              const result = await res.json();
+              if (!res.ok) throw new Error(result?.error || 'Lead update failed.');
+              const saveStatus = getLeadSaveMessage(result, payload['Lead Status']);
+              alert(`${saveStatus.confirmed ? '✅' : '⚠️'} ${saveStatus.message}`);
               setEditRow(null);
 
               // 1) Optimistic local update so it reflects instantly

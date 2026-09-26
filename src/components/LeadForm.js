@@ -6,6 +6,7 @@ import {
 } from '@mui/material';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
 import { useAuth } from './AuthContext';
+import { getLeadSaveMessage } from '../utils/leadTransferStatus';
 
 const theme = createTheme({
   typography: {
@@ -172,9 +173,11 @@ function LeadForm() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
     });
-    if (!res.ok) throw new Error(await res.text());
+    const result = await res.json();
+    if (!res.ok) throw new Error(result?.error || 'Lead submission failed.');
 
-    alert('✅ Lead submitted successfully!');
+    const saveStatus = getLeadSaveMessage(result, payload['Lead Status'], 'submitted');
+    alert(`${saveStatus.confirmed ? '✅' : '⚠️'} ${saveStatus.message}`);
     // Reset the form
     const reset = {};
     Object.keys(formValues).forEach((k) => (reset[k] = ''));

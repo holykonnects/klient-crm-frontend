@@ -218,9 +218,13 @@ export async function getValues(spreadsheetId, sheetName, a1 = "") {
   return json.values || [];
 }
 
+export function anchoredAppendRange(sheetName, width) {
+  return sheetRange(sheetName, `A:${columnName(Math.max(1, Number(width) || 1))}`);
+}
+
 export async function appendValues(spreadsheetId, sheetName, row) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-    sheetRange(sheetName)
+    anchoredAppendRange(sheetName, row.length)
   )}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   return googleFetch(url, {
     method: "POST",

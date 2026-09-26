@@ -28,6 +28,8 @@ import {
   FormGroup,
   FormControlLabel,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "@mui/material";
 
 import EditIcon from "@mui/icons-material/Edit";
@@ -58,6 +60,11 @@ const isUrl = (v) => typeof v === "string" && /^https?:\/\//i.test(v);
 const isMobileColumn = (key = "") => {
   const normalizedKey = String(key || "").toLowerCase();
   return normalizedKey.includes("mobile") || normalizedKey.includes("phone");
+};
+
+const amountNumber = (value) => {
+  const parsed = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
 };
 
 /**
@@ -139,6 +146,8 @@ function OrdersTable() {
   // edit modal
   const [selectedRow, setSelectedRow] = useState(null);
   const [orderFormData, setOrderFormData] = useState({});
+  const [orderAmountMode, setOrderAmountMode] = useState("keep");
+  const [orderAmountAddition, setOrderAmountAddition] = useState("");
   const [validationData, setValidationData] = useState({});
   const [saving, setSaving] = useState(false);
 
@@ -347,6 +356,8 @@ function OrdersTable() {
   const handleEditClick = (row) => {
     setSelectedRow(row);
     setOrderFormData({ ...(row || {}) });
+    setOrderAmountMode("keep");
+    setOrderAmountAddition("");
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
@@ -399,6 +410,10 @@ function OrdersTable() {
       alert("❌ Order ID missing. Cannot update.");
       return;
     }
+    if (orderAmountMode === "add" && amountNumber(orderAmountAddition) <= 0) {
+      alert("Please enter an amount greater than zero to add.");
+      return;
+    }
 
     setSaving(true);
     try {
@@ -414,6 +429,11 @@ function OrdersTable() {
       if (proformaObj) payload["Proforma Invoice"] = proformaObj;
       payload.updatedByName = user?.username || user?.email || "";
       payload.updatedByEmail = user?.email || user?.username || "";
+      payload.amountUpdate = {
+        field: "Order Amount",
+        mode: orderAmountMode,
+        addition: orderAmountMode === "add" ? orderAmountAddition : "",
+      };
 
       const res = await fetch(submitUrl, {
         method: "POST",
@@ -618,6 +638,36 @@ function OrdersTable() {
                           field
                         ) ? (
                           <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
+                        ) : field === "Order Amount" ? (
+                          <Box>
+                            <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.75 }}>
+                              Order Amount: ₹ {amountNumber(selectedRow?.[field]).toLocaleString("en-IN")}
+                            </Typography>
+                            <ToggleButtonGroup
+                              exclusive
+                              fullWidth
+                              size="small"
+                              value={orderAmountMode}
+                              onChange={(_, value) => value && setOrderAmountMode(value)}
+                              aria-label="Order amount update choice"
+                            >
+                              <ToggleButton value="keep">Keep existing</ToggleButton>
+                              <ToggleButton value="add">Add amount</ToggleButton>
+                            </ToggleButtonGroup>
+                            {orderAmountMode === "add" ? (
+                              <TextField
+                                fullWidth
+                                size="small"
+                                type="number"
+                                label="Amount to add"
+                                value={orderAmountAddition}
+                                onChange={(event) => setOrderAmountAddition(event.target.value)}
+                                inputProps={{ min: 0, step: "0.01" }}
+                                helperText={`New total: ₹ ${(amountNumber(selectedRow?.[field]) + amountNumber(orderAmountAddition)).toLocaleString("en-IN")}`}
+                                sx={{ mt: 1 }}
+                              />
+                            ) : null}
+                          </Box>
                         ) : validationData[field] ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>

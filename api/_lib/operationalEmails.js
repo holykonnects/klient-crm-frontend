@@ -16,13 +16,27 @@ function getPublicBaseUrl() {
   return vercelUrl ? `https://${vercelUrl.replace(/\/+$/g, "")}` : "";
 }
 
+export function updaterDetailsHtml(data, verifiedEmail = "") {
+  const email = clean(verifiedEmail || data?.updatedByEmail || data?.["Updated By Email"]);
+  if (!email) return "";
+  const name = clean(data?.updatedByName || data?.["Updated By"] || email);
+  const role = clean(data?.updatedByRole || data?.["Updated By Role"]);
+  const updatedAt = clean(data?.["Updated At"] || data?.updatedAt);
+  const details = [
+    `<strong>Updated by:</strong> ${escapeHtml(name)} (${escapeHtml(email)})`,
+    role ? `<strong>CRM role:</strong> ${escapeHtml(role)}` : "",
+    updatedAt ? `<strong>Updated at:</strong> ${escapeHtml(updatedAt)}` : "",
+  ].filter(Boolean).join(" &nbsp;|&nbsp; ");
+  return `<p style="margin:0 0 18px 0;font-size:13px;color:#4b5563;">${details}</p>`;
+}
+
 function brandedHtml({ greeting, intro, subject, headers, data, previousData = null, calendarLink = false, actionUrl = "", actionLabel = "" }) {
   const meetingUrl = clean(process.env.CRM_CALENDAR_URL) || `${getPublicBaseUrl()}/calendar`;
 
   const content = `
     <p style="margin:0 0 14px 0;">${escapeHtml(greeting)}</p>
     <p style="margin:0 0 18px 0;">${escapeHtml(intro)}</p>
-    ${clean(data?.updatedByEmail) ? `<p style="margin:0 0 18px 0;font-size:13px;color:#4b5563;"><strong>Updated by:</strong> ${escapeHtml(data.updatedByName || data.updatedByEmail)} (${escapeHtml(data.updatedByEmail)})</p>` : ""}
+    ${updaterDetailsHtml(data)}
     ${previousData ? `<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">What changed</div>${changedFieldsCards(headers, previousData, data)}<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">Current snapshot</div>${recordDetailsCards(priorityHeaders(headers, data), data, { limit: 8 })}` : recordDetailsCards(headers, data)}
     ${actionUrl ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(actionUrl)}" target="_blank" style="display:inline-block;background:#12315c;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">${escapeHtml(actionLabel || "Open Link")}</a></p>` : ""}
     ${calendarLink ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(meetingUrl)}" target="_blank" style="display:inline-block;background:#6495ED;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">Schedule a Meeting</a></p>` : ""}
@@ -50,13 +64,8 @@ export async function ownerEmail(ownerName) {
 async function validatedUpdaterEmail(data) {
   const submitted = clean(data?.updatedByEmail).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submitted)) return "";
-  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
-  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
-  const [headers = [], ...rows] = values;
-  const emailIndex = findHeader(headers, "Email");
-  if (emailIndex < 0) return "";
-  const match = rows.find((row) => clean(row[emailIndex]).toLowerCase() === submitted);
-  return match ? clean(match[emailIndex]) : "";
+  const resolved = await loginEmail(submitted);
+  return clean(resolved).toLowerCase() === submitted ? clean(resolved) : "";
 }
 
 async function sendOperationalEmail({ owner, subject, intro, headers, data, previousData = null, calendarLink = false, cc: ccOverride = "" }) {
@@ -166,8 +175,13 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
   const validationSheet = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
   const validationValues = await getValues(SHEETS.validation.spreadsheetId, validationSheet);
   const [validationHeaders = [], ...validationRows] = validationValues;
-  const { to, cc, bcc, updaterEmail } = resolveProjectRecipients(validationHeaders, validationRows, data);
+  const { to, cc: projectCc, bcc } = resolveProjectRecipients(validationHeaders, validationRows, data);
   if (!to) return { sent: false, reason: "missing_recipient" };
+  const updaterEmail = await validatedUpdaterEmail(data);
+  const toKeys = new Set(splitEmails(to).map((email) => email.toLowerCase()));
+  const cc = uniqueEmails([...splitEmails(projectCc), updaterEmail])
+    .filter((email) => !toKeys.has(email.toLowerCase()))
+    .join(",");
 
   const projectName = clean(data["Project Name"]) || "Untitled Project";
   const excluded = new Set([
@@ -189,7 +203,7 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
       <div style="font-size:13px;line-height:1.5;margin-top:4px;">${escapeHtml(projectName)}</div>
     </div>
     <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">A project entry was <strong>added or updated</strong>.</p>
-    ${updaterEmail ? `<p style="margin:0 0 16px;font-size:13px;color:#4b5563;"><strong>Updated by:</strong> ${escapeHtml(data.updatedByName || updaterEmail)} (${escapeHtml(updaterEmail)})</p>` : ""}
+    ${updaterDetailsHtml(data, updaterEmail).replace("margin:0 0 18px 0", "margin:0 0 16px 0")}
     <div style="border:1px solid #dbe4f0;border-radius:10px;padding:14px 16px;background:#f9fbff;margin-bottom:20px;">
       ${projectSummaryRow("Project Name", projectName)}
       ${projectSummaryRow("Project ID", projectId)}

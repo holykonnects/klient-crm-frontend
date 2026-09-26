@@ -224,7 +224,7 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
     subject,
     html,
     replyTo: process.env.OPERATIONAL_REPLY_TO || "",
-    fromName: "Rido Sport Project Update",
+    fromName: "Rido CRM",
   }));
   await gmailSendRawEmail(raw);
   return { sent: true, to, cc, bcc };

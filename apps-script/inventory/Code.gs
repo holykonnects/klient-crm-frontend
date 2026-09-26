@@ -2241,7 +2241,7 @@ function sendBookingStatusEmail_(bookingValues, bm, bookingRows, status, updated
           .filter((email) => safeStr_(email) && !/@example\.com$/i.test(email))
           .join(","),
         htmlBody,
-        name: "Rido Sports Inventory",
+        name: "Rido CRM",
       }
     );
 
@@ -2268,7 +2268,7 @@ function authorizeInventoryEmail() {
           <p>Gmail authorization is working for the inventory workflow.</p>
         </div>
       `),
-      name: "Rido Sports Inventory",
+      name: "Rido CRM",
     }
   );
 
@@ -2395,7 +2395,7 @@ function sendBookingRequirementEmail_(bookingId, data, childData) {
       {
         cc: requesterEmail || "",
         htmlBody,
-        name: "Rido Sports Inventory",
+        name: "Rido CRM",
       }
     );
 

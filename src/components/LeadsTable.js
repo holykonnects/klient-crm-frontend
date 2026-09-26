@@ -29,6 +29,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import CalendarView from './CalendarView';
 import MobileActionMenu from './MobileActionMenu';
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, parseCrmTimestamp } from '../utils/crmTableUtils';
 import { getLeadSaveMessage } from '../utils/leadTransferStatus';
 
 /* ---------- small debounce helper (no extra deps) ---------- */
@@ -70,15 +71,7 @@ const isMobileColumn = (key = '') => {
 };
 
 /* ---------- date/sort helpers ---------- */
-const safeDate = (v) => {
-  const d = new Date(v);
-  return isNaN(d.getTime()) ? 0 : d.getTime();
-};
-const lastUpdatedMillis = (row = {}) => Math.max(
-  safeDate(row['Lead Updated Time']),
-  safeDate(row['Timestamp']),
-  safeDate(row['Created Time'])
-);
+const lastUpdatedMillis = (row = {}) => crmRowUpdatedAt(row, ['Lead Updated Time']);
 
 /* ---------- key helper: Lead ID primary, Mobile fallback ---------- */
 const getLeadKey = (row = {}) =>
@@ -111,23 +104,18 @@ const EditLeadDialog = React.memo(function EditLeadDialog({
   const [form, setForm] = useState(() => row || {});
   useEffect(() => { setForm(row || {}); }, [row]);
 
-  // Keep typing smooth even if parent is busy
-  const deferredForm = useDeferredValue(form);
-
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
-    startTransition(() => {
-      setForm(prev => ({ ...prev, [name]: value }));
-    });
+    setForm(prev => ({ ...prev, [name]: value }));
   }, []);
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     onSubmit({
-      ...deferredForm,
+      ...form,
       'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
     });
-  }, [onSubmit, deferredForm]);
+  }, [onSubmit, form]);
 
   return (
     <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="md" fullWidth keepMounted>
@@ -249,17 +237,7 @@ const LeadsTable = () => {
         ? data.filter(lead => lead['Lead Owner'] === username)
         : data;
 
-      // dedupe by latest updated time
-      const seen = new Map();
-      filteredData.forEach(row => {
-        const key = getLeadKey(row);
-        if (!key) return;
-        const existing = seen.get(key);
-        if (!existing || lastUpdatedMillis(row) > lastUpdatedMillis(existing)) {
-          seen.set(key, row);
-        }
-      });
-      const deduped = Array.from(seen.values());
+      const deduped = latestCrmRows(filteredData, getLeadKey, ['Lead Updated Time']);
       startTransition(() => {
         setAllLeads(filteredData);
         setLeads(deduped);
@@ -286,17 +264,7 @@ const LeadsTable = () => {
 
         setAllLeads(filteredData);
 
-        // dedupe by latest updated time
-        const seen = new Map();
-        filteredData.forEach(row => {
-          const key = getLeadKey(row);
-          if (!key) return; // skip if no identifier
-          const existing = seen.get(key);
-          if (!existing || lastUpdatedMillis(row) > lastUpdatedMillis(existing)) {
-            seen.set(key, row);
-          }
-        });
-        const deduplicated = Array.from(seen.values());
+        const deduplicated = latestCrmRows(filteredData, getLeadKey, ['Lead Updated Time']);
         setLeads(deduplicated);
 
         setVisibleColumns(
@@ -391,13 +359,14 @@ const LeadsTable = () => {
     // Default/explicit: sort by latest updated first when key is 'Timestamp'
     const sorted = [...filtered].sort((a, b) => {
       if (!key || key === 'Timestamp') {
-        return direction === 'asc'
+        const difference = direction === 'asc'
           ? lastUpdatedMillis(a) - lastUpdatedMillis(b)
           : lastUpdatedMillis(b) - lastUpdatedMillis(a);
+        return difference;
       }
-      if (key === 'Lead Updated Time' || key === 'Created Time') {
-        const av = safeDate(a[key]);
-        const bv = safeDate(b[key]);
+      if (key === 'Updated At' || key === 'Lead Updated Time' || key === 'Created Time') {
+        const av = parseCrmTimestamp(a[key]);
+        const bv = parseCrmTimestamp(b[key]);
         return direction === 'asc' ? av - bv : bv - av;
       }
       // string-ish fallback
@@ -490,7 +459,7 @@ const LeadsTable = () => {
   // --- typing-friendly handlers ---
   const onSearchChange = useCallback((e) => {
     const v = e.target.value;
-    startTransition(() => setSearchInput(v));
+    setSearchInput(v);
     setPage(0);
   }, []);
 
@@ -662,7 +631,7 @@ const LeadsTable = () => {
         </Box>
 
         <Box className="crm-table-shell">
-        <Table>
+        <Table size="small" sx={CRM_TABLE_SX}>
           <TableHead>
             <TableRow style={{ backgroundColor: '#6495ED' }}>
               {visibleColumns.map(header => (
@@ -746,7 +715,7 @@ const LeadsTable = () => {
             {leadLogs.length === 0 ? (
               <Typography>No logs found for this lead.</Typography>
             ) : (
-              <Table size="small">
+              <Table size="small" sx={CRM_TABLE_SX}>
                 <TableHead>
                   <TableRow>
                     {logColumns.map(col => (
@@ -816,6 +785,8 @@ const LeadsTable = () => {
               const saveStatus = getLeadSaveMessage(result, payload['Lead Status']);
               alert(`${saveStatus.confirmed ? '✅' : '⚠️'} ${saveStatus.message}`);
               setEditRow(null);
+              setSortConfig({ key: 'Timestamp', direction: 'desc' });
+              setPage(0);
 
               // 1) Optimistic local update so it reflects instantly
               const key = getLeadKey(payload);
@@ -831,8 +802,8 @@ const LeadsTable = () => {
                 setAllLeads(prev => [...prev, payload]);
               });
 
-              // 2) Background revalidate (non-blocking, using startTransition)
-              startTransition(() => { revalidate(); });
+              // 2) Background revalidate against the saved sheet row.
+              void revalidate();
 
             } catch (err) {
               console.error(err);

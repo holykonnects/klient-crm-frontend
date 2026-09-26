@@ -1,5 +1,5 @@
 // src/components/OrdersTable.js
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -42,6 +42,7 @@ import "@fontsource/montserrat";
 import LoadingOverlay from "./LoadingOverlay";
 import { useAuth } from "./AuthContext";
 import MobileActionMenu from "./MobileActionMenu";
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 
 const theme = createTheme({
   typography: {
@@ -67,53 +68,7 @@ const amountNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-/**
- * ✅ DealsTable-style robust timestamp parser.
- * Supports:
- *  - "16-01-2026 10:30:10"  (dd-MM-yyyy HH:mm:ss)
- *  - "10/07/2025 14:34:54"  (dd/MM/yyyy HH:mm:ss)
- *  - ISO strings
- *  - Date objects / numeric ms (if backend ever returns them)
- */
-const parseTimestampToMs = (ts) => {
-  if (!ts) return 0;
-
-  if (ts instanceof Date) {
-    const t = ts.getTime();
-    return Number.isFinite(t) ? t : 0;
-  }
-  if (typeof ts === "number") return Number.isFinite(ts) ? ts : 0;
-
-  const raw = String(ts).trim();
-  if (!raw) return 0;
-
-  // Try ISO / RFC
-  const iso = Date.parse(raw);
-  if (Number.isFinite(iso)) return iso;
-
-  // dd-MM-yyyy HH:mm:ss OR dd/MM/yyyy HH:mm:ss (also HH:mm or date-only)
-  const m = raw.match(
-    /^(\d{1,2})[-\/](\d{1,2})[-\/](\d{4})(?:\s+(\d{1,2}):(\d{1,2})(?::(\d{1,2}))?)?$/
-  );
-  if (m) {
-    const dd = parseInt(m[1], 10);
-    const mm = parseInt(m[2], 10);
-    const yyyy = parseInt(m[3], 10);
-    const HH = parseInt(m[4] || "0", 10);
-    const MM = parseInt(m[5] || "0", 10);
-    const SS = parseInt(m[6] || "0", 10);
-
-    if (!dd || !mm || !yyyy) return 0;
-    const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
-    const t = dt.getTime();
-    return Number.isFinite(t) ? t : 0;
-  }
-
-  return 0;
-};
-
-// ✅ Orders "latest" is defined ONLY by this field
-const getOrderRowTime = (row) => parseTimestampToMs(row?.["Timestamp"]);
+const getOrderRowTime = (row) => crmRowUpdatedAt(row, ["Order Updated Time"]);
 
 async function safeReadResponse(res) {
   const txt = await res.text();
@@ -131,6 +86,7 @@ function OrdersTable() {
 
   // filters
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterStage, setFilterStage] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterSource, setFilterSource] = useState("");
@@ -194,45 +150,10 @@ function OrdersTable() {
 
       setAllOrders(filtered);
 
-      /**
-       * ✅ DEDUPE (same as DealsTable approach)
-       * Winner = row with highest valid Timestamp for the Order ID.
-       */
-      const seen = new Map();
-
-      filtered.forEach((row) => {
-        const key = String(row["Order ID"] || "").trim();
-        if (!key) return;
-
-        const existing = seen.get(key);
-
-        const tNew = getOrderRowTime(row);
-        const tOld = existing ? getOrderRowTime(existing) : 0;
-
-        // Prefer valid timestamps; newest wins
-        if (!existing) {
-          seen.set(key, row);
-          return;
-        }
-
-        // If existing has no valid time but new has, take new
-        if (!tOld && tNew) {
-          seen.set(key, row);
-          return;
-        }
-
-        // If both valid, newest wins
-        if (tNew && tNew > tOld) {
-          seen.set(key, row);
-          return;
-        }
-
-        // Otherwise keep existing
-      });
-
-      // ✅ front list: latest first
-      const deduped = Array.from(seen.values()).sort(
-        (a, b) => getOrderRowTime(b) - getOrderRowTime(a)
+      const deduped = latestCrmRows(
+        filtered,
+        row => row["Order ID"],
+        ["Order Updated Time"]
       );
 
       setOrders(deduped);
@@ -300,21 +221,18 @@ function OrdersTable() {
     });
   }, [orders, sortConfig]);
 
-  const filteredOrders = sortedOrders.filter((order) => {
-    try {
-      return (
-        ["Company", "Order ID", "Mobile Number", "Deal Name", "Account ID"].some((key) =>
-          String(order[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
-        ) &&
-        (!filterStage || order["Stage"] === filterStage) &&
-        (!filterType || order["Type"] === filterType) &&
-        (!filterSource || order["Lead Source"] === filterSource) &&
-        (!filterOwner || order["Account Owner"] === filterOwner)
-      );
-    } catch {
-      return false;
-    }
-  });
+  const filteredOrders = useMemo(() => {
+    const query = deferredSearchTerm.toLowerCase();
+    return sortedOrders.filter((order) => (
+      ["Company", "Order ID", "Mobile Number", "Deal Name", "Account ID"].some((key) =>
+        String(order[key] || "").toLowerCase().includes(query)
+      ) &&
+      (!filterStage || order["Stage"] === filterStage) &&
+      (!filterType || order["Type"] === filterType) &&
+      (!filterSource || order["Lead Source"] === filterSource) &&
+      (!filterOwner || order["Account Owner"] === filterOwner)
+    ));
+  }, [sortedOrders, deferredSearchTerm, filterStage, filterType, filterSource, filterOwner]);
 
   const unique = (key) => [...new Set(orders.map((d) => d[key]).filter(Boolean))];
 
@@ -368,9 +286,10 @@ function OrdersTable() {
       alert("No Order ID found for logs.");
       return;
     }
-    const logs = allOrders
-      .filter((r) => String(r["Order ID"] || "").trim() === key)
-      .sort((a, b) => getOrderRowTime(b) - getOrderRowTime(a)); // ✅ newest first
+    const logs = newestCrmRows(
+      allOrders.filter((r) => String(r["Order ID"] || "").trim() === key),
+      ["Order Updated Time"]
+    );
     setOrderLogs(logs);
     setLogsOpen(true);
   };
@@ -551,7 +470,7 @@ function OrdersTable() {
 
         {/* Table */}
         <Box className="crm-table-shell">
-        <Table>
+        <Table size="small" sx={CRM_TABLE_SX}>
           <TableHead>
             <TableRow style={{ backgroundColor: "#6495ED" }}>
               {visibleColumns.map((header) => (
@@ -755,7 +674,7 @@ function OrdersTable() {
             {orderLogs.length === 0 ? (
               <Typography>No logs found.</Typography>
             ) : (
-              <Table size="small">
+              <Table size="small" sx={CRM_TABLE_SX}>
                 <TableHead>
                   <TableRow style={{ backgroundColor: "#6495ED" }}>
                     {logCols.map((h) => (

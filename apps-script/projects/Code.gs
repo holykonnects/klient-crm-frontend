@@ -627,7 +627,7 @@ function sendProjectUpdateEmail_(newRowObj) {
         htmlBody: htmlSummary,
         cc: cc || '',
         bcc: bcc || '',
-        name: 'Rido Sport Project Update'
+        name: 'Rido CRM'
       }
     );
   } catch (e) {

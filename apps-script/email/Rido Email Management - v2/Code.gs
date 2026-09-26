@@ -170,7 +170,8 @@ function sendEmail(body) {
     to,
     subject,
     htmlBody: finalHtml,
-    replyTo: fromEmail
+    replyTo: fromEmail,
+    name: 'Rido CRM'
   });
 
   logEmailEvent(to, subject, templateId, placeholders);

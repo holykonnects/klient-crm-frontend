@@ -1,5 +1,5 @@
 // SalesTrackerTable.js
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useDeferredValue, useMemo, useState, useEffect } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -13,6 +13,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
+import { CRM_TABLE_SX, parseCrmTimestamp } from '../utils/crmTableUtils';
 import '@fontsource/montserrat';
 
 const SHEET_URL = '/api/sales-tracker';
@@ -37,7 +38,7 @@ const SALES_OVERVIEW_COLUMNS = [
 ];
 const SALES_VISIBLE_COLUMNS_KEY = 'visibleColumns-v3-sales-tracker';
 
-const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
+const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 'var(--crm-table-font-size, 10px)' };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
 const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 12 };
 
@@ -97,6 +98,7 @@ const SalesTrackerTable = () => {
   const [columns, setColumns] = useState([]);
   const [visibleColumns, setVisibleColumns] = useState([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const deferredSearchQuery = useDeferredValue(searchQuery);
   const [filters, setFilters] = useState({});
   const [validationOptions, setValidationOptions] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
@@ -198,8 +200,8 @@ const SalesTrackerTable = () => {
   useEffect(() => {
     let filtered = [...sales];
 
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
+    if (deferredSearchQuery) {
+      const q = deferredSearchQuery.toLowerCase();
       filtered = filtered.filter(row =>
         Object.values(row).some(val => val?.toString?.().toLowerCase().includes(q))
       );
@@ -214,8 +216,8 @@ const SalesTrackerTable = () => {
       const bVal = b[orderBy];
 
       if (orderBy === 'Timestamp') {
-        const aT = new Date(aVal || 0).getTime();
-        const bT = new Date(bVal || 0).getTime();
+        const aT = parseCrmTimestamp(aVal);
+        const bT = parseCrmTimestamp(bVal);
         return order === 'asc' ? aT - bT : bT - aT;
       }
 
@@ -232,7 +234,7 @@ const SalesTrackerTable = () => {
     });
 
     setFilteredSales(sorted);
-  }, [searchQuery, filters, sales, order, orderBy]);
+  }, [deferredSearchQuery, filters, sales, order, orderBy]);
 
   const handleSort = (field) => {
     if (orderBy === field) setOrder(prev => (prev === 'asc' ? 'desc' : 'asc'));
@@ -353,6 +355,7 @@ const SalesTrackerTable = () => {
             variant="outlined"
             placeholder="Search"
             size="small"
+            value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             InputProps={{ startAdornment: <SearchIcon />, sx: filterFontStyle }}
           />
@@ -402,7 +405,7 @@ const SalesTrackerTable = () => {
 
       {/* Table */}
       <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
-        <Table size="small" stickyHeader>
+        <Table size="small" stickyHeader sx={CRM_TABLE_SX}>
           <TableHead>
             <TableRow sx={{ backgroundColor: '#6495ED' }}>
               {visibleColumns.map(col => (

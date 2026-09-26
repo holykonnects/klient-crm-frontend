@@ -1,5 +1,5 @@
 // src/components/DealsTable.js
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -44,6 +44,7 @@ import EventIcon from "@mui/icons-material/Event";
 import CalendarView from "./CalendarView";
 import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
 import MobileActionMenu from "./MobileActionMenu";
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 
 const theme = createTheme({
   typography: {
@@ -84,49 +85,6 @@ const ORDER_ATTACHMENT_FIELDS = [
 ];
 
 /**
- * ✅ Flexible timestamp parser
- * Supports dd-MM-yyyy HH:mm:ss, dd/MM/yyyy HH:mm:ss, ISO strings, Date, epoch
- */
-const parseTimestampFlexible = (ts) => {
-  if (!ts) return 0;
-
-  if (ts instanceof Date) {
-    const t = ts.getTime();
-    return Number.isFinite(t) ? t : 0;
-  }
-
-  if (typeof ts === "number") {
-    return Number.isFinite(ts) ? ts : 0;
-  }
-
-  const raw = String(ts).trim();
-  if (!raw) return 0;
-
-  const dp = Date.parse(raw);
-  if (Number.isFinite(dp)) return dp;
-
-  const m = raw.match(
-    /^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})(?:\s+(\d{1,2})(?::(\d{1,2}))?(?::(\d{1,2}))?)?$/
-  );
-  if (m) {
-    const dd = parseInt(m[1], 10);
-    const mm = parseInt(m[2], 10);
-    const yyyy = parseInt(m[3], 10);
-    const HH = parseInt(m[4] ?? "0", 10);
-    const MM = parseInt(m[5] ?? "0", 10);
-    const SS = parseInt(m[6] ?? "0", 10);
-
-    if (dd && mm && yyyy) {
-      const dt = new Date(yyyy, mm - 1, dd, HH, MM, SS);
-      const t = dt.getTime();
-      return Number.isFinite(t) ? t : 0;
-    }
-  }
-
-  return 0;
-};
-
-/**
  * ✅ Deal key
  * - If "Order Distribution ID" exists (Closed Won), use it (stable)
  * - Else fallback to Deal Name + Account ID
@@ -136,6 +94,8 @@ const dealKeyOf = (row) => {
   if (finalId) return String(finalId).trim();
   return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
 };
+
+const getDealRowTime = (row) => crmRowUpdatedAt(row, ["Deal Updated Time"]);
 
 /**
  * ✅ Memoized DealField to reduce typing lag in big modals
@@ -255,11 +215,12 @@ function DealsTable() {
 
   // table controls
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterStage, setFilterStage] = useState("");
   const [filterType, setFilterType] = useState("");
   const [filterSource, setFilterSource] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
-  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
+  const [sortConfig, setSortConfig] = useState({ key: "Timestamp", direction: "desc" });
 
   // column selector
   const [anchorEl, setAnchorEl] = useState(null);
@@ -326,46 +287,7 @@ function DealsTable() {
 
       setAllDeals(filtered);
 
-      // ✅ show latest row per Deal Key
-      const seen = new Map();
-      filtered.forEach((row, idx) => {
-        const key = dealKeyOf(row);
-        const existing = seen.get(key);
-
-        const tNew = parseTimestampFlexible(row?.["Timestamp"]);
-        const tOld = parseTimestampFlexible(existing?.["Timestamp"]);
-
-        if (!existing) {
-          seen.set(key, { ...row, __idx: idx });
-          return;
-        }
-
-        // both invalid timestamps: prefer later row (append order)
-        if (tNew === 0 && tOld === 0) {
-          if ((idx ?? 0) > (existing.__idx ?? -1)) {
-            seen.set(key, { ...row, __idx: idx });
-          }
-          return;
-        }
-
-        if (tNew > tOld) {
-          seen.set(key, { ...row, __idx: idx });
-          return;
-        }
-
-        if (tNew === tOld && (idx ?? 0) > (existing.__idx ?? -1)) {
-          seen.set(key, { ...row, __idx: idx });
-        }
-      });
-
-      const dedupedLatest = Array.from(seen.values())
-        .sort((a, b) => {
-          const tb = parseTimestampFlexible(b?.["Timestamp"]);
-          const ta = parseTimestampFlexible(a?.["Timestamp"]);
-          if (tb !== ta) return tb - ta;
-          return (b.__idx ?? 0) - (a.__idx ?? 0);
-        })
-        .map(({ __idx, ...rest }) => rest);
+      const dedupedLatest = latestCrmRows(filtered, dealKeyOf, ["Deal Updated Time"]);
 
       setDeals(dedupedLatest);
 
@@ -397,8 +319,8 @@ function DealsTable() {
 
     arr.sort((a, b) => {
       if (key === "Timestamp") {
-        const ta = parseTimestampFlexible(a?.["Timestamp"]);
-        const tb = parseTimestampFlexible(b?.["Timestamp"]);
+        const ta = getDealRowTime(a);
+        const tb = getDealRowTime(b);
         return direction === "asc" ? ta - tb : tb - ta;
       }
 
@@ -418,21 +340,18 @@ function DealsTable() {
     setSortConfig({ key, direction });
   };
 
-  const filteredDeals = sortedDeals.filter((deal) => {
-    try {
-      return (
-        ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
-          (key) => (deal?.[key] || "").toLowerCase().includes(searchTerm.toLowerCase())
-        ) &&
-        (!filterStage || deal?.["Stage"] === filterStage) &&
-        (!filterType || deal?.["Type"] === filterType) &&
-        (!filterSource || deal?.["Lead Source"] === filterSource) &&
-        (!filterOwner || deal?.["Account Owner"] === filterOwner)
-      );
-    } catch {
-      return false;
-    }
-  });
+  const filteredDeals = useMemo(() => {
+    const query = deferredSearchTerm.toLowerCase();
+    return sortedDeals.filter((deal) => (
+      ["First Name", "Last Name", "Deal Name", "Company", "Mobile Number", "Stage", "Account ID"].some(
+        (key) => String(deal?.[key] || "").toLowerCase().includes(query)
+      ) &&
+      (!filterStage || deal?.["Stage"] === filterStage) &&
+      (!filterType || deal?.["Type"] === filterType) &&
+      (!filterSource || deal?.["Lead Source"] === filterSource) &&
+      (!filterOwner || deal?.["Account Owner"] === filterOwner)
+    ));
+  }, [sortedDeals, deferredSearchTerm, filterStage, filterType, filterSource, filterOwner]);
 
   const unique = (key) => [...new Set(deals.map((d) => d?.[key]).filter(Boolean))];
 
@@ -523,16 +442,10 @@ function DealsTable() {
       return;
     }
 
-    const logs = allDeals
-      .filter((d) => dealKeyOf(d) === key)
-      .map((r, idx) => ({ ...r, __idx: idx }))
-      .sort((a, b) => {
-        const tb = parseTimestampFlexible(b?.["Timestamp"]);
-        const ta = parseTimestampFlexible(a?.["Timestamp"]);
-        if (tb !== ta) return tb - ta;
-        return (b.__idx ?? 0) - (a.__idx ?? 0);
-      })
-      .map(({ __idx, ...rest }) => rest);
+    const logs = newestCrmRows(
+      allDeals.filter((d) => dealKeyOf(d) === key),
+      ["Deal Updated Time"]
+    );
 
     setDealLogs(logs);
     setLogsOpen(true);
@@ -828,7 +741,7 @@ function DealsTable() {
 
         {/* Table */}
         <Box className="crm-table-shell">
-        <Table>
+        <Table size="small" sx={CRM_TABLE_SX}>
           <TableHead>
             <TableRow style={{ backgroundColor: "#6495ED" }}>
               {visibleColumns.map((header) => (
@@ -1170,7 +1083,7 @@ function DealsTable() {
             {dealLogs.length === 0 ? (
               <Typography>No logs found.</Typography>
             ) : (
-              <Table size="small">
+              <Table size="small" sx={CRM_TABLE_SX}>
                 <TableHead>
                   <TableRow style={{ backgroundColor: "#6495ED" }}>
                     {logHeaders.map((h) => (

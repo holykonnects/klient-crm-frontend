@@ -11,6 +11,8 @@ import {
   Tooltip,
   Typography,
   Divider,
+  ToggleButton,
+  ToggleButtonGroup,
   useMediaQuery,
   useTheme
 } from '@mui/material';
@@ -35,7 +37,8 @@ import {
   Email,
   ManageSearch,
   Inventory2,
-  Description
+  Description,
+  FormatSize
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -50,12 +53,30 @@ function DashboardLayout({ children }) {
   ));
   const location = useLocation();
   const { user, logout } = useAuth();
+  const [tableFontSize, setTableFontSize] = useState(10);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   useEffect(() => {
     setOpen(!isMobile);
   }, [isMobile, location.pathname]);
+
+  const tableFontStorageKey = `crm-table-font-size-${user?.email || user?.username || 'default'}`;
+
+  useEffect(() => {
+    const saved = Number(localStorage.getItem(tableFontStorageKey));
+    setTableFontSize([10, 11, 12].includes(saved) ? saved : 10);
+  }, [tableFontStorageKey]);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty('--crm-table-font-size', `${tableFontSize}px`);
+  }, [tableFontSize]);
+
+  const changeTableFontSize = (_event, value) => {
+    if (![10, 11, 12].includes(value)) return;
+    setTableFontSize(value);
+    localStorage.setItem(tableFontStorageKey, String(value));
+  };
 
   const toggleDrawer = () => setOpen(prev => !prev);
   const menuItems = [
@@ -128,6 +149,52 @@ function DashboardLayout({ children }) {
         {/* TWO DIVIDERS BELOW LAST MENU ITEM */}
         <Divider sx={{ my: 1, borderColor: '#FFFFFF', borderBottomWidth: 2 }} />
         <Divider sx={{ my: 1, borderColor: '#FFFFFF', borderBottomWidth: 2 }} />
+
+        {open && (
+          <Box sx={{ mx: 1.5, my: 1, p: 1.25, border: '1px solid #e1e8f2', borderRadius: 2, backgroundColor: '#f7f9fc' }}>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+              <Box display="flex" alignItems="center" gap={0.75}>
+                <FormatSize sx={{ color: cornflowerBlue, fontSize: 18 }} />
+                <Typography sx={{ color: cornflowerBlue, fontFamily: 'Montserrat, sans-serif', fontSize: 10, fontWeight: 700 }}>
+                  Table text size
+                </Typography>
+              </Box>
+              <Typography sx={{ color: cornflowerBlue, fontFamily: 'Montserrat, sans-serif', fontSize: 10, fontWeight: 700 }}>
+                {tableFontSize}px
+              </Typography>
+            </Box>
+            <ToggleButtonGroup
+              exclusive
+              size="small"
+              fullWidth
+              value={tableFontSize}
+              onChange={changeTableFontSize}
+              aria-label="Table text size"
+              sx={{
+                '& .MuiToggleButton-root': {
+                  py: 0.5,
+                  borderColor: '#d7e0ec',
+                  color: cornflowerBlue,
+                  fontFamily: 'Montserrat, sans-serif',
+                  fontSize: 10,
+                  fontWeight: 700,
+                  textTransform: 'none',
+                  '&.Mui-selected': {
+                    color: '#fff',
+                    backgroundColor: cornflowerBlue
+                  },
+                  '&.Mui-selected:hover': {
+                    backgroundColor: '#4f7fd1'
+                  }
+                }
+              }}
+            >
+              <ToggleButton value={10} aria-label="10 pixel table text">10px</ToggleButton>
+              <ToggleButton value={11} aria-label="11 pixel table text">11px</ToggleButton>
+              <ToggleButton value={12} aria-label="12 pixel table text">12px</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        )}
 
         {/* LOGOUT INLINE */}
         <Tooltip title="Logout" placement="right">

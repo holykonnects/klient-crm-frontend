@@ -1,10 +1,10 @@
 // Updated TenderTable.js with full LeadsTable parity
-import React, { useEffect, useState } from 'react';
+import React, { useDeferredValue, useEffect, useMemo, useState } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
   IconButton, Dialog, DialogTitle, DialogContent, Grid, Checkbox, Button, Popover,
-  FormControlLabel, TableContainer, Paper
+  FormControlLabel, TableContainer, Paper, InputAdornment
 } from '@mui/material';
 import EditIcon from '@mui/icons-material/Edit';
 import ViewColumnIcon from '@mui/icons-material/ViewColumn';
@@ -15,6 +15,7 @@ import { createTheme, ThemeProvider } from '@mui/material/styles';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay'; // Adjust path if needed
+import { CRM_TABLE_SX, latestCrmRows, newestCrmRows } from '../utils/crmTableUtils';
 
 // ✅ ADDED: MUI Date Picker imports
 import { LocalizationProvider } from '@mui/x-date-pickers/LocalizationProvider';
@@ -49,7 +50,7 @@ const selectorStyle = {
 // ✅ ADDED: small table styling for logs (simple + readable)
 const logTableSx = {
   '& .MuiTableCell-root': {
-    fontSize: 9,
+    fontSize: 'var(--crm-table-font-size, 10px)',
     padding: '6px 8px',
     verticalAlign: 'top'
   }
@@ -68,7 +69,7 @@ const TenderTable = () => {
   const [logsOpen, setLogsOpen] = useState(false);
   const [tenderLogs, setTenderLogs] = useState([]);
   const [searchInput, setSearchInput] = useState('');
-  const [activeSearch, setActiveSearch] = useState('');
+  const deferredSearch = useDeferredValue(searchInput);
   const [filters, setFilters] = useState({ status: '', ministry: '', bidType: '' });
   const [editFiles, setEditFiles] = useState({});
 
@@ -89,16 +90,11 @@ const TenderTable = () => {
 
         setAllTenders(filteredData);
 
-        const deduped = [];
-        const seen = new Map();
-        filteredData.forEach(row => {
-          const key = row['Bid Number'];
-          const existing = seen.get(key);
-          if (!existing || new Date(row.Timestamp) > new Date(existing.Timestamp)) {
-            seen.set(key, row);
-          }
-        });
-        seen.forEach(v => deduped.push(v));
+        const deduped = latestCrmRows(
+          filteredData,
+          row => row['Bid Number'],
+          ['Tender Updated Time']
+        );
         setTenders(deduped);
         setVisibleColumns(
           JSON.parse(localStorage.getItem(`visibleColumns-v2-${user.username}-tenders`)) ||
@@ -212,14 +208,12 @@ const TenderTable = () => {
     return str;
   };
 
-  const filteredTenders = tenders.filter(row => {
-    return (
+  const filteredTenders = useMemo(() => tenders.filter(row => (
       (!filters.status || row['Tender Status'] === filters.status) &&
       (!filters.ministry || row['Ministry/State Name'] === filters.ministry) &&
       (!filters.bidType || row['Bid Type'] === filters.bidType) &&
-      Object.values(row).some(val => (val || '').toString().toLowerCase().includes(activeSearch.toLowerCase()))
-    );
-  });
+      Object.values(row).some(val => (val || '').toString().toLowerCase().includes(deferredSearch.toLowerCase()))
+    )), [tenders, filters, deferredSearch]);
 
   const unique = (key) => [...new Set(tenders.map(d => d[key]).filter(Boolean))];
 
@@ -298,6 +292,12 @@ const TenderTable = () => {
       }).then(async response => {
         if (!response.ok) throw new Error(await response.text());
       });
+      setAllTenders(prev => [...prev, updated]);
+      setTenders(prev => latestCrmRows(
+        [...prev, updated],
+        row => row['Bid Number'],
+        ['Tender Updated Time']
+      ));
       alert('✅ Tender updated successfully');
       setEditRow(null);
       setEditFiles({});
@@ -309,10 +309,10 @@ const TenderTable = () => {
   // logs compute columns & sort
   const handleViewLogs = (row) => {
     const key = row['Bid Number'];
-    const logs = allTenders
-      .filter(item => item['Bid Number'] === key)
-      .slice()
-      .sort((a, b) => new Date(a.Timestamp) - new Date(b.Timestamp)); // oldest -> newest
+    const logs = newestCrmRows(
+      allTenders.filter(item => item['Bid Number'] === key),
+      ['Tender Updated Time']
+    );
 
     setTenderLogs(logs);
 
@@ -368,12 +368,11 @@ const TenderTable = () => {
                 label="Search"
                 value={searchInput}
                 onChange={e => setSearchInput(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') setActiveSearch(searchInput); }}
                 sx={{ minWidth: 240 }}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start"><SearchIcon fontSize="small" /></InputAdornment>
+                }}
               />
-              <IconButton onClick={() => setActiveSearch(searchInput)} sx={{ ml: 1 }}>
-                <SearchIcon />
-              </IconButton>
             </Box>
 
             {['Tender Status', 'Ministry/State Name', 'Bid Type'].map(filterKey => (
@@ -431,7 +430,7 @@ const TenderTable = () => {
           </Box>
 
           <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
-            <Table size="small">
+            <Table size="small" sx={CRM_TABLE_SX}>
               <TableHead>
                 <TableRow style={{ backgroundColor: '#6495ED' }}>
                   {visibleColumns.map(header => (
@@ -547,7 +546,7 @@ const TenderTable = () => {
               </Box>
 
               {/* Full logs table with simple diff (no bold everywhere) */}
-              <Table size="small" sx={logTableSx}>
+              <Table size="small" sx={{ ...CRM_TABLE_SX, ...logTableSx }}>
                 <TableHead>
                   <TableRow style={{ backgroundColor: '#f7f9ff' }}>
                     <TableCell sx={{ fontWeight: 700 }}>Version</TableCell>
@@ -562,12 +561,12 @@ const TenderTable = () => {
 
                 <TableBody>
                   {tenderLogs.map((log, idx) => {
-                    const prev = idx > 0 ? tenderLogs[idx - 1] : null;
+                    const prev = tenderLogs[idx + 1] || null;
                     const changedCols = computeChanges(prev, log, logVisibleColumns);
 
                     return (
                       <TableRow key={idx}>
-                        <TableCell sx={{ fontSize: 9 }}>{idx + 1}</TableCell>
+                        <TableCell sx={{ fontSize: 'var(--crm-table-font-size, 10px)' }}>{idx + 1}</TableCell>
 
                         {logVisibleColumns.map(col => {
                           const isChanged = changedCols.includes(col);
@@ -593,7 +592,7 @@ const TenderTable = () => {
                           );
                         })}
 
-                        <TableCell sx={{ fontSize: 9 }}>
+                        <TableCell sx={{ fontSize: 'var(--crm-table-font-size, 10px)' }}>
                           {prev ? changedCols.join(', ') : 'Initial Entry'}
                         </TableCell>
                       </TableRow>

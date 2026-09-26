@@ -138,7 +138,8 @@ function processNewTenders() {
               ${htmlTable}
               <p>Regards,<br>Your CRM Team</p>
             `),
-            cc: "info@klientkonnect.com"
+            cc: "info@klientkonnect.com",
+            name: "Rido CRM"
           }
         );
         Logger.log("📧 Email sent successfully.");
@@ -375,7 +376,8 @@ function sendTenderReminderEmail_(subject, htmlTable, endDateStr, daysLeft) {
           ${htmlTable}
           <p>Regards,<br/>Your CRM Team</p>
         `),
-        cc: "info@klientkonnect.com"
+        cc: "info@klientkonnect.com",
+        name: "Rido CRM"
       }
     );
     Logger.log("📧 Reminder email sent.");

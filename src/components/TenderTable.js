@@ -50,7 +50,7 @@ const selectorStyle = {
 // ✅ ADDED: small table styling for logs (simple + readable)
 const logTableSx = {
   '& .MuiTableCell-root': {
-    fontSize: 9,
+    fontSize: 'var(--crm-table-font-size, 10px)',
     padding: '6px 8px',
     verticalAlign: 'top'
   }
@@ -566,7 +566,7 @@ const TenderTable = () => {
 
                     return (
                       <TableRow key={idx}>
-                        <TableCell sx={{ fontSize: 9 }}>{idx + 1}</TableCell>
+                        <TableCell sx={{ fontSize: 'var(--crm-table-font-size, 10px)' }}>{idx + 1}</TableCell>
 
                         {logVisibleColumns.map(col => {
                           const isChanged = changedCols.includes(col);
@@ -592,7 +592,7 @@ const TenderTable = () => {
                           );
                         })}
 
-                        <TableCell sx={{ fontSize: 9 }}>
+                        <TableCell sx={{ fontSize: 'var(--crm-table-font-size, 10px)' }}>
                           {prev ? changedCols.join(', ') : 'Initial Entry'}
                         </TableCell>
                       </TableRow>

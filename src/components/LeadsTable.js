@@ -29,7 +29,7 @@ import '@fontsource/montserrat';
 import LoadingOverlay from './LoadingOverlay';
 import CalendarView from './CalendarView';
 import MobileActionMenu from './MobileActionMenu';
-import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows } from '../utils/crmTableUtils';
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, parseCrmTimestamp } from '../utils/crmTableUtils';
 import { getLeadSaveMessage } from '../utils/leadTransferStatus';
 
 /* ---------- small debounce helper (no extra deps) ---------- */
@@ -364,13 +364,14 @@ const LeadsTable = () => {
     // Default/explicit: sort by latest updated first when key is 'Timestamp'
     const sorted = [...filtered].sort((a, b) => {
       if (!key || key === 'Timestamp') {
-        return direction === 'asc'
+        const difference = direction === 'asc'
           ? lastUpdatedMillis(a) - lastUpdatedMillis(b)
           : lastUpdatedMillis(b) - lastUpdatedMillis(a);
+        return difference;
       }
-      if (key === 'Lead Updated Time' || key === 'Created Time') {
-        const av = safeDate(a[key]);
-        const bv = safeDate(b[key]);
+      if (key === 'Updated At' || key === 'Lead Updated Time' || key === 'Created Time') {
+        const av = parseCrmTimestamp(a[key]);
+        const bv = parseCrmTimestamp(b[key]);
         return direction === 'asc' ? av - bv : bv - av;
       }
       // string-ish fallback

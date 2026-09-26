@@ -1,13 +1,13 @@
 export const CRM_TABLE_SX = {
   '& .MuiTableCell-root': {
     fontFamily: 'Montserrat, sans-serif',
-    fontSize: 9.5,
+    fontSize: 'var(--crm-table-font-size, 10px)',
     lineHeight: 1.45,
     padding: '7px 9px',
     verticalAlign: 'top'
   },
   '& .MuiTableCell-head': {
-    fontSize: 9.5,
+    fontSize: 'var(--crm-table-font-size, 10px)',
     fontWeight: 700,
     whiteSpace: 'nowrap'
   }

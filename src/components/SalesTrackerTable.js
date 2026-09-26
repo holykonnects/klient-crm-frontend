@@ -38,7 +38,7 @@ const SALES_OVERVIEW_COLUMNS = [
 ];
 const SALES_VISIBLE_COLUMNS_KEY = 'visibleColumns-v3-sales-tracker';
 
-const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 9.5 };
+const fontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 'var(--crm-table-font-size, 10px)' };
 const filterFontStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 11 };
 const modalInputStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: 12 };
 

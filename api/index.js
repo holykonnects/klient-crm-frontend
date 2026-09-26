@@ -3,6 +3,7 @@ import costing from "./_handlers/costing.js";
 import deals from "./_handlers/deals.js";
 import email from "./_handlers/email.js";
 import gas from "./_handlers/gas.js";
+import inventory from "./_handlers/inventory.js";
 import leads from "./_handlers/leads.js";
 import login from "./_handlers/login.js";
 import nomenclature from "./_handlers/nomenclature.js";
@@ -23,6 +24,7 @@ const handlers = {
   deals,
   email,
   gas,
+  inventory,
   leads,
   login,
   nomenclature,

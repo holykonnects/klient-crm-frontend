@@ -16,6 +16,9 @@ Optional overrides:
 - `DEALS_SHEET_ID`
 - `ORDERS_SHEET_ID`
 - `COSTING_SHEET_ID`
+- `INVENTORY_SHEET_ID`
+- `INVENTORY_BOOKING_REQUIREMENT_TO`
+- `INVENTORY_BOOKING_STATUS_CC`
 - `SALES_TRACKER_SHEET_ID`
 - `VALIDATION_SHEET_ID`
 - `EMAIL_SHEET_ID`
@@ -29,7 +32,7 @@ Optional overrides:
 - `OPERATIONAL_EMAIL_CC`
 - `OPERATIONAL_REPLY_TO`
 - `CRM_CALENDAR_URL`
-- `ENABLE_OPERATIONAL_EMAILS` (`true` enables server-side lead/deal/order emails)
+- `ENABLE_OPERATIONAL_EMAILS` (`true` enables server-side lead/deal/order/inventory emails)
 - `LEAD_UPDATE_FORM_URL`
 - `ORDER_UPLOAD_FOLDER_ID`
 - `ORDER_PO_FOLDER_ID`
@@ -52,10 +55,15 @@ Enable Google Sheets API and Google Drive API in the Google Cloud project.
 - `/api/nomenclature`
 - `/api/email`
 - `/api/costing`
+- `/api/inventory`
 
 The frontend modules for Leads, Lead Form, Accounts, Deals, Orders, and Sales Tracker now call these same-origin routes instead of deployed Apps Script URLs.
 
 Costing now runs entirely through the server-side Sheets API. `/api/costing` handles cost sheets, line items, advances, expense requests, approvals, mapping, sync, and CSV/XLSX/PDF exports. No costing request uses Apps Script or `COSTING_GAS_URL`. See [COSTING_NATIVE_API.md](COSTING_NATIVE_API.md) for rollout, behavior, and verification details.
+
+Stock Management and Inventory Booking use `/api/inventory` for validation, SKU, calculation configuration, stock, bookings, reservations, releases, dispatches, transfers, stock mutations, and booking notifications. These requests use same-origin JSON and no longer require the inventory Apps Script web app or JSONP callbacks. Keep the old web-app deployment active only until the native route and service-account access have been verified in production, then disable that deployment.
+
+The Apps Script project itself remains active solely for its installed `releaseExpiredBookings` time trigger. Keep that trigger and its supporting functions in place; do not replace or disable the scheduler as part of the frontend/API migration.
 
 Lead saves through `/api/leads` now generate or reuse `Lead ID` values and copy leads with `Lead Status = Qualified` into the Accounts sheet.
 Quick leads created from the communication module use the same `/api/leads` pipeline.

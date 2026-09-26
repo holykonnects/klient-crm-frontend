@@ -2907,7 +2907,12 @@ export default function CostingTable() {
         ) : null}
 
         {/* ================= EXTRACT MODAL ================= */}
-        <Dialog open={openExtract} onClose={() => setOpenExtract(false)} maxWidth="sm" fullWidth>
+        <Dialog
+          open={openExtract}
+          onClose={(_, reason) => reason !== "backdropClick" && setOpenExtract(false)}
+          maxWidth="sm"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>Extract Costing Data</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -3241,7 +3246,12 @@ export default function CostingTable() {
         </Dialog>
 
         {/* ================= ADD EXPENSE MODAL ================= */}
-        <Dialog open={openAddExpense} onClose={() => setOpenAddExpense(false)} maxWidth="md" fullWidth>
+        <Dialog
+          open={openAddExpense}
+          onClose={(_, reason) => reason !== "backdropClick" && setOpenAddExpense(false)}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>Add Expense</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -3850,7 +3860,12 @@ export default function CostingTable() {
         </Dialog>
 
         {/* ================= CREATE COST SHEET MODAL ================= */}
-        <Dialog open={openCreate} onClose={() => setOpenCreate(false)} maxWidth="md" fullWidth>
+        <Dialog
+          open={openCreate}
+          onClose={(_, reason) => reason !== "backdropClick" && setOpenCreate(false)}
+          maxWidth="md"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>Create Cost Sheet</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={1.5} sx={{ mt: 0.5 }}>
@@ -3998,7 +4013,12 @@ export default function CostingTable() {
         </Dialog>
 
         {/* ================= EDIT COST SHEET (TABLE + RIGHT DRAWER) ================= */}
-        <Dialog open={openEdit} onClose={() => setOpenEdit(false)} maxWidth="lg" fullWidth>
+        <Dialog
+          open={openEdit}
+          onClose={(_, reason) => reason !== "backdropClick" && setOpenEdit(false)}
+          maxWidth="lg"
+          fullWidth
+        >
           <DialogTitle sx={{ fontWeight: 800 }}>
             <Box sx={{ display: "flex", flexDirection: "column", gap: 0.4 }}>
               <Box sx={{ display: "flex", alignItems: "center", gap: 1, flexWrap: "wrap" }}>
@@ -4258,7 +4278,7 @@ export default function CostingTable() {
             <Drawer
               anchor="right"
               open={drawerOpen}
-              onClose={closeDrawer}
+              onClose={(_, reason) => reason !== "backdropClick" && closeDrawer()}
               sx={{ zIndex: (t) => (t?.zIndex?.modal ?? 1300) + 20 }}
               ModalProps={{ keepMounted: true }}
               PaperProps={{

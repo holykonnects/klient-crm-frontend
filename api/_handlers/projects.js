@@ -1,6 +1,7 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, buildRow, formatTimestamp, getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
 import { notifyProjectSubmitted } from "../_lib/operationalEmails.js";
+import { ensureUpdateAuditHeaders, withUpdateAudit } from "../_lib/updateAudit.js";
 
 const PROJECT_ID = "Project ID (unique, auto-generated)";
 
@@ -51,9 +52,10 @@ async function getValidationPayload() {
 async function addOrUpdateProject(payload) {
   const sheetName = await resolveSheetTitle(SHEETS.projects.spreadsheetId, SHEETS.projects.sheetNames);
   const values = await getValues(SHEETS.projects.spreadsheetId, sheetName);
-  const headers = values[0] || [];
-  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
-  const data = { ...payload, Timestamp: formatTimestamp() };
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const headers = await ensureUpdateAuditHeaders(SHEETS.projects, sheetName, existingHeaders);
+  const data = await withUpdateAudit({ ...payload, Timestamp: formatTimestamp() });
   data[PROJECT_ID] = data[PROJECT_ID] || generateProjectId();
   const budget = toNumber(data["Budget (₹)"]);
   const actual = toNumber(data["Actual Cost (₹)"]);

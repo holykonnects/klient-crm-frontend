@@ -184,6 +184,7 @@ async function createLead(data, userEmail) {
       "Lead Source": data.leadSource || data["Lead Source"] || "Communication",
       "Lead Status": data["Lead Status"] || "New",
       Timestamp: formatTimestamp(),
+      updatedByEmail: userEmail,
     },
   });
   return { ok: true, ...result };

@@ -19,6 +19,7 @@ import {
   notifyOrderSubmitted,
   notifySalesTrackerSubmitted,
 } from "./operationalEmails.js";
+import { ensureUpdateAuditHeaders, UPDATE_AUDIT_HEADERS, withUpdateAudit } from "./updateAudit.js";
 
 const FILE_FIELDS = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
 const LEAD_TRANSFER_FIELDS = [
@@ -48,6 +49,28 @@ const LEAD_TRANSFER_FIELDS = [
 ];
 const SALES_TRACKER_ENTITY_FIELDS = ["Field", "Field Selection", "Notification Status"];
 
+const amountNumber = (value) => {
+  const parsed = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+export function applyAmountUpdate(data, previous, field) {
+  const update = data?.amountUpdate;
+  if (!update) return data;
+  if (update.field !== field || !["keep", "add"].includes(update.mode)) {
+    throw new Error(`Invalid ${field} update choice`);
+  }
+  if (!previous) throw new Error(`Cannot update ${field} without an existing record`);
+  if (update.mode === "keep") {
+    data[field] = previous[field] ?? "";
+    return data;
+  }
+  const addition = amountNumber(update.addition);
+  if (addition <= 0) throw new Error(`${field} addition must be greater than zero`);
+  data[field] = amountNumber(previous[field]) + addition;
+  return data;
+}
+
 export async function getTable(config) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName);
@@ -57,8 +80,9 @@ export async function getTable(config) {
 export async function appendTableRow(config, data) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName, "1:1");
-  const headers = values[0] || [];
-  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const headers = await ensureUpdateAuditHeaders(config, sheetName, existingHeaders);
   await appendValues(config.spreadsheetId, sheetName, buildRow(headers, data || {}));
   return { ok: true };
 }
@@ -66,10 +90,11 @@ export async function appendTableRow(config, data) {
 export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
   const sheetName = await resolveSheetTitle(leadsConfig.spreadsheetId, leadsConfig.sheetNames);
   const values = await getValues(leadsConfig.spreadsheetId, sheetName);
-  const headers = values[0] || [];
-  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const headers = await ensureUpdateAuditHeaders(leadsConfig, sheetName, existingHeaders);
 
-  const data = { ...(payload || {}) };
+  const data = await withUpdateAudit({ ...(payload || {}) });
   const timestamp = data.Timestamp || formatTimestamp();
   data.Timestamp = timestamp;
   data["Lead ID"] = data["Lead ID"] || findExistingLeadId(values, headers, data["Mobile Number"]) || generateLeadId(timestamp);
@@ -107,14 +132,16 @@ export async function getValidationOptions(validationConfig, sheetNames) {
 
 export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
   const action = String(payload?.action || "").trim();
-  const data = payload?.data || payload || {};
+  const data = await withUpdateAudit(payload?.data || payload || {});
 
   if (!action || action === "updateDeal") {
     const sheetName = await resolveSheetTitle(dealsConfig.spreadsheetId, dealsConfig.sheetNames);
     const values = await getValues(dealsConfig.spreadsheetId, sheetName);
-    const headers = values[0] || [];
-    if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+    const existingHeaders = values[0] || [];
+    if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+    const headers = await ensureUpdateAuditHeaders(dealsConfig, sheetName, existingHeaders);
     const previousDeal = findPreviousRecord(values, headers, data, [["Deal ID"], ["Order Distribution ID"], ["Account ID", "Deal Name"]]);
+    applyAmountUpdate(data, previousDeal, "Deal Amount");
     const appendResult = await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
     const notification = await notifySafely(() => notifyDealSubmitted(headers, data, previousDeal));
     await persistSentStatus({ config: dealsConfig, sheetName, headers, appendResult, notification });
@@ -127,8 +154,9 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     const uploaded = await withUploadedFiles(data, `ORD ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
     const orderSheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
     const orderValues = await getValues(ordersConfig.spreadsheetId, orderSheetName);
-    const orderHeaders = orderValues[0] || [];
-    if (!orderHeaders.length) throw new Error(`No headers found in ${orderSheetName}`);
+    const existingOrderHeaders = orderValues[0] || [];
+    if (!existingOrderHeaders.length) throw new Error(`No headers found in ${orderSheetName}`);
+    const orderHeaders = await ensureUpdateAuditHeaders(ordersConfig, orderSheetName, existingOrderHeaders);
     const appendResult = await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded || {}));
     await appendTableRow(dealsConfig, clearFileFields(uploaded));
     const previousOrder = findPreviousRecord(orderValues, orderHeaders, uploaded, [["Order ID"]]);
@@ -142,7 +170,7 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
 
 export async function handleOrderPost({ ordersConfig, payload }) {
   const action = String(payload?.action || "").trim();
-  const data = payload?.data || payload || {};
+  const data = await withUpdateAudit(payload?.data || payload || {});
 
   if (action && action !== "updateOrder") throw new Error(`Unknown orders action: ${action}`);
   const orderId = data["Order ID"];
@@ -151,9 +179,11 @@ export async function handleOrderPost({ ordersConfig, payload }) {
   const uploaded = await withUploadedFiles(data, `ORD-UPDATE ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
   const sheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
   const values = await getValues(ordersConfig.spreadsheetId, sheetName);
-  const headers = values[0] || [];
-  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const headers = await ensureUpdateAuditHeaders(ordersConfig, sheetName, existingHeaders);
   const previousOrder = findPreviousRecord(values, headers, uploaded, [["Order ID"]]);
+  applyAmountUpdate(uploaded, previousOrder, "Order Amount");
   const appendResult = await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
   const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded, previousOrder));
   await persistSentStatus({ config: ordersConfig, sheetName, headers, appendResult, notification });
@@ -161,10 +191,10 @@ export async function handleOrderPost({ ordersConfig, payload }) {
 }
 
 export async function handleSalesTrackerPost(config, payload) {
-  const data = payload || {};
+  const data = await withUpdateAudit(payload || {});
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName);
-  const headers = await ensureSheetHeaders(config, sheetName, values[0] || [], SALES_TRACKER_ENTITY_FIELDS);
+  const headers = await ensureSheetHeaders(config, sheetName, values[0] || [], [...SALES_TRACKER_ENTITY_FIELDS, ...UPDATE_AUDIT_HEADERS]);
   if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
   const row = buildRow(headers, data);
 
@@ -327,8 +357,9 @@ async function maybeTransferQualifiedLead({ accountsConfig, lead }) {
 
   const sheetName = await resolveSheetTitle(accountsConfig.spreadsheetId, accountsConfig.sheetNames);
   const values = await getValues(accountsConfig.spreadsheetId, sheetName);
-  const headers = values[0] || [];
-  if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const headers = await ensureUpdateAuditHeaders(accountsConfig, sheetName, existingHeaders);
 
   const leadId = String(lead["Lead ID"] || "").trim();
   const leadIdIndex = headers.indexOf("Lead ID");
@@ -345,6 +376,10 @@ async function maybeTransferQualifiedLead({ accountsConfig, lead }) {
   accountData["Account Owner"] = lead["Lead Owner"] || lead["Account Owner"] || "";
   accountData.updatedByName = lead.updatedByName || "";
   accountData.updatedByEmail = lead.updatedByEmail || "";
+  accountData.updatedByRole = lead.updatedByRole || "";
+  UPDATE_AUDIT_HEADERS.forEach((header) => {
+    accountData[header] = lead[header] || "";
+  });
 
   const appendResult = await appendValues(accountsConfig.spreadsheetId, sheetName, buildRow(headers, accountData));
   const notification = await notifySafely(() => notifyAccountSubmitted(headers, accountData));

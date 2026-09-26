@@ -28,11 +28,16 @@ export function prepareExport(headers, source, query) {
   }).map((r) => Object.fromEntries(headers.map((h) => [h, numericFields.has(h) ? number(r[h]) : dateText(h, r[h])])));
   const subtotal = query.action === "exportFinance" && query.subtotalBy && query.subtotalBy !== "none" ? query.subtotalBy : "";
   if (subtotal && !selected.includes(subtotal)) throw new Error("Subtotal column must be included in the export");
-  const exportHeaders = subtotal
-    ? [...selected.filter((header) => header !== SUBTOTAL_HEADER), SUBTOTAL_HEADER]
-    : selected;
-  const subtotalAmountField = ["Total Amount", "Amount"].find((header) => headers.includes(header))
+  const subtotalAmountField = ["Amount", "Total Amount"].find((header) => selected.includes(header))
+    || ["Amount", "Total Amount"].find((header) => headers.includes(header))
     || selected.find((header) => numericFields.has(header) && header !== SUBTOTAL_HEADER);
+  const exportHeaders = subtotal
+    ? [
+        ...selected.filter((header) => header !== SUBTOTAL_HEADER && header !== subtotalAmountField),
+        ...(subtotalAmountField ? [subtotalAmountField] : []),
+        SUBTOTAL_HEADER,
+      ]
+    : selected;
   const merge = query.format !== "csv" && selected.includes(query.mergeBy) ? query.mergeBy : "";
   const groupBy = subtotal || merge;
   if (groupBy) rows.sort((a, b) => clean(a[groupBy]).localeCompare(clean(b[groupBy])));

@@ -136,7 +136,7 @@ test("finance exports honor dates, active status, selection and subtotals", asyn
     { Particular: "A", "Expense Date": "2026-09-15", "Total Amount": 18, Active: "Yes" },
     { Particular: "A", "Expense Date": "2026-09-15", "Total Amount": 999, Active: "No" },
     { Particular: "B", "Expense Date": "2026-09-14", "Total Amount": 999, Active: "Yes" },
-  ], { action: "exportFinance", from: "2026-09-15", to: "2026-09-15", subtotalBy: "Particular", fields: '["Particular","Total Amount"]' });
+  ], { action: "exportFinance", from: "2026-09-15", to: "2026-09-15", subtotalBy: "Particular", fields: '["Total Amount","Particular"]' });
   assert.equal(data.rows.length, 4);
   assert.deepEqual(data.headers, ["Particular", "Total Amount", "Subtotal"]);
   assert.deepEqual(data.rows[0].values, ["A", 100, ""]);
@@ -144,6 +144,17 @@ test("finance exports honor dates, active status, selection and subtotals", asyn
   assert.deepEqual(data.rows[3].values, ["Grand total", "", 118]);
   const csv = await renderExport(data, "csv");
   assert.match(csv.toString(), /"Grand total","","118"/);
+});
+
+test("finance exports dynamically append the available amount and subtotal columns", () => {
+  const data = prepareExport(
+    ["Particular", "Amount", "Total Amount", "Active"],
+    [{ Particular: "Materials", Amount: 75, "Total Amount": 90, Active: "Yes" }],
+    { action: "exportFinance", subtotalBy: "Particular", fields: '["Amount","Particular","Total Amount"]' },
+  );
+  assert.deepEqual(data.headers, ["Particular", "Total Amount", "Amount", "Subtotal"]);
+  assert.deepEqual(data.rows[0].values, ["Materials", 90, 75, ""]);
+  assert.deepEqual(data.rows[1].values, ["Materials subtotal", "", "", 75]);
 });
 
 test("Excel exports are real workbooks with numeric totals and merged groups", async () => {

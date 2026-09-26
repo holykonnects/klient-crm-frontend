@@ -40,11 +40,9 @@ import SaveIcon from "@mui/icons-material/Save";
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
 
-const INVENTORY_API_URL =
-  "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
+const INVENTORY_API_URL = "/api/inventory";
 
 const BOOKING_HOLD_DAYS = 2;
-const JSONP_TIMEOUT_MS = 60000;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
 const STATUS_PENDING_REVIEW = "Pending Review";
@@ -512,77 +510,26 @@ function groupBookingsForSummary(rows = []) {
   });
 }
 
-let jsonpQueue = Promise.resolve();
-
-function enqueueJsonp(task) {
-  const next = jsonpQueue.catch(() => {}).then(task);
-  jsonpQueue = next.catch(() => {});
-  return next;
-}
-
-function jsonp(url, timeoutMs = JSONP_TIMEOUT_MS) {
-  return new Promise((resolve, reject) => {
-    const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-    const script = document.createElement("script");
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("JSONP timeout"));
-    }, timeoutMs);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try {
-        delete window[cb];
-      } catch {
-        window[cb] = undefined;
-      }
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[cb] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    const sep = url.includes("?") ? "&" : "?";
-    script.src = `${url}${sep}callback=${encodeURIComponent(cb)}`;
-    script.async = true;
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP load failed"));
-    };
-
-    document.body.appendChild(script);
-  });
-}
-
 async function apiGet(apiUrl, params) {
-  const qs = new URLSearchParams({
-    ...params,
-    _: String(Date.now()),
+  const qs = new URLSearchParams(params);
+  const response = await fetch(`${apiUrl}?${qs.toString()}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
   });
-  const payload = await enqueueJsonp(() => jsonp(`${apiUrl}?${qs.toString()}`));
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status})`);
   if (!payload?.ok) throw new Error(payload?.error || "Request failed");
   return payload.data;
 }
 
-async function apiPostNoCors(apiUrl, body) {
-  await fetch(apiUrl, {
+async function apiMutation(apiUrl, body) {
+  const response = await fetch(apiUrl, {
     method: "POST",
-    mode: "no-cors",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
-}
-
-async function apiMutation(apiUrl, body) {
-  const payload = await enqueueJsonp(() =>
-    jsonp(
-      `${apiUrl}?action=mutation&payload=${encodeURIComponent(JSON.stringify(body))}&_=${Date.now()}`
-    )
-  );
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status})`);
   if (!payload?.ok) throw new Error(payload?.error || "Request failed");
   return payload.data;
 }
@@ -1423,7 +1370,7 @@ export default function InventoryModule({
       console.error("getBookings error:", e);
       setBookings([]);
       setBookingsError(
-        "Bookings list endpoint is not enabled yet. Please add Apps Script action=getBookings."
+        `Failed to load bookings: ${e.message || e}`
       );
     } finally {
       setBookingsLoading(false);

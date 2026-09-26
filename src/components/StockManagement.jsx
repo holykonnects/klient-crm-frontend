@@ -43,10 +43,7 @@ import SwapHorizIcon from "@mui/icons-material/SwapHoriz";
 const cornflowerBlue = "#6495ED";
 const fontFamily = "Montserrat, sans-serif";
 
-const INVENTORY_API_URL =
-  "https://script.google.com/macros/s/AKfycbzEkxzsVYQWMdI7CmleY53U-O4C58b92wlCZnISqtv11L2YLcaRuiB0WGHWW1HlpsoG/exec";
-
-const JSONP_TIMEOUT_MS = 60000;
+const INVENTORY_API_URL = "/api/inventory";
 const DEFAULT_PACK_SIZES = {
   "PORE SEALER": 23.2,
   "WEAR COAT": 21.4,
@@ -138,69 +135,28 @@ function getUserFromLocalStorage() {
   }
 }
 
-let jsonpQueue = Promise.resolve();
-
-function enqueueJsonp(task) {
-  const next = jsonpQueue.catch(() => {}).then(task);
-  jsonpQueue = next.catch(() => {});
-  return next;
-}
-
-function jsonp(url, timeoutMs = JSONP_TIMEOUT_MS) {
-  return new Promise((resolve, reject) => {
-    const cb = `cb_${Date.now()}_${Math.floor(Math.random() * 100000)}`;
-    const script = document.createElement("script");
-
-    const timer = setTimeout(() => {
-      cleanup();
-      reject(new Error("JSONP timeout"));
-    }, timeoutMs);
-
-    function cleanup() {
-      clearTimeout(timer);
-      try {
-        delete window[cb];
-      } catch {
-        window[cb] = undefined;
-      }
-      if (script.parentNode) script.parentNode.removeChild(script);
-    }
-
-    window[cb] = (data) => {
-      cleanup();
-      resolve(data);
-    };
-
-    const sep = url.includes("?") ? "&" : "?";
-    script.src = `${url}${sep}callback=${encodeURIComponent(cb)}`;
-    script.async = true;
-
-    script.onerror = () => {
-      cleanup();
-      reject(new Error("JSONP load failed"));
-    };
-
-    document.body.appendChild(script);
-  });
-}
-
 async function apiGet(apiUrl, params) {
-  const qs = new URLSearchParams({
-    ...params,
-    _: String(Date.now()),
+  const qs = new URLSearchParams(params);
+  const response = await fetch(`${apiUrl}?${qs.toString()}`, {
+    headers: { Accept: "application/json" },
+    cache: "no-store",
   });
-  const payload = await enqueueJsonp(() => jsonp(`${apiUrl}?${qs.toString()}`));
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status})`);
   if (!payload?.ok) throw new Error(payload?.error || "Request failed");
   return payload.data;
 }
 
-async function apiPostNoCors(apiUrl, body) {
-  await fetch(apiUrl, {
+async function apiMutation(apiUrl, body) {
+  const response = await fetch(apiUrl, {
     method: "POST",
-    mode: "no-cors",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
   });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status})`);
+  if (!payload?.ok) throw new Error(payload?.error || "Request failed");
+  return payload.data;
 }
 
 function parsePackSizeOptions(value) {
@@ -1013,7 +969,7 @@ export default function StockManagement({
         },
       };
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
       setStockRows((prevRows) =>
         (prevRows || []).map((row, index) => {
           const sameRow =
@@ -1217,7 +1173,7 @@ export default function StockManagement({
     setCalcRuleError("");
 
     try {
-      await apiPostNoCors(apiUrl, {
+      await apiMutation(apiUrl, {
         action: "upsertCalcMatrixRule",
         data: {
           userEmail: user.email || user.username || "",
@@ -1305,7 +1261,7 @@ export default function StockManagement({
           };
 
           console.log("createStockItem payload =>", payload);
-          return apiPostNoCors(apiUrl, payload);
+          return apiMutation(apiUrl, payload);
         })
       );
 
@@ -1368,7 +1324,7 @@ export default function StockManagement({
         },
       };
 
-      await apiPostNoCors(apiUrl, payload);
+      await apiMutation(apiUrl, payload);
 
       setGlobalNotice(
         nextActive === "FALSE"
@@ -1458,7 +1414,7 @@ export default function StockManagement({
     setTransferError("");
 
     try {
-      await apiPostNoCors(apiUrl, {
+      await apiMutation(apiUrl, {
         action: "transferStock",
         data: {
           role: user.role || "",

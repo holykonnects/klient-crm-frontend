@@ -372,6 +372,86 @@ export async function notifyTenderSubmitted(headers, data) {
   });
 }
 
+export async function notifyInventoryBookingCreated({ bookingId, requestedBy, category, variant, remarks, items }) {
+  const requesterEmail = await loginEmail(requestedBy);
+  const data = {
+    "Booking ID": bookingId,
+    "Requested By": requestedBy,
+    Category: category,
+    "Variant / Base Type": variant,
+    Status: "Pending Review",
+    Remarks: remarks,
+    "Total Required Qty": inventoryTotal(items, "requiredQty"),
+    "Total Shortage Qty": inventoryTotal(items, "shortageQty"),
+    Items: inventoryItemSummary(items),
+  };
+  return sendDirectOperationalEmail({
+    to: process.env.INVENTORY_BOOKING_REQUIREMENT_TO || "sarabjeet@ridosports.com,info@klientkonnect.com",
+    cc: requesterEmail,
+    subject: `New inventory booking requirement ${bookingId}`,
+    intro: "A new inventory booking requirement has been submitted for admin review:",
+    headers: Object.keys(data),
+    data,
+  });
+}
+
+export async function notifyInventoryBookingUpdated({ bookingId, requestedBy, category, variant, status, updatedBy, holdExpiresAt, remarks, items }) {
+  const to = await loginEmail(requestedBy);
+  if (!to) return { sent: false, reason: "missing_requester_email" };
+  const data = {
+    "Booking ID": bookingId,
+    "Requested By": requestedBy,
+    Category: category,
+    "Variant / Base Type": variant,
+    Status: status,
+    "Updated By": updatedBy,
+    "Hold Expires At": holdExpiresAt,
+    Remarks: remarks,
+    Items: inventoryItemSummary(items),
+  };
+  return sendDirectOperationalEmail({
+    to,
+    cc: process.env.INVENTORY_BOOKING_STATUS_CC || "sidhant@ridosports.com,sandeep@ridosports.com,sarabjeet@ridosports.com,info@klientkonnect.com",
+    greeting: `Hello ${clean(requestedBy) || "there"},`,
+    subject: `Inventory booking ${bookingId} updated to ${status}`,
+    intro: "Your inventory booking has been updated:",
+    headers: Object.keys(data),
+    data,
+  });
+}
+
+function inventoryTotal(items, field) {
+  return (items || []).reduce((sum, item) => sum + (Number(item?.[field]) || 0), 0);
+}
+
+function inventoryItemSummary(items) {
+  return (items || []).map((item) => {
+    const material = clean(item.materialName) || clean(item["Material Name"]);
+    const required = item.requiredQty ?? item["Required Qty"] ?? 0;
+    const allocatedPackaged = item.allocatedPackagedQty ?? item["Allocation Package Qty"] ?? 0;
+    const allocatedLoose = item.allocatedLooseQty ?? item["Allocation Loose Qty"] ?? 0;
+    const shortage = item.shortageQty ?? item["Shortage Qty"] ?? 0;
+    return `${material}: required ${required}, packaged ${allocatedPackaged}, loose ${allocatedLoose}, shortage ${shortage}`;
+  }).join("\n");
+}
+
+async function loginEmail(identity) {
+  const wanted = clean(identity).toLowerCase();
+  if (!wanted) return "";
+  const sheetName = await resolveSheetTitle(SHEETS.auth.spreadsheetId, SHEETS.auth.sheetNames);
+  const values = await getValues(SHEETS.auth.spreadsheetId, sheetName);
+  const [headers = [], ...rows] = values;
+  const indexes = {
+    identity: ["Username", "User Name", "Login Username", "loginUsername", "Name", "Full Name", "Employee Name", "Email", "Email ID", "Email Address", "Login Email"]
+      .map((header) => findHeader(headers, header)).filter((index) => index >= 0),
+    email: ["Email", "Email ID", "Email Address", "Login Email"]
+      .map((header) => findHeader(headers, header)).find((index) => index >= 0),
+  };
+  if (indexes.email == null) return "";
+  const match = rows.find((row) => indexes.identity.some((index) => clean(row[index]).toLowerCase() === wanted));
+  return match ? clean(match[indexes.email]) : "";
+}
+
 function hasMaterialChanges(headers, previousData, data) {
   const ignored = new Set(["Timestamp", "Notification Status", "Prefilled Link", "mode", "originalSNo"]);
   return (headers || []).some((header) =>

@@ -41,6 +41,19 @@ export const SHEETS = {
     validationSpreadsheetId: process.env.VALIDATION_SHEET_ID || "1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ",
     validationSheetNames: ["Cost Validation"],
   },
+  inventory: {
+    spreadsheetId:
+      process.env.INVENTORY_SHEET_ID || "1yoh-yySFEvjZBpsPC9CBmghhldt7sZBD-wquTYktFPY",
+    stockSheetNames: ["Inventory Stock"],
+    bookingSheetNames: ["Inventory Bookings"],
+    transactionSheetNames: ["Inventory Transactions"],
+    inputSheetNames: ["Inventory Calc Inputs"],
+    configSheetNames: ["Inventory Calc Config"],
+    skuSheetNames: ["SKU"],
+    validationSpreadsheetId:
+      process.env.VALIDATION_SHEET_ID || "1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ",
+    validationSheetNames: ["Inventory Validation"],
+  },
   salesTracker: {
     spreadsheetId:
       process.env.SALES_TRACKER_SHEET_ID || "1XV4CJLt8nP512e39YK9RmYFO2llxyNCtmuphXgT8p2E",

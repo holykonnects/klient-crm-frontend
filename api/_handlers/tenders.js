@@ -1,6 +1,7 @@
 import { DRIVE_FOLDERS, SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, buildRow, getValues, optionsFromValues, resolveSheetTitle, rowsToObjects, uploadDriveFile } from "../_lib/googleSheets.js";
 import { notifyTenderSubmitted } from "../_lib/operationalEmails.js";
+import { ensureUpdateAuditHeaders, withUpdateAudit } from "../_lib/updateAudit.js";
 
 const UPDATE_FORM_URL = "https://docs.google.com/forms/d/e/1FAIpQLSdf2pFdSBeBb8C-__cY6Xlg7ErfWJoxHDi2uXue80aieVLwmg/viewform?usp=pp_url";
 const UPDATE_FIELDS = {
@@ -33,9 +34,10 @@ export default async function handler(req, res) {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       const sheetName = await resolveSheetTitle(SHEETS.tenders.spreadsheetId, SHEETS.tenders.sheetNames);
       const values = await getValues(SHEETS.tenders.spreadsheetId, sheetName);
-      const headers = values[0] || [];
-      if (!headers.length) throw new Error(`No headers found in ${sheetName}`);
-      const data = { ...body };
+      const existingHeaders = values[0] || [];
+      if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+      const headers = await ensureUpdateAuditHeaders(SHEETS.tenders, sheetName, existingHeaders);
+      const data = await withUpdateAudit({ ...body });
       const existing = rowsToObjects(values).find((row) =>
         String(row["Bid Number"] || "").trim() === String(data["Bid Number"] || "").trim() &&
         String(row["Tender Unique ID"] || "").trim()

@@ -1,5 +1,5 @@
 // src/components/ProjectTable.js
-import React, { useEffect, useMemo, useState, useCallback } from "react";
+import React, { useDeferredValue, useEffect, useMemo, useState, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -55,6 +55,7 @@ import {
   getLinkedClientDisplay,
   extractMobileFromLinkedClient,
 } from "../utils/linkedClientContact";
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 
 const WEB_APP_BASE = "/api/projects";
 
@@ -261,6 +262,7 @@ export default function ProjectTable() {
   const [multiselectSetNorm, setMultiselectSetNorm] = useState(new Set());
 
   const [search, setSearch] = useState("");
+  const deferredSearch = useDeferredValue(search);
   const [filters, setFilters] = useState({});
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
@@ -409,22 +411,7 @@ export default function ProjectTable() {
   const PROJECT_ID_HEADER = "Project ID (unique, auto-generated)";
 
   const latestByProjectId = useMemo(() => {
-    const map = new Map();
-    rows.forEach((r) => {
-      const id = r[PROJECT_ID_HEADER];
-      if (!id) return;
-      const prev = map.get(id);
-      const curTs = parseAsDate(r.Timestamp);
-      if (!prev) {
-        map.set(id, r);
-      } else {
-        const prevTs = parseAsDate(prev.Timestamp);
-        if ((curTs && prevTs && curTs > prevTs) || (curTs && !prevTs)) {
-          map.set(id, r);
-        }
-      }
-    });
-    return Array.from(map.values());
+    return latestCrmRows(rows, row => row[PROJECT_ID_HEADER], ["Project Updated Time"]);
   }, [rows]);
 
   // ---------- derived rows (search/filter/sort) ----------
@@ -432,8 +419,8 @@ export default function ProjectTable() {
     const tsKey = "Timestamp";
     let out = [...latestByProjectId];
 
-    if (search) {
-      const q = search.toLowerCase().trim();
+    if (deferredSearch) {
+      const q = deferredSearch.toLowerCase().trim();
       out = out.filter((r) => headers.some((h) => String(r[h] || "").toLowerCase().includes(q)));
     }
 
@@ -452,16 +439,11 @@ export default function ProjectTable() {
         if (cmp !== 0) return sortConfig.direction === "asc" ? cmp : -cmp;
       }
 
-      const da = parseAsDate(a[tsKey]);
-      const db = parseAsDate(b[tsKey]);
-      if (da && db) return db - da;
-      if (da && !db) return -1;
-      if (!da && db) return 1;
-      return 0;
+      return crmRowUpdatedAt(b, ["Project Updated Time"]) - crmRowUpdatedAt(a, ["Project Updated Time"]);
     });
 
     return out;
-  }, [latestByProjectId, headers, search, filters, sortConfig]);
+  }, [latestByProjectId, headers, deferredSearch, filters, sortConfig]);
 
   // ---------- UI handlers ----------
   const handleOpenColumns = (e) => setAnchorEl(e.currentTarget);
@@ -564,16 +546,10 @@ export default function ProjectTable() {
   };
 
   const openLogs = (projectId) => {
-    const items = rows
-      .filter((r) => r[PROJECT_ID_HEADER] === projectId)
-      .sort((a, b) => {
-        const da = parseAsDate(a.Timestamp);
-        const db = parseAsDate(b.Timestamp);
-        if (da && db) return db - da;
-        if (da && !db) return -1;
-        if (!da && db) return 1;
-        return 0;
-      });
+    const items = newestCrmRows(
+      rows.filter((r) => r[PROJECT_ID_HEADER] === projectId),
+      ["Project Updated Time"]
+    );
     setLogsRows(items);
     setLogsOpen(true);
   };
@@ -801,14 +777,7 @@ export default function ProjectTable() {
       return rows
         .filter((r) => String(r?.[PROJECT_ID_HEADER] || "") === String(projectId))
         .slice()
-        .sort((a, b) => {
-          const da = parseAsDate(a.Timestamp);
-          const db = parseAsDate(b.Timestamp);
-          if (da && db) return da - db; // oldest -> newest
-          if (da && !db) return -1;
-          if (!da && db) return 1;
-          return 0;
-        });
+        .sort((a, b) => crmRowUpdatedAt(a, ["Project Updated Time"]) - crmRowUpdatedAt(b, ["Project Updated Time"]));
     },
     [rows]
   );
@@ -1138,7 +1107,7 @@ export default function ProjectTable() {
 
         {/* Table */}
         <TableContainer component={Paper} className="crm-table-shell" variant="outlined">
-          <Table size="small" stickyHeader>
+          <Table size="small" stickyHeader sx={CRM_TABLE_SX}>
             <TableHead
               sx={{
                 "& .MuiTableCell-head": {
@@ -1346,7 +1315,7 @@ export default function ProjectTable() {
                       </Typography>
                     ) : (
                       <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
-                        <Table size="small" stickyHeader>
+                        <Table size="small" stickyHeader sx={CRM_TABLE_SX}>
                           <TableHead
                             sx={{
                               "& .MuiTableCell-head": {
@@ -1448,7 +1417,7 @@ export default function ProjectTable() {
                       </Typography>
                     ) : (
                       <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
-                        <Table size="small" stickyHeader>
+                        <Table size="small" stickyHeader sx={CRM_TABLE_SX}>
                           <TableHead
                             sx={{
                               "& .MuiTableCell-head": {
@@ -1518,7 +1487,7 @@ export default function ProjectTable() {
               <Typography>No logs available.</Typography>
             ) : (
               <TableContainer component={Paper} variant="outlined" sx={{ borderRadius: 1, maxWidth: "100%", overflowX: "auto" }}>
-                <Table size="small" stickyHeader>
+                <Table size="small" stickyHeader sx={CRM_TABLE_SX}>
                   <TableHead>
                     <TableRow>
                       {headers.map((h) => (

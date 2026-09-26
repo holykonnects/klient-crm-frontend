@@ -1,5 +1,5 @@
 // src/components/AccountsTable.js
-import React, { useEffect, useState, useMemo, useCallback } from "react";
+import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
   Typography,
@@ -37,6 +37,7 @@ import "@fontsource/montserrat";
 import LoadingOverlay from "./LoadingOverlay"; // Adjust path if needed
 import CalendarView from "./CalendarView"; // adjust path if needed
 import MobileActionMenu from "./MobileActionMenu";
+import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows } from "../utils/crmTableUtils";
 
 const theme = createTheme({
   typography: {
@@ -67,7 +68,7 @@ const AccountsGrid = React.memo(function AccountsGrid({
   onOpenMeeting,
 }) {
   return (
-    <Table>
+    <Table size="small" sx={CRM_TABLE_SX}>
       <TableHead>
         <TableRow style={{ backgroundColor: "#6495ED" }}>
           {visibleColumns.map((header) => (
@@ -316,11 +317,12 @@ function AccountsTable() {
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
+  const deferredSearchTerm = useDeferredValue(searchTerm);
   const [filterSource, setFilterSource] = useState("");
   const [filterOwner, setFilterOwner] = useState("");
 
   const [validationData, setValidationData] = useState({});
-  const [sortConfig, setSortConfig] = useState({ key: "", direction: "asc" });
+  const [sortConfig, setSortConfig] = useState({ key: "Timestamp", direction: "desc" });
 
   const [anchorEl, setAnchorEl] = useState(null);
   const [visibleColumns, setVisibleColumns] = useState([]);
@@ -358,11 +360,16 @@ function AccountsTable() {
           );
         }
 
-        setAccounts(filtered);
+        const latestAccounts = latestCrmRows(
+          filtered,
+          account => account["Account ID"] || account["Lead ID"] || account["Mobile Number"],
+          ["Account Updated Time"]
+        );
+        setAccounts(latestAccounts);
 
         setVisibleColumns(
           JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-accounts`)) ||
-            ['Account ID', 'Company', 'First Name', 'Mobile Number', 'Account Owner', 'Lead Source'].filter((key) => Object.keys(filtered[0] || {}).includes(key))
+            ['Account ID', 'Company', 'First Name', 'Mobile Number', 'Account Owner', 'Lead Source'].filter((key) => Object.keys(latestAccounts[0] || {}).includes(key))
         );
 
         setLoading(false);
@@ -411,6 +418,10 @@ function AccountsTable() {
   const filteredAccounts = useMemo(() => {
     return [...accounts]
       .sort((a, b) => {
+        if (sortConfig.key === "Timestamp") {
+          const difference = crmRowUpdatedAt(a, ["Account Updated Time"]) - crmRowUpdatedAt(b, ["Account Updated Time"]);
+          return sortConfig.direction === "asc" ? difference : -difference;
+        }
         if (!sortConfig.key) return 0;
         const aVal = a[sortConfig.key] || "";
         const bVal = b[sortConfig.key] || "";
@@ -422,7 +433,7 @@ function AccountsTable() {
         try {
           return (
             ["First Name", "Last Name", "Company", "Mobile Number"].some((field) =>
-              (acc[field] || "").toLowerCase().includes(searchTerm.toLowerCase())
+              String(acc[field] || "").toLowerCase().includes(deferredSearchTerm.toLowerCase())
             ) &&
             (!filterSource || acc["Lead Source"] === filterSource) &&
             (!filterOwner || acc["Lead Owner"] === filterOwner)
@@ -431,7 +442,7 @@ function AccountsTable() {
           return false;
         }
       });
-  }, [accounts, sortConfig, searchTerm, filterSource, filterOwner]);
+  }, [accounts, sortConfig, deferredSearchTerm, filterSource, filterOwner]);
 
   const openDealModal = useCallback((acc) => {
     setCreateDealRow(acc);

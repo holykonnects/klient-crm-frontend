@@ -143,7 +143,7 @@ function notifyQuotation() {
 
         Logger.log(`   ✉️ Sending PREPARE email -> To: ${to} | CC: ${cc} | Subject: "${subject}"`);
         try {
-          GmailApp.sendEmail(to, subject, '', { cc, htmlBody: body });
+          GmailApp.sendEmail(to, subject, '', { cc, htmlBody: body, name: 'Rido CRM' });
           Logger.log(`   ✅ Email sent. Updating Notification Status -> "${NOTIF_QUOTE_UPDATE_SENT}"`);
           sheet.getRange(r+1, idx.notif+1).setValue(NOTIF_QUOTE_UPDATE_SENT);
         } catch (e) {
@@ -182,7 +182,7 @@ function notifyQuotation() {
 
         Logger.log(`   ✉️ Sending READY email -> To: ${to} | CC: ${cc} | Subject: "${subject}"`);
         try {
-          GmailApp.sendEmail(to, subject, '', { cc, htmlBody: body });
+          GmailApp.sendEmail(to, subject, '', { cc, htmlBody: body, name: 'Rido CRM' });
           Logger.log(`   ✅ Email sent. Updating Notification Status -> "${NOTIF_QUOTE_PREPARED_SENT}"`);
           sheet.getRange(r+1, idx.notif+1).setValue(NOTIF_QUOTE_PREPARED_SENT);
         } catch (e) {
@@ -290,4 +290,3 @@ function isAtLeast_(current, target) {
   Logger.log(`      • isAtLeast? current="${current}" (${pos(current)}) vs target="${target}" (${pos(target)}) => ${res}`);
   return res;
 }
-

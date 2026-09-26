@@ -322,6 +322,7 @@ function previewQuarterlyBillingEmails() {
 
   GmailApp.sendEmail(ADMIN_PREVIEW_RECIPIENTS, `Quarterly Billing Managed Preview - ${quarterInfo.label}`, '', {
     htmlBody: brandedReportEmailHtml_(`Quarterly Billing Managed Preview - ${quarterInfo.label}`, html),
+    name: 'Rido CRM',
   });
 }
 
@@ -349,6 +350,7 @@ function sendQuarterlyBillingEmails(startDate, endDate, label) {
     try {
       GmailApp.sendEmail(email, `Quarterly Billing Managed - ${label}`, '', {
         htmlBody: brandedReportEmailHtml_(`Quarterly Billing Managed - ${label}`, html),
+        name: 'Rido CRM',
       });
       Logger.log(`✅ Quarterly billing email sent to: ${owner} (${email})`);
     } catch (err) {
@@ -620,7 +622,8 @@ function previewMonthlyPerformanceEmails() {
   //</a>`;
 
   GmailApp.sendEmail('holy@klientkonnect.com,Sandeep@ridosports.com,sidhant@ridosports.com', `CRM Summary Preview – ${month}/${year}`, '', {
-    htmlBody: brandedReportEmailHtml_(`CRM Summary Preview - ${month}/${year}`, html)
+    htmlBody: brandedReportEmailHtml_(`CRM Summary Preview - ${month}/${year}`, html),
+    name: 'Rido CRM'
   });
 }
 
@@ -654,7 +657,8 @@ function sendMonthlyPerformanceEmails(startDate, endDate) {
 
     try {
       GmailApp.sendEmail(email, `CRM Summary – ${startDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`, '', {
-        htmlBody: brandedReportEmailHtml_(`CRM Summary - ${startDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`, html)
+        htmlBody: brandedReportEmailHtml_(`CRM Summary - ${startDate.toLocaleDateString('en-GB', { month: 'long', year: 'numeric' })}`, html),
+        name: 'Rido CRM'
       });
       Logger.log(`✅ Email sent to: ${owner} (${email})`);
     } catch (err) {

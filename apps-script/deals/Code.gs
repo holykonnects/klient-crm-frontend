@@ -726,7 +726,8 @@ function onFormSubmit(e) {
     // Send email using GmailApp
     GmailApp.sendEmail(recipientEmail, subject, '', {
       htmlBody: emailBody,
-      cc: 'Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com'
+      cc: 'Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com',
+      name: 'Rido CRM'
     });
 
     Logger.log(`✅ Deal email sent to ${recipientEmail}`);
@@ -735,6 +736,5 @@ function onFormSubmit(e) {
     Logger.log("❗ Error in onFormSubmit: " + err.stack);
   }
 }
-
 
 

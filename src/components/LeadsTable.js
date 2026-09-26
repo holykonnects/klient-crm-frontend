@@ -104,23 +104,18 @@ const EditLeadDialog = React.memo(function EditLeadDialog({
   const [form, setForm] = useState(() => row || {});
   useEffect(() => { setForm(row || {}); }, [row]);
 
-  // Keep typing smooth even if parent is busy
-  const deferredForm = useDeferredValue(form);
-
   const handleChange = useCallback((e) => {
     const { name, value } = e.target;
-    startTransition(() => {
-      setForm(prev => ({ ...prev, [name]: value }));
-    });
+    setForm(prev => ({ ...prev, [name]: value }));
   }, []);
 
   const handleSubmit = useCallback((e) => {
     e.preventDefault();
     onSubmit({
-      ...deferredForm,
+      ...form,
       'Lead Updated Time': new Date().toLocaleString('en-GB', { hour12: false })
     });
-  }, [onSubmit, deferredForm]);
+  }, [onSubmit, form]);
 
   return (
     <Dialog open={open} onClose={submitting ? undefined : onClose} maxWidth="md" fullWidth keepMounted>
@@ -790,6 +785,8 @@ const LeadsTable = () => {
               const saveStatus = getLeadSaveMessage(result, payload['Lead Status']);
               alert(`${saveStatus.confirmed ? '✅' : '⚠️'} ${saveStatus.message}`);
               setEditRow(null);
+              setSortConfig({ key: 'Timestamp', direction: 'desc' });
+              setPage(0);
 
               // 1) Optimistic local update so it reflects instantly
               const key = getLeadKey(payload);
@@ -805,8 +802,8 @@ const LeadsTable = () => {
                 setAllLeads(prev => [...prev, payload]);
               });
 
-              // 2) Background revalidate (non-blocking, using startTransition)
-              startTransition(() => { revalidate(); });
+              // 2) Background revalidate against the saved sheet row.
+              void revalidate();
 
             } catch (err) {
               console.error(err);

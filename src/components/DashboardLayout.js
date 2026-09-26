@@ -37,7 +37,8 @@ import {
   Email,
   ManageSearch,
   Inventory2,
-  Description
+  Description,
+  FormatSize
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
@@ -150,10 +151,18 @@ function DashboardLayout({ children }) {
         <Divider sx={{ my: 1, borderColor: '#FFFFFF', borderBottomWidth: 2 }} />
 
         {open && (
-          <Box sx={{ px: 2, py: 1.25 }}>
-            <Typography sx={{ mb: 0.75, color: '#526176', fontFamily: 'Montserrat, sans-serif', fontSize: 10, fontWeight: 600 }}>
-              Table text
-            </Typography>
+          <Box sx={{ mx: 1.5, my: 1, p: 1.25, border: '1px solid #e1e8f2', borderRadius: 2, backgroundColor: '#f7f9fc' }}>
+            <Box display="flex" alignItems="center" justifyContent="space-between" mb={1}>
+              <Box display="flex" alignItems="center" gap={0.75}>
+                <FormatSize sx={{ color: cornflowerBlue, fontSize: 18 }} />
+                <Typography sx={{ color: cornflowerBlue, fontFamily: 'Montserrat, sans-serif', fontSize: 10, fontWeight: 700 }}>
+                  Table text size
+                </Typography>
+              </Box>
+              <Typography sx={{ color: cornflowerBlue, fontFamily: 'Montserrat, sans-serif', fontSize: 10, fontWeight: 700 }}>
+                {tableFontSize}px
+              </Typography>
+            </Box>
             <ToggleButtonGroup
               exclusive
               size="small"
@@ -164,16 +173,25 @@ function DashboardLayout({ children }) {
               sx={{
                 '& .MuiToggleButton-root': {
                   py: 0.5,
+                  borderColor: '#d7e0ec',
+                  color: cornflowerBlue,
                   fontFamily: 'Montserrat, sans-serif',
                   fontSize: 10,
                   fontWeight: 700,
-                  textTransform: 'none'
+                  textTransform: 'none',
+                  '&.Mui-selected': {
+                    color: '#fff',
+                    backgroundColor: cornflowerBlue
+                  },
+                  '&.Mui-selected:hover': {
+                    backgroundColor: '#4f7fd1'
+                  }
                 }
               }}
             >
-              <ToggleButton value={10} aria-label="10 pixel table text">10</ToggleButton>
-              <ToggleButton value={11} aria-label="11 pixel table text">11</ToggleButton>
-              <ToggleButton value={12} aria-label="12 pixel table text">12</ToggleButton>
+              <ToggleButton value={10} aria-label="10 pixel table text">10px</ToggleButton>
+              <ToggleButton value={11} aria-label="11 pixel table text">11px</ToggleButton>
+              <ToggleButton value={12} aria-label="12 pixel table text">12px</ToggleButton>
             </ToggleButtonGroup>
           </Box>
         )}

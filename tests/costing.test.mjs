@@ -138,10 +138,12 @@ test("finance exports honor dates, active status, selection and subtotals", asyn
     { Particular: "B", "Expense Date": "2026-09-14", "Total Amount": 999, Active: "Yes" },
   ], { action: "exportFinance", from: "2026-09-15", to: "2026-09-15", subtotalBy: "Particular", fields: '["Particular","Total Amount"]' });
   assert.equal(data.rows.length, 4);
-  assert.deepEqual(data.rows[2].values, ["A subtotal", 118]);
-  assert.deepEqual(data.rows[3].values, ["Grand total", 118]);
+  assert.deepEqual(data.headers, ["Particular", "Total Amount", "Subtotal"]);
+  assert.deepEqual(data.rows[0].values, ["A", 100, ""]);
+  assert.deepEqual(data.rows[2].values, ["A subtotal", "", 118]);
+  assert.deepEqual(data.rows[3].values, ["Grand total", "", 118]);
   const csv = await renderExport(data, "csv");
-  assert.match(csv.toString(), /"Grand total","118"/);
+  assert.match(csv.toString(), /"Grand total","","118"/);
 });
 
 test("Excel exports are real workbooks with numeric totals and merged groups", async () => {

@@ -1,6 +1,7 @@
 import { openCostingStore, TABLE, active, clean, number, dateMs } from "./costingStore.js";
 
-const numericFields = new Set(["QTY", "Amount", "GST Amount", "Total Amount", "Advance Applied Amount"]);
+const SUBTOTAL_HEADER = "Subtotal";
+const numericFields = new Set(["QTY", "Amount", "GST Amount", "Total Amount", "Advance Applied Amount", SUBTOTAL_HEADER]);
 function dateText(field, value) {
   if (!/(date|timestamp|\bat$|\bon$)/i.test(field) || !dateMs(value)) return value ?? "";
   return new Intl.DateTimeFormat("en-GB", { timeZone: "Asia/Kolkata" }).format(new Date(dateMs(value)));
@@ -27,16 +28,28 @@ export function prepareExport(headers, source, query) {
   }).map((r) => Object.fromEntries(headers.map((h) => [h, numericFields.has(h) ? number(r[h]) : dateText(h, r[h])])));
   const subtotal = query.action === "exportFinance" && query.subtotalBy && query.subtotalBy !== "none" ? query.subtotalBy : "";
   if (subtotal && !selected.includes(subtotal)) throw new Error("Subtotal column must be included in the export");
+  const exportHeaders = subtotal
+    ? [...selected.filter((header) => header !== SUBTOTAL_HEADER), SUBTOTAL_HEADER]
+    : selected;
+  const subtotalAmountField = ["Total Amount", "Amount"].find((header) => headers.includes(header))
+    || selected.find((header) => numericFields.has(header) && header !== SUBTOTAL_HEADER);
   const merge = query.format !== "csv" && selected.includes(query.mergeBy) ? query.mergeBy : "";
   const groupBy = subtotal || merge;
   if (groupBy) rows.sort((a, b) => clean(a[groupBy]).localeCompare(clean(b[groupBy])));
   const output = [];
   const pushTotal = (items, label, field) => {
-    const total = Object.fromEntries(selected.map((h) => [h, numericFields.has(h) ? items.reduce((sum, row) => sum + number(row[h]), 0) : ""]));
+    const total = Object.fromEntries(exportHeaders.map((header) => [header, ""]));
+    if (subtotal) {
+      total[SUBTOTAL_HEADER] = items.reduce((sum, row) => sum + number(row[subtotalAmountField]), 0);
+    } else {
+      selected.forEach((header) => {
+        if (numericFields.has(header)) total[header] = items.reduce((sum, row) => sum + number(row[header]), 0);
+      });
+    }
     // A numeric-only selection must not overwrite a monetary total with a label.
     const labelField = !numericFields.has(field) ? field : selected.find((h) => !numericFields.has(h));
     if (labelField) total[labelField] = label;
-    output.push({ values: selected.map((h) => total[h]), total: true });
+    output.push({ values: exportHeaders.map((header) => total[header]), total: true });
   };
   if (subtotal) {
     let group = [];
@@ -45,13 +58,13 @@ export function prepareExport(headers, source, query) {
         pushTotal(group, `${group[0][subtotal] || "(Blank)"} subtotal`, subtotal);
         group = [];
       }
-      output.push({ values: selected.map((h) => row[h]) });
+      output.push({ values: exportHeaders.map((header) => header === SUBTOTAL_HEADER ? "" : row[header]) });
       group.push(row);
     }
     if (group.length) pushTotal(group, `${group[0][subtotal] || "(Blank)"} subtotal`, subtotal);
   } else rows.forEach((row) => output.push({ values: selected.map((h) => row[h]) }));
   if (query.action === "exportFinance") pushTotal(rows, "Grand total", selected[0]);
-  return { headers: selected, rows: output, merge };
+  return { headers: exportHeaders, rows: output, merge };
 }
 const csvCell = (value) => {
   let text = String(value ?? "");

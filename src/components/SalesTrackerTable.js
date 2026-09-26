@@ -21,6 +21,8 @@ const VALIDATION_SHEET_NAME = 'Sales Tracker Validation Tables';
 const ENTITY_FIELD_COLUMN = 'Field';
 const ENTITY_SELECTION_COLUMN = 'Field Selection';
 const ENTITY_TYPES = ['Account', 'Deal', 'Order'];
+const ENTITY_TYPE_LABEL = 'Link Sale To';
+const entitySelectionLabel = (entityType) => entityType ? `Select ${entityType}` : 'Select Account / Deal / Order';
 const ENTITY_FIELD_ALIASES = ['Field', 'Linked Entity Type', 'Entity Type', 'Source Type'];
 const ENTITY_SELECTION_ALIASES = ['Field Selection', 'Linked Entity', 'Linked Entity Name', 'Entity Selection'];
 const SALES_OVERVIEW_COLUMNS = [
@@ -185,6 +187,8 @@ const SalesTrackerTable = () => {
     () => findColumn(columns, ENTITY_SELECTION_ALIASES, ENTITY_SELECTION_COLUMN),
     [columns]
   );
+  const selectedEntityType = clean(formData[entityFieldColumn]);
+  const selectedEntityLabel = entitySelectionLabel(selectedEntityType);
   const modalColumns = useMemo(
     () => columns.filter((field) => field !== entityFieldColumn && field !== entitySelectionColumn),
     [columns, entityFieldColumn, entitySelectionColumn]
@@ -447,10 +451,10 @@ const SalesTrackerTable = () => {
               <Grid container spacing={2}>
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth size="small">
-                    <InputLabel sx={modalInputStyle}>Field</InputLabel>
+                    <InputLabel sx={modalInputStyle}>{ENTITY_TYPE_LABEL}</InputLabel>
                     <Select
                       value={formData[entityFieldColumn] || ''}
-                      label="Field"
+                      label={ENTITY_TYPE_LABEL}
                       onChange={(e) => handleFormChange(entityFieldColumn, e.target.value)}
                       sx={modalInputStyle}
                       MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
@@ -464,10 +468,10 @@ const SalesTrackerTable = () => {
 
                 <Grid item xs={12} sm={6}>
                   <FormControl fullWidth size="small" disabled={!clean(formData[entityFieldColumn])}>
-                    <InputLabel sx={modalInputStyle}>Field Selection</InputLabel>
+                    <InputLabel sx={modalInputStyle}>{selectedEntityLabel}</InputLabel>
                     <Select
                       value={formData[entitySelectionColumn] || ''}
-                      label="Field Selection"
+                      label={selectedEntityLabel}
                       onChange={(e) => handleFormChange(entitySelectionColumn, e.target.value)}
                       sx={modalInputStyle}
                       MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
@@ -476,7 +480,7 @@ const SalesTrackerTable = () => {
                         <MenuItem value="" disabled sx={modalInputStyle}>
                           {clean(formData[entityFieldColumn])
                             ? `No ${clean(formData[entityFieldColumn]).toLowerCase()} records found`
-                            : 'Select a field first'}
+                            : 'Choose Account, Deal, or Order first'}
                         </MenuItem>
                       )}
                       {(entitySelectionOptions[clean(formData[entityFieldColumn])] || []).map(option => (
@@ -530,7 +534,7 @@ const SalesTrackerTable = () => {
                         >
                           {!selectionOptions.length && (
                             <MenuItem value="" disabled sx={modalInputStyle}>
-                              {selectedEntityType ? `No ${selectedEntityType.toLowerCase()} records found` : 'Select a field first'}
+                              {selectedEntityType ? `No ${selectedEntityType.toLowerCase()} records found` : 'Choose Account, Deal, or Order first'}
                             </MenuItem>
                           )}
                           {selectionOptions.map(option => (

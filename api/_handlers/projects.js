@@ -1,9 +1,16 @@
 import { SHEETS } from "../_lib/crmConfig.js";
-import { appendValues, buildRow, formatTimestamp, getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
+import { appendValues, buildRow, formatTimestamp, getValues, resolveSheetTitle, rowsToObjects, updateValues } from "../_lib/googleSheets.js";
 import { notifyProjectSubmitted } from "../_lib/operationalEmails.js";
 import { ensureUpdateAuditHeaders, withUpdateAudit } from "../_lib/updateAudit.js";
 
 const PROJECT_ID = "Project ID (unique, auto-generated)";
+export const DELIVERY_PIN_HEADER = "Delivery PIN Code";
+
+export function requireDeliveryPin(value) {
+  const pin = String(value ?? "").trim();
+  if (!/^\d{6}$/.test(pin)) throw new Error("Delivery PIN Code is required and must contain exactly 6 digits");
+  return pin;
+}
 
 export default async function handler(req, res) {
   try {
@@ -29,7 +36,8 @@ async function handleGet(query) {
 async function getProjectsPayload() {
   const sheetName = await resolveSheetTitle(SHEETS.projects.spreadsheetId, SHEETS.projects.sheetNames);
   const values = await getValues(SHEETS.projects.spreadsheetId, sheetName);
-  return { headers: values[0] || [], rows: rowsToObjects(values) };
+  const headers = await ensureProjectHeaders(sheetName, values[0] || []);
+  return { headers, rows: rowsToObjects(values) };
 }
 
 async function getValidationPayload() {
@@ -37,7 +45,7 @@ async function getValidationPayload() {
   const validationSheet = await resolveSheetTitle(SHEETS.projects.spreadsheetId, SHEETS.projects.validationSheetNames);
   const projectValues = await getValues(SHEETS.projects.spreadsheetId, projectSheet, "1:1");
   const validationValues = await getValues(SHEETS.projects.spreadsheetId, validationSheet);
-  const projectHeaders = projectValues[0] || [];
+  const projectHeaders = await ensureProjectHeaders(projectSheet, projectValues[0] || []);
   const controls = columnsToLists(validationValues);
   const validation = Object.fromEntries(projectHeaders.filter((header) => controls[header]?.length).map((header) => [header, controls[header]]));
   return {
@@ -54,8 +62,12 @@ async function addOrUpdateProject(payload) {
   const values = await getValues(SHEETS.projects.spreadsheetId, sheetName);
   const existingHeaders = values[0] || [];
   if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
-  const headers = await ensureUpdateAuditHeaders(SHEETS.projects, sheetName, existingHeaders);
-  const data = await withUpdateAudit({ ...payload, Timestamp: formatTimestamp() });
+  const headers = await ensureProjectHeaders(sheetName, existingHeaders);
+  const data = await withUpdateAudit({
+    ...payload,
+    [DELIVERY_PIN_HEADER]: requireDeliveryPin(payload[DELIVERY_PIN_HEADER]),
+    Timestamp: formatTimestamp(),
+  });
   data[PROJECT_ID] = data[PROJECT_ID] || generateProjectId();
   const budget = toNumber(data["Budget (₹)"]);
   const actual = toNumber(data["Actual Cost (₹)"]);
@@ -65,6 +77,14 @@ async function addOrUpdateProject(payload) {
   const existingRows = rowsToObjects(values).filter((row) => String(row[PROJECT_ID]) === String(data[PROJECT_ID]));
   const notification = await safely(() => notifyProjectSubmitted(headers, data, [...existingRows, data]));
   return { ok: true, created: true, projectId: data[PROJECT_ID], notification };
+}
+
+async function ensureProjectHeaders(sheetName, existingHeaders) {
+  const auditHeaders = await ensureUpdateAuditHeaders(SHEETS.projects, sheetName, existingHeaders);
+  if (auditHeaders.includes(DELIVERY_PIN_HEADER)) return auditHeaders;
+  const headers = [...auditHeaders, DELIVERY_PIN_HEADER];
+  await updateValues(SHEETS.projects.spreadsheetId, sheetName, 1, headers);
+  return headers;
 }
 
 async function getClientOptions(source) {

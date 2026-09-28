@@ -24,3 +24,21 @@ test("update audit can resolve a CRM Login username and rejects unknown identiti
   assert.throws(() => resolveLoginAudit(loginRows, { updatedByEmail: "unknown@example.test" }), /not found/);
   assert.throws(() => resolveLoginAudit([{ Username: "legacy" }], { updatedByName: "legacy" }), /missing an email/);
 });
+
+test("update audit accepts repeated CRM Login rows for the same email", () => {
+  const result = resolveLoginAudit([
+    ...loginRows,
+    { "Login Username": "crm.user", "Login Email": "CRM.USER@example.test", Role: "Admin" },
+    { "Login Username": "crm.user", Role: "Incomplete duplicate" },
+  ], { updatedByEmail: "crm.user@example.test" });
+
+  assert.equal(result["Updated By Email"], "CRM.USER@example.test");
+  assert.equal(result["Updated By Role"], "Admin");
+});
+
+test("update audit rejects a shared username belonging to different accounts", () => {
+  assert.throws(() => resolveLoginAudit([
+    { "Login Username": "shared", "Login Email": "first@example.test" },
+    { "Login Username": "shared", "Login Email": "second@example.test" },
+  ], { updatedByName: "shared" }), /duplicated/);
+});

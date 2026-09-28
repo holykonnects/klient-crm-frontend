@@ -82,6 +82,7 @@ const DATE_FIELDS = new Set(["Timestamp", "Start Date", "End Date"]);
 const MONEY_FIELDS = new Set(["Budget (₹)", "Actual Cost (₹)", "Variance (₹)"]);
 const PERCENT_FIELDS = new Set(["Project Progress %"]);
 const CLIENT_EMAIL_HEADER = "Client Email ID";
+const DELIVERY_PIN_HEADER = "Delivery PIN Code";
 const EMAIL_PATTERN = /^[^\s@,]+@[^\s@,]+\.[^\s@,]+$/;
 
 // ----------------- helpers -----------------
@@ -197,7 +198,7 @@ const FALLBACK_MULTI = new Set([norm("Vendors"), norm("Assigned Team")]);
 const PROJECT_OVERVIEW_HIDDEN = new Set([norm("Vendors")]);
 const PROJECT_OVERVIEW_COLUMNS = [
   "Project ID (unique, auto-generated)", "Project Name", "Project Status",
-  "Project Stage", "Project Manager", "Project Progress %",
+  "Project Stage", "Project Manager", "Project Progress %", DELIVERY_PIN_HEADER,
 ];
 
 /** CSV helpers */
@@ -510,6 +511,11 @@ export default function ProjectTable() {
   // ✅ submit guard + "Saving..." button state (prevents multiple submits)
   const handleSubmit = async () => {
     if (submitting) return; // hard guard
+    const deliveryPin = String(editingRow?.[DELIVERY_PIN_HEADER] || "").trim();
+    if (!/^\d{6}$/.test(deliveryPin)) {
+      alert("Delivery PIN Code is required and must contain exactly 6 digits.");
+      return;
+    }
     const invalidEmails = invalidClientEmails(editingRow?.[CLIENT_EMAIL_HEADER]);
     if (invalidEmails.length) {
       alert(`Please correct the invalid client email address${invalidEmails.length === 1 ? "" : "es"}:\n${invalidEmails.join("\n")}`);
@@ -522,6 +528,7 @@ export default function ProjectTable() {
         action: "addOrUpdateProject",
         data: {
           ...serializeRow(editingRow || {}),
+          [DELIVERY_PIN_HEADER]: deliveryPin,
           updatedByName: user?.username || user?.email || "",
           updatedByEmail: user?.email || user?.username || "",
         },
@@ -1589,6 +1596,27 @@ export default function ProjectTable() {
                             : "Enter multiple email addresses separated by commas."
                         }
                         error={invalidEmails.length > 0}
+                        disabled={isReadonly || submitting}
+                      />
+                    </Grid>
+                  );
+                }
+
+                if (h === DELIVERY_PIN_HEADER) {
+                  const pin = String(editingRow?.[h] || "");
+                  const invalidPin = Boolean(pin) && !/^\d{6}$/.test(pin);
+                  return (
+                    <Grid item xs={12} sm={6} key={h}>
+                      <TextField
+                        fullWidth
+                        required
+                        size="small"
+                        label={h}
+                        value={pin}
+                        onChange={(e) => setFieldValue(h, e.target.value.replace(/\D/g, "").slice(0, 6))}
+                        error={invalidPin}
+                        helperText={invalidPin ? "Enter exactly 6 digits." : "Required for project delivery."}
+                        inputProps={{ inputMode: "numeric", pattern: "[0-9]*", maxLength: 6 }}
                         disabled={isReadonly || submitting}
                       />
                     </Grid>

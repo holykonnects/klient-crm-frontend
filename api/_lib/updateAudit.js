@@ -30,15 +30,27 @@ export function resolveLoginAudit(rows, submitted = {}, stamp = formatTimestamp(
   ].map(normalize).filter(Boolean);
   if (!candidates.length) throw new Error("Logged-in updater details were not supplied");
 
-  const matches = (rows || []).filter((row) => identityHeaders.some((header) => {
-    const identity = normalize(valueFrom(row, [header]));
-    return identity && candidates.includes(identity);
-  }));
-  if (matches.length !== 1) throw new Error(matches.length
-    ? "Updater identity is duplicated in CRM Login"
-    : "Updater identity was not found in CRM Login");
+  let matches = [];
+  for (const candidate of candidates) {
+    matches = (rows || []).filter((row) => identityHeaders.some((header) => (
+      normalize(valueFrom(row, [header])) === candidate
+    )));
+    if (matches.length) break;
+  }
+  if (!matches.length) throw new Error("Updater identity was not found in CRM Login");
 
-  const login = matches[0];
+  const matchedEmails = [...new Set(matches
+    .map((row) => normalize(valueFrom(row, ["Login Email", "Email", "Email ID"])))
+    .filter(Boolean))];
+  if (matchedEmails.length > 1) throw new Error("Updater identity is duplicated in CRM Login");
+
+  // Repeated rows for the same login are harmless. Prefer the latest sheet row,
+  // while still rejecting one identifier that belongs to multiple email accounts.
+  const login = matchedEmails.length
+    ? [...matches].reverse().find((row) => (
+      normalize(valueFrom(row, ["Login Email", "Email", "Email ID"])) === matchedEmails[0]
+    ))
+    : matches[matches.length - 1];
   const email = valueFrom(login, ["Login Email", "Email", "Email ID"]);
   if (!email) throw new Error("Updater CRM Login entry is missing an email address");
   const name = valueFrom(login, ["Login Username", "Username", "Name", "Full Name", "Employee Name"]) || email;

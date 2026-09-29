@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { resolveProjectRecipients } from '../api/_lib/projectRecipients.js';
+import { resolveProjectCc, resolveProjectRecipients } from '../api/_lib/projectRecipients.js';
 
 const headers = ['Lead Owner', 'Email', 'CC', 'BCC', 'Project CC', 'Project BCC'];
 const rows = [
@@ -15,6 +15,15 @@ test('projects use their group and exclude shared CC/BCC lists', () => {
     cc: 'manager@example.test,sarabjeet@ridosports.com,chanchal@ridosports.com,navneet@ridosports.com,updater@example.test',
     bcc: 'project-hidden@example.test', updaterEmail: 'updater@example.test',
   });
+});
+
+test('exposes the deduplicated Project CC group for other CRM notifications', () => {
+  assert.deepEqual(resolveProjectCc(headers, rows), [
+    'sarabjeet@ridosports.com',
+    'chanchal@ridosports.com',
+    'navneet@ridosports.com',
+  ]);
+  assert.deepEqual(resolveProjectCc(headers.slice(0, 4), rows), []);
 });
 
 test('missing project columns never fall back to shared recipients', () => {

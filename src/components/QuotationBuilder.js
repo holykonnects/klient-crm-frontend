@@ -10,14 +10,21 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import PictureInPictureAlt from '@mui/icons-material/PictureInPictureAlt';
 import ExpandMore from '@mui/icons-material/ExpandMore';
 import ExpandLess from '@mui/icons-material/ExpandLess';
+import FolderOpen from '@mui/icons-material/FolderOpen';
+import SaveOutlined from '@mui/icons-material/SaveOutlined';
+import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
+import QuotationRichTextEditor from './QuotationRichTextEditor';
+import QuotationSheetPreview from './QuotationSheetPreview';
+import QuotationSetBuilder from './QuotationSetBuilder';
+import QuotationDraftsDialog from './QuotationDraftsDialog';
+import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
-const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 },
   '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
@@ -46,12 +53,22 @@ const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
   qty: 1, rateOverride: '',
-  unit: '', rate: '', desc: '', imageUrl: '', itemType: 'Equipment'
+  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment'
 };
 
 // helpers
 function isHttpUrl(s) { if (!s) return false; const t = String(s).trim(); return /^https?:\/\/\S+$/i.test(t); }
 function safeOpen(url) { const t = String(url || '').trim(); if (!isHttpUrl(t)) return false; window.open(t, '_blank', 'noopener,noreferrer'); return true; }
+function downloadBlob(blob, name) {
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name || 'Quotation.xlsx';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
 async function fetchJSON(url, init) {
   const r = await fetch(url, init);
   const text = await r.text();
@@ -76,6 +93,19 @@ function money(value) {
 function pctValue(value) {
   const n = toNumber(value);
   return n > 1 ? n / 100 : n;
+}
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[character]));
+}
+function plainTextToHtml(value) {
+  return String(value || '').split(/\r?\n/).map(line => `<p>${escapeHtml(line) || '<br>'}</p>`).join('');
+}
+function htmlToPlainText(value) {
+  const node = document.createElement('div');
+  node.innerHTML = String(value || '');
+  return (node.innerText || node.textContent || '').trim();
 }
 
 export default function QuotationBuilder() {
@@ -114,6 +144,11 @@ export default function QuotationBuilder() {
     gstPct: 18, discountPct: 0, freightAmount: 0, certificationAmount: 0,
     validityDays: 30, paymentTerms: '50% advance; balance as agreed'
   });
+  const [quotationSets, setQuotationSets] = useState([]);
+  const [setGstPct, setSetGstPct] = useState(18);
+  const [savedDrafts, setSavedDrafts] = useState([]);
+  const [draftsOpen, setDraftsOpen] = useState(false);
+  const [activeQuoteId, setActiveQuoteId] = useState('');
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -156,6 +191,23 @@ export default function QuotationBuilder() {
     });
   }, [user?.username]);
 
+  useEffect(() => {
+    if (!user?.username) return;
+    fetchJSON(`${QUOTATION_API_URL}?action=listQuotes&user=${encodeURIComponent(user.username)}`)
+      .then(result => {
+        if (!result.ok) throw new Error(result.error || 'Saved quotes could not be loaded');
+        setSavedDrafts(result.quotes || []);
+      })
+      .catch(() => {
+        try {
+          const value = JSON.parse(localStorage.getItem(`rido-quotation-drafts:${user.username}`) || '[]');
+          setSavedDrafts(Array.isArray(value) ? value : []);
+        } catch {
+          setSavedDrafts([]);
+        }
+      });
+  }, [user?.username]);
+
   const totals = useMemo(() => {
     let equipment = 0;
     let nonEquipment = 0;
@@ -186,6 +238,7 @@ export default function QuotationBuilder() {
       grand: Math.ceil(grandRaw)
     };
   }, [rows, pricing]);
+  const projectSetTotals = useMemo(() => setQuoteTotals(quotationSets, setGstPct), [quotationSets, setGstPct]);
 
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
@@ -230,12 +283,12 @@ export default function QuotationBuilder() {
       if (field === 'category') {
         row.subCategory = ''; row.itemCode = '';
         row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.imageUrl = '';
+        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
       }
       if (field === 'subCategory') {
         row.itemCode = '';
         row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.imageUrl = '';
+        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
       }
       if (field === 'itemCode' && catalog) {
         const key = `${row.category}|||${row.subCategory}`;
@@ -250,11 +303,14 @@ export default function QuotationBuilder() {
           row.desc = (found.desc && String(found.desc).trim())
             ? found.desc
             : `${row.category} : ${row.subCategory} : ${value}`;
+          row.descHtml = plainTextToHtml(row.desc);
           row.imageUrl = found.imageUrl || '';
         } else {
-          row.unit = ''; row.rate = ''; row.desc = ''; row.imageUrl = '';
+          row.unit = ''; row.rate = ''; row.desc = ''; row.descHtml = ''; row.imageUrl = '';
         }
       }
+
+      if (field === 'descHtml') row.desc = htmlToPlainText(value);
 
       next[i] = row;
       return next;
@@ -264,32 +320,172 @@ export default function QuotationBuilder() {
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
   const removeRow = (i) => setRows(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
 
-  const exportPdf = async () => {
-    if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
+  const buildPayload = () => ({
+    quoteType,
+    quoteId: activeQuoteId || undefined,
+    engineVersion: QUOTATION_ENGINE_VERSION,
+    meta,
+    pricing,
+    athletic: quoteType === 'athletic' ? athletic : undefined,
+    setQuotation: quoteType === 'project-set' ? {
+      gstPct: toNumber(setGstPct),
+      sets: quotationSets.map(set => ({
+        ...set,
+        baseQuantity: toNumber(set.baseQuantity),
+        items: (set.items || []).map(item => ({
+          ...item,
+          qty: itemQuantity(set, item),
+          rate: toNumber(item.rate),
+          factor: toNumber(item.factor),
+        }))
+      }))
+    } : undefined,
+    items: rows
+      .filter(r => quoteType === 'standard' && r.category && r.subCategory && r.itemCode)
+      .map(r => ({
+        category: r.category,
+        subCategory: r.subCategory,
+        itemCode: r.itemCode,
+        qty: toNumber(r.qty),
+        unit: r.unit || '',
+        itemType: r.itemType || 'Equipment',
+        rate: toNumber(r.rate),
+        rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
+        descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined,
+        descHtml: r.descHtml || undefined,
+        imageUrl: r.imageUrl || undefined
+      })),
+    attach: attachLead ? { leadDisplay: attachLead } : null,
+    builderState: { rows, attachLead },
+  });
+
+  const persistDrafts = (next) => {
+    try {
+      localStorage.setItem(`rido-quotation-drafts:${user.username}`, JSON.stringify(next));
+      setSavedDrafts(next);
+      return true;
+    } catch (error) {
+      console.error('Save quotation draft error:', error);
+      alert('The draft could not be saved in this browser. The saved quote register is not active yet.');
+      return false;
+    }
+  };
+
+  const saveDraft = async ({ status = 'Draft', pdfUrl = '', workingCopyUrl = '', quoteId: requestedQuoteId = '' } = {}) => {
+    const quoteId = requestedQuoteId || activeQuoteId || `Q-${Date.now().toString(36).toUpperCase()}`;
+    const payload = buildPayload();
+    payload.quoteId = quoteId;
+    const record = {
+      quoteId,
+      updatedAt: new Date().toLocaleString('en-IN'),
+      quoteType,
+      quotationNo: meta.quotationNo,
+      title: meta.quotationTitle,
+      clientName: meta.clientName,
+      projectName: meta.projectName,
+      status,
+      payload,
+    };
+    try {
+      const result = await fetchJSON(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveQuote',
+          user: user?.username || '',
+          quote: { quoteId, status, pdfUrl, workingCopyUrl, payload },
+        })
+      });
+      if (!result.ok) throw new Error(result.error || 'Quote could not be saved');
+      const saved = { ...result.quote, payload };
+      setSavedDrafts(current => [saved, ...current.filter(draft => draft.quoteId !== saved.quoteId)]);
+      setActiveQuoteId(saved.quoteId);
+      return saved;
+    } catch (error) {
+      console.error('Shared quotation register save error:', error);
+      const next = [record, ...savedDrafts.filter(draft => draft.quoteId !== quoteId)];
+      if (persistDrafts(next)) setActiveQuoteId(quoteId);
+      return record;
+    }
+  };
+
+  const openDraft = async (record, duplicate = false) => {
+    let payload = record.payload;
+    if (!payload) {
+      try {
+        const result = await fetchJSON(`${QUOTATION_API_URL}?action=getQuote&user=${encodeURIComponent(user?.username || '')}&quoteId=${encodeURIComponent(record.quoteId)}&revision=${encodeURIComponent(record.revision || '')}`);
+        if (!result.ok) throw new Error(result.error || 'Saved quote could not be opened');
+        payload = result.quote?.payload;
+      } catch (error) {
+        console.error(error);
+        alert(error.message || 'Saved quote could not be opened');
+        return;
+      }
+    }
+    payload = payload || {};
+    setQuoteType(payload.quoteType || 'standard');
+    setMeta(current => ({ ...current, ...(payload.meta || {}) }));
+    setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
+    setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
+    setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
+    setSetGstPct(payload.setQuotation?.gstPct ?? 18);
+    setRows(payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }]);
+    setAttachLead(payload.builderState?.attachLead || payload.attach?.leadDisplay || '');
+    setActiveQuoteId(duplicate ? '' : record.quoteId);
+    if (duplicate) setMeta(current => ({ ...current, quotationNo: '', quotationTitle: current.quotationTitle ? `${current.quotationTitle} copy` : '' }));
+    setDraftsOpen(false);
+    setLastExport(record.pdfUrl || record.workingCopyUrl ? {
+      url: record.pdfUrl || '', workingCopyUrl: record.workingCopyUrl || '', name: record.title || ''
+    } : null);
+  };
+
+  const exportSetExcel = async () => {
+    if (!quotationSets.some(set => (set.items || []).length)) {
+      alert('Add at least one project set before exporting.');
+      return;
+    }
     setExporting(true);
     try {
-      const payload = {
-        quoteType,
-        engineVersion: QUOTATION_ENGINE_VERSION,
-        meta,
-        pricing,
-        athletic: quoteType === 'athletic' ? athletic : undefined,
-        items: rows
-          .filter(r => quoteType === 'standard' && r.category && r.subCategory && r.itemCode)
-          .map(r => ({
-            category: r.category,
-            subCategory: r.subCategory,
-            itemCode: r.itemCode,
-            qty: toNumber(r.qty),
-            unit: r.unit || '',
-            itemType: r.itemType || 'Equipment',
-            rate: toNumber(r.rate),
-            rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
-            // Send description override so backend writes this exact text.
-            descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined
-          })),
-        attach: attachLead ? { leadDisplay: attachLead } : null
-      };
+      const quoteId = activeQuoteId || `Q-${Date.now().toString(36).toUpperCase()}`;
+      const payload = buildPayload();
+      payload.quoteId = quoteId;
+      const response = await fetch(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'exportSetWorkbook', user: user?.username || '', payload })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Export failed with status ${response.status}`);
+      }
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      downloadBlob(await response.blob(), match?.[1] || `${meta.quotationTitle || 'Project BOQ Quotation'}.xlsx`);
+      await saveDraft({ status: 'Exported Excel', quoteId });
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Excel export failed.');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const exportPdf = async () => {
+    if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
+    if (quoteType === 'project-set' && !quotationSets.some(set => (set.items || []).length)) {
+      alert('Add at least one project set before exporting.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const payload = buildPayload();
+      let exportQuoteId = payload.quoteId;
+      if (!exportQuoteId) {
+        const saved = await saveDraft({ status: 'Draft' });
+        exportQuoteId = saved?.quoteId;
+        if (!exportQuoteId) throw new Error('The quotation could not be assigned a Quote ID before export');
+        payload.quoteId = exportQuoteId;
+      }
 
       const j = await fetchJSON(
         `${QUOTATION_EXPORT_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
@@ -305,6 +501,7 @@ export default function QuotationBuilder() {
       }
       safeOpen(url);
       setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
+      await saveDraft({ status: 'Exported', pdfUrl: url, workingCopyUrl: j.workingCopyUrl, quoteId: exportQuoteId });
     } catch (e) {
       console.error(e);
       alert('Export failed. See console for details.');
@@ -343,16 +540,21 @@ export default function QuotationBuilder() {
           <Typography variant="body2" sx={{ color: '#64748b', mt: 0.5 }}>
             {quoteType === 'athletic'
               ? 'Configuration-driven athletic track estimate and automatic BOQ'
+              : quoteType === 'project-set'
+                ? `${quotationSets.length} project sets with ${quotationSets.reduce((sum, set) => sum + (set.items || []).length, 0)} editable line items`
               : `${rows.filter(r => r.category && r.subCategory && r.itemCode).length} line items ready for export`}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {user?.role === 'Admin' && <Button variant="outlined" onClick={() => setAdminOpen(true)} sx={{ borderRadius: 1.5 }}>Manage Quote Data</Button>}
+          <Tooltip title="Open saved quotation revisions"><Button variant="outlined" startIcon={<FolderOpen />} onClick={() => setDraftsOpen(true)} sx={{ borderRadius: 1.5 }}>Saved Quotes</Button></Tooltip>
+          <Tooltip title="Save a new quotation revision"><Button variant="outlined" startIcon={<SaveOutlined />} onClick={() => saveDraft()} sx={{ borderRadius: 1.5 }}>Save Draft</Button></Tooltip>
           <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
             <InputLabel>Quotation Type</InputLabel>
             <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
               <MenuItem value="standard">Standard Sports / Equipment</MenuItem>
               <MenuItem value="athletic">Athletic Track / Automatic BOQ</MenuItem>
+              <MenuItem value="project-set">Project BOQ / Multiple Sets</MenuItem>
             </Select>
           </FormControl>
           {lastExport && isHttpUrl(lastExport.url) && (
@@ -363,6 +565,12 @@ export default function QuotationBuilder() {
           {lastExport && isHttpUrl(lastExport.workingCopyUrl) && (
             <Button variant="outlined" onClick={() => safeOpen(lastExport.workingCopyUrl)} sx={{ borderRadius: 1.5 }}>
               Open Working Quote
+            </Button>
+          )}
+          {quoteType === 'project-set' && (
+            <Button variant="outlined" startIcon={<DownloadOutlined />} onClick={exportSetExcel} disabled={exporting}
+              sx={{ borderRadius: 1.5 }}>
+              Export Excel
             </Button>
           )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
@@ -380,6 +588,10 @@ export default function QuotationBuilder() {
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Subtotal <strong style={{ color: '#0f172a' }}>₹{money(totals.subTotal)}</strong></Typography>
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>GST <strong style={{ color: '#0f172a' }}>₹{money(totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst)}</strong></Typography>
               <Box sx={{ px: 1.5, py: 0.7, bgcolor: '#0f172a', color: '#fff', borderRadius: 1.25 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(totals.grand)}</Typography></Box>
+            </> : quoteType === 'project-set' ? <>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Subtotal <strong style={{ color: '#0f172a' }}>₹{money(projectSetTotals.subtotal)}</strong></Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>GST <strong style={{ color: '#0f172a' }}>₹{money(projectSetTotals.gst)}</strong></Typography>
+              <Box sx={{ px: 1.5, py: 0.7, bgcolor: '#0f172a', color: '#fff', borderRadius: 1.25 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(projectSetTotals.grand)}</Typography></Box>
             </> : <>
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{athletic.preset}</Typography>
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Area <strong style={{ color: '#0f172a' }}>{athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
@@ -394,6 +606,11 @@ export default function QuotationBuilder() {
             ['Equipment', `₹${money(totals.equipment)}`], ['Non Equipment', `₹${money(totals.nonEquipment)}`],
             ['Discounts', `-₹${money(totals.equipmentDiscount + totals.nonEquipmentDiscount)}`],
             ['Freight + Installation', `₹${money(totals.freight + totals.installation)}`]
+          ] : quoteType === 'project-set' ? [
+            ['Sets', quotationSets.length],
+            ['Items', quotationSets.reduce((sum, set) => sum + (set.items || []).length, 0)],
+            ['GST', `${setGstPct || 0}%`],
+            ['Grand Total', `₹${money(projectSetTotals.grand)}`]
           ] : [
             ['Surface System', athletic.surfaceSystem], ['Area Method', athletic.areaMethod],
             ['Civil / Drainage', `${athletic.civilWorks} / ${athletic.drainageWorks}`],
@@ -505,6 +722,25 @@ export default function QuotationBuilder() {
             </Grid>
           </Paper>}
 
+          {quoteType === 'project-set' && <Box sx={{ mb: 2.5 }}>
+            <QuotationSetBuilder
+              sets={quotationSets}
+              onChange={setQuotationSets}
+              gstPct={setGstPct}
+              onGstChange={setSetGstPct}
+              onDownloadExcel={exportSetExcel}
+            />
+          </Box>}
+
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
+            </Box>
+            <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
+              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} />
+            </Box>
+          </Paper>}
+
           {quoteType === 'athletic' && (
             <Paper sx={{ ...panelSx, mb: 2.5 }}>
               <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
@@ -598,7 +834,7 @@ export default function QuotationBuilder() {
                       <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
-                      <TableCell><TextField fullWidth size="small" multiline minRows={2} value={r.desc || ''} placeholder="Populated from Equipment BD" onChange={e => handleRowChange(i, 'desc', e.target.value)} sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.3 } }} /></TableCell>
+                      <TableCell><QuotationRichTextEditor value={r.descHtml || plainTextToHtml(r.desc)} placeholder="Populated from Equipment BD" onChange={value => handleRowChange(i, 'descHtml', value)} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
@@ -617,6 +853,13 @@ export default function QuotationBuilder() {
           </Paper>}
         </Grid>
       </Grid>
+      <QuotationDraftsDialog
+        open={draftsOpen}
+        drafts={savedDrafts}
+        onClose={() => setDraftsOpen(false)}
+        onOpen={(draft) => openDraft(draft, false)}
+        onDuplicate={(draft) => openDraft(draft, true)}
+      />
     </Box>
   );
 }

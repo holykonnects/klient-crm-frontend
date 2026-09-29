@@ -1,0 +1,32 @@
+.quotation-rich-editor .ql-toolbar.ql-snow {
+  border: 1px solid #c5cfdb;
+  border-bottom: 0;
+  background: #f7f9fc;
+  padding: 4px 6px;
+}
+
+.quotation-rich-editor .ql-container.ql-snow {
+  border: 1px solid #c5cfdb;
+  background: #fff;
+  font-family: Montserrat, sans-serif;
+  font-size: 12px;
+  min-height: 92px;
+}
+
+.quotation-rich-editor .ql-editor {
+  min-height: 92px;
+  max-height: 180px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  line-height: 1.45;
+}
+
+.quotation-preview-rich-text p {
+  margin: 0 0 4px;
+}
+
+.quotation-preview-rich-text ul,
+.quotation-preview-rich-text ol {
+  margin: 2px 0;
+  padding-left: 18px;
+}

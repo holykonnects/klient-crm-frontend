@@ -1,4 +1,4 @@
-import { resolveProjectRecipients } from "./projectRecipients.js";
+import { resolveProjectCc, resolveProjectRecipients } from "./projectRecipients.js";
 import { SHEETS } from "./crmConfig.js";
 import { getValues, gmailSendRawEmail, resolveSheetTitle } from "./googleSheets.js";
 import { base64Url, brandedEmailHtml, changedFieldsCards, escapeHtml, mimeMessage, recordDetailsCards, recordDetailsTable } from "./emailRenderer.js";
@@ -66,6 +66,13 @@ async function validatedUpdaterEmail(data) {
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(submitted)) return "";
   const resolved = await loginEmail(submitted);
   return clean(resolved).toLowerCase() === submitted ? clean(resolved) : "";
+}
+
+async function projectCcEmails() {
+  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
+  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
+  const [headers = [], ...rows] = values;
+  return resolveProjectCc(headers, rows);
 }
 
 async function sendOperationalEmail({ owner, subject, intro, headers, data, previousData = null, calendarLink = false, cc: ccOverride = "" }) {
@@ -343,6 +350,8 @@ export async function notifyOrderSubmitted(headers, data, previousData = null) {
   if (clean(data["Notification Status"]) && !previousData) return { sent: false, reason: "already_processed" };
   const owner = data["Account Owner"] || data["Lead Owner"] || data.Owner;
   const subject = `Order Updated: ${clean(data["Order ID"])} | ${clean(data["Deal Name"] || data.Company)} | ${clean(data["Order Status"] || data.Status)}`;
+  const projectCc = await projectCcEmails();
+  const configuredCc = process.env.ORDER_OPERATIONAL_EMAIL_CC || process.env.OPERATIONAL_EMAIL_CC || DEFAULT_CC;
   return sendOperationalEmail({
     owner,
     subject,
@@ -350,7 +359,7 @@ export async function notifyOrderSubmitted(headers, data, previousData = null) {
     headers,
     data,
     previousData,
-    cc: process.env.ORDER_OPERATIONAL_EMAIL_CC || `${DEFAULT_CC},sudeep@ridosports.com`,
+    cc: uniqueEmails([...splitEmails(configuredCc), ...projectCc]).join(","),
   });
 }
 

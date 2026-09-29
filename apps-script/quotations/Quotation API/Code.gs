@@ -277,7 +277,9 @@ function doPost(e){
       const payload = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
       const out = payload.quoteType === 'athletic'
         ? buildAthleticQuotationAndExport_(payload)
-        : buildQuotationAndExport_(payload);
+        : payload.quoteType === 'project-set'
+          ? buildSetQuotationAndExport_(payload)
+          : buildQuotationAndExport_(payload);
 
       if (payload.attach && payload.attach.leadDisplay && out.pdfUrl){
         try { updateLeadQuotationLink_(payload.attach.leadDisplay, out.pdfUrl, username); }
@@ -294,6 +296,101 @@ function doPost(e){
   }
 }
 
+/** ====== Multi-set project BOQ builder ====== **/
+function buildSetQuotationAndExport_(payload) {
+  const meta = payload.meta || {};
+  const setQuotation = payload.setQuotation || {};
+  const sets = (setQuotation.sets || []).filter(function(set) { return (set.items || []).length; });
+  if (!sets.length) throw new Error('Add at least one project set before exporting');
+  if (!payload.quoteId) throw new Error('Save the quotation before exporting the project BOQ');
+
+  const copyName = buildQuoteFileName_({
+    quotationTitle: meta.quotationTitle || 'Project BOQ Quotation',
+    quotationNo: meta.quotationNo,
+    clientName: meta.clientName,
+    projectName: meta.projectName
+  });
+  const workingCopy = managedWorkingCopy_(`project-set:${payload.quoteId}`, function() {
+    const spreadsheet = SpreadsheetApp.create(copyName);
+    moveFileToFolder_(spreadsheet.getId(), WORKING_COPIES_FOLDER_ID);
+    return spreadsheet;
+  });
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
+  const sheets = workingCopy.getSheets();
+  const sheet = workingCopy.getSheetByName('Quotation') || sheets[0];
+  if (sheet.getName() !== 'Quotation') sheet.setName('Quotation');
+  sheet.clear();
+  while (workingCopy.getSheets().length > 1) workingCopy.deleteSheet(workingCopy.getSheets().pop());
+
+  const headingRows = [
+    ['RIDO SPORTS', '', '', '', '', '', ''],
+    [meta.quotationTitle || 'Project BOQ Quotation', '', '', '', '', '', ''],
+    ['Client', meta.clientName || '', 'Project', meta.projectName || '', 'Quotation No.', meta.quotationNo || '', ''],
+    ['Date', meta.dateISO ? new Date(meta.dateISO) : new Date(), 'Prepared By', meta.preparedBy || '', 'Client GST', meta.clientGstNumber || '', ''],
+    ['Billing Address', meta.clientBillingAddress || '', '', '', 'Notes', meta.notes || '', '']
+  ];
+  sheet.getRange(1, 1, headingRows.length, 7).setValues(headingRows);
+  sheet.getRange('A1:G1').merge().setFontSize(16).setFontWeight('bold').setHorizontalAlignment('center').setBackground('#163f76').setFontColor('#ffffff');
+  sheet.getRange('A2:G2').merge().setFontSize(13).setFontWeight('bold').setHorizontalAlignment('center').setBackground('#dce9f8');
+  sheet.getRange('B5:D5').merge();
+  sheet.getRange('F5:G5').merge();
+
+  let row = 7;
+  let itemNumber = 1;
+  const amountCells = [];
+  sets.forEach(function(set, setIndex) {
+    sheet.getRange(row, 1, 1, 7).merge().setValue(`${setIndex + 1}. ${set.title || 'Untitled set'}`)
+      .setFontWeight('bold').setBackground('#dce9f8').setFontColor('#163f76');
+    row += 1;
+    sheet.getRange(row, 1, 1, 7).setValues([['S.No.', 'Item', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Amount']])
+      .setFontWeight('bold').setBackground('#6395df').setFontColor('#ffffff').setHorizontalAlignment('center');
+    row += 1;
+    const firstItemRow = row;
+    const itemRows = (set.items || []).map(function(item) {
+      const qty = num_(item.qty);
+      const rate = num_(item.rate);
+      return [itemNumber++, item.item || '', item.description || '', item.unit || '', qty, rate, qty * rate];
+    });
+    sheet.getRange(row, 1, itemRows.length, 7).setValues(itemRows);
+    (set.items || []).forEach(function(item, index) {
+      if (item.descHtml) sheet.getRange(row + index, 3).setRichTextValue(richTextFromHtml_(item.descHtml, item.description || ''));
+      amountCells.push(`G${row + index}`);
+    });
+    sheet.setRowHeights(row, itemRows.length, 54);
+    row += itemRows.length;
+    sheet.getRange(row, 1, 1, 6).merge().setValue('Set Subtotal').setFontWeight('bold').setHorizontalAlignment('right');
+    sheet.getRange(row, 7).setFormula(`=SUM(G${firstItemRow}:G${row - 1})`).setFontWeight('bold');
+    row += 2;
+  });
+
+  const subtotalRow = row;
+  sheet.getRange(row, 1, 1, 6).merge().setValue('Subtotal').setHorizontalAlignment('right').setFontWeight('bold');
+  sheet.getRange(row, 7).setFormula(amountCells.length ? `=SUM(${amountCells.join(',')})` : '=0').setFontWeight('bold');
+  row += 1;
+  sheet.getRange(row, 1, 1, 6).merge().setValue(`GST @ ${num_(setQuotation.gstPct)}%`).setHorizontalAlignment('right');
+  sheet.getRange(row, 7).setFormula(`=G${subtotalRow}*${num_(setQuotation.gstPct) / 100}`);
+  row += 1;
+  sheet.getRange(row, 1, 1, 6).merge().setValue('Grand Total').setHorizontalAlignment('right').setFontWeight('bold').setBackground('#dce9f8');
+  sheet.getRange(row, 7).setFormula(`=ROUND(G${subtotalRow}+G${row - 1},0)`).setFontWeight('bold').setBackground('#dce9f8');
+
+  sheet.getRange(1, 1, row, 7).setFontFamily('Montserrat').setVerticalAlignment('top');
+  sheet.getRange(7, 1, row - 6, 7).setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(1, 2, row, 2).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+  sheet.getRange(1, 5, row, 3).setNumberFormat('#,##0.00');
+  [55, 210, 420, 75, 95, 105, 125].forEach(function(width, index) { sheet.setColumnWidth(index + 1, width); });
+  sheet.setFrozenRows(5);
+  SpreadsheetApp.flush();
+
+  const pdfFile = exportTemplateRegion_(sheet, EXPORT_PDF_FOLDER_ID, meta.layout || 'landscape', `A1:G${row}`, copyName);
+  return {
+    pdfFileId: pdfFile.getId(),
+    pdfFileName: pdfFile.getName(),
+    pdfUrl: `https://drive.google.com/file/d/${pdfFile.getId()}/view`,
+    workingCopyUrl: `https://docs.google.com/spreadsheets/d/${workingCopy.getId()}/edit`,
+    displayName: copyName
+  };
+}
+
 /** ====== Athletic quotation builder ====== **/
 function buildAthleticQuotationAndExport_(payload) {
   const meta = payload.meta || {};
@@ -305,7 +402,12 @@ function buildAthleticQuotationAndExport_(payload) {
     projectName: meta.projectName
   });
   const source = SpreadsheetApp.openById(ATHLETIC_REFERENCE_ID);
-  const workingCopy = copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+  const workingCopy = payload.quoteId
+    ? managedWorkingCopy_(`athletic:${payload.quoteId}`, function() {
+        return copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+      })
+    : copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 
   const estimator = workingCopy.getSheetByName('Estimator');
   const printable = workingCopy.getSheetByName('Printable Quote');
@@ -359,7 +461,18 @@ function buildQuotationAndExport_(payload){
     clientName,
     projectName
   });
-  const workingCopy = copySpreadsheetWithoutBoundScript_(ref, copyName, WORKING_COPIES_FOLDER_ID);
+  const createWorkingCopy = function() {
+    return copySpreadsheetWithoutBoundScript_(
+      ref,
+      copyName,
+      WORKING_COPIES_FOLDER_ID,
+      [TEMPLATE_SHEET_NAME, 'tc']
+    );
+  };
+  const workingCopy = payload.quoteId
+    ? managedWorkingCopy_(`standard:${payload.quoteId}`, createWorkingCopy)
+    : createWorkingCopy();
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 
   // 2) Fill the copy’s template
   const template = workingCopy.getSheetByName(TEMPLATE_SHEET_NAME);
@@ -368,7 +481,7 @@ function buildQuotationAndExport_(payload){
   // Clear line area while preserving the fixed summary/terms rows.
   template.showRows(ITEMS_START_ROW, ITEMS_END_ROW - ITEMS_START_ROW + 1);
   template.getRange(`B${ITEMS_START_ROW}:O${ITEMS_END_ROW}`).clearContent().clearDataValidations();
-  for (let r = ITEMS_START_ROW; r <= ITEMS_END_ROW; r++) template.setRowHeight(r, 22);
+  template.setRowHeights(ITEMS_START_ROW, ITEMS_END_ROW - ITEMS_START_ROW + 1, 22);
 
   // Meta
   if (META_MAP.clientName)  template.getRange(META_MAP.clientName).setValue(clientName);
@@ -385,10 +498,7 @@ function buildQuotationAndExport_(payload){
   // Lookup master (Equipment BD)
   const catalog = getCatalog_();
 
-  let row = ITEMS_START_ROW;
-  for (const it of items){
-    if (row > ITEMS_END_ROW) break;
-
+  const preparedItems = items.slice(0, ITEMS_END_ROW - ITEMS_START_ROW + 1).map(function(it, index) {
     const key   = `${it.category}|||${it.subCategory}`;
     const pool  = catalog.items[key] || [];
     const found = pool.find(p => p.code === it.itemCode);
@@ -401,47 +511,51 @@ function buildQuotationAndExport_(payload){
       ? it.descOverride
       : (found ? (found.desc || found.name || `${it.category} : ${it.subCategory} : ${it.itemCode}`)
                : `${it.category} : ${it.subCategory} : ${it.itemCode}`);
-    const img = it.imageUrl ? toDirectLink_(it.imageUrl) : (found && found.imageUrl ? toDirectLink_(found.imageUrl) : '');
+    const img = it.imageUrl || (found && found.imageUrl ? found.imageUrl : '');
     const unit = it.unit || (found ? found.unit : '');
     const itemType = it.itemType || (found ? found.itemType : '') || 'Equipment';
     const displayItem = `${it.category || ''} : ${it.subCategory || ''} : ${it.itemCode || ''}`;
 
-    // New Template columns B:O.
-    template.getRange(row, 2, 1, 13).setValues([[
-      it.category || '',
-      it.subCategory || '',
-      it.itemCode || '',
-      row - ITEMS_START_ROW + 1,
-      displayItem,
-      '',
-      desc,
-      unit,
-      qty,
-      rate,
-      '',
-      itemType,
-      baseRate
-    ]]);
-    template.getRange(row, 8).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
-    template.getRange(row, 12).setFormula(`=IF(OR(J${row}="",K${row}=""),"",J${row}*K${row})`);
-    template.getRange(row, 15).setFormula(`=IF(OR(K${row}="",N${row}=""),"",K${row}-N${row})`);
+    return {
+      row: ITEMS_START_ROW + index,
+      values: [it.category || '', it.subCategory || '', it.itemCode || '', index + 1,
+        displayItem, '', desc, unit, qty, rate, '', itemType, baseRate],
+      descHtml: it.descHtml || '',
+      desc: desc,
+      imageUrl: img
+    };
+  });
 
-    if (img) {
-      template.getRange(row, 7).setFormula(`=IMAGE("${img}",3)`);
-      template.setRowHeight(row, 220);
-      template.setColumnWidth(7, 260);
-    } else if (template.getRowHeight(row) < 60) {
-      template.setRowHeight(row, 60);
-    }
+  if (preparedItems.length) {
+    const firstRow = ITEMS_START_ROW;
+    const count = preparedItems.length;
+    template.getRange(firstRow, 2, count, 13).setValues(preparedItems.map(function(item) { return item.values; }));
+    template.getRange(firstRow, 8, count, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+    template.getRange(firstRow, 12, count, 1).setFormulas(preparedItems.map(function(item) {
+      return [`=IF(OR(J${item.row}="",K${item.row}=""),"",J${item.row}*K${item.row})`];
+    }));
+    template.getRange(firstRow, 15, count, 1).setFormulas(preparedItems.map(function(item) {
+      return [`=IF(OR(K${item.row}="",N${item.row}=""),"",K${item.row}-N${item.row})`];
+    }));
 
-    row++;
+    preparedItems.forEach(function(item) {
+      if (item.descHtml) template.getRange(item.row, 8).setRichTextValue(richTextFromHtml_(item.descHtml, item.desc));
+      if (item.imageUrl && insertQuotationImage_(template, item.imageUrl, item.row, 7)) {
+        template.setRowHeight(item.row, 160);
+        template.setColumnWidth(7, 190);
+      } else {
+        template.setRowHeight(item.row, 60);
+      }
+    });
   }
+
+  const row = ITEMS_START_ROW + preparedItems.length;
 
   applyTemplatePricing_(template, pricing);
 
-  for (let rr = row; rr <= ITEMS_END_ROW; rr++) {
-    template.hideRows(rr);
-  }
+  if (row <= ITEMS_END_ROW) template.hideRows(row, ITEMS_END_ROW - row + 1);
+
+  SpreadsheetApp.flush();
 
   // 3) Export PDF from the working copy
   const pdfFile = exportTemplateRegion_(template, EXPORT_PDF_FOLDER_ID, layout, EXPORT_RANGE);
@@ -554,11 +668,14 @@ function exportTemplateRegion_(sheet, folderId, layout, rangeA1, fileNameOverrid
  * newly created spreadsheet preserves sheet content without creating another
  * quotation script deployment for every client.
  */
-function copySpreadsheetWithoutBoundScript_(source, copyName, folderId) {
+function copySpreadsheetWithoutBoundScript_(source, copyName, folderId, sheetNames) {
   const destination = SpreadsheetApp.create(copyName);
   const placeholder = destination.getSheets()[0];
 
-  source.getSheets().forEach(function(sourceSheet) {
+  const wanted = sheetNames && sheetNames.length ? new Set(sheetNames) : null;
+  source.getSheets().filter(function(sourceSheet) {
+    return !wanted || wanted.has(sourceSheet.getName());
+  }).forEach(function(sourceSheet) {
     const copied = sourceSheet.copyTo(destination);
     copied.setName(sourceSheet.getName());
     if (sourceSheet.isSheetHidden()) copied.hideSheet();
@@ -573,6 +690,109 @@ function copySpreadsheetWithoutBoundScript_(source, copyName, folderId) {
   } catch (_) {}
   SpreadsheetApp.flush();
   return destination;
+}
+
+function moveFileToFolder_(fileId, folderId) {
+  const file = DriveApp.getFileById(fileId);
+  const folder = DriveApp.getFolderById(folderId);
+  folder.addFile(file);
+  try { DriveApp.getRootFolder().removeFile(file); } catch (_) {}
+}
+
+function managedWorkingCopy_(quoteKey, createSpreadsheet) {
+  const propertyKey = `quotation-working-copy:${String(quoteKey || '').trim()}`;
+  const properties = PropertiesService.getScriptProperties();
+  const existingId = properties.getProperty(propertyKey);
+  if (existingId) {
+    try {
+      const file = DriveApp.getFileById(existingId);
+      const parents = file.getParents();
+      let insideEditableFolder = false;
+      while (parents.hasNext()) {
+        if (parents.next().getId() === WORKING_COPIES_FOLDER_ID) insideEditableFolder = true;
+      }
+      if (insideEditableFolder && file.getMimeType() === MimeType.GOOGLE_SHEETS) {
+        return SpreadsheetApp.openById(existingId);
+      }
+    } catch (_) {}
+    properties.deleteProperty(propertyKey);
+  }
+  const created = createSpreadsheet();
+  properties.setProperty(propertyKey, created.getId());
+  return created;
+}
+
+function insertQuotationImage_(sheet, url, row, column) {
+  try {
+    const sourceUrl = String(url || '');
+    const fileId = /(?:drive|docs)\.google\.com/i.test(sourceUrl) ? sourceUrl.match(/[-\w]{25,}/) : null;
+    const blob = fileId
+      ? DriveApp.getFileById(fileId[0]).getBlob()
+      : UrlFetchApp.fetch(sourceUrl, { muteHttpExceptions: true, followRedirects: true }).getBlob();
+    if (!String(blob.getContentType() || '').startsWith('image/')) return false;
+    const image = sheet.insertImage(blob, column, row);
+    image.setWidth(170).setHeight(140);
+    return true;
+  } catch (error) {
+    Logger.log(`Quotation image warning for row ${row}: ${error}`);
+    return false;
+  }
+}
+
+function richTextFromHtml_(html, fallback) {
+  const tokens = String(html || '').match(/<[^>]+>|[^<]+/g) || [];
+  const state = { bold: 0, italic: 0, underline: 0 };
+  const spans = [];
+  let text = '';
+
+  function append(value) {
+    const decoded = decodeHtmlText_(value);
+    if (!decoded) return;
+    const start = text.length;
+    text += decoded;
+    spans.push({ start: start, end: text.length, bold: state.bold > 0, italic: state.italic > 0, underline: state.underline > 0 });
+  }
+
+  tokens.forEach(function(token) {
+    if (token[0] !== '<') return append(token);
+    const closing = /^<\//.test(token);
+    const tagMatch = token.toLowerCase().match(/^<\/?\s*([a-z0-9]+)/);
+    const tag = tagMatch ? tagMatch[1] : '';
+    if (tag === 'strong' || tag === 'b') state.bold += closing ? -1 : 1;
+    if (tag === 'em' || tag === 'i') state.italic += closing ? -1 : 1;
+    if (tag === 'u') state.underline += closing ? -1 : 1;
+    if (!closing && tag === 'li') append('• ');
+    if (tag === 'br' || (closing && ['p', 'div', 'li'].includes(tag))) {
+      if (text && !text.endsWith('\n')) append('\n');
+    }
+    state.bold = Math.max(0, state.bold);
+    state.italic = Math.max(0, state.italic);
+    state.underline = Math.max(0, state.underline);
+  });
+
+  text = text.replace(/\n+$/g, '') || String(fallback || '');
+  const builder = SpreadsheetApp.newRichTextValue().setText(text);
+  spans.forEach(function(span) {
+    const end = Math.min(span.end, text.length);
+    if (span.start >= end || (!span.bold && !span.italic && !span.underline)) return;
+    const style = SpreadsheetApp.newTextStyle()
+      .setBold(span.bold)
+      .setItalic(span.italic)
+      .setUnderline(span.underline)
+      .build();
+    builder.setTextStyle(span.start, end, style);
+  });
+  return builder.build();
+}
+
+function decodeHtmlText_(value) {
+  return String(value || '')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'");
 }
 
 function toDirectLink_(url){

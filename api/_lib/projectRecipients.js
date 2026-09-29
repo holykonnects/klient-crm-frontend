@@ -12,11 +12,15 @@ function unique(values) {
   });
 }
 
+export function resolveProjectCc(headers, rows) {
+  const ccIndex = indexOf(headers, "Project CC");
+  return unique((rows || []).flatMap((row) => ccIndex >= 0 ? split(row[ccIndex]) : []));
+}
+
 // Project notification lists deliberately never fall back to shared CC/BCC.
 export function resolveProjectRecipients(headers, rows, data) {
   const ownerIndex = indexOf(headers, "Lead Owner");
   const emailIndex = indexOf(headers, "Email");
-  const ccIndex = indexOf(headers, "Project CC");
   const bccIndex = indexOf(headers, "Project BCC");
   const wantedOwners = new Set(
     [data["Project Manager"], data["Account Owner"], data["Lead Owner"], data.Owner]
@@ -34,7 +38,7 @@ export function resolveProjectRecipients(headers, rows, data) {
   const toKeys = new Set(toList.map((email) => email.toLowerCase()));
   const ccList = unique([
     ...owners,
-    ...rows.flatMap((row) => ccIndex >= 0 ? split(row[ccIndex]) : []),
+    ...resolveProjectCc(headers, rows),
     ...split(updaterEmail),
   ]).filter((email) => !toKeys.has(email.toLowerCase()));
   const visibleKeys = new Set([...toList, ...ccList].map((email) => email.toLowerCase()));

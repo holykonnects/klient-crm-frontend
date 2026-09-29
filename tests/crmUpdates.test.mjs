@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { anchoredAppendRange } from "../api/_lib/googleSheets.js";
-import { applyAmountUpdate } from "../api/_lib/crmHandlers.js";
+import { applyAmountUpdate, assertValidAttachment } from "../api/_lib/crmHandlers.js";
 
 test("sheet appends are anchored to column A for the complete row width", () => {
   assert.equal(anchoredAppendRange("Qualified Leads", 29), "'Qualified Leads'!A:AC");
@@ -29,4 +29,23 @@ test("amount updates reject ambiguous or non-positive additions", () => {
     { "Deal Amount": 100 },
     "Deal Amount",
   ), /greater than zero/);
+});
+
+test("order attachments cannot be replaced by failed-upload placeholders", () => {
+  assert.doesNotThrow(() => assertValidAttachment(
+    "Attach Purchase Order",
+    "https://drive.google.com/file/d/123/view",
+  ));
+  assert.doesNotThrow(() => assertValidAttachment(
+    "Attach Purchase Order",
+    { base64: "ZmlsZQ==" },
+  ));
+  assert.throws(
+    () => assertValidAttachment("Attach Purchase Order", "FILE_TOO_LARGE: order.pdf"),
+    /was not uploaded/,
+  );
+  assert.throws(
+    () => assertValidAttachment("Attach Purchase Order", { name: "order.pdf", base64: "" }),
+    /missing its file content/,
+  );
 });

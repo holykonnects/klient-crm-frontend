@@ -43,6 +43,7 @@ import LoadingOverlay from "./LoadingOverlay";
 import EventIcon from "@mui/icons-material/Event";
 import CalendarView from "./CalendarView";
 import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
+import CloseIcon from "@mui/icons-material/Close";
 import MobileActionMenu from "./MobileActionMenu";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 
@@ -507,22 +508,16 @@ function DealsTable() {
    * - Frontend sends base64 object (no-cors friendly)
    * - Backend uploads to Drive + stores link in Orders sheet
    *
-   * If file is too large, we send a readable marker string
-   * (so backend can skip and user understands why).
+   * Reject oversized files before submission so an order can never be created
+   * with a placeholder where a required Drive document should be.
    */
   const fileToBase64 = (file) => {
     if (!file) return Promise.resolve(null);
 
-    // hard guard: keep reasonable to avoid silent Apps Script failures
+    // Keep the complete request within the serverless API payload limit.
     const MAX_FILE_BYTES = 1_200_000; // ~1.2MB raw
     if (file.size > MAX_FILE_BYTES) {
-      return Promise.resolve({
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        base64: "",
-        size: file.size,
-        tooLarge: true,
-      });
+      return Promise.reject(new Error(`${file.name} exceeds the 1.2 MB attachment limit.`));
     }
 
     return new Promise((resolve, reject) => {
@@ -637,7 +632,10 @@ function DealsTable() {
           },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || result.ok !== true) {
+        throw new Error(result.error || result.message || `Order creation failed (${res.status})`);
+      }
 
       setOrderMsg("Created ✅");
       setOrderOpen(false);
@@ -646,7 +644,7 @@ function DealsTable() {
     } catch (e) {
       console.error("Create order error:", e);
       setOrderMsg("Create failed ❌");
-      alert("❌ Error creating order");
+      alert(`❌ ${e.message || "Error creating order"}`);
     } finally {
       setTimeout(() => setOrderMsg(""), 1200);
       setCreatingOrder(false);
@@ -1003,7 +1001,7 @@ function DealsTable() {
                       Files will be uploaded to Drive (Folder: {UPLOAD_FOLDER_ID}) and the Orders sheet will store the Drive link.
                     </Typography>
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
-                      Keep files small (≈1.2MB max) to avoid Apps Script payload limits.
+                      Maximum 1.2 MB per attachment. Every selected file must finish uploading before the order is created.
                     </Typography>
                   </Grid>
 
@@ -1029,20 +1027,41 @@ function DealsTable() {
                           sx={{ justifyContent: "flex-start" }}
                         >
                           {label}
-                          <input hidden type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleOrderFileChange(fileKey)} />
+                          <input
+                            key={file ? `${fileKey}-${file.name}-${file.lastModified}` : `${fileKey}-empty`}
+                            hidden
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            onChange={handleOrderFileChange(fileKey)}
+                          />
                         </Button>
 
                         {file ? (
-                          <Typography
-                            sx={{
-                              mt: 0.5,
-                              fontFamily: "Montserrat, sans-serif",
-                              fontSize: 11,
-                              opacity: 0.8,
-                            }}
-                          >
-                            Selected: {file.name}
-                          </Typography>
+                          <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography
+                              sx={{
+                                minWidth: 0,
+                                flex: 1,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontFamily: "Montserrat, sans-serif",
+                                fontSize: 11,
+                                opacity: 0.8,
+                              }}
+                            >
+                              Selected: {file.name}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              title={`Remove ${file.name}`}
+                              aria-label={`Remove ${file.name}`}
+                              disabled={creatingOrder}
+                              onClick={() => setOrderFiles((previous) => ({ ...previous, [fileKey]: null }))}
+                            >
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
                         ) : null}
                       </Grid>
                     );

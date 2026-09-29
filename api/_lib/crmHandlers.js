@@ -71,6 +71,15 @@ export function applyAmountUpdate(data, previous, field) {
   return data;
 }
 
+export function assertValidAttachment(field, value) {
+  if (typeof value === "string" && value.startsWith("FILE_TOO_LARGE:")) {
+    throw new Error(`${field} was not uploaded because the selected file is too large`);
+  }
+  if (value && typeof value === "object" && !value.base64) {
+    throw new Error(`${field} is missing its file content`);
+  }
+}
+
 export async function getTable(config) {
   const sheetName = await resolveSheetTitle(config.spreadsheetId, config.sheetNames);
   const values = await getValues(config.spreadsheetId, sheetName);
@@ -391,9 +400,12 @@ async function withUploadedFiles(data, prefix) {
   const next = { ...(data || {}) };
   for (const field of FILE_FIELDS) {
     const value = next[field];
+    assertValidAttachment(field, value);
     if (value && typeof value === "object") {
       const folderId = value.folderId || DRIVE_FOLDERS.attachments[field] || DRIVE_FOLDERS.defaultUpload;
-      next[field] = await uploadDriveFile(value, folderId, prefix);
+      const driveUrl = await uploadDriveFile(value, folderId, prefix);
+      if (!driveUrl) throw new Error(`${field} did not return a Drive link`);
+      next[field] = driveUrl;
     }
   }
   return next;

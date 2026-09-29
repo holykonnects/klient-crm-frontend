@@ -36,6 +36,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CloseIcon from "@mui/icons-material/Close";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
 
@@ -635,15 +636,49 @@ function OrdersTable() {
                           ["drawing", "Replace Drawing"],
                           ["boq", "Replace BOQ"],
                           ["proforma", "Replace Proforma Invoice"],
-                        ].map(([key, label]) => (
-                          <Grid item xs={6} key={key}>
-                            <Button variant="outlined" component="label" fullWidth>
-                              {label}
-                              {orderFiles[key] ? `: ${orderFiles[key].name}` : ""}
-                              <input hidden type="file" onChange={handleOrderFileChange(key)} />
-                            </Button>
-                          </Grid>
-                        ))}
+                        ].map(([key, label]) => {
+                          const file = orderFiles[key];
+                          return (
+                            <Grid item xs={6} key={key}>
+                              <Button variant="outlined" component="label" fullWidth disabled={saving}>
+                                {label}
+                                <input
+                                  key={file ? `${key}-${file.name}-${file.lastModified}` : `${key}-empty`}
+                                  hidden
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg"
+                                  onChange={handleOrderFileChange(key)}
+                                />
+                              </Button>
+                              {file ? (
+                                <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography
+                                    sx={{
+                                      minWidth: 0,
+                                      flex: 1,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      fontFamily: "Montserrat, sans-serif",
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    Selected: {file.name}
+                                  </Typography>
+                                  <IconButton
+                                    size="small"
+                                    title={`Remove ${file.name}`}
+                                    aria-label={`Remove ${file.name}`}
+                                    disabled={saving}
+                                    onClick={() => setOrderFiles((previous) => ({ ...previous, [key]: null }))}
+                                  >
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              ) : null}
+                            </Grid>
+                          );
+                        })}
                       </Grid>
                     </>
                   )}

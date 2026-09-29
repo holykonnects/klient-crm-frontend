@@ -277,7 +277,9 @@ function doPost(e){
       const payload = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
       const out = payload.quoteType === 'athletic'
         ? buildAthleticQuotationAndExport_(payload)
-        : buildQuotationAndExport_(payload);
+        : payload.quoteType === 'project-set'
+          ? buildSetQuotationAndExport_(payload)
+          : buildQuotationAndExport_(payload);
 
       if (payload.attach && payload.attach.leadDisplay && out.pdfUrl){
         try { updateLeadQuotationLink_(payload.attach.leadDisplay, out.pdfUrl, username); }
@@ -294,6 +296,101 @@ function doPost(e){
   }
 }
 
+/** ====== Multi-set project BOQ builder ====== **/
+function buildSetQuotationAndExport_(payload) {
+  const meta = payload.meta || {};
+  const setQuotation = payload.setQuotation || {};
+  const sets = (setQuotation.sets || []).filter(function(set) { return (set.items || []).length; });
+  if (!sets.length) throw new Error('Add at least one project set before exporting');
+  if (!payload.quoteId) throw new Error('Save the quotation before exporting the project BOQ');
+
+  const copyName = buildQuoteFileName_({
+    quotationTitle: meta.quotationTitle || 'Project BOQ Quotation',
+    quotationNo: meta.quotationNo,
+    clientName: meta.clientName,
+    projectName: meta.projectName
+  });
+  const workingCopy = managedWorkingCopy_(`project-set:${payload.quoteId}`, function() {
+    const spreadsheet = SpreadsheetApp.create(copyName);
+    moveFileToFolder_(spreadsheet.getId(), WORKING_COPIES_FOLDER_ID);
+    return spreadsheet;
+  });
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
+  const sheets = workingCopy.getSheets();
+  const sheet = workingCopy.getSheetByName('Quotation') || sheets[0];
+  if (sheet.getName() !== 'Quotation') sheet.setName('Quotation');
+  sheet.clear();
+  while (workingCopy.getSheets().length > 1) workingCopy.deleteSheet(workingCopy.getSheets().pop());
+
+  const headingRows = [
+    ['RIDO SPORTS', '', '', '', '', '', ''],
+    [meta.quotationTitle || 'Project BOQ Quotation', '', '', '', '', '', ''],
+    ['Client', meta.clientName || '', 'Project', meta.projectName || '', 'Quotation No.', meta.quotationNo || '', ''],
+    ['Date', meta.dateISO ? new Date(meta.dateISO) : new Date(), 'Prepared By', meta.preparedBy || '', 'Client GST', meta.clientGstNumber || '', ''],
+    ['Billing Address', meta.clientBillingAddress || '', '', '', 'Notes', meta.notes || '', '']
+  ];
+  sheet.getRange(1, 1, headingRows.length, 7).setValues(headingRows);
+  sheet.getRange('A1:G1').merge().setFontSize(16).setFontWeight('bold').setHorizontalAlignment('center').setBackground('#163f76').setFontColor('#ffffff');
+  sheet.getRange('A2:G2').merge().setFontSize(13).setFontWeight('bold').setHorizontalAlignment('center').setBackground('#dce9f8');
+  sheet.getRange('B5:D5').merge();
+  sheet.getRange('F5:G5').merge();
+
+  let row = 7;
+  let itemNumber = 1;
+  const amountCells = [];
+  sets.forEach(function(set, setIndex) {
+    sheet.getRange(row, 1, 1, 7).merge().setValue(`${setIndex + 1}. ${set.title || 'Untitled set'}`)
+      .setFontWeight('bold').setBackground('#dce9f8').setFontColor('#163f76');
+    row += 1;
+    sheet.getRange(row, 1, 1, 7).setValues([['S.No.', 'Item', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Amount']])
+      .setFontWeight('bold').setBackground('#6395df').setFontColor('#ffffff').setHorizontalAlignment('center');
+    row += 1;
+    const firstItemRow = row;
+    const itemRows = (set.items || []).map(function(item) {
+      const qty = num_(item.qty);
+      const rate = num_(item.rate);
+      return [itemNumber++, item.item || '', item.description || '', item.unit || '', qty, rate, qty * rate];
+    });
+    sheet.getRange(row, 1, itemRows.length, 7).setValues(itemRows);
+    (set.items || []).forEach(function(item, index) {
+      if (item.descHtml) sheet.getRange(row + index, 3).setRichTextValue(richTextFromHtml_(item.descHtml, item.description || ''));
+      amountCells.push(`G${row + index}`);
+    });
+    sheet.setRowHeights(row, itemRows.length, 54);
+    row += itemRows.length;
+    sheet.getRange(row, 1, 1, 6).merge().setValue('Set Subtotal').setFontWeight('bold').setHorizontalAlignment('right');
+    sheet.getRange(row, 7).setFormula(`=SUM(G${firstItemRow}:G${row - 1})`).setFontWeight('bold');
+    row += 2;
+  });
+
+  const subtotalRow = row;
+  sheet.getRange(row, 1, 1, 6).merge().setValue('Subtotal').setHorizontalAlignment('right').setFontWeight('bold');
+  sheet.getRange(row, 7).setFormula(amountCells.length ? `=SUM(${amountCells.join(',')})` : '=0').setFontWeight('bold');
+  row += 1;
+  sheet.getRange(row, 1, 1, 6).merge().setValue(`GST @ ${num_(setQuotation.gstPct)}%`).setHorizontalAlignment('right');
+  sheet.getRange(row, 7).setFormula(`=G${subtotalRow}*${num_(setQuotation.gstPct) / 100}`);
+  row += 1;
+  sheet.getRange(row, 1, 1, 6).merge().setValue('Grand Total').setHorizontalAlignment('right').setFontWeight('bold').setBackground('#dce9f8');
+  sheet.getRange(row, 7).setFormula(`=ROUND(G${subtotalRow}+G${row - 1},0)`).setFontWeight('bold').setBackground('#dce9f8');
+
+  sheet.getRange(1, 1, row, 7).setFontFamily('Montserrat').setVerticalAlignment('top');
+  sheet.getRange(7, 1, row - 6, 7).setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(1, 2, row, 2).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+  sheet.getRange(1, 5, row, 3).setNumberFormat('#,##0.00');
+  [55, 210, 420, 75, 95, 105, 125].forEach(function(width, index) { sheet.setColumnWidth(index + 1, width); });
+  sheet.setFrozenRows(5);
+  SpreadsheetApp.flush();
+
+  const pdfFile = exportTemplateRegion_(sheet, EXPORT_PDF_FOLDER_ID, meta.layout || 'landscape', `A1:G${row}`, copyName);
+  return {
+    pdfFileId: pdfFile.getId(),
+    pdfFileName: pdfFile.getName(),
+    pdfUrl: `https://drive.google.com/file/d/${pdfFile.getId()}/view`,
+    workingCopyUrl: `https://docs.google.com/spreadsheets/d/${workingCopy.getId()}/edit`,
+    displayName: copyName
+  };
+}
+
 /** ====== Athletic quotation builder ====== **/
 function buildAthleticQuotationAndExport_(payload) {
   const meta = payload.meta || {};
@@ -305,7 +402,12 @@ function buildAthleticQuotationAndExport_(payload) {
     projectName: meta.projectName
   });
   const source = SpreadsheetApp.openById(ATHLETIC_REFERENCE_ID);
-  const workingCopy = copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+  const workingCopy = payload.quoteId
+    ? managedWorkingCopy_(`athletic:${payload.quoteId}`, function() {
+        return copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+      })
+    : copySpreadsheetWithoutBoundScript_(source, copyName, WORKING_COPIES_FOLDER_ID);
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 
   const estimator = workingCopy.getSheetByName('Estimator');
   const printable = workingCopy.getSheetByName('Printable Quote');
@@ -359,12 +461,18 @@ function buildQuotationAndExport_(payload){
     clientName,
     projectName
   });
-  const workingCopy = copySpreadsheetWithoutBoundScript_(
-    ref,
-    copyName,
-    WORKING_COPIES_FOLDER_ID,
-    [TEMPLATE_SHEET_NAME, 'tc']
-  );
+  const createWorkingCopy = function() {
+    return copySpreadsheetWithoutBoundScript_(
+      ref,
+      copyName,
+      WORKING_COPIES_FOLDER_ID,
+      [TEMPLATE_SHEET_NAME, 'tc']
+    );
+  };
+  const workingCopy = payload.quoteId
+    ? managedWorkingCopy_(`standard:${payload.quoteId}`, createWorkingCopy)
+    : createWorkingCopy();
+  DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 
   // 2) Fill the copy’s template
   const template = workingCopy.getSheetByName(TEMPLATE_SHEET_NAME);
@@ -582,6 +690,36 @@ function copySpreadsheetWithoutBoundScript_(source, copyName, folderId, sheetNam
   } catch (_) {}
   SpreadsheetApp.flush();
   return destination;
+}
+
+function moveFileToFolder_(fileId, folderId) {
+  const file = DriveApp.getFileById(fileId);
+  const folder = DriveApp.getFolderById(folderId);
+  folder.addFile(file);
+  try { DriveApp.getRootFolder().removeFile(file); } catch (_) {}
+}
+
+function managedWorkingCopy_(quoteKey, createSpreadsheet) {
+  const propertyKey = `quotation-working-copy:${String(quoteKey || '').trim()}`;
+  const properties = PropertiesService.getScriptProperties();
+  const existingId = properties.getProperty(propertyKey);
+  if (existingId) {
+    try {
+      const file = DriveApp.getFileById(existingId);
+      const parents = file.getParents();
+      let insideEditableFolder = false;
+      while (parents.hasNext()) {
+        if (parents.next().getId() === WORKING_COPIES_FOLDER_ID) insideEditableFolder = true;
+      }
+      if (insideEditableFolder && file.getMimeType() === MimeType.GOOGLE_SHEETS) {
+        return SpreadsheetApp.openById(existingId);
+      }
+    } catch (_) {}
+    properties.deleteProperty(propertyKey);
+  }
+  const created = createSpreadsheet();
+  properties.setProperty(propertyKey, created.getId());
+  return created;
 }
 
 function insertQuotationImage_(sheet, url, row, column) {

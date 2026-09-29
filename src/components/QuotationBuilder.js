@@ -12,6 +12,7 @@ import ExpandMore from '@mui/icons-material/ExpandMore';
 import ExpandLess from '@mui/icons-material/ExpandLess';
 import FolderOpen from '@mui/icons-material/FolderOpen';
 import SaveOutlined from '@mui/icons-material/SaveOutlined';
+import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
@@ -192,12 +193,19 @@ export default function QuotationBuilder() {
 
   useEffect(() => {
     if (!user?.username) return;
-    try {
-      const value = JSON.parse(localStorage.getItem(`rido-quotation-drafts:${user.username}`) || '[]');
-      setSavedDrafts(Array.isArray(value) ? value : []);
-    } catch {
-      setSavedDrafts([]);
-    }
+    fetchJSON(`${QUOTATION_API_URL}?action=listQuotes&user=${encodeURIComponent(user.username)}`)
+      .then(result => {
+        if (!result.ok) throw new Error(result.error || 'Saved quotes could not be loaded');
+        setSavedDrafts(result.quotes || []);
+      })
+      .catch(() => {
+        try {
+          const value = JSON.parse(localStorage.getItem(`rido-quotation-drafts:${user.username}`) || '[]');
+          setSavedDrafts(Array.isArray(value) ? value : []);
+        } catch {
+          setSavedDrafts([]);
+        }
+      });
   }, [user?.username]);
 
   const totals = useMemo(() => {
@@ -314,6 +322,7 @@ export default function QuotationBuilder() {
 
   const buildPayload = () => ({
     quoteType,
+    quoteId: activeQuoteId || undefined,
     engineVersion: QUOTATION_ENGINE_VERSION,
     meta,
     pricing,
@@ -362,9 +371,10 @@ export default function QuotationBuilder() {
     }
   };
 
-  const saveDraft = () => {
-    const quoteId = activeQuoteId || `Q-${Date.now().toString(36).toUpperCase()}`;
+  const saveDraft = async ({ status = 'Draft', pdfUrl = '', workingCopyUrl = '', quoteId: requestedQuoteId = '' } = {}) => {
+    const quoteId = requestedQuoteId || activeQuoteId || `Q-${Date.now().toString(36).toUpperCase()}`;
     const payload = buildPayload();
+    payload.quoteId = quoteId;
     const record = {
       quoteId,
       updatedAt: new Date().toLocaleString('en-IN'),
@@ -373,14 +383,46 @@ export default function QuotationBuilder() {
       title: meta.quotationTitle,
       clientName: meta.clientName,
       projectName: meta.projectName,
+      status,
       payload,
     };
-    const next = [record, ...savedDrafts.filter(draft => draft.quoteId !== quoteId)];
-    if (persistDrafts(next)) setActiveQuoteId(quoteId);
+    try {
+      const result = await fetchJSON(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'saveQuote',
+          user: user?.username || '',
+          quote: { quoteId, status, pdfUrl, workingCopyUrl, payload },
+        })
+      });
+      if (!result.ok) throw new Error(result.error || 'Quote could not be saved');
+      const saved = { ...result.quote, payload };
+      setSavedDrafts(current => [saved, ...current.filter(draft => draft.quoteId !== saved.quoteId)]);
+      setActiveQuoteId(saved.quoteId);
+      return saved;
+    } catch (error) {
+      console.error('Shared quotation register save error:', error);
+      const next = [record, ...savedDrafts.filter(draft => draft.quoteId !== quoteId)];
+      if (persistDrafts(next)) setActiveQuoteId(quoteId);
+      return record;
+    }
   };
 
-  const openDraft = (record, duplicate = false) => {
-    const payload = record.payload || {};
+  const openDraft = async (record, duplicate = false) => {
+    let payload = record.payload;
+    if (!payload) {
+      try {
+        const result = await fetchJSON(`${QUOTATION_API_URL}?action=getQuote&user=${encodeURIComponent(user?.username || '')}&quoteId=${encodeURIComponent(record.quoteId)}&revision=${encodeURIComponent(record.revision || '')}`);
+        if (!result.ok) throw new Error(result.error || 'Saved quote could not be opened');
+        payload = result.quote?.payload;
+      } catch (error) {
+        console.error(error);
+        alert(error.message || 'Saved quote could not be opened');
+        return;
+      }
+    }
+    payload = payload || {};
     setQuoteType(payload.quoteType || 'standard');
     setMeta(current => ({ ...current, ...(payload.meta || {}) }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
@@ -392,33 +434,57 @@ export default function QuotationBuilder() {
     setActiveQuoteId(duplicate ? '' : record.quoteId);
     if (duplicate) setMeta(current => ({ ...current, quotationNo: '', quotationTitle: current.quotationTitle ? `${current.quotationTitle} copy` : '' }));
     setDraftsOpen(false);
+    setLastExport(record.pdfUrl || record.workingCopyUrl ? {
+      url: record.pdfUrl || '', workingCopyUrl: record.workingCopyUrl || '', name: record.title || ''
+    } : null);
+  };
+
+  const exportSetExcel = async () => {
+    if (!quotationSets.some(set => (set.items || []).length)) {
+      alert('Add at least one project set before exporting.');
+      return;
+    }
+    setExporting(true);
+    try {
+      const quoteId = activeQuoteId || `Q-${Date.now().toString(36).toUpperCase()}`;
+      const payload = buildPayload();
+      payload.quoteId = quoteId;
+      const response = await fetch(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'exportSetWorkbook', user: user?.username || '', payload })
+      });
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({}));
+        throw new Error(error.error || `Export failed with status ${response.status}`);
+      }
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^";]+)"?/i);
+      downloadBlob(await response.blob(), match?.[1] || `${meta.quotationTitle || 'Project BOQ Quotation'}.xlsx`);
+      await saveDraft({ status: 'Exported Excel', quoteId });
+    } catch (error) {
+      console.error(error);
+      alert(error.message || 'Excel export failed.');
+    } finally {
+      setExporting(false);
+    }
   };
 
   const exportPdf = async () => {
     if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
+    if (quoteType === 'project-set' && !quotationSets.some(set => (set.items || []).length)) {
+      alert('Add at least one project set before exporting.');
+      return;
+    }
     setExporting(true);
     try {
       const payload = buildPayload();
-
-      if (quoteType === 'project-set') {
-        if (!quotationSets.some(set => (set.items || []).length)) {
-          alert('Add at least one project set before exporting.');
-          return;
-        }
-        const response = await fetch(QUOTATION_API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ action: 'exportSetWorkbook', user: user?.username || '', payload })
-        });
-        if (!response.ok) {
-          const error = await response.json().catch(() => ({}));
-          throw new Error(error.error || `Export failed with status ${response.status}`);
-        }
-        const disposition = response.headers.get('content-disposition') || '';
-        const match = disposition.match(/filename="?([^";]+)"?/i);
-        downloadBlob(await response.blob(), match?.[1] || `${meta.quotationTitle || 'Project BOQ Quotation'}.xlsx`);
-        saveDraft();
-        return;
+      let exportQuoteId = payload.quoteId;
+      if (!exportQuoteId) {
+        const saved = await saveDraft({ status: 'Draft' });
+        exportQuoteId = saved?.quoteId;
+        if (!exportQuoteId) throw new Error('The quotation could not be assigned a Quote ID before export');
+        payload.quoteId = exportQuoteId;
       }
 
       const j = await fetchJSON(
@@ -435,7 +501,7 @@ export default function QuotationBuilder() {
       }
       safeOpen(url);
       setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
-      saveDraft();
+      await saveDraft({ status: 'Exported', pdfUrl: url, workingCopyUrl: j.workingCopyUrl, quoteId: exportQuoteId });
     } catch (e) {
       console.error(e);
       alert('Export failed. See console for details.');
@@ -481,8 +547,8 @@ export default function QuotationBuilder() {
         </Box>
         <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
           {user?.role === 'Admin' && <Button variant="outlined" onClick={() => setAdminOpen(true)} sx={{ borderRadius: 1.5 }}>Manage Quote Data</Button>}
-          <Tooltip title="Saved in this browser"><Button variant="outlined" startIcon={<FolderOpen />} onClick={() => setDraftsOpen(true)} sx={{ borderRadius: 1.5 }}>Saved Quotes</Button></Tooltip>
-          <Tooltip title="Save draft in this browser"><Button variant="outlined" startIcon={<SaveOutlined />} onClick={saveDraft} sx={{ borderRadius: 1.5 }}>Save Draft</Button></Tooltip>
+          <Tooltip title="Open saved quotation revisions"><Button variant="outlined" startIcon={<FolderOpen />} onClick={() => setDraftsOpen(true)} sx={{ borderRadius: 1.5 }}>Saved Quotes</Button></Tooltip>
+          <Tooltip title="Save a new quotation revision"><Button variant="outlined" startIcon={<SaveOutlined />} onClick={() => saveDraft()} sx={{ borderRadius: 1.5 }}>Save Draft</Button></Tooltip>
           <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
             <InputLabel>Quotation Type</InputLabel>
             <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
@@ -501,9 +567,15 @@ export default function QuotationBuilder() {
               Open Working Quote
             </Button>
           )}
+          {quoteType === 'project-set' && (
+            <Button variant="outlined" startIcon={<DownloadOutlined />} onClick={exportSetExcel} disabled={exporting}
+              sx={{ borderRadius: 1.5 }}>
+              Export Excel
+            </Button>
+          )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
             sx={{ borderRadius: 1.5, px: 2.5, bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}>
-            {exporting ? 'Exporting...' : quoteType === 'project-set' ? 'Export Excel' : 'Export PDF'}
+            {exporting ? 'Exporting...' : 'Export PDF'}
           </Button>
         </Box>
       </Box>
@@ -656,6 +728,7 @@ export default function QuotationBuilder() {
               onChange={setQuotationSets}
               gstPct={setGstPct}
               onGstChange={setSetGstPct}
+              onDownloadExcel={exportSetExcel}
             />
           </Box>}
 

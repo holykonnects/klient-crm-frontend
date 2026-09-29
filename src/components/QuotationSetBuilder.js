@@ -7,6 +7,7 @@ import {
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import ContentCopy from '@mui/icons-material/ContentCopy';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
 import {
@@ -30,7 +31,7 @@ function stripHtml(value) {
   return (node.innerText || node.textContent || '').trim();
 }
 
-export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChange }) {
+export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChange, onDownloadExcel }) {
   const [templateId, setTemplateId] = useState('');
   const [editor, setEditor] = useState(null);
   const totals = setQuoteTotals(sets, gstPct);
@@ -77,6 +78,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
         </FormControl>
         <Button variant="outlined" disabled={!templateId} onClick={applyTemplate}>Add Standard Set</Button>
         <Button startIcon={<AddCircleOutline />} onClick={() => onChange([...sets, emptyQuotationSet()])}>Add Blank Set</Button>
+        <Button startIcon={<DownloadOutlined />} disabled={!sets.length} onClick={onDownloadExcel}>Download Excel</Button>
       </Box>
 
       {!sets.length && <Box sx={{ p: 3, textAlign: 'center', color: '#64748b' }}>Add a standard or blank set to begin.</Box>}
@@ -93,24 +95,30 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
             </Box>
           </Box>
           <TableContainer sx={{ overflowX: 'auto' }}>
-            <Table size="small" sx={{ minWidth: 1120, '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
+            <Table size="small" sx={{ minWidth: 1480, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
               <TableHead><TableRow>
-                <TableCell sx={{ width: 44 }}>S.No</TableCell><TableCell sx={{ minWidth: 190 }}>Item</TableCell>
-                <TableCell sx={{ minWidth: 300 }}>Description</TableCell><TableCell sx={{ width: 85 }}>Unit</TableCell>
-                <TableCell sx={{ width: 120 }}>Quantity mode</TableCell><TableCell sx={{ width: 95 }}>Factor</TableCell>
-                <TableCell sx={{ width: 105 }}>Quantity</TableCell><TableCell sx={{ width: 115 }}>Unit price</TableCell>
-                <TableCell sx={{ width: 125 }}>Amount</TableCell><TableCell sx={{ width: 44 }} />
+                <TableCell sx={{ width: 54 }}>S.No</TableCell><TableCell sx={{ width: 220 }}>Item</TableCell>
+                <TableCell sx={{ width: 500 }}>Description</TableCell><TableCell sx={{ width: 90 }}>Unit</TableCell>
+                <TableCell sx={{ width: 135 }}>Quantity mode</TableCell><TableCell sx={{ width: 95 }}>Factor</TableCell>
+                <TableCell sx={{ width: 110 }}>Quantity</TableCell><TableCell sx={{ width: 120 }}>Unit price</TableCell>
+                <TableCell sx={{ width: 125 }}>Amount</TableCell><TableCell sx={{ width: 50 }} />
               </TableRow></TableHead>
               <TableBody>
                 {(set.items || []).map((item, itemIndex) => {
                   const quantity = itemQuantity(set, item);
                   return <TableRow key={item.id || itemIndex} hover>
                     <TableCell sx={{ fontSize: '0.76rem', fontWeight: 700, pt: 1.6 }}>{itemIndex + 1}</TableCell>
-                    <TableCell><TextField fullWidth multiline minRows={2} value={item.item} onChange={(event) => updateItem(setIndex, itemIndex, { item: event.target.value })} sx={cellInputSx} /></TableCell>
+                    <TableCell><TextField fullWidth multiline minRows={2} maxRows={4} value={item.item} onChange={(event) => updateItem(setIndex, itemIndex, { item: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell>
-                      <Box sx={{ display: 'flex', gap: 0.5, alignItems: 'flex-start' }}>
-                        <TextField fullWidth multiline minRows={2} value={item.description} onChange={(event) => updateItem(setIndex, itemIndex, { description: event.target.value, descHtml: '' })} sx={cellInputSx} />
-                        <Tooltip title="Format description"><IconButton size="small" onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })}><EditOutlined fontSize="small" /></IconButton></Tooltip>
+                      <Box onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })} sx={{
+                        position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
+                        border: '1px solid #cbd5e1', borderRadius: 1, bgcolor: '#fff', px: 1.25, py: 1,
+                        pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
+                      }}>
+                        <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                          {item.description || 'Add description'}
+                        </Typography>
+                        <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                       </Box>
                     </TableCell>
                     <TableCell><TextField value={item.unit} onChange={(event) => updateItem(setIndex, itemIndex, { unit: event.target.value })} sx={cellInputSx} /></TableCell>
@@ -138,7 +146,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
         <Typography sx={{ px: 1.5, py: 0.8, bgcolor: '#0f172a', color: '#fff', borderRadius: 1, fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(totals.grand)}</Typography>
       </Box>
 
-      <Dialog open={Boolean(editor)} onClose={() => setEditor(null)} maxWidth="md" fullWidth disableEscapeKeyDown>
+      <Dialog open={Boolean(editor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
         <DialogTitle>Format Description</DialogTitle>
         <DialogContent dividers><QuotationRichTextEditor value={editor?.value || ''} onChange={(value) => setEditor((current) => ({ ...current, value }))} /></DialogContent>
         <DialogActions>
@@ -152,4 +160,3 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
     </Box>
   );
 }
-

@@ -666,75 +666,15 @@ function onFormSubmit(e) {
   // Deal notifications are owned by the CRM server. This no-op protects
   // against duplicate messages from an existing installed Sheets trigger.
   Logger.log('Deal email skipped: server-side operational email is authoritative.');
-  return;
-
-  try {
-    const validationSheetId = '1YxYSLVuBrNOp8fYdA3s1dLzR3KFW0IaVMUvJ2AvY4aQ';
-    const validationSheetName = 'Validation Tables';
-
-    const sheet = e.range.getSheet();
-    const submittedRow = e.range.getRow();
-    const lastCol = sheet.getLastColumn();
-
-    const headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
-    const values = sheet.getRange(submittedRow, 1, 1, lastCol).getValues()[0];
-
-    // Get the Account Owner from the Deals sheet
-    const ownerColIndex = headers.indexOf('Account Owner');
-    if (ownerColIndex === -1) {
-      Logger.log("❌ 'Account Owner' column not found in Deals sheet.");
-      return;
-    }
-
-    const accountOwner = values[ownerColIndex];
-    if (!accountOwner) {
-      Logger.log("❌ Account Owner is missing for the submitted deal.");
-      return;
-    }
-
-    // Lookup the corresponding email from Validation Sheet where Column A = Lead Owner, Column E = Email
-    const validationSheet = SpreadsheetApp.openById(validationSheetId).getSheetByName(validationSheetName);
-    const validationData = validationSheet.getRange(2, 1, validationSheet.getLastRow() - 1, 5).getValues(); // A to E
-
-    const matchedRow = validationData.find(row => row[0] === accountOwner);
-    const recipientEmail = matchedRow ? matchedRow[4] : null;
-
-    if (!recipientEmail) {
-      Logger.log(`❌ No email found for Account Owner: ${accountOwner}`);
-      return;
-    }
-
-    // Generate subject with optional fields
-    const dealName = values[headers.indexOf('Deal Name')] || '';
-    const company = values[headers.indexOf('Company')] || '';
-    const dealValue = values[headers.indexOf('Deal Value')] || '';
-    const stage = values[headers.indexOf('Deal Stage')] || '';
-
-    const subject = `New Deal Submitted: ${dealName} | ${company} | ₹${dealValue} | Stage: ${stage}`;
-
-    // Build HTML body table
-    const tableHtml = headers.map((h, i) =>
-      `<tr><td style="padding:4px;border:1px solid #ccc;"><b>${h}</b></td><td style="padding:4px;border:1px solid #ccc;">${values[i]}</td></tr>`
-    ).join('');
-    const emailBody = `
-      <p>Hello ${accountOwner},</p>
-      <p>A new deal form has been submitted with the following details:</p>
-      <table style="border-collapse:collapse;border:1px solid #ccc;">${tableHtml}</table>
-      <p>Regards,<br/>Klient Konnect Team</p>
-    `;
-
-    // Send email using GmailApp
-    GmailApp.sendEmail(recipientEmail, subject, '', {
-      htmlBody: emailBody,
-      cc: 'Holy@klientkonnect.com,Sidhant@ridosports.com,Sandeep@ridosports.com',
-      name: 'Rido CRM'
-    });
-
-    Logger.log(`✅ Deal email sent to ${recipientEmail}`);
-
-  } catch (err) {
-    Logger.log("❗ Error in onFormSubmit: " + err.stack);
-  }
 }
 
-
+function disableLegacyDealEmailTriggers() {
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() !== 'onFormSubmit') return;
+    ScriptApp.deleteTrigger(trigger);
+    removed++;
+  });
+  Logger.log(`Removed ${removed} legacy deal email trigger(s).`);
+  return removed;
+}

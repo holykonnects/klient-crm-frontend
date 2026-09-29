@@ -8,9 +8,18 @@ function notifyCRMEntry() {
   // by the CRM server. Keeping this installed trigger non-sending prevents old
   // GAS deployments from duplicating the server message.
   Logger.log('CRM entry emails skipped: server-side operational email is authoritative.');
+}
 
-  // Quotation workflow remains callable here until it is separately retired.
-  notifyQuotation();
+function disableLegacyOperationalEmailTriggers() {
+  const legacyHandlers = new Set(['notifyCRMEntry']);
+  let removed = 0;
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (!legacyHandlers.has(trigger.getHandlerFunction())) return;
+    ScriptApp.deleteTrigger(trigger);
+    removed++;
+  });
+  Logger.log(`Removed ${removed} legacy CRM operational email trigger(s).`);
+  return removed;
 }
 
 function getEmailFromValidation(ownerName) {

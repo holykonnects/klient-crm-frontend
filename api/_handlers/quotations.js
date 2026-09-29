@@ -1,5 +1,6 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
+import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
 const ADMIN_TABLES = {
@@ -199,6 +200,14 @@ export default async function handler(req, res) {
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       if (body.action === "saveAdminRow") return res.status(200).json(await saveAdminRow(clean(body.table), body.user, body.row || {}));
+      if (body.action === "exportSetWorkbook") {
+        const loginRows = await getLoginRows();
+        if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
+        const output = await buildQuotationSetWorkbook(body.payload || {});
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", `attachment; filename="${output.fileName.replace(/"/g, "")}"`);
+        return res.status(200).send(output.buffer);
+      }
       return res.status(400).json({ ok: false, error: "Invalid action" });
     }
     return res.status(405).json({ ok: false, error: "Method Not Allowed" });

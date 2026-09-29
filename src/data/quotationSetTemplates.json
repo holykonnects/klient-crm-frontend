@@ -1,0 +1,1284 @@
+[
+  {
+    "id": "7-2-pu",
+    "name": "7+2 PU",
+    "title": "PROPOSAL FOR DEVELOPMENT OF BASKETBALL COURT 420 SQM = 4520 SQ.FT",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "7+2 PU",
+        "sourceLabel": "7+2 PU",
+        "baseQuantity": 4520,
+        "items": [
+          {
+            "item": "Kota stone Sub Base",
+            "description": "Specifications of KOTA stone sub-base:\n1. Cleaning of the existing surface of the dust, gravels, grass, weeds etc. and preparation of the surface to take new layer of cement concrete with proper bonding.\n2. Providing brick wall on edges all around the court with cement mortar 1:4 (1 Cement:  4 coarse Sand)\n3. Providing and laying Cement, Concrete under the floor, Ratio 1:4:8 (1 Cement: 4 coarse sands: 8 graded aggregate 40 mm nominal size). 15 Cm Thick. \n4. Providing and Laying Top layer of Kota Stone laid under 2” mortar & cement in ratio 1:4 (1 Cement: 4 Coarse Sand) & neat cement on joints in size 22” X 22” smoothly grind & Laid in desired slope.",
+            "unit": "SQFT",
+            "qty": 4520,
+            "rate": 250,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "RIDOFLEX BWF APPROVED 9MM (7+2) CUSHIONED SPORTS FLOORING SYSTEM",
+            "description": "RIDOFLEX BWF APPROVED 9MM (7+2) CUSHIONED SPORTS FLOORING SYSTEM.\n\nBWF/IHF/FIBA/FIVB APPROVED.\n\nPU Sports Flooring 9MM (7+2) Thickness. \nTo Be Installed on Smooth Leveled Kota Stone/ RCC Sub-Base/ Asphalt Base.\n\nProduct specifications \nType: PU Based cushioned system\nSystem: 7mm rubber mat + 2 mm PU layer\nThickness: 9mm\n\nSynopsis of Sports flooring – PU System:\n1) Installed on smooth leveled surface\n2) Sub-base Preparation(cleaning and moisture checking will be done during the sub-base preparation)\n3) Adhesive layer/Primer Layer\n4) Sticking of 7mm rubber mat/cast in situ (SBR granules With PU Binder & laid evenly)\n5) Pore filler coat\n6) First layer of 1mm liquid applied PU layer \n7) Second layer of 1mm liquid applied PU layer \n8) One coat of color coat on top surface\n9) Game line marking.\nBrand: RIDOFLEX\n(Make your own color from below mentioned\nwebsite)\nwww.ridosports.com",
+            "unit": "SQFT",
+            "qty": 4520,
+            "rate": 350,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "football-hockey-asphalt",
+    "name": "Football-Hockey(Asphalt)",
+    "title": "PROPOSAL FOR DEVELOPMENT OF MULTIPURPOSE FIFA  STANDARD FOOTBALL FIELD WITH TRACK \n 100M X 65M = 6500 SQM.",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "Football-Hockey(Asphalt)",
+        "sourceLabel": "Football-Hockey(Asphalt)",
+        "baseQuantity": 7066,
+        "items": [
+          {
+            "item": "Sub-grade preparation",
+            "description": "Surface dressing of the ground including removing vegetation and other organic material and disposal of rubbish, lead up to 50 m.",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 35,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacit",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   22.5 cm depth, dressing to camber and consolidating with road roller including making good the undulations etc. and re-rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 190,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Weedicide & Pesticide.",
+            "description": "Supplying and Spraying Weedicide and Pesticide of 0.05 litre/sqm mixing ratio.",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 28,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sub base GSB (125mm Compacted thickness.)",
+            "description": "Construction of granular sub-base by providing close graded Material conforming to specifications, mixing in a mechanical mix plant at OMC, carriage of mixed material by tippers to work site, for all leads\n& lifts, spreading in uniform layers of specified thickness with motor grader on prepared surface and compacting with vibratory power roller to achieve the desired density, complete as per specifications and\ndirections of Engineer-in-Charge.(125 mm depth)\nWith material conforming to Grade-I (size range 75 mm to 0.075 mm ).",
+            "unit": "CUM",
+            "qty": 825,
+            "rate": 2750,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "WMM (100 mm compacted Thickness)",
+            "description": "Providing, laying, spreading and compacting graded stone aggregate (size range 53 mm to 0.075 mm ) to wet mix macadam (WMM) specification including premixing the material with water at OMC in for all leads & lifts, laying in uniform layers with mechanical paverfinisher in sub- base / base course on well prepared surface and compacting with vibratory roller of 8 to 10 tonne capacity to achievethe desired density, complete as per specifications and directions of Engineer-in-Charge.(100 mm)",
+            "unit": "CUM",
+            "qty": 675,
+            "rate": 2850,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "a) On WMM surface @ 0",
+            "description": "a) On WMM surface @ 0.75kg/sqm",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 22,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "b) On Bituminous surface @ 0",
+            "description": "b) On Bituminous surface @ 0.25 kg/sqm",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 20,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "BM (50mm compacted thickness & BC 25mm compacted thickness )",
+            "description": "Providing and laying bituminous macadam using crushed stone aggregates of size 20mm and 10mm mix of specified grading premixed with bituminous binder, transported to site by tippers, laid over a previously prepared surface with paver finisher equiped with electronic sensor to the required grade, level and alignment and rolling with smooth wheeled, vibratory and tandem rollers as per specifications to achieve the desired compaction and density, complete as per specificatons and directions of Engineer-in-Charge.\n50mm compacted thickness with bitumen of grade VG-30 @ 3.50% (percentage by weight of total mix) prepared in Batch Type Hot Mix Plant of 100-120 TPH capacity.",
+            "unit": "CUM",
+            "qty": 345,
+            "rate": 12900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying Dense bituminous concrete on the prepared surface with specified grad",
+            "description": "Providing and laying Dense bituminous concrete on the prepared surface with specified graded crushed stone aggregate of size 6mm and stone dust mix for wearing course including loading of aggregate with FE loader and hot mixing of stone aggregate, filler, and bitumen in hot mix plant, transporting the mixed material with paver finisher fitted with an electronic sensing device to the required level and grade and rolling by road roller as per MORTH specifications, to achieve the desired density, but excluding the cost of primer/tack coat. \n25mm compacted thickness with bitumen of grade VG 30  @ 3% (percentage by weight of total mix)",
+            "unit": "CUM",
+            "qty": 168,
+            "rate": 16500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Supply and Installation of Shock Pad under the Synthetic turf area by the thickness of 10m",
+            "description": "Supply and Installation of Shock Pad under the Synthetic turf area by the thickness of 10mm. (Shock Pad Prepared by SBR with Polyurethane binder mixing ratio as per recommendation)",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 890,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "5008 CONDOR 50MM ARTIFICAL\nTURF",
+            "description": "The product origin from. Netherland, Finland, Japan & USA Only\nProduct applications Football/FUTSAL\nType Tufted sand/rubber filled synthetic turf system, straight stitch pattern\nYarn type 100% polyethylene monofilament, wave shape, 14,500/6 dTex, UV-resistant\nCross-section of filament Width +/- 1,3 mm, Thickness +/- 450 micron\nYarn Quality Environmental friendly, free of lead and cadmium\nPrimary backing 100% polypropylene, black, UV-stabilized, warp knitted multilayer, Weight approximately 220 gr/m2\nSecondary backing Latex compound with a base of styrene butadiene (SBR), with drainage holes, 1.026 gr/m2\nPile height +/- 50 mm     +/- 10%\nTotal height +/- 52 mm    +/- 10%\nTuft gauge 5/8”\nStitch rate per 10cm +/- 13,4        +/- 1\nNumber of tufts/m2 +/- 8.442      +/- 10%\nNumber of filaments/m2 +/- 101.300  +/- 10%\nFace weight +/- 1.400 gr/m2 +/- 10%\nTotal weight +/- 2.650 gr/m2\nUV stability Meets DIN 53387 Standard (6000 hours)\nRoll width 400 cm, As per project plan              +/- 2cm\nRoll length As required\nTuft bind > 30 Newton (ISO 4919)\nWater permeability 60 litre/min/m2 or 3.600 mm/hr\nColour Duo tone (Sports green / Bright green)\nColour lining White (for non FIFA field tested also Yellow)\nColour fastness Xenon Test: Blue Scale > 7, Grey-scale > 4\nApprovals FIFA Quality (green and white yarn)\nLaboratory Test Report 19-0133-01/02          Date: 6-2-2019\nThe firm should be  well experienced in execution of similar work like completed 3 FIFA approved Hockey field with field builder certiifcate in its own name or supplied at least 3, 400mtrs 8 lanes, class-2 world Athletics approved full PUR/ sandwich synthetic athletic tracks as an OEM or as prime contractor in their individual capacity.\nSports Construction Loose laid without shock pad on bound or unbound sub-base, glued seams Infill Stabilizing infill: none\nPerformance infill: 33 mm (16 kg/m2) of SBR, angular shape, granular size 0.6 – 2.5 mm",
+            "unit": "SQM",
+            "qty": 7066,
+            "rate": 3550,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Excavation for Perimeter Drainage",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m. All kinds of soils",
+            "unit": "CUM",
+            "qty": 404.52,
+            "rate": 195,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Construction of Perimeter Drainage.",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "CUM",
+            "qty": 91.63,
+            "rate": 6800,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Centering and shuttering including strutting, propping etc",
+            "description": "Centering and shuttering including strutting, propping etc. and removal of form for Foundations, footings,etc. for mass concrete.",
+            "unit": "SQM",
+            "qty": 216.1,
+            "rate": 390,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying in position cement concrete of specified grade excluding the cost of ",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 20 mm nominal size derived from natural sources).",
+            "unit": "CUM",
+            "qty": 50,
+            "rate": 6850,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "CEMENT PLASTER WITH A FLOATING COAT OF NEAT CEMENT ( 12 mm cement plaster finished with a ",
+            "description": "CEMENT PLASTER WITH A FLOATING COAT OF NEAT CEMENT ( 12 mm cement plaster finished with a floating coat of neat cement of mix :) 1:4 (1 cement: 4 fine sand)",
+            "unit": "SQM",
+            "qty": 652.74,
+            "rate": 450,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and fixing factory made precast RCC perforated drain covers, having concrete of ",
+            "description": "Providing and fixing factory made precast RCC perforated drain covers, having concrete of strength not less than M-25, of size 1000 x 450x60 mm, reinforced with 8 mm dia four nos longitudinal & 9 nos cross sectional T.M.T. hoop bars, including providing 50 mm dia perforations, all as per direction of Engineerin- charge.",
+            "unit": "EACH",
+            "qty": 350,
+            "rate": 1900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "FootballEquipments",
+            "description": "Football Goal Post movable heavy duty pipe 5” Dia (4mm w.t) system as per rule Book of FIFA. Football Net Galvanized mesh of Poly Propylene.",
+            "unit": "PAIR",
+            "qty": 1,
+            "rate": 120000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "HIGH MAST FLOOD LIGHTING FOR FOOTBALL",
+            "description": "FLOOD LIGHTING FOR FOOTBALL:\n*4 MS poles of 25 Mtr height from base.\n*500 Watts, LED Flood Lights Total 40 Lights (Brand: Crompton Greaves/Havells or Equivalent).\n*One/double door weather proof distribution board with MS Sheet.\n*Four poles with MCB’s.\n*Earthing Electrode. Full wiring from distribution board to poles and to the fixtures complete.",
+            "unit": "LS",
+            "qty": 1,
+            "rate": 19000000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "RIDOFLEX FULL PUR FULL EPDM SYSTEM",
+            "description": "Providing and laying IAAF/WA Approved Make in India/Switzerland/USA/Japan,\nsynthetic athletic track surface (Full PUR Full EPDM System).\nProviding and laying Synthetic Athletic Track of FULL PUR FULL EPDM System\nhaving a minimum thickness 15mm with valid product approval certificate and\nlaboratory test certificates from World Athletics (WA), including markings on the\nsurface all complete as per requirements/ specifications laid down by World Athletics/\nIAAF and Class-II certification.\n1. The proposed product should be certified by World Athletic (Earlier IAAF) for a\nminimum thickness of 15 mm for Class II Track.\n2. The proposed product/brand should be of Indian/American/Swiss/Japanese origin\nonly.\nProviding & Laying of Synthetic Athletic Track: Type Full PUR Full EPDM\nSurface Preparation & Inspection: The Sub-base needs to properly prepared and\ninspected for any irregularities, cracks or rough spots and treated before starting the\napplication.\nPrimer Application: Special polyurethane (PU) primer that is specifically designed to\ncreate a bond between the asphalt and concrete sub-bases and polyurethane coatings\nis to be applied evenly throughout the area to be covered with a help of a roller or\nsprayer and allow it to cure for minimum 12 hours.\nPUR Layer Application: The system is applied in 3 different layers to achieve WA\nstandards performance; The buildup of the system starts with 2 base layers of 5mm\neach made with PU and EPDM (Thickness 10mm) and encapsulated with the final\nwear layer of EPDM and PU (5mm Thick) making it a total thickness of 15mm.",
+            "unit": "SQM",
+            "qty": 3500,
+            "rate": 7000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "1-fifa-standard-futball-track",
+    "name": "1-Fifa standard futball& Track",
+    "title": "Quotation for 300meter x6Lane Athletics Track ,Football Field/Multisports Field and Basketball Court \nTotal Area of Athletics Track = 2350 SQM\nFootball Field /Multisports Turf =6561 SQM\nBasketball Court =608 SQM",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "1-Fifa standard futball& Track",
+        "sourceLabel": "1-Fifa standard futball& Track",
+        "baseQuantity": 2350,
+        "items": [
+          {
+            "item": "Cleaning of Jungle",
+            "description": "Surface dressing of the ground including removing vegetation and other organic material and disposal of rubbish, lead up to 50 m.",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 30,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sub-grade preparation",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   22.5 cm depth, dressing to camber and consolidating with road roller including making good the undulations etc. and re-rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 190,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E14"
+          },
+          {
+            "item": "Weedicide & Pesticide.",
+            "description": "Supplying and Spraying Weedicide and Pesticide of 0.05 litre/sqm mixing ratio.",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E14"
+          },
+          {
+            "item": "GSB  Compacted thickness\n(100mm)",
+            "description": "Construction of granular sub-base by providing close graded Material conforming to specifications, mixing in a mechanical mix plant at OMC, carriage of mixed material by tippers to work site, for all leads\n& lifts, spreading in uniform layers of specified thickness with motor grader on prepared surface and compacting with vibratory power roller to achieve the desired density, complete as per specifications and directions of Engineer-in-Charge.(125 mm depth) With material conforming to Grade-I (size range 75 mm to 0.075 mm ).",
+            "unit": "CUM",
+            "qty": 235,
+            "rate": 3100,
+            "qtyMode": "factor",
+            "factor": 0.1,
+            "sourceQtyFormula": "=E14*0.1"
+          },
+          {
+            "item": "WMM compacted Thickness\n(100mm)",
+            "description": "Providing, laying, spreading and compacting graded stone aggregate (size range 53 mm to 0.075 mm ) to wet mix macadam (WMM) specification including premixing the material with water at OMC in for all leads & lifts, laying in uniform layers with mechanical paverfinisher in sub- base / base course on well prepared surface and compacting with vibratory roller of 8 to 10 tonne capacity to achievethe desired density, complete as per specifications and directions of Engineer-in-Charge.(100 mm)",
+            "unit": "CUM",
+            "qty": 235,
+            "rate": 3200,
+            "qtyMode": "factor",
+            "factor": 0.1,
+            "sourceQtyFormula": "=E14*0.1"
+          },
+          {
+            "item": "On WMM surface @ 0",
+            "description": "On WMM surface @ 0.75kg/sqm",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 60,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E14"
+          },
+          {
+            "item": "On Bituminous surface @ 0",
+            "description": "On Bituminous surface @ 0.25 kg/sqm",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E14"
+          },
+          {
+            "item": "BM\n compacted\n thickness\n(50mm)",
+            "description": "Providing and laying bituminous macadam using crushed stone aggregates of size 20mm and 10mm mix of specified grading premixed with bituminous binder, transported to site by tippers, laid over a previously prepared surface with paver finisher equiped with electronic sensor to the required grade, level and alignment and rolling with smooth wheeled, vibratory and tandem rollers as per specifications to achieve the desired compaction and density, complete as per specificatons and directions of Engineer-in-Charge.\n50mm compacted thickness with bitumen of grade VG-30 @ 3.50% (percentage by weight of total mix) prepared in Batch Type Hot Mix Plant of 100-120 TPH capacity.",
+            "unit": "CUM",
+            "qty": 117.5,
+            "rate": 15000,
+            "qtyMode": "factor",
+            "factor": 0.05,
+            "sourceQtyFormula": "=E14*0.05"
+          },
+          {
+            "item": "BC\n compacted thickness\n(25mm)",
+            "description": "Providing and laying Dense bituminous concrete on the prepared surface with specified graded crushed stone aggregate of size 6mm and stone dust mix for wearing course including loading of aggregate with FE loader and hot mixing of stone aggregate, filler, and bitumen in hot mix plant, transporting the mixed material with paver finisher fitted with an electronic sensing device to the required level and grade and rolling by road roller as per MORTH specifications, to achieve the desired density, but excluding the cost of primer/tack coat. \n25mm compacted thickness with bitumen of grade VG 30  @ 3% (percentage by weight of total mix)",
+            "unit": "CUM",
+            "qty": 58.75,
+            "rate": 16200,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=E14*0.025"
+          },
+          {
+            "item": "FULL PUR FULL EPDM SYSTEM",
+            "description": "Providing and laying IAAF/WA Approved Make in India/Switzerland/USA/Japan,\nsynthetic athletic track surface (Full PUR Full EPDM System).\nProviding and laying Synthetic Athletic Track of FULL PUR FULL EPDM System\nhaving a minimum thickness 15mm with valid product approval certificate and\nlaboratory test certificates from World Athletics (WA), including markings on the surface all complete as per requirements/ specifications laid down by World Athletics/ IAAF and Class-II certification.\n1. The proposed product should be certified by World Athletic (Earlier IAAF) for a minimum thickness of 15 mm for Class II Track.\n2. The proposed product/brand should be of Indian/American/Swiss/Japanese origin only.\nProviding & Laying of Synthetic Athletic Track: Type Full PUR Full EPDM\nSurface Preparation & Inspection: The Sub-base needs to properly prepared and inspected for any irregularities, cracks or rough spots and treated before starting the application.\nPrimer Application: Special polyurethane (PU) primer that is specifically designed to create a bond between the asphalt and concrete sub-bases and polyurethane coatings is to be applied evenly throughout the area to be covered with a help of a roller or sprayer and allow it to cure for minimum 12 hours.\nPUR Layer Application: The system is applied in 3 different layers to achieve WA\nstandards performance; The buildup of the system starts with 2 base layers of 5mm each made with PU and EPDM (Thickness 10mm) and encapsulated with the final wear layer of EPDM and PU (5mm Thick) making it a total thickness of 15mm.\nThe firm should be  well experienced in execution of similar work like completed 3 FIFA approved Hockey field with field builder certiifcate in its own name or supplied at least 3, 400mtrs 8 lanes, class-2 world Athletics approved full PUR/ sandwich synthetic athletic tracks as an OEM or as prime contractor in their individual capacity.",
+            "unit": "SQM",
+            "qty": 2350,
+            "rate": 8000,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E14"
+          },
+          {
+            "item": "Earthwork for Drain and Toe wall",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m:- For all kinds of soil.",
+            "unit": "CUM",
+            "qty": 357,
+            "rate": 380,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PCC",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 40mm nominal size derived from natural sources).(Thickness=150 mm)",
+            "unit": "CUM",
+            "qty": 38,
+            "rate": 7500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "B/W",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "Cum",
+            "qty": 160,
+            "rate": 9800,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Copping",
+            "description": "Providing and laying in position cement concrete of specified grade including the cost of centering and shuttering - All work up to plinth level : 1: 1.5: 3 (1 Cement : 1.5 coarse sand (zone-III) : 3 graded stone aggregate 6 mm nominal size.As per direction of Enginner-in-charge",
+            "unit": "Cum",
+            "qty": 25,
+            "rate": 9500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Drain Cover",
+            "description": "Providing and fixing precast cement concrete drain cover, cover of size 600mmx450mm x75 mm, M-25 grade, including setting in position to the required line and level. Joints to be made with cement mortar 1:3 (1cement: 3 coarse sand). All work to be completed as per the direction of the Engineer-in charge.",
+            "unit": "RMT",
+            "qty": 300,
+            "rate": 2900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "RCC Pipe",
+            "description": "Providing  and  laying  non-pressure  NP2  class  (light  duty)  R.C.C.  pipes  with collars jointed with stiff mixture of cement mortar in the proportion of 1:2 (1 cement : 2 fine sand) including testing of joints etc. complete :300 mm dia. R.C.C. pipe",
+            "unit": "RMT",
+            "qty": 60,
+            "rate": 2700,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Manhole",
+            "description": "Constructing  brick  masonry  manhole  in  cement  mortar  1:4  (  1  cement  :  4 coarse sand ) with R.C.C. top slab with 1:1.5:3 mix (1 cement : 1.5 coarse sand (zone-III)   :   3   graded   stone   aggregate   20   mm   nominal   size),  foundation concrete  1:4:8  mix  (1  cement  :  4  coarse  sand  (zone-III)  :  8  graded  stone aggregate  40 mm  nominal  size), inside plastering 12 mm thick with cement mortar  1:3  (1  cement  :  3  coarse  sand)  finished  with  floating  coat  of  neat cement  and making channels in cement  concrete  1:2:4 (1 cement  : 2 coarse sand : 4 graded stone aggregate 20 mm nominal size) finished with a floating:-Inside  size  90x80  cm  and  45  cm  deep.",
+            "unit": "each",
+            "qty": 6,
+            "rate": 6500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Cleaning of Jungle",
+            "description": "Surface dressing of the ground including removing vegetation and other organic material and disposal of rubbish, lead up to 50 m.",
+            "unit": "SQM",
+            "qty": 6561,
+            "rate": 30,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sub-grade preparation",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   22.5 cm depth, dressing to camber and consolidating with road roller including making good the undulations etc. and re-rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 6561,
+            "rate": 190,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Weedicide & Pesticide.",
+            "description": "Supplying and Spraying Weedicide and Pesticide of 0.05 litre/sqm mixing ratio.",
+            "unit": "SQM",
+            "qty": 6561,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 2.791915,
+            "sourceQtyFormula": "=E35"
+          },
+          {
+            "item": "Perforated Pipe  system",
+            "description": "Providing and laying of perforated PVC drain pipes Heavy Duty of 100mm dia with staggered perforations including wraping by geotextile seperation barrier. Pipe would be placed on both side of field from centre ( 3 meter c/c spacing)on 50mm PCC Bed.",
+            "unit": "RMT",
+            "qty": 1300,
+            "rate": 650,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sepration barrier",
+            "description": "Supply and Placing of 120 GSM Geotextile Separation Barrier to cover the entire field including the edge.",
+            "unit": "SQM",
+            "qty": 7461,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 3.174894,
+            "sourceQtyFormula": "=6561+900"
+          },
+          {
+            "item": "40mm Aggregate\n(150mm thick)",
+            "description": "Providing and laying of average compacted 100 mm thick 40 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 1119.1499999999999,
+            "rate": 3300,
+            "qtyMode": "factor",
+            "factor": 0.476234,
+            "sourceQtyFormula": "=E39*0.15"
+          },
+          {
+            "item": "20mm Aggregate \n(50mm thick)",
+            "description": "Providing and laying of average compacted  50 mm thick 20 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 373.05,
+            "rate": 3400,
+            "qtyMode": "factor",
+            "factor": 0.158745,
+            "sourceQtyFormula": "=E39*0.05"
+          },
+          {
+            "item": "10mm Aggregate\n(25mm thick)",
+            "description": "Providing and laying of average compacted 100 mm thick 40 mm metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 186.525,
+            "rate": 3400,
+            "qtyMode": "factor",
+            "factor": 0.079372,
+            "sourceQtyFormula": "=E39*0.025"
+          },
+          {
+            "item": "6mm Aggregate\n(25mm thick)",
+            "description": "Providing and laying of average compacted 25mm mm thick 6 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 186.525,
+            "rate": 3600,
+            "qtyMode": "factor",
+            "factor": 0.079372,
+            "sourceQtyFormula": "=E39*0.025"
+          },
+          {
+            "item": "sand filling\n(25mm thick)",
+            "description": "Providing and laying of average compacted 25mm mm thick coarse sand to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 186.525,
+            "rate": 4100,
+            "qtyMode": "factor",
+            "factor": 0.079372,
+            "sourceQtyFormula": "=E39*0.025"
+          },
+          {
+            "item": "50MM ARTIFICAL\nTURF",
+            "description": "The product should be FIFA-approved  product from FIFA preferred manufacturer  from. Netherland, Germany,Finland, Japan & USA Only.\nProduct applications Football/FUTSAL\nType Tufted sand/rubber filled synthetic turf system, straight stitch pattern\nYarn type 100% polyethylene monofilament, wave shape, 14,500/6 dTex, UV-resistant\nCross-section of filament Width +/- 1,3 mm, Thickness +/- 450 micron\nYarn Quality Environmental friendly, free of lead and cadmium\nPrimary backing 100% polypropylene, black, UV-stabilized, warp knitted multilayer, Weight approximately 220 gr/m2\nSecondary backing Latex compound with a base of styrene butadiene (SBR), with drainage holes, 1.026 gr/m2\nPile height +/- 50 mm     +/- 10%\nTotal height +/- 52 mm    +/- 10%\nTuft gauge 5/8”\nStitch rate per 10cm +/- 13,4        +/- 1\nNumber of tufts/m2 +/- 8.442      +/- 10%\nNumber of filaments/m2 +/- 101.300  +/- 10%\nFace weight +/- 1.400 gr/m2 +/- 10%\nTotal weight +/- 2.650 gr/m2\nUV stability Meets DIN 53387 Standard (6000 hours)\nRoll width 400 cm, As per project plan              +/- 2cm\nRoll length As required\nTuft bind > 30 Newton (ISO 4919)\nWater permeability 60 litre/min/m2 or 3.600 mm/hr\nColour Duo tone (Sports green / Bright green)\nColour lining White (for non FIFA field tested also Yellow)\nColour fastness Xenon Test: Blue Scale > 7, Grey-scale > 4\nApprovals FIFA Quality (green and white yarn)\nLaboratory Test Report 19-0133-01/02          Date: 6-2-2019\nThe firm should be  well experienced in execution of similar work like completed 3 FIFA approved Hockey field with field builder certiifcate in its own name or supplied at least 3, 400mtrs 8 lanes, class-2 world Athletics approved full PUR/ sandwich synthetic athletic tracks as an OEM or as prime contractor in their individual capacity.\nSports Construction Loose laid without shock pad on bound or unbound sub-base, glued seams Infill Stabilizing.",
+            "unit": "SQM",
+            "qty": 7461,
+            "rate": 4800,
+            "qtyMode": "factor",
+            "factor": 3.174894,
+            "sourceQtyFormula": "=E39"
+          },
+          {
+            "item": "sand/silica Infilling \nfor Artifial Turf\n(12kg/sqm)",
+            "description": "Supplying and laying stabilising infill of quartz sand/Silica Sand granular size 0.4 - 1.2 mm, including watering and dressing all complete.",
+            "unit": "KG",
+            "qty": 89532,
+            "rate": 25,
+            "qtyMode": "factor",
+            "factor": 38.098723,
+            "sourceQtyFormula": "=E39*12"
+          },
+          {
+            "item": "SBR Infilling for Artifial Turf (8kg/sqm)",
+            "description": "Supplying and laying performance infill: Recommended Quantity of of SBR, angular shape, granular size 0.5 - 2.5mm.",
+            "unit": "KG",
+            "qty": 59688,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 25.399149,
+            "sourceQtyFormula": "=E39*8"
+          },
+          {
+            "item": "Football\nEquipments",
+            "description": "Football Goal Post movable heavy duty pipe 5” Dia (4mm w.t) system as per rule Book of FIFA. Football Net Galvanized mesh of Poly Propylene.",
+            "unit": "PAIR",
+            "qty": 1,
+            "rate": 130000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "HIGH MAST FLOOD LIGHTING FOR FOOTBALL",
+            "description": "Design, fabricate, supply and installation at site of minimum 24 Mtr. height Sports Mast pole hot dip galvanized 20 side polygonal High Mast suitable for 130 km/hr and suitable to install minimum 30 no. of LED fixtures in a symmetrical arrangement complete with accessories as required to achieve required illumination level and other technical parameters. High mast should have proper mast structure foundation accessories, lightning arrester (with 16x1200 mm spike), LED aviation lighting etc as required. The 24mte. high  mast shall be delivered either in Three or maximum four sections, and shall be joined together by slip stressed-fit method at site. Entire fabricated mast shall be hot dip galvanized as per BS EN ISO 1461 having a uniform thickness of 85 microns. It shall also include accessories for high mast including head frame arrangement suitable for mounting 30 luminaries. Suitable head frame as per the design for the required illumination across the designed illumination beam to be designed, fabricated and fixed over the structure",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 1553870,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "SITC of climbing mechanism ie ladder for accessing the head frame for repair/maintenance p",
+            "description": "SITC of climbing mechanism ie ladder for accessing the head frame for repair/maintenance purpose like free fall arrester /overload protection etc. the Platform shall be suitable for safe load carrying capacity of 300kg apart from light of high mast.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 180975,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "SITC of controlled beam sports light with a typical system wattage  of 800-600 W  with  a ",
+            "description": "SITC of controlled beam sports light with a typical system wattage  of 800-600 W  with  a  nominal system efficacy >130Lm/W. Luminaire should have CCT of 5500- 6500K with SDCM <5 and CRI >70 with different beam angle(3,7,15,25 Degree). The housing should be of non- corrosive high pressure die- cast aluminum to stand with extreme environments with Toughened glass, having corrosion resistant powder coating with lifetime of 50K hours@LM80. Product should be suitable for continuous operation (10-12 Hrs. per day)The Ingress protection should be minimum IP66 with IK rating of 07. The luminaire should have a 10 KV /6 KA SPD in the luminaire, with PF >0.95 & THD<10%. The SPD should comply to IEC 61643. The luminaries should be designed with optimum heat exchanger and fins in order to ensure optimum thermal dissipation. The luminaire should be capable of withstanding voltage stress of 440V for24 Hrs., should have an auto shutdown > 300V and have an auto recovery feature.The Drivers should be a potted driver and with aluminium casing and mounted inside the luminaire.\nTest report issued from a reputed NABL Lab.",
+            "unit": "Nos",
+            "qty": 160,
+            "rate": 63800,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Supply, installation testing and commissioning of Outdoor Single Door Kiosk type weather p",
+            "description": "Supply, installation testing and commissioning of Outdoor Single Door Kiosk type weather proof distribution feeder pillar box of suitable size with a tapered at top (for protection from rain water)  and made out of not less than 2.0 mm thick for load bearing members & 1.6 mm thick for doors, compartmentalized, IP 65, epoxy powder coated treated in 7 tank process finish with following items, front and back both side openable, duly hinged doors with locking arrangement by providing both sides hold drafts and all hardware for fabrication of box. The cubical panel should be mounted with hardware on angle iron frame long legs duly primered and black painted. Frame be grouted with cement concrete 1:3:6 ratio and providing brick masonry along angle iron frame above ground level complete with connecting strips, Bakelite sheet, earth stud etc. cable entry from bottom suitable for\n3.5Cx 300/240/120/70 Sq.mm I/c & O/g respectively. The panel should comprise of as per following (Panel shall be fabricated in CPRI approved panel Manufacturer",
+            "unit": "Nos",
+            "qty": 1,
+            "rate": 270200,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "SITC of outdoor type Highmast Lighting Distribution board (HMLDB), along with control gear",
+            "description": "SITC of outdoor type Highmast Lighting Distribution board (HMLDB), along with control gear rack (CGR) fully compartmentalized cubical type made out of 2mm thick CRCA Sheet having IP65 protection with canopy, pedestal mounted, suitable for use on 415V 3Phase 4wire 50 HZ and complete with powder coated painting, of suitable size for accommodating the following component, Including providing detachable gland plate for incoming and outgoing cables entry, erected on cement concrete foundation  made,  completewithpainting, interconnections, earthing, complete\nas required erected on Cement concrete foundation. HMLDB and CGR shall be installed near the base\nof High mast.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 39075,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Supply and laying 1",
+            "description": "Supply and laying 1.1kv grade 2 core*1.5 sq mm copper conductor PVC / XLPE insulated un- armoured and PVC sheathed flexiable cable in between high mast DB/CG rack and luminaries including accessories.",
+            "unit": "Mtr",
+            "qty": 3800,
+            "rate": 260,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing  earthing  with  GIearth plate, 600mmX600mmXX5mm thick with all accessories, pro",
+            "description": "Providing  earthing  with  GIearth plate, 600mmX600mmXX5mm thick with all accessories, providing masonry enclosure with cover plates having locking arrangement & watering pipe of 2.7m long, with charcoal/coke and salt, complete with all materials",
+            "unit": "Each",
+            "qty": 8,
+            "rate": 34000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Supply & Laying of one number additional XLPE power cable of 1",
+            "description": "Supply & Laying of one number additional XLPE power cable of 1.1 KV grade of 4C x 70 Sqmm size direct in ground in the same trench in one tier horizontal formation including excavation, sand cushioning, protective covering and refilling the trench etc as required.",
+            "unit": "Mtr",
+            "qty": 100,
+            "rate": 360,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Supply & Laying of one number additional XLPE power cable of 1",
+            "description": "Supply & Laying of one number additional XLPE power cable of 1.1 KV grade of 4C x 25 Sqmm size direct in ground in the same trench in one tier horizontal formation including excavation, sand cushioning, protective covering and refilling the trench etc as required.",
+            "unit": "Mtr",
+            "qty": 500,
+            "rate": 1600,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Foundation of pole along with Pole Erection, Crane Service, Light Installation & Aiming as",
+            "description": "Foundation of pole along with Pole Erection, Crane Service, Light Installation & Aiming as per requirement given in RFP / direction of Engineer-in Charge. This job includes designing and providing required RCC foundation with accessories like foundation bolt etc. Necessary erection support such as crane, tools tackles, manpower etc. as required will be provided by us.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 438195,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Cleaning of Jungle",
+            "description": "Surface dressing of the ground including removing vegetation and other organic material and disposal of rubbish, lead up to 50 m.",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 30,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sub-grade preparation",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   22.5 cm depth, dressing to camber and consolidating with road roller including making good the undulations etc. and re-rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 190,
+            "qtyMode": "factor",
+            "factor": 0.258723,
+            "sourceQtyFormula": "=E62"
+          },
+          {
+            "item": "Weedicide & Pesticide.",
+            "description": "Supplying and Spraying Weedicide and Pesticide of 0.05 litre/sqm mixing ratio.",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 0.258723,
+            "sourceQtyFormula": "=E62"
+          },
+          {
+            "item": "GSB  Compacted thickness\n(100mm)",
+            "description": "Construction of granular sub-base by providing close graded Material conforming to specifications, mixing in a mechanical mix plant at OMC, carriage of mixed material by tippers to work site, for all leads\n& lifts, spreading in uniform layers of specified thickness with motor grader on prepared surface and compacting with vibratory power roller to achieve the desired density, complete as per specifications and directions of Engineer-in-Charge.(125 mm depth)\nWith material conforming to Grade-I (size range 75 mm to 0.075 mm ).",
+            "unit": "CUM",
+            "qty": 60.800000000000004,
+            "rate": 3000,
+            "qtyMode": "factor",
+            "factor": 0.025872,
+            "sourceQtyFormula": "=E62*0.1"
+          },
+          {
+            "item": "WMM compacted Thickness\n(100mm)",
+            "description": "Providing, laying, spreading and compacting graded stone aggregate (size range 53 mm to 0.075 mm ) to wet mix macadam (WMM) specification including premixing the material with water at OMC in for all leads & lifts, laying in uniform layers with mechanical paverfinisher in sub- base / base course on well prepared surface and compacting with vibratory roller of 8 to 10 tonne capacity to achievethe desired density, complete as per specifications and directions of Engineer-in-Charge.(100 mm)",
+            "unit": "CUM",
+            "qty": 60.800000000000004,
+            "rate": 3100,
+            "qtyMode": "factor",
+            "factor": 0.025872,
+            "sourceQtyFormula": "=E62*0.1"
+          },
+          {
+            "item": "On WMM surface @ 0",
+            "description": "On WMM surface @ 0.75kg/sqm",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 60,
+            "qtyMode": "factor",
+            "factor": 0.258723,
+            "sourceQtyFormula": "=E62"
+          },
+          {
+            "item": "On Bituminous surface @ 0",
+            "description": "On Bituminous surface @ 0.25 kg/sqm",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 45,
+            "qtyMode": "factor",
+            "factor": 0.258723,
+            "sourceQtyFormula": "=E62"
+          },
+          {
+            "item": "BM\n compacted\n thickness\n(50mm)",
+            "description": "Providing and laying bituminous macadam using crushed stone aggregates of size 20mm and 10mm mix of specified grading premixed with bituminous binder, transported to site by tippers, laid over a previously prepared surface with paver finisher equiped with electronic sensor to the required grade, level and alignment and rolling with smooth wheeled, vibratory and tandem rollers as per specifications to achieve the desired compaction and density, complete as per specificatons and directions of Engineer-in-Charge.\n50mm compacted thickness with bitumen of grade VG-30 @ 3.50% (percentage by weight of total mix) prepared in Batch Type Hot Mix Plant of 100-120 TPH capacity.",
+            "unit": "CUM",
+            "qty": 18.24,
+            "rate": 13500,
+            "qtyMode": "factor",
+            "factor": 0.007762,
+            "sourceQtyFormula": "=E62*0.03"
+          },
+          {
+            "item": "BC\n compacted thickness\n(25mm)",
+            "description": "Providing and laying Dense bituminous concrete on the prepared surface with specified graded crushed stone aggregate of size 6mm and stone dust mix for wearing course including loading of aggregate with FE loader and hot mixing of stone aggregate, filler, and bitumen in hot mix plant, transporting the mixed material with paver finisher fitted with an electronic sensing device to the required level and grade and rolling by road roller as per MORTH specifications, to achieve the desired density, but excluding the cost of primer/tack coat. \n25mm compacted thickness with bitumen of grade VG 30  @ 3% (percentage by weight of total mix)",
+            "unit": "CUM",
+            "qty": 15.200000000000001,
+            "rate": 14500,
+            "qtyMode": "factor",
+            "factor": 0.006468,
+            "sourceQtyFormula": "=E62*0.025"
+          },
+          {
+            "item": "PU Flooring",
+            "description": "PU Flooring for Basketball Court Providing and laying FIBA/IHF/BWF/FIVB Approved, Brand: Ridoflex, Beynon Sports & Court Sol. PU Cushioned sports flooring surface.\nProviding and laying PU Cushioned sports flooring surface System having a minimum thickness as mentioned in sub-items with valid product approval certificate and laboratory test certificates from FIBA Approved international lab for minimum 11mm thickness, including markings on the surface all complete as per requirements/ specifications laid down by relevant international sports federation like FIBA/IHF/BWF/FIVB.\n\n11MM (9+2) CUSHIONED SPORTS FLOORING SYSTEM.\n\nPU Sports Flooring 11MM (9+2) Thickness.\nTo Be Installed on Smooth Leveled Kota Stone/ RCC Sub-Base/ Asphalt Base.\n\nProduct specifications\nType: PU Based on cushioned system System: 9mm rubber mat /cast in situ (SBR granules With PU Binder & laid evenly) + 2 mm PU layer Thickness: 11mm\n\nSynopsis of Sports flooring – PU System:\n●\tInstalled on a smooth leveled surface\n●\tSub-base Preparation (cleaning and moisture checking will be done during the sub-base preparation)\n●\tAdhesive layer/Primer Layer\n●\tSticking of 9mm rubber mat/cast in situ (SBR granules With PU Binder & laid evenly)\n●\tPore filler coat\n●\tThe First layer of 1mm liquid-applied PU layer\n●\tSecond layer of 1mm liquid-applied PU layer\n●\tOne coat of color coat on the top surface\n●\tGame line marking.\nTOTAL THICKNESS: 11MM",
+            "unit": "SQM",
+            "qty": 608,
+            "rate": 4200,
+            "qtyMode": "factor",
+            "factor": 0.258723,
+            "sourceQtyFormula": "=E62"
+          },
+          {
+            "item": "Fencing Work",
+            "description": "NYLON MESH FENCING:\nNet: *Garware make\n* Mesh Size 2 Inch x 2 inch, 2.5mm Thick\n* Tying Rope Size - 30mm\n* Color Green\n*UV Resistant Poles: 50mm MS Square Poles (Vertical & Horizontal)\n* Apollo / Bhushan / Jindal or equivalent\n* Thickness 2mm\n* Primer & Enamel painted (Green Color\n* 15 Feet height\n* Anchored of base slab. Base plate system\n* Vertical Pole to Pole Distance 15 Feet\n* Top, Centre & Bottom Horizontal Pipe Support\n* One Gate Per Court is provided 7’X4’",
+            "unit": "SQM",
+            "qty": 466,
+            "rate": 900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Basketball pole Set",
+            "description": "Basketball POLES (Up-rights). \nBasketball poles (up rights) Double channel size 200 x 75 making a box of 200x75mm & 200x150mm with 3.2 mtr. \nLatest rules with Projection of square pipe on all four corners of the boards. \nBACK BOARDS. 30mm Back Board (Transparent Acrylic) 180x105x3cms. (30mm) With International standard frame, \nDouble Die frame of Aluminum Anodized / Steel Powder Coated with built in brackets for mounting (For minor Adjustments). \nDunking Rim with Three Springs Mechanism Die made Powder coated as per International Standard.",
+            "unit": "Pair",
+            "qty": 1,
+            "rate": 360000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Earthwork for Drain and Toe wall",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m:- For all kinds of soil.",
+            "unit": "CUM",
+            "qty": 50,
+            "rate": 380,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PCC",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 40mm nominal size derived from natural sources).(Thickness=150 mm)",
+            "unit": "CUM",
+            "qty": 10,
+            "rate": 9000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "B/W",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "Cum",
+            "qty": 22,
+            "rate": 10400,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Copping",
+            "description": "Providing and laying in position cement concrete of specified grade including the cost of centering and shuttering - All work up to plinth level : 1: 1.5: 3 (1 Cement : 1.5 coarse sand (zone-III) : 3 graded stone aggregate 6 mm nominal size.As per direction of Enginner-in-charge",
+            "unit": "Cum",
+            "qty": 4,
+            "rate": 11500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Plaster",
+            "description": "15 mm thick hard cement plaster for Drian and on all visible surface of toe/retainning wall.1:4 (1 cement: 4 fine sand)",
+            "unit": "Sqm",
+            "qty": 90,
+            "rate": 590,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Drain Cover",
+            "description": "Providing and fixing precast cement concrete drain cover, cover of size 600mmx450mm x75 mm, M-25 grade, including setting in position to the required line and level. Joints to be made with cement mortar 1:3 (1cement: 3 coarse sand). All work to be completed as per the direction of the Engineer-in charge.",
+            "unit": "RMT",
+            "qty": 64,
+            "rate": 3400,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Dismental Work",
+            "description": "Demolization of current structures on the periphery of the field and land Levelling .",
+            "unit": "Job",
+            "qty": 1,
+            "rate": 135000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Seating Gallery",
+            "description": "construction of RCC Stepped seating gallery 80 meter length with 3 seating steps with approx 500 seating capacity including earth work ,PCC ,RCC reinforcement steel,filling covered structural steel roofing with coloured coated GI steels ,plastering finishing works and all allied civil,structural labour material machinery transportation safety and incidental works complete as per direction of Engineer in charge.",
+            "unit": "Job",
+            "qty": 1,
+            "rate": 14500000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and fixig of 12 seater player dugout having size 24'x4'x7, Fabricated with MS re",
+            "description": "Providing and fixig of 12 seater player dugout having size 24'x4'x7, Fabricated with MS rectangular /square pipe framework ,mounted on lockable non -marking wheels and covered with UV stabilized 2.5 mm virgin polycarbonate sheet complete as per specifications.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 350000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "futsal-48x31",
+    "name": "Futsal 48x31",
+    "title": "DEVELOPMENT OF 2Nos. FUTSAL FIELD OF SIZE 48MX31M \nTOTAL AREA =2X48X31=2976Sqm=32022Sqft.",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "Futsal 48x31",
+        "sourceLabel": "Futsal 48x31",
+        "baseQuantity": 2976,
+        "items": [
+          {
+            "item": "Site Clearance",
+            "description": "Surface dressing of the ground including removing vegetation and inequalities not exceeding 15 cm deep and disposal of rubbish, lead up to 50 m and lift up to 1.5 m. All kinds of soil",
+            "unit": "SQM",
+            "qty": 2976,
+            "rate": 15,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Subgrade Prepration",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   250 mm depth, dressing to camber and consolidating with road roller including making slope as per requirment and  undulations free etc. and re-rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 2976,
+            "rate": 70,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E4"
+          },
+          {
+            "item": "Weedicide & Pesticide.",
+            "description": "Supplying and Spraying Weedicide and Pesticide by the direction of Engineer incharge.",
+            "unit": "SQM",
+            "qty": 2976,
+            "rate": 15,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E4"
+          },
+          {
+            "item": "Perforated Pipe  system",
+            "description": "Providing and laying of perforated PVC drain pipes Heavy Duty of 100mm dia with staggered perforations including wraping by geotextile seperation barrier. Pipe would be placed on both side of field from centre ( 3 meter c/c spacing)on 50mm PCC Bed.",
+            "unit": "RMT",
+            "qty": 992,
+            "rate": 440,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Sepration barrier",
+            "description": "Supply and Placing of 120 GSM Geotextile Separation Barrier to cover the entire field including the edge.",
+            "unit": "SQM",
+            "qty": 2976,
+            "rate": 40,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E4"
+          },
+          {
+            "item": "40mm Aggregate\n(100mm thick)",
+            "description": "Providing and laying of average compacted 100 mm thick 40 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 297.6,
+            "rate": 2500,
+            "qtyMode": "factor",
+            "factor": 0.1,
+            "sourceQtyFormula": "=E4*0.1"
+          },
+          {
+            "item": "20mm Aggregate \n(50mm thick)",
+            "description": "Providing and laying of average compacted  50 mm thick 20 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 148.8,
+            "rate": 2700,
+            "qtyMode": "factor",
+            "factor": 0.05,
+            "sourceQtyFormula": "=E4*0.05"
+          },
+          {
+            "item": "10mm Aggregate\n(25mm thick)",
+            "description": "Providing and laying of average compacted 100 mm thick 40 mm metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 74.4,
+            "rate": 2600,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=E4*0.025"
+          },
+          {
+            "item": "6mm Aggregate\n(25mm thick)",
+            "description": "Providing and laying of average compacted 25mm mm thick 6 mm size metal Stone to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 74.4,
+            "rate": 2600,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=E4*0.025"
+          },
+          {
+            "item": "sand filling\n(25mm thick)",
+            "description": "Providing and laying of average compacted 25mm mm thick coarse sand to form a bed and elevations to the desired level and slope  as per requirment.",
+            "unit": "CUM",
+            "qty": 74.4,
+            "rate": 2300,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=E5*0.025"
+          },
+          {
+            "item": "Artificial Turf\n(50 mm)",
+            "description": "Supplying and installation of FIFA quality / FIH multisport synthetic turf of 50 mm pile height.Yarn Composition: 100% Polyethylene\nYarn Type: monofibre 6 piles\nTufting Process: Line Tufting\nGauge: 5/8 inch\nPile Height: 50mm±5%\nStitches: 14 stitches / 10cm ±3%\nDensity: 8,820/sqm ±3%\nDtex: 14,000±10%\nYarn Weight: 1,380g/sqm ±10%\nBacking weight: 260g/sqm ±10%\nCoating Weight: 1,200g/sqm ±10%\nTotal Weight: 2,740g/sqm±15%\nStabilizing Infill:Quartz Sand,rounded, washed & dried\nArticle size (range): 0.5-1.0mm\nQuantity: 35kg/sqm±20%\nPerformance Infill：Black SBR rubber\nArticle size (range): 0.8-2.0mm\nQuantity: 7kg/sqm±20%\nInclusive of adhesive along with seaming tape for installing Artificial Turf",
+            "unit": "SQM",
+            "qty": 2976,
+            "rate": 1600,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": "=E4"
+          },
+          {
+            "item": "sand/silica Infilling for Artifial Turf(8kg/sqm)",
+            "description": "Supplying and laying stabilising infill of quartz sand/Silica Sand granular size 0.4 - 1.2 mm, including watering and dressing all complete.",
+            "unit": "KG",
+            "qty": 23808,
+            "rate": 6,
+            "qtyMode": "factor",
+            "factor": 8,
+            "sourceQtyFormula": "=E4*8"
+          },
+          {
+            "item": "SBR Infilling for Artifial Turf(6kg/sqm)",
+            "description": "Supplying and laying performance infill: Recommended Quantity of of SBR, angular shape, granular size 0.5 - 2.5mm.",
+            "unit": "KG",
+            "qty": 17856,
+            "rate": 28,
+            "qtyMode": "factor",
+            "factor": 6,
+            "sourceQtyFormula": "=E4*6"
+          },
+          {
+            "item": "Excavation for Toe wall and Drain",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains (not exceeding 1.5 m in width or 10 sqm on plan), including dressing of sides and ramming of bottoms, lift upto 1.5 m, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m. All kinds of soils",
+            "unit": "CUM",
+            "qty": 205,
+            "rate": 220,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PCC for Toe wall and Drain Bed (100mm thick)",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 20 mm nominal size derived from natural sources).",
+            "unit": "CUM",
+            "qty": 16,
+            "rate": 6550,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Brick work for Toe wall and Drain (9\" wall)",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "CUM",
+            "qty": 57,
+            "rate": 6900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Cement Plaster for Drain and visisble surface of Toe wall",
+            "description": "12 mm cement plaster finished with a floating coat of neat cement of mix :) 1:4 (1 cement: 4 fine sand)",
+            "unit": "SQM",
+            "qty": 325,
+            "rate": 450,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Drain Cover",
+            "description": "Providing and fixing factory made precast RCC  drain covers, having concrete of strength not less than M-25, of size 1000 x 450x60 mm, reinforced with 8 mm dia four nos longitudinal & 9 nos cross sectional T.M.T. hoop bars, including providing 50 mm dia perforations @ 100 to 125 mm c/c, including providing edge binding with M.S. flats of size 50 mm x 1.6 mm complete, all as per direction of Engineerin- charge.",
+            "unit": "EACH",
+            "qty": 144,
+            "rate": 1900,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Perimeter Fencing",
+            "description": "NYLON MESH FENCING: (2 Side Fencing)\nNet: *Garware make\n* Mesh Size 2 Inch x 2 inch, 2.5mm Thick\n* Tying Rope Size - 30mm\n* Color Green\n*UV Resistant Poles: 50mm MS Square/round  Poles (Vertical & Horizontal)\n* Apollo / Bhushan / Jindal or equivalent\n* Thickness 2mm\n* Primer & Enamel painted (Green Color\n* 10 Feet height\n* 2 Feet grouted inside earth\n* Vertical Pole to Pole Distance 10 Feet\n* Top, Centre & Bottom Horizontal Pipe Support\n* One Gate Per Court is provided 7’X4’",
+            "unit": "SQM",
+            "qty": 964,
+            "rate": 1050,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "sheet1",
+    "name": "Sheet1",
+    "title": "ESTIMATE  DEVELOPMENT OF SYNTHETIC ATHLETIC TRACK 400 Mtr 8 LANE.",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "ATHLETIC TRACK (World Athletics (formerly IAAF)",
+        "sourceLabel": "Sheet1 I",
+        "baseQuantity": 7500,
+        "items": [
+          {
+            "item": "Earth work in excavation by mechanical means (Hydraulic excavator)/manual  means  over  ar",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator)/manual  means  over  areas  to remove all weeds and grass from its roots upto 150 mm depth  including  getting  out  and  disposal  of excavated earth lead upto 50 m  as directed by Engineer In-Charge- for all kinds of soil.",
+            "unit": "Cum",
+            "qty": 1125,
+            "rate": 320,
+            "qtyMode": "factor",
+            "factor": 0.15,
+            "sourceQtyFormula": "=E8*0.15"
+          },
+          {
+            "item": "Supplying and Spraying anti-termite & weedicide Chemicals  over the prepaired surface to a",
+            "description": "Supplying and Spraying anti-termite & weedicide Chemicals  over the prepaired surface to avoide the attack of termite and  growth of the weeds.",
+            "unit": "Sqm",
+            "qty": 7500,
+            "rate": 80,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Preparation and consolidation of sub grade with power road roller of 8-10tonne capacity   ",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8-10tonne capacity   for dressing, making proper required slop and consolidating  including making good the undulations etc. and re-rolling the sub grade and disposal of surplus earth with lead upto 50 metres.",
+            "unit": "Sqm",
+            "qty": 7500,
+            "rate": 260,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Construction of granular sub-base by providing close graded Material conforming to specifi",
+            "description": "Construction of granular sub-base by providing close graded Material conforming to specifications, mixing in a mechanical mix plant at OMC, carriage of mixed material by tippers to work site, for all leads & lifts, spreading in uniform layers of specified thickness with motor grader on prepared surface and compacting with power road roller to achieve the desired density, complete as per specifications and directions of Engineer-in-Charge. With material conforming to Grade-I (size range 75 mm to 0.075 mm ),(Compected thickness:-150mm).",
+            "unit": "Cum",
+            "qty": 1125,
+            "rate": 3200,
+            "qtyMode": "factor",
+            "factor": 0.15,
+            "sourceQtyFormula": "=E8*0.15"
+          },
+          {
+            "item": "Providing, laying, spreading and compacting graded stone aggregate (size range 53 mm to 0",
+            "description": "Providing, laying, spreading and compacting graded stone aggregate (size range 53 mm to 0.075 mm ) to wet mix macadam (WMM) specification including premixing the material with water at OMC in for all leads & lifts, laying in uniform layers with mechanical paverfinisher in sub- base / base course on well prepared surface and compacting with power road  roller of 8 to 10 tonne capacity to achieve the desired density, complete as per specifications and directions of Engineer-in-Charge.(Compected thickness:-150mm)",
+            "unit": "Cum",
+            "qty": 1125,
+            "rate": 3400,
+            "qtyMode": "factor",
+            "factor": 0.15,
+            "sourceQtyFormula": "=E8*0.15"
+          },
+          {
+            "item": "Providing and applying tack coat using hot straight run bitumen of grade VG - 10,  includi",
+            "description": "Providing and applying tack coat using hot straight run bitumen of grade VG - 10,  including  heating  the  bitumen,  spraying  the  bitumen  with  mechanically operated  spray  unit  fitted  on  bitumen  boiler,  cleaning  and  preparing  the existing road surface as per specifications : On W.B.M/WMM  @ 0.75 Kg/sqm",
+            "unit": "Sqm",
+            "qty": 7500,
+            "rate": 65,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying bituminous macadam using crushed stone aggregates of size 20mm and 10",
+            "description": "Providing and laying bituminous macadam using crushed stone aggregates of size 20mm and 10mm mix of specified grading premixed with bituminous binder, transported to site by tippers, laid over a previously prepared surface with paver finisher equiped with electronic sensor to the required grade, level and alignment and rolling with smooth wheeled, vibratory and tandem rollers as per specifications to achieve the desired compaction and density, complete as per specificatons and directions of Engineer-in-Charge.50mm compacted thickness with bitumen of grade VG-30 @ 3.50% (percentage by weight of total mix) prepared in Batch Type Hot Mix Plant of 100-120 TPH capacity.",
+            "unit": "CUM",
+            "qty": 375,
+            "rate": 13500,
+            "qtyMode": "factor",
+            "factor": 0.05,
+            "sourceQtyFormula": "=E8*0.05"
+          },
+          {
+            "item": "Providing and applying tack coat using hot straight run bitumen of grade VG - 10,  includi",
+            "description": "Providing and applying tack coat using hot straight run bitumen of grade VG - 10,  including  heating  the  bitumen,  spraying  the  bitumen  with  mechanically operated  spray  unit  fitted  on  bitumen  boiler,  cleaning  and  preparing  the existing road surface as per specifications :  On bituminous macadam surface @ 0.50 Kg / sqm",
+            "unit": "Sqm",
+            "qty": 7500,
+            "rate": 55,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying bituminous concrete on the prepared surface with specified graded cru",
+            "description": "Providing and laying bituminous concrete on the prepared surface with specified graded crushed stone aggregate of size10 to 6mm and stone dust mix for wearing course including loading of aggregate with FE loader and hot mixing of stone aggregate, filler, and bitumen in hot mix plant, transporting the mixed material with paver finisher fitted with an electronic sensing device to the required level and grade and rolling by road roller to achieve the desired compaction and density Complete as per specification and direction of Engineer -in-charge.                                                                                                                                                                                                                                                                                                                                                                      25mm compacted thickness with bitumen of grade VG 30  @ 5.5% (percentage by weight of total mix)",
+            "unit": "Cum",
+            "qty": 187.5,
+            "rate": 15500,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=E8*0.025"
+          }
+        ]
+      },
+      {
+        "title": "Retaining wall and Drain of the track ( Brick work & Plaster)",
+        "sourceLabel": "Sheet1 II",
+        "baseQuantity": 1030,
+        "items": [
+          {
+            "item": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in found",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m:- For all kinds of soil.",
+            "unit": "CUM",
+            "qty": 425,
+            "rate": 340,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying in position cement concrete of specified grade excluding the cost of ",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 40mm nominal size derived from natural sources).(Thickness=150 mm)",
+            "unit": "CUM",
+            "qty": 55,
+            "rate": 9500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Brick work with common burnt clay F",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "Cum",
+            "qty": 175,
+            "rate": 9400,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and laying in position cement concrete of specified grade including the cost of ",
+            "description": "Providing and laying in position cement concrete of specified grade including the cost of centering and shuttering - All work up to plinth level : 1: 1.5: 3 (1 Cement : 1.5 coarse sand (zone-III) : 3 graded stone aggregate 6 mm nominal size.As per direction of Enginner-in-charge",
+            "unit": "Cum",
+            "qty": 26,
+            "rate": 11500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "15 mm thick hard cement plaster for Drian and on all visible surface of toe/retainning wal",
+            "description": "15 mm thick hard cement plaster for Drian and on all visible surface of toe/retainning wall.1:4 (1 cement: 4 fine sand)",
+            "unit": "Sqm",
+            "qty": 1030,
+            "rate": 530,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing and fixing precast cement concrete drain cover, cover of size 600mmx450mm x75 mm",
+            "description": "Providing and fixing precast cement concrete drain cover, cover of size 600mmx450mm x75 mm, M-25 grade, including setting in position to the required line and level. Joints to be made with cement mortar 1:3 (1cement: 3 coarse sand). All work to be completed as per the direction of the Engineer-in charge.",
+            "unit": "RMT",
+            "qty": 400,
+            "rate": 3100,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Providing  and  laying  non-pressure  NP2  class  (light  duty)  R",
+            "description": "Providing  and  laying  non-pressure  NP2  class  (light  duty)  R.C.C.  pipes  with collars jointed with stiff mixture of cement mortar in the proportion of 1:2 (1 cement : 2 fine sand) including testing of joints etc. complete :300 mm dia. R.C.C. pipe",
+            "unit": "RMT",
+            "qty": 100,
+            "rate": 1300,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Constructing  brick  masonry  manhole  in  cement  mortar  1:4  (  1  cement  :  4 coarse ",
+            "description": "Constructing  brick  masonry  manhole  in  cement  mortar  1:4  (  1  cement  :  4 coarse sand ) with R.C.C. top slab with 1:1.5:3 mix (1 cement : 1.5 coarse sand (zone-III)   :   3   graded   stone   aggregate   20   mm   nominal   size),  foundation concrete  1:4:8  mix  (1  cement  :  4  coarse  sand  (zone-III)  :  8  graded  stone aggregate  40 mm  nominal  size), inside plastering 12 mm thick with cement mortar  1:3  (1  cement  :  3  coarse  sand)  finished  with  floating  coat  of  neat cement  and making channels in cement  concrete  1:2:4 (1 cement  : 2 coarse sand : 4 graded stone aggregate 20 mm nominal size) finished with a floating:-Inside  size  90x80  cm  and  45  cm  deep  including  C.I.  cover with  frame  (light duty) 455x610 mm internal dimensions, total weight of cover and frame to be not less than 38 kg (weight of cover 23 kg and weight of frame 15 kg) :",
+            "unit": "each",
+            "qty": 8,
+            "rate": 16500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
+  }
+]

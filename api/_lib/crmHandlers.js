@@ -22,6 +22,8 @@ import {
 import { ensureUpdateAuditHeaders, UPDATE_AUDIT_HEADERS, withUpdateAudit } from "./updateAudit.js";
 
 const FILE_FIELDS = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
+export const MAX_ORDER_ATTACHMENT_BYTES = 2 * 1024 * 1024;
+export const MAX_ORDER_ATTACHMENTS_TOTAL_BYTES = 3 * 1024 * 1024;
 const LEAD_TRANSFER_FIELDS = [
   "Lead Owner",
   "First Name",
@@ -77,6 +79,21 @@ export function assertValidAttachment(field, value) {
   }
   if (value && typeof value === "object" && !value.base64) {
     throw new Error(`${field} is missing its file content`);
+  }
+  if (value && typeof value === "object" && Buffer.byteLength(value.base64, "base64") > MAX_ORDER_ATTACHMENT_BYTES) {
+    throw new Error(`${field} exceeds the 2 MB attachment limit`);
+  }
+}
+
+export function assertValidAttachmentBatch(data) {
+  const totalBytes = FILE_FIELDS.reduce((total, field) => {
+    const value = data?.[field];
+    return total + (value && typeof value === "object" && value.base64
+      ? Buffer.byteLength(value.base64, "base64")
+      : 0);
+  }, 0);
+  if (totalBytes > MAX_ORDER_ATTACHMENTS_TOTAL_BYTES) {
+    throw new Error("Selected order attachments exceed the 3 MB combined submission limit");
   }
 }
 
@@ -398,6 +415,7 @@ async function maybeTransferQualifiedLead({ accountsConfig, lead }) {
 
 async function withUploadedFiles(data, prefix) {
   const next = { ...(data || {}) };
+  assertValidAttachmentBatch(next);
   for (const field of FILE_FIELDS) {
     const value = next[field];
     assertValidAttachment(field, value);

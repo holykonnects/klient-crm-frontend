@@ -30,6 +30,7 @@ Optional overrides:
 - `GMAIL_SENDER_EMAIL`
 - `GOOGLE_DELEGATED_USER_EMAIL`
 - `GOOGLE_DRIVE_DELEGATED_USER_EMAIL` (optional Drive-specific delegated uploader; otherwise uses `GOOGLE_DELEGATED_USER_EMAIL` or `GMAIL_SENDER_EMAIL`)
+- `CRM_SESSION_SECRET` (recommended signing secret for authenticated draft uploads; otherwise the existing Google private key is used)
 - `OPERATIONAL_EMAIL_CC`
 - `OPERATIONAL_REPLY_TO`
 - `CRM_CALENDAR_URL`
@@ -81,6 +82,7 @@ When this value is unset, server-side operational emails stay disabled so record
 The single-send communication module now uses `/api/email` instead of the old Apps Script deployment for templates, preview, template versioning, lead lookup, quick lead creation, email logs, and single email send.
 Email sending on Vercel requires Gmail API domain-wide delegation for the service account and `GMAIL_SENDER_EMAIL` or `GOOGLE_DELEGATED_USER_EMAIL`.
 Order and tender attachment uploads use the delegated Workspace user configured by `GOOGLE_DRIVE_DELEGATED_USER_EMAIL`, falling back to `GOOGLE_DELEGATED_USER_EMAIL` and then `GMAIL_SENDER_EMAIL`. Authorize the Drive scope for that service account delegation and give the delegated user access to the configured upload folders. Shared Drive folders remain supported.
+Order attachments upload individually as soon as they are selected. The authenticated upload route returns a signed draft receipt so users can remove only their own current draft attachment before submitting the order.
 Outgoing emails are wrapped in a branded layout. The Vercel Gmail sender embeds `/assets/rido-sports-logo.png` and `/assets/kk-logo.png` as inline email images when those public assets are available in the deployment. Set `RIDO_LOGO_URL` or `KLIENT_KONNECT_LOGO_URL` only when you intentionally want to use externally hosted logo URLs instead.
 The separate bulk email sender iframe is still a separate Apps Script deployment and needs its own migration pass.
 

@@ -322,7 +322,7 @@ export function formatTimestamp(date = new Date()) {
   return `${byType.day}/${byType.month}/${byType.year} ${byType.hour}:${byType.minute}:${byType.second}`;
 }
 
-export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
+export async function uploadDriveFileDetails(fileObj, folderId, prefix = "UPLOAD") {
   if (!fileObj || typeof fileObj !== "object" || !fileObj.base64) {
     throw new Error("A selected Drive attachment is missing its file content");
   }
@@ -360,7 +360,10 @@ export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
           }
         );
         const json = await res.json().catch(() => ({}));
-        if (res.ok) return json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`;
+        if (res.ok) return {
+          id: json.id,
+          webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`,
+        };
 
         const message = json.error?.message || `Drive upload failed (${res.status})`;
         errors.push(message);
@@ -380,6 +383,10 @@ export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
   }
   const reportedErrors = errors.filter(Boolean);
   throw new Error(`Required Drive upload failed: ${reportedErrors[reportedErrors.length - 1] || "unknown Drive error"}`);
+}
+
+export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
+  return (await uploadDriveFileDetails(fileObj, folderId, prefix)).webViewLink;
 }
 
 function columnName(index) {

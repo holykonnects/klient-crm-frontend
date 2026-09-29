@@ -7,6 +7,7 @@ import inventory from "./_handlers/inventory.js";
 import leads from "./_handlers/leads.js";
 import login from "./_handlers/login.js";
 import nomenclature from "./_handlers/nomenclature.js";
+import orderAttachments from "./_handlers/order-attachments.js";
 import orderInvoices from "./_handlers/order-invoices.js";
 import orders from "./_handlers/orders.js";
 import projects from "./_handlers/projects.js";
@@ -28,6 +29,7 @@ const handlers = {
   leads,
   login,
   nomenclature,
+  "order-attachments": orderAttachments,
   "order-invoices": orderInvoices,
   orders,
   projects,

@@ -13,11 +13,12 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
+import QuotationRichTextEditor from './QuotationRichTextEditor';
+import QuotationSheetPreview from './QuotationSheetPreview';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
-const cellStyle = { fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem' };
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 },
   '& .MuiInputBase-input': { fontFamily: 'Montserrat, sans-serif', fontSize: '0.88rem' },
@@ -46,7 +47,7 @@ const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
   qty: 1, rateOverride: '',
-  unit: '', rate: '', desc: '', imageUrl: '', itemType: 'Equipment'
+  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment'
 };
 
 // helpers
@@ -76,6 +77,19 @@ function money(value) {
 function pctValue(value) {
   const n = toNumber(value);
   return n > 1 ? n / 100 : n;
+}
+function escapeHtml(value) {
+  return String(value || '').replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[character]));
+}
+function plainTextToHtml(value) {
+  return String(value || '').split(/\r?\n/).map(line => `<p>${escapeHtml(line) || '<br>'}</p>`).join('');
+}
+function htmlToPlainText(value) {
+  const node = document.createElement('div');
+  node.innerHTML = String(value || '');
+  return (node.innerText || node.textContent || '').trim();
 }
 
 export default function QuotationBuilder() {
@@ -230,12 +244,12 @@ export default function QuotationBuilder() {
       if (field === 'category') {
         row.subCategory = ''; row.itemCode = '';
         row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.imageUrl = '';
+        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
       }
       if (field === 'subCategory') {
         row.itemCode = '';
         row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.imageUrl = '';
+        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
       }
       if (field === 'itemCode' && catalog) {
         const key = `${row.category}|||${row.subCategory}`;
@@ -250,11 +264,14 @@ export default function QuotationBuilder() {
           row.desc = (found.desc && String(found.desc).trim())
             ? found.desc
             : `${row.category} : ${row.subCategory} : ${value}`;
+          row.descHtml = plainTextToHtml(row.desc);
           row.imageUrl = found.imageUrl || '';
         } else {
-          row.unit = ''; row.rate = ''; row.desc = ''; row.imageUrl = '';
+          row.unit = ''; row.rate = ''; row.desc = ''; row.descHtml = ''; row.imageUrl = '';
         }
       }
+
+      if (field === 'descHtml') row.desc = htmlToPlainText(value);
 
       next[i] = row;
       return next;
@@ -285,8 +302,9 @@ export default function QuotationBuilder() {
             itemType: r.itemType || 'Equipment',
             rate: toNumber(r.rate),
             rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
-            // Send description override so backend writes this exact text.
-            descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined
+            descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined,
+            descHtml: r.descHtml || undefined,
+            imageUrl: r.imageUrl || undefined
           })),
         attach: attachLead ? { leadDisplay: attachLead } : null
       };
@@ -505,6 +523,15 @@ export default function QuotationBuilder() {
             </Grid>
           </Paper>}
 
+          {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
+            </Box>
+            <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
+              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} />
+            </Box>
+          </Paper>}
+
           {quoteType === 'athletic' && (
             <Paper sx={{ ...panelSx, mb: 2.5 }}>
               <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
@@ -598,7 +625,7 @@ export default function QuotationBuilder() {
                       <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
-                      <TableCell><TextField fullWidth size="small" multiline minRows={2} value={r.desc || ''} placeholder="Populated from Equipment BD" onChange={e => handleRowChange(i, 'desc', e.target.value)} sx={fieldSx} inputProps={{ style: { ...cellStyle, lineHeight: 1.3 } }} /></TableCell>
+                      <TableCell><QuotationRichTextEditor value={r.descHtml || plainTextToHtml(r.desc)} placeholder="Populated from Equipment BD" onChange={value => handleRowChange(i, 'descHtml', value)} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>

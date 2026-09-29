@@ -36,6 +36,7 @@ import EditIcon from "@mui/icons-material/Edit";
 import HistoryIcon from "@mui/icons-material/History";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import CloseIcon from "@mui/icons-material/Close";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
 
@@ -43,6 +44,11 @@ import LoadingOverlay from "./LoadingOverlay";
 import { useAuth } from "./AuthContext";
 import MobileActionMenu from "./MobileActionMenu";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
+import {
+  ORDER_ATTACHMENT_FIELD_BY_KEY,
+  removeOrderAttachment,
+  uploadOrderAttachment,
+} from "../utils/orderAttachmentUpload";
 
 const theme = createTheme({
   typography: {
@@ -118,6 +124,9 @@ function OrdersTable() {
     boq: null,
     proforma: null,
   });
+  const orderFilesBusy = Object.values(orderFiles).some((file) =>
+    ["uploading", "removing"].includes(file?.status)
+  );
 
   const { user } = useAuth();
   const username = user?.username;
@@ -299,29 +308,61 @@ function OrdersTable() {
     setOrderFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleOrderFileChange = (key) => (e) => {
+  const handleOrderFileChange = (key) => async (e) => {
     const file = e.target.files?.[0] || null;
-    setOrderFiles((prev) => ({ ...prev, [key]: file }));
+    if (!file) return;
+    const field = ORDER_ATTACHMENT_FIELD_BY_KEY[key];
+    const existing = orderFiles[key];
+    if (existing?.receipt) {
+      setOrderFiles((prev) => ({ ...prev, [key]: { ...existing, status: "removing" } }));
+      try {
+        await removeOrderAttachment(existing.receipt);
+      } catch (error) {
+        setOrderFiles((prev) => ({ ...prev, [key]: { ...existing, status: "error", error: error.message } }));
+        alert(`❌ ${error.message || "Unable to replace attachment"}`);
+        return;
+      }
+    }
+    setOrderFiles((prev) => ({ ...prev, [key]: { file, name: file.name, size: file.size, status: "uploading" } }));
+    try {
+      const uploaded = await uploadOrderAttachment({ file, field, orderId: orderFormData?.["Order ID"] });
+      setOrderFiles((prev) => (prev[key]?.file === file ? { ...prev, [key]: uploaded } : prev));
+    } catch (error) {
+      setOrderFiles((prev) => (
+        prev[key]?.file === file
+          ? { ...prev, [key]: { name: file.name, size: file.size, status: "error", error: error.message } }
+          : prev
+      ));
+    }
   };
 
-  const fileToBase64 = (file, label) => {
-    if (!file) return Promise.resolve(null);
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = String(reader.result || "");
-        const base64 = res.split("base64,")[1] || "";
-        resolve({
-          name: file.name,
-          type: file.type || "application/octet-stream",
-          size: file.size || 0,
-          label: label || "",
-          base64,
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  const removeSelectedOrderFile = async (key) => {
+    const selected = orderFiles[key];
+    if (!selected || selected.status === "uploading" || selected.status === "removing") return;
+    if (!selected.receipt) {
+      setOrderFiles((prev) => ({ ...prev, [key]: null }));
+      return;
+    }
+    setOrderFiles((prev) => ({ ...prev, [key]: { ...selected, status: "removing" } }));
+    try {
+      await removeOrderAttachment(selected.receipt);
+      setOrderFiles((prev) => ({ ...prev, [key]: null }));
+    } catch (error) {
+      setOrderFiles((prev) => ({ ...prev, [key]: { ...selected, status: "error", error: error.message } }));
+      alert(`❌ ${error.message || "Unable to remove attachment"}`);
+    }
+  };
+
+  const closeOrderEditor = async () => {
+    const selectedFiles = Object.values(orderFiles).filter(Boolean);
+    if (saving || selectedFiles.some((file) => ["uploading", "removing"].includes(file.status))) return;
+    try {
+      await Promise.all(selectedFiles.filter((file) => file.receipt).map((file) => removeOrderAttachment(file.receipt)));
+      setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+      setSelectedRow(null);
+    } catch (error) {
+      alert(`❌ ${error.message || "Unable to close while removing draft attachments"}`);
+    }
   };
 
   const handleSubmitOrderUpdate = async () => {
@@ -336,16 +377,17 @@ function OrdersTable() {
 
     setSaving(true);
     try {
-      const poObj = await fileToBase64(orderFiles.purchaseOrder, "Attach Purchase Order");
-      const drawingObj = await fileToBase64(orderFiles.drawing, "Attach Drawing");
-      const boqObj = await fileToBase64(orderFiles.boq, "Attach BOQ");
-      const proformaObj = await fileToBase64(orderFiles.proforma, "Proforma Invoice");
+      const selectedFiles = Object.values(orderFiles).filter(Boolean);
+      if (selectedFiles.some((file) => ["uploading", "removing"].includes(file.status))) {
+        throw new Error("Please wait for all attachment uploads to finish.");
+      }
+      const failedUpload = selectedFiles.find((file) => file.status !== "uploaded" || !file.url);
+      if (failedUpload) throw new Error(failedUpload.error || `${failedUpload.name} has not uploaded successfully.`);
 
       const payload = { ...orderFormData };
-      if (poObj) payload["Attach Purchase Order"] = poObj;
-      if (drawingObj) payload["Attach Drawing"] = drawingObj;
-      if (boqObj) payload["Attach BOQ"] = boqObj;
-      if (proformaObj) payload["Proforma Invoice"] = proformaObj;
+      Object.entries(ORDER_ATTACHMENT_FIELD_BY_KEY).forEach(([key, field]) => {
+        if (orderFiles[key]?.url) payload[field] = orderFiles[key].url;
+      });
       payload.updatedByName = user?.username || user?.email || "";
       payload.updatedByEmail = user?.email || user?.username || "";
       payload.amountUpdate = {
@@ -508,7 +550,7 @@ function OrdersTable() {
         </Box>
 
         {/* -------------------- EDIT / UPDATE ORDER MODAL -------------------- */}
-        <Dialog open={!!selectedRow} onClose={() => setSelectedRow(null)} maxWidth="md" fullWidth>
+        <Dialog open={!!selectedRow} onClose={closeOrderEditor} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Edit / Update Order
           </DialogTitle>
@@ -628,6 +670,9 @@ function OrdersTable() {
                       <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
                         Attachments (upload new only if you want to replace)
                       </Typography>
+                      <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75, mb: 1 }}>
+                        Maximum 2 MB per attachment. Each replacement uploads immediately after selection.
+                      </Typography>
 
                       <Grid container spacing={2}>
                         {[
@@ -635,15 +680,60 @@ function OrdersTable() {
                           ["drawing", "Replace Drawing"],
                           ["boq", "Replace BOQ"],
                           ["proforma", "Replace Proforma Invoice"],
-                        ].map(([key, label]) => (
-                          <Grid item xs={6} key={key}>
-                            <Button variant="outlined" component="label" fullWidth>
-                              {label}
-                              {orderFiles[key] ? `: ${orderFiles[key].name}` : ""}
-                              <input hidden type="file" onChange={handleOrderFileChange(key)} />
-                            </Button>
-                          </Grid>
-                        ))}
+                        ].map(([key, label]) => {
+                          const file = orderFiles[key];
+                          return (
+                            <Grid item xs={6} key={key}>
+                              <Button
+                                variant="outlined"
+                                component="label"
+                                fullWidth
+                                disabled={saving || ["uploading", "removing"].includes(file?.status)}
+                              >
+                                {label}
+                                <input
+                                  key={file ? `${key}-${file.name}-${file.status}` : `${key}-empty`}
+                                  hidden
+                                  type="file"
+                                  accept=".pdf,.png,.jpg,.jpeg"
+                                  onChange={handleOrderFileChange(key)}
+                                />
+                              </Button>
+                              {file ? (
+                                <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                                  <Typography
+                                    sx={{
+                                      minWidth: 0,
+                                      flex: 1,
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      whiteSpace: "nowrap",
+                                      fontFamily: "Montserrat, sans-serif",
+                                      fontSize: 11,
+                                    }}
+                                  >
+                                    {file.status === "uploading"
+                                      ? `Uploading: ${file.name}`
+                                      : file.status === "removing"
+                                      ? `Removing: ${file.name}`
+                                      : file.status === "error"
+                                      ? `Upload failed: ${file.error || file.name}`
+                                      : `Uploaded: ${file.name}`}
+                                  </Typography>
+                                  <IconButton
+                                    size="small"
+                                    title={`Remove ${file.name}`}
+                                    aria-label={`Remove ${file.name}`}
+                                    disabled={saving || ["uploading", "removing"].includes(file.status)}
+                                    onClick={() => removeSelectedOrderFile(key)}
+                                  >
+                                    <CloseIcon fontSize="small" />
+                                  </IconButton>
+                                </Box>
+                              ) : null}
+                            </Grid>
+                          );
+                        })}
                       </Grid>
                     </>
                   )}
@@ -653,12 +743,12 @@ function OrdersTable() {
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={() => setSelectedRow(null)}>Cancel</Button>
+            <Button onClick={closeOrderEditor} disabled={saving || orderFilesBusy}>Cancel</Button>
             <Button
               variant="contained"
               sx={{ backgroundColor: "#6495ED" }}
               onClick={handleSubmitOrderUpdate}
-              disabled={saving}
+              disabled={saving || orderFilesBusy}
             >
               {saving ? "Updating..." : "Update Order"}
             </Button>

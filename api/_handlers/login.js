@@ -1,9 +1,14 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheets.js";
 import { authenticateLogin } from "../_lib/loginCredentials.js";
+import { clearSessionCookie, setSessionCookie } from "../_lib/sessionAuth.js";
 
 export default async function loginHandler(req, res) {
   res.setHeader("Cache-Control", "no-store");
+  if (req.method === "DELETE") {
+    clearSessionCookie(res);
+    return res.status(200).json({ success: true });
+  }
   if (req.method !== "POST") return res.status(405).json({ success: false, error: "Method Not Allowed" });
 
   try {
@@ -17,6 +22,7 @@ export default async function loginHandler(req, res) {
     const user = authenticateLogin(rows, identifier, password);
     if (!user) return res.status(401).json({ success: false, error: "Invalid email, username or password" });
 
+    setSessionCookie(res, user);
     return res.status(200).json({ success: true, ...user });
   } catch (error) {
     console.error("LOGIN_SERVICE_ERROR", error.message);

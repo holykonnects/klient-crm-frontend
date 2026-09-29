@@ -43,8 +43,14 @@ import LoadingOverlay from "./LoadingOverlay";
 import EventIcon from "@mui/icons-material/Event";
 import CalendarView from "./CalendarView";
 import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
+import CloseIcon from "@mui/icons-material/Close";
 import MobileActionMenu from "./MobileActionMenu";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
+import {
+  ORDER_ATTACHMENT_FIELD_BY_KEY,
+  removeOrderAttachment,
+  uploadOrderAttachment,
+} from "../utils/orderAttachmentUpload";
 
 const theme = createTheme({
   typography: {
@@ -71,10 +77,6 @@ const amountNumber = (value) => {
   const parsed = Number(String(value ?? "").replace(/[₹,\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
 };
-
-// ✅ Drive Folder (your shared link folder)
-const UPLOAD_FOLDER_ID =
-  "1NxWIZserHmgDu3HpWS1tTy050qh9XW1bgOPrccHMVQ9Vve74t4NWuoUf-DQOT93IU5MyxZ1N";
 
 // ✅ MUST MATCH Orders sheet headers EXACTLY
 const ORDER_ATTACHMENT_FIELDS = [
@@ -249,6 +251,7 @@ function DealsTable() {
   // add order modal
   const [orderOpen, setOrderOpen] = useState(false);
   const [orderBaseRow, setOrderBaseRow] = useState(null);
+  const [orderDraftId, setOrderDraftId] = useState("");
   const [orderForm, setOrderForm] = useState({});
   const [orderFiles, setOrderFiles] = useState({
     purchaseOrder: null,
@@ -260,6 +263,9 @@ function DealsTable() {
   // ✅ saving UX for order create
   const [creatingOrder, setCreatingOrder] = useState(false);
   const [orderMsg, setOrderMsg] = useState("");
+  const orderFilesBusy = Object.values(orderFiles).some((file) =>
+    ["uploading", "removing"].includes(file?.status)
+  );
 
   const { user } = useAuth();
   const username = user?.username;
@@ -470,6 +476,7 @@ function DealsTable() {
     }
 
     setOrderBaseRow(deal);
+    setOrderDraftId(`ORD-${Date.now()}`);
 
     setOrderForm({
       "Order Amount": deal?.["Order Amount"] || "",
@@ -497,50 +504,63 @@ function DealsTable() {
     setOrderForm((prev) => ({ ...prev, [field]: value }));
   }, []);
 
-  const handleOrderFileChange = (key) => (e) => {
+  const handleOrderFileChange = (key) => async (e) => {
     const file = e.target.files?.[0] || null;
-    setOrderFiles((prev) => ({ ...prev, [key]: file }));
+    if (!file) return;
+    const field = ORDER_ATTACHMENT_FIELD_BY_KEY[key];
+    const existing = orderFiles[key];
+    if (existing?.receipt) {
+      setOrderFiles((prev) => ({ ...prev, [key]: { ...existing, status: "removing" } }));
+      try {
+        await removeOrderAttachment(existing.receipt);
+      } catch (error) {
+        setOrderFiles((prev) => ({ ...prev, [key]: { ...existing, status: "error", error: error.message } }));
+        alert(`❌ ${error.message || "Unable to replace attachment"}`);
+        return;
+      }
+    }
+    setOrderFiles((prev) => ({ ...prev, [key]: { file, name: file.name, size: file.size, status: "uploading" } }));
+    try {
+      const uploaded = await uploadOrderAttachment({ file, field, orderId: orderDraftId });
+      setOrderFiles((prev) => (prev[key]?.file === file ? { ...prev, [key]: uploaded } : prev));
+    } catch (error) {
+      setOrderFiles((prev) => (
+        prev[key]?.file === file
+          ? { ...prev, [key]: { name: file.name, size: file.size, status: "error", error: error.message } }
+          : prev
+      ));
+    }
   };
 
-  /**
-   * ✅ MSBA-style payload:
-   * - Frontend sends base64 object (no-cors friendly)
-   * - Backend uploads to Drive + stores link in Orders sheet
-   *
-   * If file is too large, we send a readable marker string
-   * (so backend can skip and user understands why).
-   */
-  const fileToBase64 = (file) => {
-    if (!file) return Promise.resolve(null);
-
-    // hard guard: keep reasonable to avoid silent Apps Script failures
-    const MAX_FILE_BYTES = 1_200_000; // ~1.2MB raw
-    if (file.size > MAX_FILE_BYTES) {
-      return Promise.resolve({
-        name: file.name,
-        type: file.type || "application/octet-stream",
-        base64: "",
-        size: file.size,
-        tooLarge: true,
-      });
+  const removeSelectedOrderFile = async (key) => {
+    const selected = orderFiles[key];
+    if (!selected || selected.status === "uploading" || selected.status === "removing") return;
+    if (!selected.receipt) {
+      setOrderFiles((prev) => ({ ...prev, [key]: null }));
+      return;
     }
+    setOrderFiles((prev) => ({ ...prev, [key]: { ...selected, status: "removing" } }));
+    try {
+      await removeOrderAttachment(selected.receipt);
+      setOrderFiles((prev) => ({ ...prev, [key]: null }));
+    } catch (error) {
+      setOrderFiles((prev) => ({ ...prev, [key]: { ...selected, status: "error", error: error.message } }));
+      alert(`❌ ${error.message || "Unable to remove attachment"}`);
+    }
+  };
 
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => {
-        const res = String(reader.result || "");
-        const base64 = res.split("base64,")[1] || "";
-        resolve({
-          name: file.name,
-          type: file.type || "application/octet-stream",
-          base64,
-          size: file.size || 0,
-          tooLarge: false,
-        });
-      };
-      reader.onerror = reject;
-      reader.readAsDataURL(file);
-    });
+  const closeOrderModal = async () => {
+    const selectedFiles = Object.values(orderFiles).filter(Boolean);
+    if (creatingOrder || selectedFiles.some((file) => ["uploading", "removing"].includes(file.status))) return;
+    try {
+      await Promise.all(selectedFiles.filter((file) => file.receipt).map((file) => removeOrderAttachment(file.receipt)));
+      setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+      setOrderDraftId("");
+      setOrderBaseRow(null);
+      setOrderOpen(false);
+    } catch (error) {
+      alert(`❌ ${error.message || "Unable to close while removing draft attachments"}`);
+    }
   };
 
   const handleCreateOrder = async () => {
@@ -551,7 +571,13 @@ function DealsTable() {
     setOrderMsg("Creating...");
 
     try {
-      const orderId = `ORD-${Date.now()}`;
+      const selectedFiles = Object.values(orderFiles).filter(Boolean);
+      if (selectedFiles.some((file) => ["uploading", "removing"].includes(file.status))) {
+        throw new Error("Please wait for all attachment uploads to finish.");
+      }
+      const failedUpload = selectedFiles.find((file) => file.status !== "uploaded" || !file.url);
+      if (failedUpload) throw new Error(failedUpload.error || `${failedUpload.name} has not uploaded successfully.`);
+      const orderId = orderDraftId || `ORD-${Date.now()}`;
 
       // Minimal payload first (high chance to land)
       const payloadRow = {
@@ -566,60 +592,9 @@ function DealsTable() {
         ...orderForm,
       };
 
-      // Attachments (keys MUST match headers)
-      const poObj = await fileToBase64(orderFiles.purchaseOrder);
-      const drawingObj = await fileToBase64(orderFiles.drawing);
-      const boqObj = await fileToBase64(orderFiles.boq);
-      const proformaObj = await fileToBase64(orderFiles.proforma);
-
-      // ✅ Send MSBA-style objects (backend uploads to Drive + writes LINK)
-      payloadRow["Attach Purchase Order"] = poObj
-        ? poObj.tooLarge
-          ? `FILE_TOO_LARGE: ${poObj.name}`
-          : {
-              ...poObj,
-              folderId: UPLOAD_FOLDER_ID,
-              module: "Orders",
-              recordId: orderId,
-              label: "Attach Purchase Order",
-            }
-        : "";
-
-      payloadRow["Attach Drawing"] = drawingObj
-        ? drawingObj.tooLarge
-          ? `FILE_TOO_LARGE: ${drawingObj.name}`
-          : {
-              ...drawingObj,
-              folderId: UPLOAD_FOLDER_ID,
-              module: "Orders",
-              recordId: orderId,
-              label: "Attach Drawing",
-            }
-        : "";
-
-      payloadRow["Attach BOQ"] = boqObj
-        ? boqObj.tooLarge
-          ? `FILE_TOO_LARGE: ${boqObj.name}`
-          : {
-              ...boqObj,
-              folderId: UPLOAD_FOLDER_ID,
-              module: "Orders",
-              recordId: orderId,
-              label: "Attach BOQ",
-            }
-        : "";
-
-      payloadRow["Proforma Invoice"] = proformaObj
-        ? proformaObj.tooLarge
-          ? `FILE_TOO_LARGE: ${proformaObj.name}`
-          : {
-              ...proformaObj,
-              folderId: UPLOAD_FOLDER_ID,
-              module: "Orders",
-              recordId: orderId,
-              label: "Proforma Invoice",
-            }
-        : "";
+      Object.entries(ORDER_ATTACHMENT_FIELD_BY_KEY).forEach(([key, field]) => {
+        payloadRow[field] = orderFiles[key]?.url || "";
+      });
       payloadRow.updatedByName = user?.username || user?.email || "";
       payloadRow.updatedByEmail = user?.email || user?.username || "";
 
@@ -629,24 +604,22 @@ function DealsTable() {
         body: JSON.stringify({
           action: "createOrder",
           data: payloadRow,
-          // ✅ extra metadata (backend can ignore if not needed)
-          meta: {
-            uploadFolderId: UPLOAD_FOLDER_ID,
-            module: "Orders",
-            recordId: orderId,
-          },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      const result = await res.json().catch(() => ({}));
+      if (!res.ok || result.ok !== true) {
+        throw new Error(result.error || result.message || `Order creation failed (${res.status})`);
+      }
 
       setOrderMsg("Created ✅");
       setOrderOpen(false);
       setOrderBaseRow(null);
+      setOrderDraftId("");
       fetchDeals();
     } catch (e) {
       console.error("Create order error:", e);
       setOrderMsg("Create failed ❌");
-      alert("❌ Error creating order");
+      alert(`❌ ${e.message || "Error creating order"}`);
     } finally {
       setTimeout(() => setOrderMsg(""), 1200);
       setCreatingOrder(false);
@@ -950,7 +923,7 @@ function DealsTable() {
         </Dialog>
 
         {/* -------------------- Add Order Modal -------------------- */}
-        <Dialog open={orderOpen} onClose={() => !creatingOrder && setOrderOpen(false)} maxWidth="md" fullWidth>
+        <Dialog open={orderOpen} onClose={closeOrderModal} maxWidth="md" fullWidth>
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Add Order
           </DialogTitle>
@@ -1000,10 +973,10 @@ function DealsTable() {
                       Attachments
                     </Typography>
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
-                      Files will be uploaded to Drive (Folder: {UPLOAD_FOLDER_ID}) and the Orders sheet will store the Drive link.
+                      Each file uploads to Drive immediately after selection. The Orders sheet stores only the confirmed Drive link.
                     </Typography>
                     <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, opacity: 0.75 }}>
-                      Keep files small (≈1.2MB max) to avoid Apps Script payload limits.
+                      Maximum 2 MB per attachment. Every selected file must finish uploading before the order is created.
                     </Typography>
                   </Grid>
 
@@ -1025,24 +998,51 @@ function DealsTable() {
                           variant="outlined"
                           component="label"
                           fullWidth
-                          disabled={creatingOrder}
+                          disabled={creatingOrder || ["uploading", "removing"].includes(file?.status)}
                           sx={{ justifyContent: "flex-start" }}
                         >
                           {label}
-                          <input hidden type="file" accept=".pdf,.png,.jpg,.jpeg" onChange={handleOrderFileChange(fileKey)} />
+                          <input
+                            key={file ? `${fileKey}-${file.name}-${file.status}` : `${fileKey}-empty`}
+                            hidden
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg"
+                            onChange={handleOrderFileChange(fileKey)}
+                          />
                         </Button>
 
                         {file ? (
-                          <Typography
-                            sx={{
-                              mt: 0.5,
-                              fontFamily: "Montserrat, sans-serif",
-                              fontSize: 11,
-                              opacity: 0.8,
-                            }}
-                          >
-                            Selected: {file.name}
-                          </Typography>
+                          <Box sx={{ mt: 0.5, display: "flex", alignItems: "center", gap: 0.5 }}>
+                            <Typography
+                              sx={{
+                                minWidth: 0,
+                                flex: 1,
+                                overflow: "hidden",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
+                                fontFamily: "Montserrat, sans-serif",
+                                fontSize: 11,
+                                opacity: 0.8,
+                              }}
+                            >
+                              {file.status === "uploading"
+                                ? `Uploading: ${file.name}`
+                                : file.status === "removing"
+                                ? `Removing: ${file.name}`
+                                : file.status === "error"
+                                ? `Upload failed: ${file.error || file.name}`
+                                : `Uploaded: ${file.name}`}
+                            </Typography>
+                            <IconButton
+                              size="small"
+                              title={`Remove ${file.name}`}
+                              aria-label={`Remove ${file.name}`}
+                              disabled={creatingOrder || ["uploading", "removing"].includes(file.status)}
+                              onClick={() => removeSelectedOrderFile(fileKey)}
+                            >
+                              <CloseIcon fontSize="small" />
+                            </IconButton>
+                          </Box>
                         ) : null}
                       </Grid>
                     );
@@ -1060,7 +1060,7 @@ function DealsTable() {
                 variant="contained"
                 sx={{ backgroundColor: "#6495ED" }}
                 onClick={handleCreateOrder}
-                disabled={creatingOrder}
+                disabled={creatingOrder || orderFilesBusy}
               >
                 {creatingOrder ? "Creating..." : "Create Order"}
               </Button>
@@ -1068,7 +1068,7 @@ function DealsTable() {
           </DialogContent>
 
           <DialogActions>
-            <Button onClick={() => setOrderOpen(false)} disabled={creatingOrder}>
+            <Button onClick={closeOrderModal} disabled={creatingOrder || orderFilesBusy}>
               Close
             </Button>
           </DialogActions>

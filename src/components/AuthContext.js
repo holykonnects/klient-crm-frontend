@@ -28,6 +28,7 @@ export function AuthProvider({ children }) {
 
 
   const logout = () => {
+    fetch('/api/login', { method: 'DELETE', keepalive: true }).catch(() => {});
     setUser(null);
     localStorage.removeItem('crmUser');
   };

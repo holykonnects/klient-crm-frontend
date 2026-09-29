@@ -25,6 +25,20 @@ function getServiceAccountEmail() {
   return process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL || "";
 }
 
+export function getDriveDelegatedUser(env = process.env) {
+  return String(
+    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL ||
+    env.GOOGLE_DELEGATED_USER_EMAIL ||
+    env.GMAIL_SENDER_EMAIL ||
+    ""
+  ).trim();
+}
+
+export function getDriveAuthSubjects(env = process.env) {
+  const delegatedUser = getDriveDelegatedUser(env);
+  return delegatedUser ? [delegatedUser, ""] : [""];
+}
+
 function assertGoogleEnv() {
   if (!getServiceAccountEmail() || !getPrivateKey()) {
     throw new Error(
@@ -308,10 +322,11 @@ export function formatTimestamp(date = new Date()) {
   return `${byType.day}/${byType.month}/${byType.year} ${byType.hour}:${byType.minute}:${byType.second}`;
 }
 
-export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
-  if (!fileObj || typeof fileObj !== "object" || !fileObj.base64) return "";
+export async function uploadDriveFileDetails(fileObj, folderId, prefix = "UPLOAD") {
+  if (!fileObj || typeof fileObj !== "object" || !fileObj.base64) {
+    throw new Error("A selected Drive attachment is missing its file content");
+  }
 
-  const token = await getAccessToken();
   const boundary = `kk_${Date.now()}_${Math.random().toString(16).slice(2)}`;
   const metadata = {
     name: `${prefix} - ${fileObj.label || fileObj.name || "file"}`,
@@ -328,21 +343,50 @@ export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
     Buffer.from(`\r\n--${boundary}--`),
   ]);
 
-  const res = await fetch(
-    "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink",
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": `multipart/related; boundary=${boundary}`,
-      },
-      body,
-    }
-  );
+  const errors = [];
+  for (const subject of getDriveAuthSubjects()) {
+    try {
+      const token = await getAccessToken({ scopes: [DRIVE_SCOPE], subject });
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const res = await fetch(
+          "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&fields=id,webViewLink",
+          {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${token}`,
+              "Content-Type": `multipart/related; boundary=${boundary}`,
+            },
+            body,
+          }
+        );
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) return {
+          id: json.id,
+          webViewLink: json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`,
+        };
 
-  const json = await res.json();
-  if (!res.ok) throw new Error(json.error?.message || "Drive upload failed");
-  return json.webViewLink || `https://drive.google.com/file/d/${json.id}/view`;
+        const message = json.error?.message || `Drive upload failed (${res.status})`;
+        errors.push(message);
+        if (![429, 500, 502, 503, 504].includes(res.status) || attempt === 2) break;
+        await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+      }
+    } catch (error) {
+      errors.push(error.message || String(error));
+    }
+  }
+
+  if (errors.some((message) => /storage quota/i.test(message))) {
+    const delegatedUser = getDriveDelegatedUser();
+    throw new Error(delegatedUser
+      ? `Delegated Drive upload for ${delegatedUser} failed, and the service-account fallback has no storage quota. Confirm Drive domain-wide delegation and folder access.`
+      : "Drive upload cannot use service-account storage. Configure GOOGLE_DRIVE_DELEGATED_USER_EMAIL or upload into a Shared Drive folder.");
+  }
+  const reportedErrors = errors.filter(Boolean);
+  throw new Error(`Required Drive upload failed: ${reportedErrors[reportedErrors.length - 1] || "unknown Drive error"}`);
+}
+
+export async function uploadDriveFile(fileObj, folderId, prefix = "UPLOAD") {
+  return (await uploadDriveFileDetails(fileObj, folderId, prefix)).webViewLink;
 }
 
 function columnName(index) {

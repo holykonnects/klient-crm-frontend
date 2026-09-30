@@ -37,12 +37,15 @@ import HistoryIcon from "@mui/icons-material/History";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CloseIcon from "@mui/icons-material/Close";
+import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
 
 import LoadingOverlay from "./LoadingOverlay";
 import { useAuth } from "./AuthContext";
 import MobileActionMenu from "./MobileActionMenu";
+import OrderSaleDialog from "./OrderSaleDialog";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 import {
   ORDER_ATTACHMENT_FIELD_BY_KEY,
@@ -75,6 +78,37 @@ const amountNumber = (value) => {
 };
 
 const getOrderRowTime = (row) => crmRowUpdatedAt(row, ["Order Updated Time"]);
+
+const ORDER_FIELD_ORDER = [
+  "Order ID", "Order Status", "Product Required", "Order Amount", "Order Payment Terms",
+  "Order Delivery Date", "Order Onsite Contact Name", "Order Onsite Contact Number",
+  "Order Onsite Contact Role", "Order Remarks", "Order Update",
+];
+const PAYMENT_FIELD_ORDER = ["Payment Status", "Payment Amount", "Payment Details", "Notification Status"];
+const ORDER_ATTACHMENT_FIELDS = new Set(Object.values(ORDER_ATTACHMENT_FIELD_BY_KEY));
+
+const isProtectedOrderField = (field = "") => {
+  const value = String(field).trim();
+  return /^(?:Order|Deal|Account|Lead|Project|Booking|Order Distribution) ID$/i.test(value) || [
+    "S.No", "Timestamp", "Created At", "Updated At", "Order Updated Time",
+    "Updated By", "Updated By Email", "Updater Name", "Updater Email",
+  ].some((name) => name.toLowerCase() === value.toLowerCase());
+};
+
+const orderedFields = (fields, preferred) => [
+  ...preferred.filter((field) => fields.includes(field)),
+  ...fields.filter((field) => !preferred.includes(field)).sort((a, b) => a.localeCompare(b)),
+];
+
+const orderInputType = (field = "") => {
+  if (/date/i.test(field)) return "date";
+  if (/email/i.test(field)) return "email";
+  if (/mobile|phone|contact number/i.test(field)) return "tel";
+  if (/amount|value|quantity|discount|percentage|%|rate$/i.test(field)) return "number";
+  return "text";
+};
+
+const isLongOrderField = (field = "") => /remarks|description|details|update|address|notes/i.test(field);
 
 async function safeReadResponse(res) {
   const txt = await res.text();
@@ -112,6 +146,7 @@ function OrdersTable() {
   const [orderAmountAddition, setOrderAmountAddition] = useState("");
   const [validationData, setValidationData] = useState({});
   const [saving, setSaving] = useState(false);
+  const [saleOrder, setSaleOrder] = useState(null);
 
   // logs modal
   const [logsOpen, setLogsOpen] = useState(false);
@@ -288,6 +323,10 @@ function OrdersTable() {
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
   };
 
+  const handleAddToSalesTracker = (order) => {
+    setSaleOrder(order);
+  };
+
   // logs
   const handleViewLogs = (row) => {
     const key = String(row["Order ID"] || "").trim();
@@ -427,6 +466,28 @@ function OrdersTable() {
   const logHeaders = orderLogs?.[0] ? Object.keys(orderLogs[0]) : [];
   const logCols = logHeaders.length ? logHeaders : [];
 
+  const orderEditSections = useMemo(() => {
+    const fields = Object.keys(orderFormData || {}).filter(Boolean);
+    const attachments = fields.filter((field) => ORDER_ATTACHMENT_FIELDS.has(field));
+    const protectedFields = fields.filter((field) => isProtectedOrderField(field));
+    const paymentFields = fields.filter((field) => PAYMENT_FIELD_ORDER.includes(field) || /^Payment\b/i.test(field));
+    const orderFields = fields.filter((field) =>
+      !ORDER_ATTACHMENT_FIELDS.has(field) && !isProtectedOrderField(field) &&
+      !paymentFields.includes(field) && (/^Order\b/i.test(field) || field === "Product Required")
+    );
+    const linkedFields = fields.filter((field) =>
+      !ORDER_ATTACHMENT_FIELDS.has(field) && !isProtectedOrderField(field) &&
+      !paymentFields.includes(field) && !orderFields.includes(field)
+    );
+    return [
+      { title: "Order Details", fields: orderedFields(orderFields, ORDER_FIELD_ORDER) },
+      { title: "Account, Deal & Customer Details", fields: linkedFields.sort((a, b) => a.localeCompare(b)) },
+      { title: "Payment Details", fields: orderedFields(paymentFields, PAYMENT_FIELD_ORDER) },
+      { title: "System References", fields: protectedFields.sort((a, b) => a.localeCompare(b)), readOnly: true },
+      { title: "Attachments", fields: attachments, attachments: true },
+    ].filter((section) => section.fields.length || section.attachments);
+  }, [orderFormData]);
+
   if (loading) return <LoadingOverlay />;
 
   return (
@@ -539,6 +600,9 @@ function OrdersTable() {
                   <IconButton onClick={() => handleEditClick(order)} title="Edit / Update Order">
                     <EditIcon />
                   </IconButton>
+                  <IconButton onClick={() => handleAddToSalesTracker(order)} title="Add order to Sales Tracker">
+                    <PointOfSaleIcon />
+                  </IconButton>
                   <IconButton onClick={() => handleViewLogs(order)} title="View Logs">
                     <HistoryIcon />
                   </IconButton>
@@ -550,56 +614,55 @@ function OrdersTable() {
         </Box>
 
         {/* -------------------- EDIT / UPDATE ORDER MODAL -------------------- */}
-        <Dialog open={!!selectedRow} onClose={closeOrderEditor} maxWidth="md" fullWidth>
+        <Dialog
+          open={!!selectedRow}
+          onClose={(_, reason) => { if (reason !== "backdropClick") closeOrderEditor(); }}
+          maxWidth="lg"
+          fullWidth
+          disableEscapeKeyDown
+          disableAutoFocus
+        >
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Edit / Update Order
           </DialogTitle>
 
-          <DialogContent dividers>
-            {[
-              {
-                title: "Order Details",
-                fields: [
-                  "Order ID",
-                  "Product Required",
-                  "Order Amount",
-                  "Order Payment Terms",
-                  "Order Onsite Contact Name",
-                  "Order Onsite Contact Number",
-                  "Order Onsite Contact Role",
-                  "Order Delivery Date",
-                  "Order Remarks",
-                  "Order Update",
-                  "Attach Purchase Order",
-                  "Attach Drawing",
-                  "Attach BOQ",
-                  "Proforma Invoice",
-                ],
-              },
-              {
-                title: "Payment Details",
-                fields: ["Payment Status", "Payment Amount", "Payment Details", "Notification Status"],
-              },
-            ].map((section) => (
-              <Accordion key={section.title} defaultExpanded>
+          <DialogContent dividers sx={{ p: 2 }}>
+            {orderEditSections.map((section) => (
+              <Accordion
+                key={section.title}
+                defaultExpanded
+                disableGutters
+                elevation={0}
+                sx={{
+                  mb: 1.5,
+                  border: "1px solid #dbe3ef",
+                  borderRadius: "8px !important",
+                  overflow: "hidden",
+                  "&:before": { display: "none" },
+                  "&:last-of-type": { mb: 0 },
+                }}
+              >
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ backgroundColor: "#f0f4ff", fontFamily: "Montserrat, sans-serif" }}
+                  sx={{
+                    minHeight: 48,
+                    px: 2,
+                    backgroundColor: "#f0f4ff",
+                    fontFamily: "Montserrat, sans-serif",
+                    borderBottom: "1px solid #dbe3ef",
+                    "& .MuiAccordionSummary-content": { my: 1.25, alignItems: "center" },
+                  }}
                 >
                   <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
                     {section.title}
                   </Typography>
                 </AccordionSummary>
 
-                <AccordionDetails>
-                  <Grid container spacing={2}>
-                    {section.fields.map((field) => (
-                      <Grid item xs={6} key={field}>
-                        {["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"].includes(
-                          field
-                        ) ? (
-                          <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
-                        ) : field === "Order Amount" ? (
+                <AccordionDetails sx={{ p: 2 }}>
+                  <Grid container spacing={2} alignItems="flex-start">
+                    {!section.attachments && section.fields.map((field) => (
+                      <Grid item xs={12} md={6} key={field}>
+                        {field === "Order Amount" ? (
                           <Box>
                             <Typography sx={{ fontSize: 12, fontWeight: 600, mb: 0.75 }}>
                               Order Amount: ₹ {amountNumber(selectedRow?.[field]).toLocaleString("en-IN")}
@@ -629,7 +692,7 @@ function OrdersTable() {
                               />
                             ) : null}
                           </Box>
-                        ) : validationData[field] ? (
+                        ) : validationData[field] && !section.readOnly ? (
                           <FormControl fullWidth size="small">
                             <InputLabel>{field}</InputLabel>
                             <Select
@@ -637,7 +700,7 @@ function OrdersTable() {
                               value={orderFormData[field] || ""}
                               label={field}
                               onChange={handleFieldChange}
-                              disabled={field === "Order ID"}
+                              disabled={section.readOnly || isProtectedOrderField(field)}
                             >
                               {validationData[field].map((opt, idx) => (
                                 <MenuItem key={idx} value={opt}>
@@ -654,9 +717,11 @@ function OrdersTable() {
                             label={field}
                             value={orderFormData[field] || ""}
                             onChange={handleFieldChange}
-                            disabled={field === "Order ID"}
-                            type={field === "Order Delivery Date" ? "date" : "text"}
-                            InputLabelProps={field === "Order Delivery Date" ? { shrink: true } : undefined}
+                            disabled={section.readOnly || isProtectedOrderField(field)}
+                            type={orderInputType(field)}
+                            multiline={!section.readOnly && isLongOrderField(field)}
+                            minRows={!section.readOnly && isLongOrderField(field) ? 2 : undefined}
+                            InputLabelProps={orderInputType(field) === "date" ? { shrink: true } : undefined}
                           />
                         )}
                       </Grid>
@@ -664,9 +729,50 @@ function OrdersTable() {
                   </Grid>
 
                   {/* Attachments UI */}
-                  {section.title === "Order Details" && (
+                  {section.attachments && (
                     <>
-                      <Divider sx={{ my: 2 }} />
+                      {section.fields.length ? <Grid container spacing={2} sx={{ mb: 2 }}>
+                        {section.fields.map((field) => (
+                          <Grid item xs={12} md={6} key={field}>
+                            <Box sx={{
+                              minHeight: 58,
+                              px: 1.5,
+                              py: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 1.5,
+                              border: "1px solid #dbe3ef",
+                              borderRadius: 2,
+                              bgcolor: "#fff",
+                            }}>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 10, color: "#64748b" }}>
+                                  {field}
+                                </Typography>
+                                <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, fontWeight: 600, color: "#334155" }}>
+                                  {isUrl(orderFormData[field]) ? "File attached" : "No file attached"}
+                                </Typography>
+                              </Box>
+                              {isUrl(orderFormData[field]) ? (
+                                <Button
+                                  component="a"
+                                  href={orderFormData[field]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  variant="outlined"
+                                  size="small"
+                                  endIcon={<OpenInNewIcon fontSize="small" />}
+                                  sx={{ whiteSpace: "nowrap" }}
+                                >
+                                  Open
+                                </Button>
+                              ) : null}
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid> : null}
+                      <Divider sx={{ mb: 2 }} />
                       <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700, mb: 1 }}>
                         Attachments (upload new only if you want to replace)
                       </Typography>
@@ -683,7 +789,7 @@ function OrdersTable() {
                         ].map(([key, label]) => {
                           const file = orderFiles[key];
                           return (
-                            <Grid item xs={6} key={key}>
+                            <Grid item xs={12} md={6} key={key}>
                               <Button
                                 variant="outlined"
                                 component="label"
@@ -790,6 +896,12 @@ function OrdersTable() {
             <Button onClick={() => setLogsOpen(false)}>Close</Button>
           </DialogActions>
         </Dialog>
+        <OrderSaleDialog
+          open={Boolean(saleOrder)}
+          order={saleOrder}
+          user={user}
+          onClose={() => setSaleOrder(null)}
+        />
       </Box>
     </ThemeProvider>
   );

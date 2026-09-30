@@ -1,5 +1,5 @@
 // SalesTrackerTable.js
-import React, { useDeferredValue, useMemo, useState, useEffect } from 'react';
+import React, { useCallback, useDeferredValue, useMemo, useState, useEffect, useRef } from 'react';
 import {
   Box, Typography, Table, TableHead, TableRow, TableCell,
   TableBody, TextField, Select, MenuItem, InputLabel, FormControl,
@@ -14,6 +14,8 @@ import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { useAuth } from './AuthContext';
 import LoadingOverlay from './LoadingOverlay';
 import { CRM_TABLE_SX, parseCrmTimestamp } from '../utils/crmTableUtils';
+import { buildOrderSalePrefill, salesTrackerOrderLabel } from '../utils/salesTrackerPrefill';
+import { useLocation, useNavigate } from 'react-router-dom';
 import '@fontsource/montserrat';
 
 const SHEET_URL = '/api/sales-tracker';
@@ -83,16 +85,11 @@ function dealLabel(row = {}) {
   ]);
 }
 
-function orderLabel(row = {}) {
-  return joinLabel([
-    row['Order ID'],
-    row['Deal Name'] || row['Order Name'],
-    row['Company'],
-  ]);
-}
-
 const SalesTrackerTable = () => {
   const { user } = useAuth();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const routePrefillHandled = useRef(false);
   const [sales, setSales] = useState([]);
   const [filteredSales, setFilteredSales] = useState([]);
   const [columns, setColumns] = useState([]);
@@ -179,7 +176,7 @@ const SalesTrackerTable = () => {
   const entitySelectionOptions = useMemo(() => ({
     Account: unique(entityRecords.Account.map(accountLabel)),
     Deal: unique(entityRecords.Deal.map(dealLabel)),
-    Order: unique(entityRecords.Order.map(orderLabel)),
+    Order: unique(entityRecords.Order.map(salesTrackerOrderLabel)),
   }), [entityRecords]);
   const entityFieldColumn = useMemo(
     () => findColumn(columns, ENTITY_FIELD_ALIASES, ENTITY_FIELD_COLUMN),
@@ -253,17 +250,32 @@ const SalesTrackerTable = () => {
   const closeColumnSelector = () => setAnchorEl(null);
 
   // Add modal: prefill next S No and keep it read-only
-  const openAddModal = () => {
+  const openAddModal = useCallback((prefill = {}) => {
     const maxSno = sales.reduce((max, row) => Math.max(max, num(row['S.No'])), 0);
     setSelectedRow(null);
     setOriginalSNo(null);
 
     const initialForm = { 'S.No': String(maxSno + 1) };
     columns.forEach(field => { if (!(field in initialForm)) initialForm[field] = ''; });
+    Object.assign(initialForm, prefill);
 
     setFormData(initialForm);
     setModalOpen(true);
-  };
+  }, [columns, sales]);
+
+  useEffect(() => {
+    const routeState = location.state;
+    if (routePrefillHandled.current || !routeState?.openAddSale || routeState.sourceType !== 'Order' || !columns.length) return;
+    routePrefillHandled.current = true;
+    openAddModal(buildOrderSalePrefill({
+      order: routeState.sourceRow || {},
+      user,
+      columns,
+      entityFieldColumn,
+      entitySelectionColumn,
+    }));
+    navigate(location.pathname, { replace: true, state: null });
+  }, [columns, entityFieldColumn, entitySelectionColumn, location.pathname, location.state, navigate, openAddModal, user]);
 
   // Edit modal: edit current row, keep original S No for backend match
   const openEditModal = (row) => {
@@ -342,7 +354,7 @@ const SalesTrackerTable = () => {
           <Typography sx={{ fontWeight: 600, fontFamily: 'Montserrat, sans-serif', fontSize: '0.9rem', mb: 1 }}>
             Total Basic Value: ₹{sumBasicValue.toLocaleString('en-IN')}
           </Typography>
-          <Button variant="contained" color="primary" startIcon={<CurrencyRupee />} onClick={openAddModal} sx={fontStyle}>
+          <Button variant="contained" color="primary" startIcon={<CurrencyRupee />} onClick={() => openAddModal()} sx={fontStyle}>
             Add Sale
           </Button>
         </Box>
@@ -479,6 +491,9 @@ const SalesTrackerTable = () => {
                       sx={modalInputStyle}
                       MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
                     >
+                      {formData[entitySelectionColumn] && !entitySelectionOptions[clean(formData[entityFieldColumn])]?.includes(formData[entitySelectionColumn]) && (
+                        <MenuItem value={formData[entitySelectionColumn]} sx={modalInputStyle}>{formData[entitySelectionColumn]}</MenuItem>
+                      )}
                       {!entitySelectionOptions[clean(formData[entityFieldColumn])]?.length && (
                         <MenuItem value="" disabled sx={modalInputStyle}>
                           {clean(formData[entityFieldColumn])
@@ -554,6 +569,9 @@ const SalesTrackerTable = () => {
                           sx={modalInputStyle}
                           MenuProps={{ PaperProps: { sx: { fontFamily: 'Montserrat, sans-serif', fontSize: '0.7rem' } } }}
                         >
+                          {formData[field] && !validationOptions[field].includes(formData[field]) && (
+                            <MenuItem value={formData[field]} sx={modalInputStyle}>{formData[field]}</MenuItem>
+                          )}
                           {validationOptions[field].map(option => (
                             <MenuItem key={option} value={option} sx={modalInputStyle}>{option}</MenuItem>
                           ))}

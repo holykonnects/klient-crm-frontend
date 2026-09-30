@@ -99,6 +99,23 @@ export async function buildQuotationSetWorkbook(payload = {}) {
     if (index === 2) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
   });
 
+  const terms = Array.isArray(meta.termsAndConditions) ? meta.termsAndConditions.filter(Boolean) : [];
+  if (terms.length) {
+    sheet.addRow([]);
+    const heading = sheet.addRow([`Terms & Conditions: ${meta.tcType || "Selected terms"}`]);
+    sheet.mergeCells(heading.number, 1, heading.number, 7);
+    heading.font = { name: "Montserrat", bold: true, color: { argb: blue } };
+    heading.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+    terms.forEach((term, index) => {
+      const row = sheet.addRow([index + 1, term]);
+      sheet.mergeCells(row.number, 2, row.number, 7);
+      row.getCell(1).alignment = { horizontal: "center", vertical: "top" };
+      row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+      row.height = Math.max(28, Math.min(75, 18 + Math.ceil(String(term).length / 105) * 14));
+      row.eachCell((cell) => { cell.border = { top: border, left: border, bottom: border, right: border }; });
+    });
+  }
+
   sheet.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Montserrat", ...(cell.font || {}) }; }));
   sheet.pageSetup.printArea = `A1:G${sheet.rowCount}`;
   sheet.headerFooter.oddFooter = "Rido CRM quotation";
@@ -107,4 +124,3 @@ export async function buildQuotationSetWorkbook(payload = {}) {
     buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
   };
 }
-

@@ -246,6 +246,7 @@ export default function QuotationBuilder() {
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
   const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
+  const selectedTerms = catalog?.tcTerms?.[meta.tcType] || [];
 
   const handleAthleticPreset = (preset) => {
     const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
@@ -327,7 +328,7 @@ export default function QuotationBuilder() {
     quoteType,
     quoteId: activeQuoteId || undefined,
     engineVersion: QUOTATION_ENGINE_VERSION,
-    meta,
+    meta: { ...meta, termsAndConditions: selectedTerms },
     pricing,
     athletic: quoteType === 'athletic' ? athletic : undefined,
     setQuotation: quoteType === 'project-set' ? {
@@ -671,6 +672,9 @@ export default function QuotationBuilder() {
                     {tcOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </Select>
                 </FormControl>
+                <Typography sx={{ mt: 0.5, px: 0.5, fontSize: '0.68rem', color: selectedTerms.length ? '#64748b' : '#b45309' }}>
+                  {selectedTerms.length ? `${selectedTerms.length} ${meta.tcType} terms loaded` : `No ${meta.tcType} terms were found`}
+                </Typography>
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client GST Number" value={meta.clientGstNumber}
@@ -749,7 +753,7 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} sets={quotationSets} gstPct={setGstPct} />
+              <QuotationSheetPreview meta={meta} sets={quotationSets} gstPct={setGstPct} terms={selectedTerms} termsType={meta.tcType} />
             </Box>
           </Paper>}
 
@@ -758,7 +762,7 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} />
+              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} terms={selectedTerms} termsType={meta.tcType} />
             </Box>
           </Paper>}
 

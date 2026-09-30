@@ -41,6 +41,19 @@ const cell = {
   overflowWrap: 'anywhere',
 };
 
+function TermsPreview({ terms = [], termsType }) {
+  if (!terms.length) return null;
+  return <Box sx={{ borderTop: '1px solid #9aa9bc' }}>
+    <Box sx={{ ...cell, bgcolor: '#dce9f8', color: '#163f76', fontWeight: 800, fontSize: '0.78rem' }}>
+      Terms &amp; Conditions: {termsType || 'Selected terms'}
+    </Box>
+    {terms.map((term, index) => <Box key={`${index}-${term}`} sx={{ display: 'grid', gridTemplateColumns: '46px 1fr' }}>
+      <Box sx={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{index + 1}</Box>
+      <Box sx={{ ...cell, lineHeight: 1.5 }}>{term}</Box>
+    </Box>)}
+  </Box>;
+}
+
 function PreviewHeader({ meta }) {
   return <>
     <Box sx={{ display: 'grid', gridTemplateColumns: '170px 1fr 220px', borderBottom: '1px solid #9aa9bc' }}>
@@ -72,7 +85,7 @@ function PreviewHeader({ meta }) {
   </>;
 }
 
-function SetQuotationPreview({ meta, sets, gstPct }) {
+function SetQuotationPreview({ meta, sets, gstPct, terms, termsType }) {
   const totals = setQuoteTotals(sets, gstPct);
   let serial = 1;
   return (
@@ -120,13 +133,14 @@ function SetQuotationPreview({ meta, sets, gstPct }) {
             ))}
           </Box>
         </Box>
+        <TermsPreview terms={terms} termsType={termsType} />
       </Box>
     </Box>
   );
 }
 
-export default function QuotationSheetPreview({ meta, rows = [], totals, pricing, sets, gstPct }) {
-  if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} />;
+export default function QuotationSheetPreview({ meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType }) {
+  if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} terms={terms} termsType={termsType} />;
   const quoteRows = rows.filter((row) => row.category && row.subCategory && row.itemCode);
   const gst = totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst;
 
@@ -184,6 +198,7 @@ export default function QuotationSheetPreview({ meta, rows = [], totals, pricing
             ))}
           </Box>
         </Box>
+        <TermsPreview terms={terms} termsType={termsType} />
       </Box>
     </Box>
   );

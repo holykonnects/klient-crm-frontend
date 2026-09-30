@@ -19,7 +19,7 @@ import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
-import QuotationSheetPreview from './QuotationSheetPreview';
+import QuotationSheetPreview, { QuotationTermsPreview } from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
@@ -152,6 +152,7 @@ export default function QuotationBuilder() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [activeQuoteId, setActiveQuoteId] = useState('');
   const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [termsByType, setTermsByType] = useState({});
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -246,6 +247,29 @@ export default function QuotationBuilder() {
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
   const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
+  const sourceTerms = catalog?.tcTerms?.[meta.tcType] || [];
+  const selectedTerms = Object.prototype.hasOwnProperty.call(termsByType, meta.tcType)
+    ? termsByType[meta.tcType]
+    : sourceTerms;
+
+  const updateSelectedTerms = (updater) => {
+    setTermsByType(current => {
+      const base = Object.prototype.hasOwnProperty.call(current, meta.tcType)
+        ? current[meta.tcType]
+        : sourceTerms;
+      const next = typeof updater === 'function' ? updater([...base]) : updater;
+      return { ...current, [meta.tcType]: next };
+    });
+  };
+
+  const changeTerm = (index, value) => updateSelectedTerms(terms => terms.map((term, termIndex) => termIndex === index ? value : term));
+  const addTerm = () => updateSelectedTerms(terms => [...terms, '']);
+  const removeTerm = (index) => updateSelectedTerms(terms => terms.filter((_, termIndex) => termIndex !== index));
+  const resetTerms = () => setTermsByType(current => {
+    const next = { ...current };
+    delete next[meta.tcType];
+    return next;
+  });
 
   const handleAthleticPreset = (preset) => {
     const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
@@ -327,7 +351,7 @@ export default function QuotationBuilder() {
     quoteType,
     quoteId: activeQuoteId || undefined,
     engineVersion: QUOTATION_ENGINE_VERSION,
-    meta,
+    meta: { ...meta, termsAndConditions: selectedTerms.filter(term => htmlToPlainText(term)) },
     pricing,
     athletic: quoteType === 'athletic' ? athletic : undefined,
     setQuotation: quoteType === 'project-set' ? {
@@ -359,7 +383,7 @@ export default function QuotationBuilder() {
         imageUrl: r.imageUrl || undefined
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows, attachLead },
+    builderState: { rows, attachLead, termsByType },
   });
 
   const persistDrafts = (next) => {
@@ -426,14 +450,22 @@ export default function QuotationBuilder() {
       }
     }
     payload = payload || {};
+    const draftMeta = payload.meta || {};
     setQuoteType(payload.quoteType || 'standard');
-    setMeta(current => ({ ...current, ...(payload.meta || {}) }));
+    setMeta(current => ({ ...current, ...draftMeta }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
     setRows(payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }]);
     setAttachLead(payload.builderState?.attachLead || payload.attach?.leadDisplay || '');
+    if (payload.builderState?.termsByType) {
+      setTermsByType(payload.builderState.termsByType);
+    } else if (Array.isArray(draftMeta.termsAndConditions)) {
+      setTermsByType({ [draftMeta.tcType || 'Equipment']: draftMeta.termsAndConditions });
+    } else {
+      setTermsByType({});
+    }
     setActiveQuoteId(duplicate ? '' : record.quoteId);
     if (duplicate) setMeta(current => ({ ...current, quotationNo: '', quotationTitle: current.quotationTitle ? `${current.quotationTitle} copy` : '' }));
     setDraftsOpen(false);
@@ -671,6 +703,9 @@ export default function QuotationBuilder() {
                     {tcOptions.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
                   </Select>
                 </FormControl>
+                <Typography sx={{ mt: 0.5, px: 0.5, fontSize: '0.68rem', color: selectedTerms.length ? '#64748b' : '#b45309' }}>
+                  {selectedTerms.length ? `${selectedTerms.length} ${meta.tcType} terms loaded` : `No ${meta.tcType} terms were found`}
+                </Typography>
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client GST Number" value={meta.clientGstNumber}
@@ -749,7 +784,19 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} sets={quotationSets} gstPct={setGstPct} />
+              <QuotationSheetPreview
+                meta={meta}
+                sets={quotationSets}
+                gstPct={setGstPct}
+                terms={selectedTerms}
+                termsType={meta.tcType}
+                termTypes={tcOptions}
+                onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+                onTermChange={changeTerm}
+                onTermAdd={addTerm}
+                onTermRemove={removeTerm}
+                onTermsReset={resetTerms}
+              />
             </Box>
           </Paper>}
 
@@ -758,7 +805,20 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} />
+              <QuotationSheetPreview
+                meta={meta}
+                rows={rows}
+                totals={totals}
+                pricing={pricing}
+                terms={selectedTerms}
+                termsType={meta.tcType}
+                termTypes={tcOptions}
+                onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+                onTermChange={changeTerm}
+                onTermAdd={addTerm}
+                onTermRemove={removeTerm}
+                onTermsReset={resetTerms}
+              />
             </Box>
           </Paper>}
 
@@ -816,6 +876,22 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
+          {quoteType === 'athletic' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Terms &amp; Conditions</Typography>
+            </Box>
+            <QuotationTermsPreview
+              terms={selectedTerms}
+              termsType={meta.tcType}
+              termTypes={tcOptions}
+              onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+              onTermChange={changeTerm}
+              onTermAdd={addTerm}
+              onTermRemove={removeTerm}
+              onTermsReset={resetTerms}
+            />
+          </Paper>}
+
           {quoteType === 'standard' && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Box sx={{ px: 2, pt: 2 }}>
@@ -867,7 +943,7 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>

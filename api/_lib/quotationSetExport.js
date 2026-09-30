@@ -10,6 +10,22 @@ function fileName(value) {
     .trim();
 }
 
+function plainText(value) {
+  return String(value ?? "")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\s*li\b[^>]*>/gi, "• ")
+    .replace(/<\/(?:p|div|li)>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;|&apos;/gi, "'")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export async function buildQuotationSetWorkbook(payload = {}) {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
@@ -99,6 +115,23 @@ export async function buildQuotationSetWorkbook(payload = {}) {
     if (index === 2) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
   });
 
+  const terms = Array.isArray(meta.termsAndConditions) ? meta.termsAndConditions.map(plainText).filter(Boolean) : [];
+  if (terms.length) {
+    sheet.addRow([]);
+    const heading = sheet.addRow([`Terms & Conditions: ${meta.tcType || "Selected terms"}`]);
+    sheet.mergeCells(heading.number, 1, heading.number, 7);
+    heading.font = { name: "Montserrat", bold: true, color: { argb: blue } };
+    heading.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+    terms.forEach((term, index) => {
+      const row = sheet.addRow([index + 1, term]);
+      sheet.mergeCells(row.number, 2, row.number, 7);
+      row.getCell(1).alignment = { horizontal: "center", vertical: "top" };
+      row.getCell(2).alignment = { wrapText: true, vertical: "top" };
+      row.height = Math.max(28, Math.min(75, 18 + Math.ceil(String(term).length / 105) * 14));
+      row.eachCell((cell) => { cell.border = { top: border, left: border, bottom: border, right: border }; });
+    });
+  }
+
   sheet.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Montserrat", ...(cell.font || {}) }; }));
   sheet.pageSetup.printArea = `A1:G${sheet.rowCount}`;
   sheet.headerFooter.oddFooter = "Rido CRM quotation";
@@ -107,4 +140,3 @@ export async function buildQuotationSetWorkbook(payload = {}) {
     buffer: Buffer.from(await workbook.xlsx.writeBuffer()),
   };
 }
-

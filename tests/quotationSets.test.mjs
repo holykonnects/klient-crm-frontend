@@ -41,7 +41,10 @@ test("linked quantities scale with a set base while manual quantities remain fix
 test("set workbook export keeps quantity, unit price, and amount as the final columns", async () => {
   const template = templates.find((entry) => entry.id === "1-fifa-standard-futball-track");
   const output = await buildQuotationSetWorkbook({
-    meta: { quotationTitle: "GOI Mumbai Review", clientName: "Client", projectName: "Project" },
+    meta: {
+      quotationTitle: "GOI Mumbai Review", clientName: "Client", projectName: "Project",
+      tcType: "Flooring", termsAndConditions: ["<p><strong>Flooring term one</strong></p>", "Flooring term two"],
+    },
     setQuotation: { gstPct: 18, sets: resolvedSets(template) },
   });
   const workbook = new ExcelJS.Workbook();
@@ -51,6 +54,10 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   assert.deepEqual(header.slice(-3), ["Quantity", "Unit Price", "Amount"]);
   assert.equal(sheet.columnCount, 7);
   let grandTotalRow;
+  let termsHeadingRow;
   sheet.eachRow((row) => { if (row.getCell(1).value === "Grand Total") grandTotalRow = row; });
+  sheet.eachRow((row) => { if (row.getCell(1).value === "Terms & Conditions: Flooring") termsHeadingRow = row; });
   assert.ok(Number(grandTotalRow.getCell(7).value) > 0);
+  assert.ok(termsHeadingRow);
+  assert.equal(sheet.getRow(termsHeadingRow.number + 1).getCell(2).value, "Flooring term one");
 });

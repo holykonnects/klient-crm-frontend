@@ -37,7 +37,9 @@ import HistoryIcon from "@mui/icons-material/History";
 import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CloseIcon from "@mui/icons-material/Close";
+import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
+import { useNavigate } from "react-router-dom";
 import "@fontsource/montserrat";
 
 import LoadingOverlay from "./LoadingOverlay";
@@ -117,6 +119,7 @@ async function safeReadResponse(res) {
 }
 
 function OrdersTable() {
+  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -317,6 +320,12 @@ function OrdersTable() {
     setOrderAmountMode("keep");
     setOrderAmountAddition("");
     setOrderFiles({ purchaseOrder: null, drawing: null, boq: null, proforma: null });
+  };
+
+  const handleAddToSalesTracker = (order) => {
+    navigate("/sales-tracker", {
+      state: { openAddSale: true, sourceType: "Order", sourceRow: order },
+    });
   };
 
   // logs
@@ -591,6 +600,9 @@ function OrdersTable() {
                 <TableCell>
                   <IconButton onClick={() => handleEditClick(order)} title="Edit / Update Order">
                     <EditIcon />
+                  </IconButton>
+                  <IconButton onClick={() => handleAddToSalesTracker(order)} title="Add order to Sales Tracker">
+                    <PointOfSaleIcon />
                   </IconButton>
                   <IconButton onClick={() => handleViewLogs(order)} title="View Logs">
                     <HistoryIcon />

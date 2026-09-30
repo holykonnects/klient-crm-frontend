@@ -2,6 +2,7 @@ import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
+import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
@@ -61,9 +62,8 @@ async function getAdminTable(table, user) {
   const spreadsheetId = tableSpreadsheet(definition);
   const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
   const values = await getValues(spreadsheetId, sheetName);
-  const headers = values[0] || [];
-  const rows = rowsToObjects(values).map((row, index) => ({ ...row, __rowNumber: index + 2 }));
-  return { ok: true, table, sheetName, headers, readOnly: definition.readOnly, rows, engineVersion: QUOTATION_ENGINE_VERSION };
+  const parsed = parseQuotationAdminTable(values);
+  return { ok: true, table, sheetName, ...parsed, readOnly: definition.readOnly, engineVersion: QUOTATION_ENGINE_VERSION };
 }
 
 async function saveAdminRow(table, user, submitted) {
@@ -74,7 +74,8 @@ async function saveAdminRow(table, user, submitted) {
   const spreadsheetId = tableSpreadsheet(definition);
   const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
   const values = await getValues(spreadsheetId, sheetName);
-  const headers = values[0] || [];
+  const { headers } = parseQuotationAdminTable(values);
+  if (!headers.length) throw new Error(`No headers were found in quotation configuration sheet: ${sheetName}`);
   const editableHeaders = headers.filter((header) => header && !definition.readOnly.includes(header));
   const rowNumber = Number(submitted.__rowNumber) || 0;
 

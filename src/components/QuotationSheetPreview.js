@@ -76,7 +76,7 @@ function SetQuotationPreview({ meta, sets, gstPct }) {
   const totals = setQuoteTotals(sets, gstPct);
   let serial = 1;
   return (
-    <Box sx={{ border: '1px solid #9aa9bc', bgcolor: '#fff', overflowX: 'auto' }}>
+    <Box sx={{ border: '1px solid #9aa9bc', borderRadius: 2, bgcolor: '#fff', overflowX: 'auto', overflowY: 'hidden' }}>
       <Box sx={{ minWidth: 980, fontFamily: 'Montserrat, sans-serif' }}>
         <PreviewHeader meta={meta} />
         {sets.length ? sets.map((set, setIndex) => (
@@ -131,7 +131,7 @@ export default function QuotationSheetPreview({ meta, rows = [], totals, pricing
   const gst = totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst;
 
   return (
-    <Box sx={{ border: '1px solid #9aa9bc', bgcolor: '#fff', overflowX: 'auto' }}>
+    <Box sx={{ border: '1px solid #9aa9bc', borderRadius: 2, bgcolor: '#fff', overflowX: 'auto', overflowY: 'hidden' }}>
       <Box sx={{ minWidth: 980, fontFamily: 'Montserrat, sans-serif' }}>
         <PreviewHeader meta={meta} />
 

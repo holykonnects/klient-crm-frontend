@@ -94,7 +94,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
               <Tooltip title="Remove set"><IconButton size="small" onClick={() => removeSet(setIndex)}><DeleteOutline fontSize="small" /></IconButton></Tooltip>
             </Box>
           </Box>
-          <TableContainer sx={{ overflowX: 'auto' }}>
+          <TableContainer sx={{ m: 1.5, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
             <Table size="small" sx={{ minWidth: 1480, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
               <TableHead><TableRow>
                 <TableCell sx={{ width: 54 }}>S.No</TableCell><TableCell sx={{ width: 220 }}>Item</TableCell>
@@ -112,7 +112,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                     <TableCell>
                       <Box onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })} sx={{
                         position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
-                        border: '1px solid #cbd5e1', borderRadius: 1, bgcolor: '#fff', px: 1.25, py: 1,
+                        border: '1px solid #cbd5e1', borderRadius: 1.5, bgcolor: '#fff', px: 1.25, py: 1,
                         pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
                       }}>
                         <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

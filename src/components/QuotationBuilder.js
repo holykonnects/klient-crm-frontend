@@ -833,7 +833,7 @@ export default function QuotationBuilder() {
             {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
-            <TableContainer sx={{ overflowX: 'auto', borderTop: '1px solid #e2e8f0' }}>
+            <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
               <Table size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
@@ -858,7 +858,7 @@ export default function QuotationBuilder() {
                       <TableCell>
                         <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
                           position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
-                          border: '1px solid #cbd5e1', borderRadius: 1, bgcolor: '#fff', px: 1.25, py: 1,
+                          border: '1px solid #cbd5e1', borderRadius: 1.5, bgcolor: '#fff', px: 1.25, py: 1,
                           pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
                         }}>
                           <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: r.desc ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>

@@ -3,7 +3,8 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   Box, Grid, Typography, Button, TextField, IconButton,
   MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
-  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip
+  Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
+  Dialog, DialogActions, DialogContent, DialogTitle
 } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
@@ -13,6 +14,7 @@ import ExpandLess from '@mui/icons-material/ExpandLess';
 import FolderOpen from '@mui/icons-material/FolderOpen';
 import SaveOutlined from '@mui/icons-material/SaveOutlined';
 import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
+import EditOutlined from '@mui/icons-material/EditOutlined';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
@@ -149,6 +151,7 @@ export default function QuotationBuilder() {
   const [savedDrafts, setSavedDrafts] = useState([]);
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [activeQuoteId, setActiveQuoteId] = useState('');
+  const [descriptionEditor, setDescriptionEditor] = useState(null);
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -627,11 +630,11 @@ export default function QuotationBuilder() {
           <Paper sx={{ ...panelSx, mb: 2.5 }}>
             <Typography sx={sectionTitleSx}>Quote Details</Typography>
             <Grid container spacing={1.5}>
-              <Grid item xs={12} md={7}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Quote Title / File Name" value={meta.quotationTitle}
                   onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={5}>
+              <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" sx={fieldSx} error={Boolean(leadLookupError)}>
                   <InputLabel>Attach to Lead</InputLabel>
                   <Select value={attachLead} label="Attach to Lead" onChange={e => setAttachLead(e.target.value)} sx={selectSx}>
@@ -641,27 +644,27 @@ export default function QuotationBuilder() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client Name" value={meta.clientName}
                   onChange={e => setMeta(m => ({ ...m, clientName: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Project Name" value={meta.projectName}
                   onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={4}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Quotation No." value={meta.quotationNo}
                   onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" type="date" label="Date" InputLabelProps={{ shrink: true }}
                   value={meta.dateISO} onChange={e => setMeta(m => ({ ...m, dateISO: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Prepared By" value={meta.preparedBy}
                   onChange={e => setMeta(m => ({ ...m, preparedBy: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} md={6}>
                 <FormControl fullWidth size="small" sx={fieldSx}>
                   <InputLabel>Terms Type</InputLabel>
                   <Select value={meta.tcType} label="Terms Type" onChange={e => setMeta(m => ({ ...m, tcType: e.target.value }))} sx={selectSx}>
@@ -669,15 +672,24 @@ export default function QuotationBuilder() {
                   </Select>
                 </FormControl>
               </Grid>
-              <Grid item xs={12} md={3}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client GST Number" value={meta.clientGstNumber}
                   onChange={e => setMeta(m => ({ ...m, clientGstNumber: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={7}>
+              <Grid item xs={12} md={6}>
+                <FormControl fullWidth size="small" sx={fieldSx}>
+                  <InputLabel>PDF Layout</InputLabel>
+                  <Select value={meta.layout} label="PDF Layout" onChange={e => setMeta(m => ({ ...m, layout: e.target.value }))} sx={selectSx}>
+                    <MenuItem value="portrait">Portrait</MenuItem>
+                    <MenuItem value="landscape">Landscape</MenuItem>
+                  </Select>
+                </FormControl>
+              </Grid>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client Billing Address" value={meta.clientBillingAddress}
                   onChange={e => setMeta(m => ({ ...m, clientBillingAddress: e.target.value }))} sx={fieldSx} />
               </Grid>
-              <Grid item xs={12} md={5}>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Notes" value={meta.notes}
                   onChange={e => setMeta(m => ({ ...m, notes: e.target.value }))} sx={fieldSx} />
               </Grid>
@@ -731,6 +743,15 @@ export default function QuotationBuilder() {
               onDownloadExcel={exportSetExcel}
             />
           </Box>}
+
+          {quoteType === 'project-set' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
+            </Box>
+            <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
+              <QuotationSheetPreview meta={meta} sets={quotationSets} gstPct={setGstPct} />
+            </Box>
+          </Paper>}
 
           {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
             <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
@@ -813,11 +834,11 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ overflowX: 'auto', borderTop: '1px solid #e2e8f0' }}>
-              <Table size="small" sx={{ minWidth: 1320, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
+              <Table size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
-                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ minWidth: 270 }}>Description</TableCell>
+                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
@@ -834,7 +855,18 @@ export default function QuotationBuilder() {
                       <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
-                      <TableCell><QuotationRichTextEditor value={r.descHtml || plainTextToHtml(r.desc)} placeholder="Populated from Equipment BD" onChange={value => handleRowChange(i, 'descHtml', value)} /></TableCell>
+                      <TableCell>
+                        <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
+                          position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
+                          border: '1px solid #cbd5e1', borderRadius: 1, bgcolor: '#fff', px: 1.25, py: 1,
+                          pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
+                        }}>
+                          <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: r.desc ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                            {r.desc || 'Populated from Equipment BD'}
+                          </Typography>
+                          <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
+                        </Box>
+                      </TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
@@ -860,6 +892,19 @@ export default function QuotationBuilder() {
         onOpen={(draft) => openDraft(draft, false)}
         onDuplicate={(draft) => openDraft(draft, true)}
       />
+      <Dialog open={Boolean(descriptionEditor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setDescriptionEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
+        <DialogTitle>Format Description</DialogTitle>
+        <DialogContent dividers>
+          <QuotationRichTextEditor value={descriptionEditor?.value || ''} onChange={value => setDescriptionEditor(current => ({ ...current, value }))} />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDescriptionEditor(null)}>Cancel</Button>
+          <Button variant="contained" onClick={() => {
+            handleRowChange(descriptionEditor.rowIndex, 'descHtml', descriptionEditor.value);
+            setDescriptionEditor(null);
+          }}>Apply</Button>
+        </DialogActions>
+      </Dialog>
     </Box>
   );
 }

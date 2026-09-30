@@ -111,9 +111,9 @@ export default function QuotationAdmin({ user, onClose }) {
       {error && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{error}</Alert>}
       {loading ? <Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress size={26} /></Box> : <>
         <TableContainer sx={{ maxHeight: '62vh' }}><Table stickyHeader size="small" sx={{ minWidth: 900 }}>
-          <TableHead><TableRow><TableCell sx={{ width: 55 }}>Row</TableCell>{displayHeaders.map(header => <TableCell key={header} sx={{ minWidth: header.match(/description|notes|comment|equipment|flooring/i) ? 420 : 140, fontWeight: 800 }}>{header}</TableCell>)}<TableCell /></TableRow></TableHead>
+          <TableHead><TableRow>{displayHeaders.map(header => <TableCell key={header} sx={{ minWidth: header.match(/description|notes|comment|equipment|flooring/i) ? 420 : 140, fontWeight: 800 }}>{header}</TableCell>)}<TableCell /></TableRow></TableHead>
           <TableBody>{pageRows.map(row => <TableRow key={row.__rowNumber} hover>
-            <TableCell>{row.__rowNumber}</TableCell>{displayHeaders.map(header => <TableCell key={header} sx={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: 1.45 }}>{text(row[header])}</TableCell>)}
+            {displayHeaders.map(header => <TableCell key={header} sx={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: 1.45 }}>{text(row[header])}</TableCell>)}
             <TableCell><Button size="small" startIcon={<EditOutlined />} onClick={() => setEditing({ ...row })}>Edit</Button></TableCell>
           </TableRow>)}</TableBody>
         </Table></TableContainer>
@@ -122,7 +122,7 @@ export default function QuotationAdmin({ user, onClose }) {
     </Paper>
 
     <Dialog open={Boolean(editing)} onClose={() => !saving && setEditing(null)} fullWidth maxWidth="md">
-      <DialogTitle>{editing?.__rowNumber ? `Edit row ${editing.__rowNumber}` : `Add ${TABLES.find(item => item.key === table)?.label} row`}</DialogTitle>
+      <DialogTitle>{editing?.__rowNumber ? `Edit ${TABLES.find(item => item.key === table)?.label}` : `Add ${TABLES.find(item => item.key === table)?.label} row`}</DialogTitle>
       <DialogContent dividers><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pt: 1 }}>
         {editableHeaders.map(header => <TextField key={header} label={header} value={text(editing?.[header])} onChange={e => setEditing(current => ({ ...current, [header]: e.target.value }))} multiline={/description|notes|comment|terms|equipment|flooring/i.test(header)} minRows={/description|notes|comment|terms|equipment|flooring/i.test(header) ? 3 : 1} fullWidth />)}
       </Box></DialogContent>

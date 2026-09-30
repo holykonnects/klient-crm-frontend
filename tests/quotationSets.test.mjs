@@ -43,7 +43,7 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   const output = await buildQuotationSetWorkbook({
     meta: {
       quotationTitle: "GOI Mumbai Review", clientName: "Client", projectName: "Project",
-      tcType: "Flooring", termsAndConditions: ["Flooring term one", "Flooring term two"],
+      tcType: "Flooring", termsAndConditions: ["<p><strong>Flooring term one</strong></p>", "Flooring term two"],
     },
     setQuotation: { gstPct: 18, sets: resolvedSets(template) },
   });

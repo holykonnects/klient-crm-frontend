@@ -1,8 +1,10 @@
-import React from 'react';
-import { Box, Button, IconButton, MenuItem, Select, TextField, Tooltip, Typography } from '@mui/material';
+import React, { useState } from 'react';
+import { Box, Button, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Select, Tooltip, Typography } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import EditOutlined from '@mui/icons-material/EditOutlined';
 import RestartAlt from '@mui/icons-material/RestartAlt';
+import QuotationRichTextEditor from './QuotationRichTextEditor';
 import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
 
 function driveImageUrl(value) {
@@ -33,6 +35,14 @@ function safeRichHtml(value, fallback) {
     .replace(/<(\/?(?:p|br|strong|b|em|i|u|ul|ol|li))\b[^>]*>/gi, '<$1>');
 }
 
+function richEditorValue(value) {
+  const text = String(value || '');
+  if (/<\/?(?:p|br|strong|b|em|i|u|ul|ol|li)\b/i.test(text)) return text;
+  return text.split(/\r?\n/).map(line => `<p>${line.replace(/[&<>"']/g, character => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[character])) || '<br>'}</p>`).join('');
+}
+
 const cell = {
   borderRight: '1px solid #b8c4d4',
   borderBottom: '1px solid #b8c4d4',
@@ -54,6 +64,7 @@ function TermsPreview({
   onTermRemove,
   onTermsReset,
 }) {
+  const [editor, setEditor] = useState(null);
   return <Box sx={{ borderTop: '1px solid #9aa9bc' }}>
     <Box sx={{
       ...cell,
@@ -85,16 +96,21 @@ function TermsPreview({
     {terms.map((term, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '46px 1fr 42px', alignItems: 'stretch' }}>
       <Box sx={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{index + 1}</Box>
       <Box sx={{ ...cell, p: 0.5 }}>
-        <TextField
-          value={term}
-          onChange={event => onTermChange?.(index, event.target.value)}
-          multiline
-          minRows={2}
-          fullWidth
-          size="small"
-          aria-label={`Term ${index + 1}`}
-          sx={{ '& .MuiInputBase-root': { bgcolor: '#fff', fontSize: '0.72rem', lineHeight: 1.5 } }}
-        />
+        <Box
+          role="button"
+          tabIndex={0}
+          onClick={() => setEditor({ index, value: richEditorValue(term) })}
+          onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') setEditor({ index, value: richEditorValue(term) }); }}
+          sx={{
+            position: 'relative', minHeight: 58, cursor: 'text', border: '1px solid #cbd5e1',
+            borderRadius: 1, bgcolor: '#fff', px: 1, py: 0.75, pr: 4,
+            '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' },
+          }}
+        >
+          <Box className="quotation-preview-rich-text" sx={{ fontSize: '0.72rem', lineHeight: 1.5, color: term ? '#172033' : '#94a3b8' }}
+            dangerouslySetInnerHTML={{ __html: term ? safeRichHtml(term, term) : 'Add term text' }} />
+          <Tooltip title="Edit and format term"><IconButton size="small" sx={{ position: 'absolute', top: 4, right: 4 }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
+        </Box>
       </Box>
       <Box sx={{ ...cell, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.25 }}>
         <Tooltip title="Remove term">
@@ -105,8 +121,23 @@ function TermsPreview({
     {!terms.length && <Box sx={{ ...cell, py: 2, textAlign: 'center', color: '#64748b' }}>
       No {termsType || 'selected'} terms. Use Add term to create one for this quotation.
     </Box>}
+    <Dialog open={Boolean(editor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
+      <DialogTitle>Format Term &amp; Condition</DialogTitle>
+      <DialogContent dividers>
+        <QuotationRichTextEditor value={editor?.value || ''} onChange={value => setEditor(current => ({ ...current, value }))} placeholder="Enter the term or condition" />
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setEditor(null)}>Cancel</Button>
+        <Button variant="contained" onClick={() => {
+          onTermChange?.(editor.index, editor.value);
+          setEditor(null);
+        }}>Apply</Button>
+      </DialogActions>
+    </Dialog>
   </Box>;
 }
+
+export const QuotationTermsPreview = TermsPreview;
 
 function PreviewHeader({ meta }) {
   return <>

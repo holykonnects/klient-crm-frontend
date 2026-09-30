@@ -373,7 +373,7 @@ function buildSetQuotationAndExport_(payload) {
   sheet.getRange(row, 1, 1, 6).merge().setValue('Grand Total').setHorizontalAlignment('right').setFontWeight('bold').setBackground('#dce9f8');
   sheet.getRange(row, 7).setFormula(`=ROUND(G${subtotalRow}+G${row - 1},0)`).setFontWeight('bold').setBackground('#dce9f8');
 
-  const terms = Array.isArray(meta.termsAndConditions) ? meta.termsAndConditions.filter(function(term) { return String(term || '').trim(); }) : [];
+  const terms = richTermsFromMeta_(meta);
   if (terms.length) {
     row += 2;
     sheet.getRange(row, 1, 1, 7).merge().setValue(`Terms & Conditions: ${meta.tcType || 'Selected terms'}`)
@@ -381,8 +381,8 @@ function buildSetQuotationAndExport_(payload) {
     row += 1;
     terms.forEach(function(term, index) {
       sheet.getRange(row, 1).setValue(index + 1).setHorizontalAlignment('center');
-      sheet.getRange(row, 2, 1, 6).merge().setValue(term).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
-      sheet.setRowHeight(row, Math.max(32, Math.min(90, 22 + Math.ceil(String(term).length / 110) * 16)));
+      sheet.getRange(row, 2, 1, 6).merge().setRichTextValue(term.richText).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+      sheet.setRowHeight(row, Math.max(32, Math.min(90, 22 + Math.ceil(term.text.length / 110) * 16)));
       row += 1;
     });
     row -= 1;
@@ -445,9 +445,26 @@ function buildAthleticQuotationAndExport_(payload) {
     D27: athletic.paymentTerms || '50% advance; balance as agreed'
   };
   Object.keys(cells).forEach(function(a1) { estimator.getRange(a1).setValue(cells[a1]); });
+  const athleticTerms = richTermsFromMeta_(meta);
+  let printableLastRow = 49;
+  if (athleticTerms.length) {
+    const headingRow = 51;
+    printable.getRange(headingRow, 2, 1, 7).merge().setValue(`Terms & Conditions: ${meta.tcType || 'Selected terms'}`)
+      .setFontWeight('bold').setBackground('#dce9f8').setFontColor('#163f76');
+    athleticTerms.forEach(function(term, index) {
+      const termRow = headingRow + index + 1;
+      printable.getRange(termRow, 2).setValue(index + 1).setHorizontalAlignment('center');
+      printable.getRange(termRow, 3, 1, 6).merge().setRichTextValue(term.richText).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP);
+      printable.setRowHeight(termRow, Math.max(32, Math.min(90, 22 + Math.ceil(term.text.length / 110) * 16)));
+      printableLastRow = termRow;
+    });
+    printable.getRange(headingRow, 2, printableLastRow - headingRow + 1, 7)
+      .setFontFamily('Montserrat').setVerticalAlignment('top')
+      .setBorder(true, true, true, true, true, true, '#cbd5e1', SpreadsheetApp.BorderStyle.SOLID);
+  }
   SpreadsheetApp.flush();
 
-  const pdfFile = exportTemplateRegion_(printable, EXPORT_PDF_FOLDER_ID, meta.layout || 'portrait', 'B4:H49', copyName);
+  const pdfFile = exportTemplateRegion_(printable, EXPORT_PDF_FOLDER_ID, meta.layout || 'portrait', `B4:H${printableLastRow}`, copyName);
   try { pdfFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW); } catch (_) {}
   return {
     pdfFileId: pdfFile.getId(),
@@ -623,17 +640,14 @@ function applyTemplatePricing_(template, pricing) {
 function applyTemplateTerms_(template, meta) {
   const startRow = 80;
   const maxTerms = 20;
-  const terms = Array.isArray(meta.termsAndConditions)
-    ? meta.termsAndConditions.map(function(term) { return String(term || '').trim(); }).filter(Boolean).slice(0, maxTerms)
-    : [];
+  const terms = richTermsFromMeta_(meta, maxTerms);
   if (!terms.length) return;
-  const values = Array.from({ length: maxTerms }, function(_, index) {
-    return index < terms.length ? [index + 1, terms[index]] : ['', ''];
-  });
-  template.getRange(startRow, 5, maxTerms, 2).clearContent().setValues(values);
+  template.getRange(startRow, 5, maxTerms, 2).clearContent();
   template.getRange(startRow, 6, maxTerms, 1).setWrapStrategy(SpreadsheetApp.WrapStrategy.WRAP).setVerticalAlignment('top');
   terms.forEach(function(term, index) {
-    template.setRowHeight(startRow + index, Math.max(28, Math.min(76, 20 + Math.ceil(term.length / 120) * 14)));
+    template.getRange(startRow + index, 5).setValue(index + 1);
+    template.getRange(startRow + index, 6).setRichTextValue(term.richText);
+    template.setRowHeight(startRow + index, Math.max(28, Math.min(76, 20 + Math.ceil(term.text.length / 120) * 14)));
   });
 }
 
@@ -816,6 +830,15 @@ function richTextFromHtml_(html, fallback) {
     builder.setTextStyle(span.start, end, style);
   });
   return builder.build();
+}
+
+function richTermsFromMeta_(meta, limit) {
+  const values = Array.isArray(meta && meta.termsAndConditions) ? meta.termsAndConditions : [];
+  const maximum = Number(limit) > 0 ? Number(limit) : values.length;
+  return values.slice(0, maximum).map(function(value) {
+    const richText = richTextFromHtml_(value, String(value || ''));
+    return { richText: richText, text: richText.getText().trim() };
+  }).filter(function(term) { return term.text; });
 }
 
 function decodeHtmlText_(value) {

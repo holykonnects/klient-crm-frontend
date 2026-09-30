@@ -19,7 +19,7 @@ import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
-import QuotationSheetPreview from './QuotationSheetPreview';
+import QuotationSheetPreview, { QuotationTermsPreview } from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
@@ -351,7 +351,7 @@ export default function QuotationBuilder() {
     quoteType,
     quoteId: activeQuoteId || undefined,
     engineVersion: QUOTATION_ENGINE_VERSION,
-    meta: { ...meta, termsAndConditions: selectedTerms },
+    meta: { ...meta, termsAndConditions: selectedTerms.filter(term => htmlToPlainText(term)) },
     pricing,
     athletic: quoteType === 'athletic' ? athletic : undefined,
     setQuotation: quoteType === 'project-set' ? {
@@ -876,6 +876,22 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
+          {quoteType === 'athletic' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
+              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Terms &amp; Conditions</Typography>
+            </Box>
+            <QuotationTermsPreview
+              terms={selectedTerms}
+              termsType={meta.tcType}
+              termTypes={tcOptions}
+              onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+              onTermChange={changeTerm}
+              onTermAdd={addTerm}
+              onTermRemove={removeTerm}
+              onTermsReset={resetTerms}
+            />
+          </Paper>}
+
           {quoteType === 'standard' && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Box sx={{ px: 2, pt: 2 }}>
@@ -927,7 +943,7 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} inputProps={{ readOnly: true }} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>

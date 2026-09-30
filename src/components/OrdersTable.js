@@ -40,12 +40,12 @@ import CloseIcon from "@mui/icons-material/Close";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
-import { useNavigate } from "react-router-dom";
 import "@fontsource/montserrat";
 
 import LoadingOverlay from "./LoadingOverlay";
 import { useAuth } from "./AuthContext";
 import MobileActionMenu from "./MobileActionMenu";
+import OrderSaleDialog from "./OrderSaleDialog";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
 import {
   ORDER_ATTACHMENT_FIELD_BY_KEY,
@@ -120,7 +120,6 @@ async function safeReadResponse(res) {
 }
 
 function OrdersTable() {
-  const navigate = useNavigate();
   const [orders, setOrders] = useState([]);
   const [allOrders, setAllOrders] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -147,6 +146,7 @@ function OrdersTable() {
   const [orderAmountAddition, setOrderAmountAddition] = useState("");
   const [validationData, setValidationData] = useState({});
   const [saving, setSaving] = useState(false);
+  const [saleOrder, setSaleOrder] = useState(null);
 
   // logs modal
   const [logsOpen, setLogsOpen] = useState(false);
@@ -324,9 +324,7 @@ function OrdersTable() {
   };
 
   const handleAddToSalesTracker = (order) => {
-    navigate("/sales-tracker", {
-      state: { openAddSale: true, sourceType: "Order", sourceRow: order },
-    });
+    setSaleOrder(order);
   };
 
   // logs
@@ -898,6 +896,12 @@ function OrdersTable() {
             <Button onClick={() => setLogsOpen(false)}>Close</Button>
           </DialogActions>
         </Dialog>
+        <OrderSaleDialog
+          open={Boolean(saleOrder)}
+          order={saleOrder}
+          user={user}
+          onClose={() => setSaleOrder(null)}
+        />
       </Box>
     </ThemeProvider>
   );

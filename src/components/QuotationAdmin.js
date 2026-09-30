@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent,
-  DialogTitle, Paper, Table, TableBody, TableCell, TableContainer, TableHead,
-  TablePagination, TableRow, TextField, Typography
+  DialogTitle, FormControl, InputLabel, MenuItem, Paper, Select, Table, TableBody,
+  TableCell, TableContainer, TableHead, TablePagination, TableRow, TextField, Typography
 } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import EditOutlined from '@mui/icons-material/EditOutlined';
@@ -35,6 +35,7 @@ export default function QuotationAdmin({ user, onClose }) {
   const [rowsPerPage, setRowsPerPage] = useState(20);
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
+  const [termsType, setTermsType] = useState('Equipment');
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -47,12 +48,27 @@ export default function QuotationAdmin({ user, onClose }) {
 
   useEffect(() => { load(); }, [load]);
 
-  const editableHeaders = useMemo(() => data.headers.filter(header => header && !data.readOnly.includes(header)), [data]);
+  const termsTypes = useMemo(() => data.headers.filter(Boolean), [data.headers]);
+  useEffect(() => {
+    if (table === 'terms' && termsTypes.length && !termsTypes.includes(termsType)) setTermsType(termsTypes[0]);
+  }, [table, termsType, termsTypes]);
+
+  const displayHeaders = useMemo(
+    () => table === 'terms' ? data.headers.filter(header => header === termsType) : data.headers,
+    [data.headers, table, termsType]
+  );
+  const editableHeaders = useMemo(
+    () => displayHeaders.filter(header => header && !data.readOnly.includes(header)),
+    [data.readOnly, displayHeaders]
+  );
   const visibleRows = useMemo(() => {
     const needle = search.trim().toLowerCase();
-    if (!needle) return data.rows;
-    return data.rows.filter(row => data.headers.some(header => text(row[header]).toLowerCase().includes(needle)));
-  }, [data, search]);
+    const rows = table === 'terms'
+      ? data.rows.filter(row => text(row[termsType]).trim())
+      : data.rows;
+    if (!needle) return rows;
+    return rows.filter(row => displayHeaders.some(header => text(row[header]).toLowerCase().includes(needle)));
+  }, [data.rows, displayHeaders, search, table, termsType]);
   const pageRows = visibleRows.slice(page * rowsPerPage, page * rowsPerPage + rowsPerPage);
 
   const save = async () => {
@@ -82,15 +98,22 @@ export default function QuotationAdmin({ user, onClose }) {
       <Box sx={{ p: 2, display: 'flex', justifyContent: 'space-between', alignItems: { xs: 'stretch', sm: 'center' }, flexDirection: { xs: 'column', sm: 'row' }, gap: 1.5 }}>
         <Box><Typography fontWeight={800}>{TABLES.find(item => item.key === table)?.label}</Typography>
           <Typography variant="caption" color="text.secondary">{TABLES.find(item => item.key === table)?.description}</Typography></Box>
-        <Box sx={{ display: 'flex', gap: 1 }}><TextField size="small" label="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
+        <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+          {table === 'terms' && <FormControl size="small" sx={{ minWidth: 160, bgcolor: '#fff' }}>
+            <InputLabel>Terms Type</InputLabel>
+            <Select value={termsType} label="Terms Type" onChange={e => { setTermsType(e.target.value); setPage(0); }}>
+              {termsTypes.map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+            </Select>
+          </FormControl>}
+          <TextField size="small" label="Search" value={search} onChange={e => { setSearch(e.target.value); setPage(0); }} />
           <Button variant="contained" startIcon={<AddCircleOutline />} onClick={() => setEditing(Object.fromEntries(editableHeaders.map(header => [header, ''])))}>Add Row</Button></Box>
       </Box>
       {error && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{error}</Alert>}
       {loading ? <Box sx={{ p: 5, textAlign: 'center' }}><CircularProgress size={26} /></Box> : <>
         <TableContainer sx={{ maxHeight: '62vh' }}><Table stickyHeader size="small" sx={{ minWidth: 900 }}>
-          <TableHead><TableRow><TableCell sx={{ width: 55 }}>Row</TableCell>{data.headers.map(header => <TableCell key={header} sx={{ minWidth: header.match(/description|notes|comment/i) ? 300 : 140, fontWeight: 800 }}>{header}</TableCell>)}<TableCell /></TableRow></TableHead>
+          <TableHead><TableRow><TableCell sx={{ width: 55 }}>Row</TableCell>{displayHeaders.map(header => <TableCell key={header} sx={{ minWidth: header.match(/description|notes|comment|equipment|flooring/i) ? 420 : 140, fontWeight: 800 }}>{header}</TableCell>)}<TableCell /></TableRow></TableHead>
           <TableBody>{pageRows.map(row => <TableRow key={row.__rowNumber} hover>
-            <TableCell>{row.__rowNumber}</TableCell>{data.headers.map(header => <TableCell key={header} sx={{ maxWidth: 340, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{text(row[header])}</TableCell>)}
+            <TableCell>{row.__rowNumber}</TableCell>{displayHeaders.map(header => <TableCell key={header} sx={{ maxWidth: 720, whiteSpace: 'normal', lineHeight: 1.45 }}>{text(row[header])}</TableCell>)}
             <TableCell><Button size="small" startIcon={<EditOutlined />} onClick={() => setEditing({ ...row })}>Edit</Button></TableCell>
           </TableRow>)}</TableBody>
         </Table></TableContainer>

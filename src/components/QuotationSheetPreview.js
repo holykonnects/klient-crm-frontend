@@ -1,5 +1,8 @@
 import React from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Button, IconButton, MenuItem, Select, TextField, Tooltip, Typography } from '@mui/material';
+import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
+import DeleteOutline from '@mui/icons-material/DeleteOutline';
+import RestartAlt from '@mui/icons-material/RestartAlt';
 import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
 
 function driveImageUrl(value) {
@@ -41,16 +44,67 @@ const cell = {
   overflowWrap: 'anywhere',
 };
 
-function TermsPreview({ terms = [], termsType }) {
-  if (!terms.length) return null;
+function TermsPreview({
+  terms = [],
+  termsType,
+  termTypes = [],
+  onTermsTypeChange,
+  onTermChange,
+  onTermAdd,
+  onTermRemove,
+  onTermsReset,
+}) {
   return <Box sx={{ borderTop: '1px solid #9aa9bc' }}>
-    <Box sx={{ ...cell, bgcolor: '#dce9f8', color: '#163f76', fontWeight: 800, fontSize: '0.78rem' }}>
-      Terms &amp; Conditions: {termsType || 'Selected terms'}
+    <Box sx={{
+      ...cell,
+      bgcolor: '#dce9f8',
+      color: '#163f76',
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 1,
+      flexWrap: 'wrap',
+    }}>
+      <Typography sx={{ fontWeight: 800, fontSize: '0.78rem' }}>Terms &amp; Conditions</Typography>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <Select
+          size="small"
+          value={termsType || ''}
+          onChange={event => onTermsTypeChange?.(event.target.value)}
+          aria-label="Terms and conditions type"
+          sx={{ minWidth: 140, height: 32, bgcolor: '#fff', fontSize: '0.72rem' }}
+        >
+          {termTypes.map(type => <MenuItem key={type} value={type}>{type}</MenuItem>)}
+        </Select>
+        <Tooltip title="Restore master terms">
+          <span><IconButton size="small" onClick={onTermsReset} disabled={!onTermsReset} aria-label="Restore master terms"><RestartAlt fontSize="small" /></IconButton></span>
+        </Tooltip>
+        <Button size="small" startIcon={<AddCircleOutline />} onClick={onTermAdd} disabled={!onTermAdd}>Add term</Button>
+      </Box>
     </Box>
-    {terms.map((term, index) => <Box key={`${index}-${term}`} sx={{ display: 'grid', gridTemplateColumns: '46px 1fr' }}>
+    {terms.map((term, index) => <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '46px 1fr 42px', alignItems: 'stretch' }}>
       <Box sx={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{index + 1}</Box>
-      <Box sx={{ ...cell, lineHeight: 1.5 }}>{term}</Box>
+      <Box sx={{ ...cell, p: 0.5 }}>
+        <TextField
+          value={term}
+          onChange={event => onTermChange?.(index, event.target.value)}
+          multiline
+          minRows={2}
+          fullWidth
+          size="small"
+          aria-label={`Term ${index + 1}`}
+          sx={{ '& .MuiInputBase-root': { bgcolor: '#fff', fontSize: '0.72rem', lineHeight: 1.5 } }}
+        />
+      </Box>
+      <Box sx={{ ...cell, display: 'flex', alignItems: 'center', justifyContent: 'center', px: 0.25 }}>
+        <Tooltip title="Remove term">
+          <span><IconButton size="small" color="error" onClick={() => onTermRemove?.(index)} disabled={!onTermRemove} aria-label={`Remove term ${index + 1}`}><DeleteOutline fontSize="small" /></IconButton></span>
+        </Tooltip>
+      </Box>
     </Box>)}
+    {!terms.length && <Box sx={{ ...cell, py: 2, textAlign: 'center', color: '#64748b' }}>
+      No {termsType || 'selected'} terms. Use Add term to create one for this quotation.
+    </Box>}
   </Box>;
 }
 
@@ -85,7 +139,7 @@ function PreviewHeader({ meta }) {
   </>;
 }
 
-function SetQuotationPreview({ meta, sets, gstPct, terms, termsType }) {
+function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, onTermsTypeChange, onTermChange, onTermAdd, onTermRemove, onTermsReset }) {
   const totals = setQuoteTotals(sets, gstPct);
   let serial = 1;
   return (
@@ -133,14 +187,14 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType }) {
             ))}
           </Box>
         </Box>
-        <TermsPreview terms={terms} termsType={termsType} />
+        <TermsPreview terms={terms} termsType={termsType} termTypes={termTypes} onTermsTypeChange={onTermsTypeChange} onTermChange={onTermChange} onTermAdd={onTermAdd} onTermRemove={onTermRemove} onTermsReset={onTermsReset} />
       </Box>
     </Box>
   );
 }
 
-export default function QuotationSheetPreview({ meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType }) {
-  if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} terms={terms} termsType={termsType} />;
+export default function QuotationSheetPreview({ meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType, termTypes = [], onTermsTypeChange, onTermChange, onTermAdd, onTermRemove, onTermsReset }) {
+  if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} terms={terms} termsType={termsType} termTypes={termTypes} onTermsTypeChange={onTermsTypeChange} onTermChange={onTermChange} onTermAdd={onTermAdd} onTermRemove={onTermRemove} onTermsReset={onTermsReset} />;
   const quoteRows = rows.filter((row) => row.category && row.subCategory && row.itemCode);
   const gst = totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst;
 
@@ -198,7 +252,7 @@ export default function QuotationSheetPreview({ meta, rows = [], totals, pricing
             ))}
           </Box>
         </Box>
-        <TermsPreview terms={terms} termsType={termsType} />
+        <TermsPreview terms={terms} termsType={termsType} termTypes={termTypes} onTermsTypeChange={onTermsTypeChange} onTermChange={onTermChange} onTermAdd={onTermAdd} onTermRemove={onTermRemove} onTermsReset={onTermsReset} />
       </Box>
     </Box>
   );

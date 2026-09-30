@@ -152,6 +152,7 @@ export default function QuotationBuilder() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [activeQuoteId, setActiveQuoteId] = useState('');
   const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [termsByType, setTermsByType] = useState({});
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -246,7 +247,29 @@ export default function QuotationBuilder() {
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
   const itemsFor = (cat, sub) => (catalog?.items?.[`${cat}|||${sub}`]) || [];
   const tcOptions = catalog?.tcOptions?.length ? catalog.tcOptions : TC_FALLBACK_OPTIONS;
-  const selectedTerms = catalog?.tcTerms?.[meta.tcType] || [];
+  const sourceTerms = catalog?.tcTerms?.[meta.tcType] || [];
+  const selectedTerms = Object.prototype.hasOwnProperty.call(termsByType, meta.tcType)
+    ? termsByType[meta.tcType]
+    : sourceTerms;
+
+  const updateSelectedTerms = (updater) => {
+    setTermsByType(current => {
+      const base = Object.prototype.hasOwnProperty.call(current, meta.tcType)
+        ? current[meta.tcType]
+        : sourceTerms;
+      const next = typeof updater === 'function' ? updater([...base]) : updater;
+      return { ...current, [meta.tcType]: next };
+    });
+  };
+
+  const changeTerm = (index, value) => updateSelectedTerms(terms => terms.map((term, termIndex) => termIndex === index ? value : term));
+  const addTerm = () => updateSelectedTerms(terms => [...terms, '']);
+  const removeTerm = (index) => updateSelectedTerms(terms => terms.filter((_, termIndex) => termIndex !== index));
+  const resetTerms = () => setTermsByType(current => {
+    const next = { ...current };
+    delete next[meta.tcType];
+    return next;
+  });
 
   const handleAthleticPreset = (preset) => {
     const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
@@ -360,7 +383,7 @@ export default function QuotationBuilder() {
         imageUrl: r.imageUrl || undefined
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows, attachLead },
+    builderState: { rows, attachLead, termsByType },
   });
 
   const persistDrafts = (next) => {
@@ -427,14 +450,22 @@ export default function QuotationBuilder() {
       }
     }
     payload = payload || {};
+    const draftMeta = payload.meta || {};
     setQuoteType(payload.quoteType || 'standard');
-    setMeta(current => ({ ...current, ...(payload.meta || {}) }));
+    setMeta(current => ({ ...current, ...draftMeta }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
     setRows(payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }]);
     setAttachLead(payload.builderState?.attachLead || payload.attach?.leadDisplay || '');
+    if (payload.builderState?.termsByType) {
+      setTermsByType(payload.builderState.termsByType);
+    } else if (Array.isArray(draftMeta.termsAndConditions)) {
+      setTermsByType({ [draftMeta.tcType || 'Equipment']: draftMeta.termsAndConditions });
+    } else {
+      setTermsByType({});
+    }
     setActiveQuoteId(duplicate ? '' : record.quoteId);
     if (duplicate) setMeta(current => ({ ...current, quotationNo: '', quotationTitle: current.quotationTitle ? `${current.quotationTitle} copy` : '' }));
     setDraftsOpen(false);
@@ -753,7 +784,19 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} sets={quotationSets} gstPct={setGstPct} terms={selectedTerms} termsType={meta.tcType} />
+              <QuotationSheetPreview
+                meta={meta}
+                sets={quotationSets}
+                gstPct={setGstPct}
+                terms={selectedTerms}
+                termsType={meta.tcType}
+                termTypes={tcOptions}
+                onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+                onTermChange={changeTerm}
+                onTermAdd={addTerm}
+                onTermRemove={removeTerm}
+                onTermsReset={resetTerms}
+              />
             </Box>
           </Paper>}
 
@@ -762,7 +805,20 @@ export default function QuotationBuilder() {
               <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
             </Box>
             <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview meta={meta} rows={rows} totals={totals} pricing={pricing} terms={selectedTerms} termsType={meta.tcType} />
+              <QuotationSheetPreview
+                meta={meta}
+                rows={rows}
+                totals={totals}
+                pricing={pricing}
+                terms={selectedTerms}
+                termsType={meta.tcType}
+                termTypes={tcOptions}
+                onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+                onTermChange={changeTerm}
+                onTermAdd={addTerm}
+                onTermRemove={removeTerm}
+                onTermsReset={resetTerms}
+              />
             </Box>
           </Paper>}
 

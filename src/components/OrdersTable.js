@@ -38,6 +38,7 @@ import ViewColumnIcon from "@mui/icons-material/ViewColumn";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
 import CloseIcon from "@mui/icons-material/Close";
 import PointOfSaleIcon from "@mui/icons-material/PointOfSale";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import { useNavigate } from "react-router-dom";
 import "@fontsource/montserrat";
@@ -621,25 +622,46 @@ function OrdersTable() {
           maxWidth="lg"
           fullWidth
           disableEscapeKeyDown
+          disableAutoFocus
         >
           <DialogTitle sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
             Edit / Update Order
           </DialogTitle>
 
-          <DialogContent dividers>
+          <DialogContent dividers sx={{ p: 2 }}>
             {orderEditSections.map((section) => (
-              <Accordion key={section.title} defaultExpanded>
+              <Accordion
+                key={section.title}
+                defaultExpanded
+                disableGutters
+                elevation={0}
+                sx={{
+                  mb: 1.5,
+                  border: "1px solid #dbe3ef",
+                  borderRadius: "8px !important",
+                  overflow: "hidden",
+                  "&:before": { display: "none" },
+                  "&:last-of-type": { mb: 0 },
+                }}
+              >
                 <AccordionSummary
                   expandIcon={<ExpandMoreIcon />}
-                  sx={{ backgroundColor: "#f0f4ff", fontFamily: "Montserrat, sans-serif" }}
+                  sx={{
+                    minHeight: 48,
+                    px: 2,
+                    backgroundColor: "#f0f4ff",
+                    fontFamily: "Montserrat, sans-serif",
+                    borderBottom: "1px solid #dbe3ef",
+                    "& .MuiAccordionSummary-content": { my: 1.25, alignItems: "center" },
+                  }}
                 >
                   <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontWeight: 700 }}>
                     {section.title}
                   </Typography>
                 </AccordionSummary>
 
-                <AccordionDetails>
-                  <Grid container spacing={2}>
+                <AccordionDetails sx={{ p: 2 }}>
+                  <Grid container spacing={2} alignItems="flex-start">
                     {!section.attachments && section.fields.map((field) => (
                       <Grid item xs={12} md={6} key={field}>
                         {field === "Order Amount" ? (
@@ -714,7 +736,41 @@ function OrdersTable() {
                       {section.fields.length ? <Grid container spacing={2} sx={{ mb: 2 }}>
                         {section.fields.map((field) => (
                           <Grid item xs={12} md={6} key={field}>
-                            <TextField fullWidth size="small" label={field} value={orderFormData[field] || ""} disabled />
+                            <Box sx={{
+                              minHeight: 58,
+                              px: 1.5,
+                              py: 1,
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 1.5,
+                              border: "1px solid #dbe3ef",
+                              borderRadius: 2,
+                              bgcolor: "#fff",
+                            }}>
+                              <Box sx={{ minWidth: 0 }}>
+                                <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 10, color: "#64748b" }}>
+                                  {field}
+                                </Typography>
+                                <Typography sx={{ fontFamily: "Montserrat, sans-serif", fontSize: 11, fontWeight: 600, color: "#334155" }}>
+                                  {isUrl(orderFormData[field]) ? "File attached" : "No file attached"}
+                                </Typography>
+                              </Box>
+                              {isUrl(orderFormData[field]) ? (
+                                <Button
+                                  component="a"
+                                  href={orderFormData[field]}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  variant="outlined"
+                                  size="small"
+                                  endIcon={<OpenInNewIcon fontSize="small" />}
+                                  sx={{ whiteSpace: "nowrap" }}
+                                >
+                                  Open
+                                </Button>
+                              ) : null}
+                            </Box>
                           </Grid>
                         ))}
                       </Grid> : null}
@@ -735,7 +791,7 @@ function OrdersTable() {
                         ].map(([key, label]) => {
                           const file = orderFiles[key];
                           return (
-                            <Grid item xs={6} key={key}>
+                            <Grid item xs={12} md={6} key={key}>
                               <Button
                                 variant="outlined"
                                 component="label"

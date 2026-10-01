@@ -201,7 +201,7 @@ export default function QuotationBuilder() {
     preset: '400m - 8 lane benchmark', surfaceSystem: 'Full PUR System',
     areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
     trackEquipment: 'No', installation: 'Inclusive', lengthPerimeter: '', breadth: '',
-    laneWidth: 1.22, laneQuantity: '', manualArea: '', drainPerimeter: '',
+    laneWidth: 1.22, laneQuantity: '', manualArea: '', quotedSurfaceArea: '', drainPerimeter: '',
     gstPct: 18, discountPct: 0, freightAmount: 0, certificationAmount: 0,
     validityDays: 30, paymentTerms: '50% advance; balance as agreed'
   });
@@ -358,12 +358,16 @@ export default function QuotationBuilder() {
     return toNumber(athletic.lengthPerimeter) * toNumber(athletic.laneWidth) * toNumber(athletic.laneQuantity);
   }, [athletic, catalog]);
 
+  const quotedSurfaceArea = athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined
+    ? athleticArea
+    : toNumber(athletic.quotedSurfaceArea);
+
   const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
     catalog?.rateLibrary || [],
     athletic,
-    { area: athleticArea, perimeter: toNumber(athletic.drainPerimeter) || toNumber(athletic.lengthPerimeter) },
+    { area: quotedSurfaceArea, perimeter: toNumber(athletic.drainPerimeter) || toNumber(athletic.lengthPerimeter) },
     catalog || {}
-  ), [athletic, athleticArea, catalog]);
+  ), [athletic, catalog, quotedSurfaceArea]);
 
   useEffect(() => {
     if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
@@ -755,7 +759,7 @@ export default function QuotationBuilder() {
               <Box sx={{ px: 1.5, py: 0.7, bgcolor: '#0f172a', color: '#fff', borderRadius: 1.25 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(projectSetTotals.grand)}</Typography></Box>
             </> : <>
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{athletic.preset}</Typography>
-              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Area <strong style={{ color: '#0f172a' }}>{athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Quoted Area <strong style={{ color: '#0f172a' }}>{quotedSurfaceArea ? `${quotedSurfaceArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
             </>}
           </Box>
           <Button size="small" endIcon={summaryExpanded ? <ExpandLess /> : <ExpandMore />} onClick={() => setSummaryExpanded(value => !value)} sx={{ whiteSpace: 'nowrap' }}>
@@ -964,8 +968,10 @@ export default function QuotationBuilder() {
                   </Grid>
                 ))}
                 <Grid item xs={12} md={6}>
-                  <TextField fullWidth size="medium" label="Calculated Quoted Surface Area (sqm)" value={athleticArea ? athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
-                    helperText="Calculated from the selected preset and area method" inputProps={{ readOnly: true }} sx={fieldSx} />
+                  <TextField fullWidth size="medium" type="number" label="Calculated / Quoted Surface Area (sqm)" value={athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined ? athleticArea || '' : athletic.quotedSurfaceArea}
+                    onChange={e => setAthletic(current => ({ ...current, quotedSurfaceArea: e.target.value }))}
+                    helperText={athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined ? 'Auto-populated from the selected preset. Edit to override.' : `Manual override. Clear to restore calculated area${athleticArea ? ` (${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm)` : ''}.`}
+                    inputProps={{ min: 0, step: 'any' }} sx={fieldSx} />
                 </Grid>
                 <Grid item xs={12}>
                   <TextField fullWidth size="medium" label="Payment Terms" value={athletic.paymentTerms}
@@ -1006,7 +1012,7 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
+              <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
@@ -1022,21 +1028,21 @@ export default function QuotationBuilder() {
                     const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
                     const lineTotal = toNumber(r.qty) * lineRate;
                     return <TableRow key={i} hover>
-                      <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>{i + 1}</Box></TableCell>
                       <TableCell>{r.source === 'rate-library'
-                        ? <Typography sx={{ pt: 1.1, fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>{r.scope || 'Athletic'}</Typography>
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}><Typography sx={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>{r.scope || 'Athletic'}</Typography></Box>
                         : <FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl>}</TableCell>
                       <TableCell>{r.source === 'rate-library'
-                        ? <Typography sx={{ pt: 1.1, fontSize: '0.76rem', color: '#475569' }}>{r.system || 'ALL'}</Typography>
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}><Typography sx={{ fontSize: '0.76rem', color: '#475569' }}>{r.system || 'ALL'}</Typography></Box>
                         : <FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl>}</TableCell>
                       <TableCell>
                         {r.source === 'rate-library'
-                          ? <><Typography sx={{ pt: 0.7, fontSize: '0.76rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>
-                            {r.itemCode && <Typography sx={{ mt: 0.45, fontSize: '0.65rem', color: '#64748b' }}>Image reference: {r.itemCode}</Typography>}</>
+                          ? <Box sx={{ minHeight: 42, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><Typography sx={{ fontSize: '0.76rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>
+                            {r.itemCode && <Typography sx={{ mt: 0.45, fontSize: '0.65rem', color: '#64748b' }}>Image reference: {r.itemCode}</Typography>}</Box>
                           : <FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl>}
                       </TableCell>
                       <TableCell>{r.source === 'rate-library'
-                        ? <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>
                           <Tooltip title="Choose image reference"><IconButton size="small" onClick={() => openAthleticImageSelector(i, r)}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                           {r.imageUrl && <Tooltip title="Open mapped image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip>}
                         </Box>
@@ -1056,7 +1062,7 @@ export default function QuotationBuilder() {
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>
+                      <TableCell sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>₹{money(lineTotal)}</Box></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
                     </TableRow>;

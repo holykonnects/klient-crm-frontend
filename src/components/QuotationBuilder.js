@@ -26,7 +26,7 @@ import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
-import { buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
+import { applyAthleticImageMapping, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -211,6 +211,7 @@ export default function QuotationBuilder() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [activeQuoteId, setActiveQuoteId] = useState('');
   const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [imageSelector, setImageSelector] = useState(null);
   const [termsByType, setTermsByType] = useState({});
 
   const [leadOptions, setLeadOptions] = useState([]);
@@ -434,6 +435,30 @@ export default function QuotationBuilder() {
     setExcludedAthleticLibraryKeys([]);
     setManageAthleticDefaults(true);
     setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, []));
+  };
+
+  const openAthleticImageSelector = (rowIndex, row) => setImageSelector({
+    rowIndex,
+    category: row.category || '',
+    subCategory: row.subCategory || '',
+    itemCode: row.itemCode || '',
+  });
+
+  const updateImageSelector = (field, value) => setImageSelector(current => {
+    const next = { ...current, [field]: value };
+    if (field === 'category') {
+      next.subCategory = '';
+      next.itemCode = '';
+    }
+    if (field === 'subCategory') next.itemCode = '';
+    return next;
+  });
+
+  const applyAthleticImageSelection = () => {
+    setAthleticRows(current => current.map((row, index) => index === imageSelector.rowIndex
+      ? applyAthleticImageMapping(row, imageSelector, catalog || {})
+      : row));
+    setImageSelector(null);
   };
 
   const buildPayload = () => ({
@@ -983,9 +1008,9 @@ export default function QuotationBuilder() {
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
               <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
                 <TableHead><TableRow>
-                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
-                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
-                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
+                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
+                  <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
+                  <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
@@ -998,13 +1023,24 @@ export default function QuotationBuilder() {
                     const lineTotal = toNumber(r.qty) * lineRate;
                     return <TableRow key={i} hover>
                       <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl></TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Typography sx={{ pt: 1.1, fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>{r.scope || 'Athletic'}</Typography>
+                        : <FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl>}</TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Typography sx={{ pt: 1.1, fontSize: '0.76rem', color: '#475569' }}>{r.system || 'ALL'}</Typography>
+                        : <FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl>}</TableCell>
                       <TableCell>
-                        {r.libraryItem && <Typography sx={{ mb: 0.6, fontSize: '0.72rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>}
-                        <FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>{r.libraryItem ? 'Map image item' : 'Choose'}</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl>
+                        {r.source === 'rate-library'
+                          ? <><Typography sx={{ pt: 0.7, fontSize: '0.76rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>
+                            {r.itemCode && <Typography sx={{ mt: 0.45, fontSize: '0.65rem', color: '#64748b' }}>Image reference: {r.itemCode}</Typography>}</>
+                          : <FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl>}
                       </TableCell>
-                      <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          <Tooltip title="Choose image reference"><IconButton size="small" onClick={() => openAthleticImageSelector(i, r)}><EditOutlined fontSize="small" /></IconButton></Tooltip>
+                          {r.imageUrl && <Tooltip title="Open mapped image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip>}
+                        </Box>
+                        : r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
                       <TableCell>
                         <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
                           position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
@@ -1029,7 +1065,7 @@ export default function QuotationBuilder() {
               </Table>
             </TableContainer>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>Select Category, then Sub Category, then Item Code—matching the New Template sheet.</Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>{quoteType === 'athletic' ? 'Athletic scope and defaults remain controlled by the Rate Library. Image references are mapped separately.' : 'Select Category, then Sub Category, then Item Code—matching the New Template sheet.'}</Typography>
               <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(quoteType === 'athletic' ? athleticTotals.subTotal : totals.subTotal)}</Typography>
             </Box>
           </Paper>}
@@ -1070,6 +1106,22 @@ export default function QuotationBuilder() {
             handleRowChange(descriptionEditor.rowIndex, 'descHtml', descriptionEditor.value);
             setDescriptionEditor(null);
           }}>Apply</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(imageSelector)} onClose={(event, reason) => { if (reason !== 'backdropClick') setImageSelector(null); }} maxWidth="sm" fullWidth disableEscapeKeyDown>
+        <DialogTitle>Choose Athletic Item Image</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ mb: 2, fontSize: '0.78rem', color: '#64748b' }}>This mapping changes only the image reference. The athletic scope, system, description, quantity calculation, unit and rate remain unchanged.</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12}><FormControl fullWidth><InputLabel>Category</InputLabel><Select label="Category" value={imageSelector?.category || ''} onChange={event => updateImageSelector('category', event.target.value)}>{(catalog?.categories || []).map(category => <MenuItem key={category} value={category}>{category}</MenuItem>)}</Select></FormControl></Grid>
+            <Grid item xs={12}><FormControl fullWidth disabled={!imageSelector?.category}><InputLabel>Sub Category</InputLabel><Select label="Sub Category" value={imageSelector?.subCategory || ''} onChange={event => updateImageSelector('subCategory', event.target.value)}>{subCatsFor(imageSelector?.category).map(subCategory => <MenuItem key={subCategory} value={subCategory}>{subCategory}</MenuItem>)}</Select></FormControl></Grid>
+            <Grid item xs={12}><FormControl fullWidth disabled={!imageSelector?.subCategory}><InputLabel>Item Code / Image</InputLabel><Select label="Item Code / Image" value={imageSelector?.itemCode || ''} onChange={event => updateImageSelector('itemCode', event.target.value)}>{itemsFor(imageSelector?.category, imageSelector?.subCategory).map(item => <MenuItem key={item.code} value={item.code}>{item.name && item.name !== item.code ? `${item.code} — ${item.name}` : item.code}</MenuItem>)}</Select></FormControl></Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageSelector(null)}>Cancel</Button>
+          <Button variant="outlined" color="inherit" onClick={() => setImageSelector(current => ({ ...current, category: '', subCategory: '', itemCode: '' }))}>Clear Image</Button>
+          <Button variant="contained" onClick={applyAthleticImageSelection}>Apply Image</Button>
         </DialogActions>
       </Dialog>
     </Box>

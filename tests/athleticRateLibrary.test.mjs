@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+import { applyAthleticImageMapping, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
 
 test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('AREA', 0, { area: 7500 }), 7500);
@@ -43,4 +43,22 @@ test('library text refreshes unless the quotation has an explicit override', () 
   assert.equal(result.unit, 'RMT');
   assert.equal(result.desc, 'Quote-specific note');
   assert.equal(result.rate, 120);
+});
+
+test('image mapping cannot replace athletic scope or pricing details', () => {
+  const row = {
+    source: 'rate-library', libraryItem: 'Full PUR surface', scope: 'Surface', system: 'Full PUR System',
+    desc: 'Approved surface specification', unit: 'SQM', qty: 7200, rate: 2300,
+  };
+  const catalog = { items: { 'Track|||Surface': [{ code: 'PUR-IMAGE', imageUrl: 'https://example.com/pur.png' }] } };
+  const mapped = applyAthleticImageMapping(row, { category: 'Track', subCategory: 'Surface', itemCode: 'PUR-IMAGE' }, catalog);
+
+  assert.equal(mapped.imageUrl, 'https://example.com/pur.png');
+  assert.equal(mapped.libraryItem, row.libraryItem);
+  assert.equal(mapped.scope, row.scope);
+  assert.equal(mapped.system, row.system);
+  assert.equal(mapped.desc, row.desc);
+  assert.equal(mapped.unit, row.unit);
+  assert.equal(mapped.qty, row.qty);
+  assert.equal(mapped.rate, row.rate);
 });

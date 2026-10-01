@@ -98,3 +98,17 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
   });
   return [...defaults, ...existingRows.filter(row => row.source !== 'rate-library')];
 }
+
+export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) {
+  const category = clean(mapping.category);
+  const subCategory = clean(mapping.subCategory);
+  const itemCode = clean(mapping.itemCode);
+  const selectedItem = (catalog.items?.[`${category}|||${subCategory}`] || []).find(item => item.code === itemCode);
+  return {
+    ...row,
+    category,
+    subCategory,
+    itemCode,
+    imageUrl: selectedItem?.imageUrl || '',
+  };
+}

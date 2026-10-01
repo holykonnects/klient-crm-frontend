@@ -158,7 +158,15 @@ async function getAthleticCatalog() {
     clean(header),
     [...new Set(rows.map((row) => clean(row[columnIndex])).filter(Boolean))],
   ]).filter(([header]) => header));
-  return { ok: true, data: { presets, lists, ...(await getTermsCatalog()) } };
+  const equipmentCatalog = await getCatalog();
+  return {
+    ok: true,
+    data: {
+      ...equipmentCatalog.data,
+      presets,
+      lists,
+    },
+  };
 }
 
 async function getTermsCatalog() {

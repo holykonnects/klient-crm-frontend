@@ -276,7 +276,7 @@ function doPost(e){
 
       const payload = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
       const out = payload.quoteType === 'athletic'
-        ? buildAthleticQuotationAndExport_(payload)
+        ? ((payload.items || []).length ? buildQuotationAndExport_(payload) : buildAthleticQuotationAndExport_(payload))
         : payload.quoteType === 'project-set'
           ? buildSetQuotationAndExport_(payload)
           : buildQuotationAndExport_(payload);
@@ -502,7 +502,7 @@ function buildQuotationAndExport_(payload){
     );
   };
   const workingCopy = payload.quoteId
-    ? managedWorkingCopy_(`standard:${payload.quoteId}`, createWorkingCopy)
+    ? managedWorkingCopy_(`${payload.quoteType || 'standard'}:${payload.quoteId}`, createWorkingCopy)
     : createWorkingCopy();
   DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 

@@ -48,7 +48,12 @@ const sectionTitleSx = {
   letterSpacing: 0,
   mb: 1.5
 };
-const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring'];
+const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring', 'Athletic'];
+const DEFAULT_TERMS_BY_QUOTE_TYPE = {
+  standard: 'Equipment',
+  athletic: 'Athletic',
+  'project-set': 'Equipment',
+};
 const ITEM_TYPE_OPTIONS = ['Equipment', 'Non Equipment'];
 const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 
@@ -270,6 +275,14 @@ export default function QuotationBuilder() {
     delete next[meta.tcType];
     return next;
   });
+
+  const handleQuoteTypeChange = (nextQuoteType) => {
+    setQuoteType(nextQuoteType);
+    setMeta(current => ({
+      ...current,
+      tcType: DEFAULT_TERMS_BY_QUOTE_TYPE[nextQuoteType] || current.tcType || 'Equipment',
+    }));
+  };
 
   const handleAthleticPreset = (preset) => {
     const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
@@ -586,7 +599,7 @@ export default function QuotationBuilder() {
           <Tooltip title="Save a new quotation revision"><Button variant="outlined" startIcon={<SaveOutlined />} onClick={() => saveDraft()} sx={{ borderRadius: 1.5 }}>Save Draft</Button></Tooltip>
           <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
             <InputLabel>Quotation Type</InputLabel>
-            <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
+            <Select value={quoteType} label="Quotation Type" onChange={e => handleQuoteTypeChange(e.target.value)} sx={selectSx}>
               <MenuItem value="standard">Standard Sports / Equipment</MenuItem>
               <MenuItem value="athletic">Athletic Track / Automatic BOQ</MenuItem>
               <MenuItem value="project-set">Project BOQ / Multiple Sets</MenuItem>

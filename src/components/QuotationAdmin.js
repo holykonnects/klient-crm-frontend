@@ -10,7 +10,7 @@ import EditOutlined from '@mui/icons-material/EditOutlined';
 const API = '/api/quotations';
 const TABLES = [
   { key: 'equipment', label: 'Equipment BD', description: 'Standard quotation courts, items, prices, descriptions and images' },
-  { key: 'terms', label: 'Terms & Conditions', description: 'Equipment and flooring clause sets' },
+  { key: 'terms', label: 'Terms & Conditions', description: 'Equipment, flooring and athletic clause sets' },
   { key: 'rates', label: 'Athletic Rate Library', description: 'Scopes, systems, quantity drivers, factors and rates' },
   { key: 'presets', label: 'Athletic Presets', description: 'Benchmark geometry and surface areas' },
   { key: 'lists', label: 'Dropdown Lists', description: 'Athletic systems, methods, units and controlled values' },

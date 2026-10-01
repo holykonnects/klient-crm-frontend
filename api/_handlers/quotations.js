@@ -166,9 +166,9 @@ async function getTermsCatalog() {
     const sheetName = await resolveSheetTitle(SHEETS.quotations.referenceSpreadsheetId, SHEETS.quotations.termsSheetNames);
     const values = await getValues(SHEETS.quotations.referenceSpreadsheetId, sheetName, "A1:Z200");
     const result = buildTermsCatalog(values);
-    return result.tcOptions.length ? result : { tcOptions: ["Equipment", "Flooring"], tcTerms: {} };
+    return result.tcOptions.length ? result : { tcOptions: ["Equipment", "Flooring", "Athletic"], tcTerms: {} };
   } catch {
-    return { tcOptions: ["Equipment", "Flooring"], tcTerms: {} };
+    return { tcOptions: ["Equipment", "Flooring", "Athletic"], tcTerms: {} };
   }
 }
 

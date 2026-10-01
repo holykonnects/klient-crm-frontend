@@ -150,8 +150,12 @@ async function getAthleticCatalog() {
   const spreadsheetId = SHEETS.quotations.athleticSpreadsheetId;
   const presetsSheet = await resolveSheetTitle(spreadsheetId, ["Presets"]);
   const listsSheet = await resolveSheetTitle(spreadsheetId, ["Lists"]);
+  const ratesSheet = await resolveSheetTitle(spreadsheetId, ["Rate Library"]);
   const presets = rowsToObjects(await getValues(spreadsheetId, presetsSheet))
     .filter((row) => clean(row.Preset));
+  const rateLibrary = rowsToObjects(await getValues(spreadsheetId, ratesSheet))
+    .map((row, index) => ({ ...row, __rowNumber: index + 2 }))
+    .filter((row) => clean(row.Item));
   const listValues = await getValues(spreadsheetId, listsSheet);
   const [headers = [], ...rows] = listValues;
   const lists = Object.fromEntries(headers.map((header, columnIndex) => [
@@ -165,6 +169,7 @@ async function getAthleticCatalog() {
       ...equipmentCatalog.data,
       presets,
       lists,
+      rateLibrary,
     },
   };
 }

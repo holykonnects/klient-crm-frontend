@@ -58,6 +58,7 @@ export default function QuotationAdmin({ user, onClose }) {
   const [editing, setEditing] = useState(null);
   const [saving, setSaving] = useState(false);
   const [termsType, setTermsType] = useState('Equipment');
+  const [rateCatalog, setRateCatalog] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -69,6 +70,13 @@ export default function QuotationAdmin({ user, onClose }) {
   }, [table, user?.username]);
 
   useEffect(() => { load(); }, [load]);
+
+  useEffect(() => {
+    if (table !== 'rates') return;
+    jsonRequest(`${API}?action=getCatalog&type=athletic`)
+      .then(result => setRateCatalog(result.data || null))
+      .catch(() => setRateCatalog(null));
+  }, [table]);
 
   const termsTypes = useMemo(() => data.headers.filter(Boolean), [data.headers]);
   useEffect(() => {
@@ -103,6 +111,43 @@ export default function QuotationAdmin({ user, onClose }) {
       setEditing(null); await load();
     } catch (err) { setError(err.message); }
     finally { setSaving(false); }
+  };
+
+  const editorOptions = (header) => {
+    if (table !== 'rates') return null;
+    if (header === 'Include Default') return ['Yes', 'No'];
+    if (header === 'Scope') return ['Civil', 'Drainage', 'Surface', 'Equipment', 'Installation'];
+    if (header === 'System') return ['ALL', ...(rateCatalog?.lists?.['Track Systems'] || [])];
+    if (header === 'Qty Driver') return ['AREA', 'AREA_X_FACTOR', 'PERIMETER', 'PERIMETER_X_FACTOR', 'MANUAL'];
+    if (header === 'Category') return rateCatalog?.categories || [];
+    if (header === 'Sub Category') return rateCatalog?.subcategories?.[text(editing?.Category)] || [];
+    if (header === 'Item Code') {
+      const key = `${text(editing?.Category)}|||${text(editing?.['Sub Category'])}`;
+      return (rateCatalog?.items?.[key] || []).map(item => item.code);
+    }
+    return null;
+  };
+
+  const updateEditorField = (header, value) => setEditing(current => {
+    const next = { ...current, [header]: value };
+    if (header === 'Category') {
+      next['Sub Category'] = '';
+      next['Item Code'] = '';
+    }
+    if (header === 'Sub Category') next['Item Code'] = '';
+    return next;
+  });
+
+  const renderEditor = (header) => {
+    const options = editorOptions(header);
+    if (options) return <FormControl key={header} fullWidth>
+      <InputLabel>{header}</InputLabel>
+      <Select label={header} value={text(editing?.[header])} onChange={event => updateEditorField(header, event.target.value)}>
+        <MenuItem value=""><em>None</em></MenuItem>
+        {[...new Set([text(editing?.[header]), ...options].filter(Boolean))].map(option => <MenuItem key={option} value={option}>{option}</MenuItem>)}
+      </Select>
+    </FormControl>;
+    return <TextField key={header} label={header} value={text(editing?.[header])} onChange={event => updateEditorField(header, event.target.value)} multiline={/description|notes|comment|terms|equipment|flooring/i.test(header)} minRows={/description|notes|comment|terms|equipment|flooring/i.test(header) ? 3 : 1} fullWidth />;
   };
 
   return <Box sx={{ minHeight: '100vh', width: '100%', minWidth: 0, bgcolor: '#f6f8fb', p: { xs: 1.5, md: 3 } }}>
@@ -146,7 +191,7 @@ export default function QuotationAdmin({ user, onClose }) {
     <Dialog open={Boolean(editing)} onClose={() => !saving && setEditing(null)} fullWidth maxWidth="md">
       <DialogTitle>{editing?.__rowNumber ? `Edit ${TABLES.find(item => item.key === table)?.label}` : `Add ${TABLES.find(item => item.key === table)?.label} row`}</DialogTitle>
       <DialogContent dividers sx={{ maxHeight: '70vh', overflowY: 'auto' }}><Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, pt: 1 }}>
-        {editableHeaders.map(header => <TextField key={header} label={header} value={text(editing?.[header])} onChange={e => setEditing(current => ({ ...current, [header]: e.target.value }))} multiline={/description|notes|comment|terms|equipment|flooring/i.test(header)} minRows={/description|notes|comment|terms|equipment|flooring/i.test(header) ? 3 : 1} fullWidth />)}
+        {editableHeaders.map(renderEditor)}
       </Box></DialogContent>
       <DialogActions><Button onClick={() => setEditing(null)} disabled={saving}>Cancel</Button><Button variant="contained" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save'}</Button></DialogActions>
     </Dialog>

@@ -546,7 +546,7 @@ function buildQuotationAndExport_(payload){
     const img = it.imageUrl || (found && found.imageUrl ? found.imageUrl : '');
     const unit = it.unit || (found ? found.unit : '');
     const itemType = it.itemType || (found ? found.itemType : '') || 'Equipment';
-    const displayItem = `${it.category || ''} : ${it.subCategory || ''} : ${it.itemCode || ''}`;
+    const displayItem = it.displayItem || `${it.category || ''} : ${it.subCategory || ''} : ${it.itemCode || ''}`;
 
     return {
       row: ITEMS_START_ROW + index,

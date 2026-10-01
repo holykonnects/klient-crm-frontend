@@ -17,6 +17,7 @@ import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import ZoomIn from '@mui/icons-material/ZoomIn';
 import ZoomOut from '@mui/icons-material/ZoomOut';
+import RestartAlt from '@mui/icons-material/RestartAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
@@ -25,6 +26,7 @@ import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
+import { buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -171,7 +173,10 @@ export default function QuotationBuilder() {
   const [catalog, setCatalog] = useState(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
-  const [rows, setRows] = useState([{ ...emptyRow }]);
+  const [standardRows, setStandardRows] = useState([{ ...emptyRow }]);
+  const [athleticRows, setAthleticRows] = useState([]);
+  const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
+  const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
     dateISO: new Date().toISOString().slice(0, 10),
@@ -193,7 +198,7 @@ export default function QuotationBuilder() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [athletic, setAthletic] = useState({
-    preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
+    preset: '400m - 8 lane benchmark', surfaceSystem: 'Full PUR System',
     areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
     trackEquipment: 'No', installation: 'Inclusive', lengthPerimeter: '', breadth: '',
     laneWidth: 1.22, laneQuantity: '', manualArea: '', drainPerimeter: '',
@@ -211,6 +216,12 @@ export default function QuotationBuilder() {
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
   const [leadLookupError, setLeadLookupError] = useState('');
+
+  const rows = quoteType === 'athletic' ? athleticRows : standardRows;
+  const setRows = updater => {
+    const setter = quoteType === 'athletic' ? setAthleticRows : setStandardRows;
+    setter(current => typeof updater === 'function' ? updater(current) : updater);
+  };
 
   const canUseQuotation =
     user?.role === 'Admin' ||
@@ -308,6 +319,7 @@ export default function QuotationBuilder() {
 
   const handleQuoteTypeChange = (nextQuoteType) => {
     setQuoteType(nextQuoteType);
+    if (nextQuoteType === 'athletic' && !activeQuoteId) setManageAthleticDefaults(true);
     setMeta(current => ({
       ...current,
       tcType: DEFAULT_TERMS_BY_QUOTE_TYPE[nextQuoteType] || current.tcType || 'Equipment',
@@ -345,42 +357,66 @@ export default function QuotationBuilder() {
     return toNumber(athletic.lengthPerimeter) * toNumber(athletic.laneWidth) * toNumber(athletic.laneQuantity);
   }, [athletic, catalog]);
 
+  const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
+    catalog?.rateLibrary || [],
+    athletic,
+    { area: athleticArea, perimeter: toNumber(athletic.drainPerimeter) || toNumber(athletic.lengthPerimeter) },
+    catalog || {}
+  ), [athletic, athleticArea, catalog]);
+
+  useEffect(() => {
+    if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
+    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, excludedAthleticLibraryKeys));
+  }, [catalog?.rateLibrary, excludedAthleticLibraryKeys, generatedAthleticDefaults, manageAthleticDefaults, quoteType]);
+
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
       const next = [...prev];
       const row = { ...next[i], [field]: value };
+      const libraryRow = row.source === 'rate-library';
 
       if (field === 'category') {
         row.subCategory = ''; row.itemCode = '';
-        row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
+        row.imageUrl = '';
+        if (!libraryRow) {
+          row.unit = ''; row.rate = ''; row.rateOverride = '';
+          row.desc = ''; row.descHtml = '';
+        }
       }
       if (field === 'subCategory') {
         row.itemCode = '';
-        row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
+        row.imageUrl = '';
+        if (!libraryRow) {
+          row.unit = ''; row.rate = ''; row.rateOverride = '';
+          row.desc = ''; row.descHtml = '';
+        }
       }
       if (field === 'itemCode' && catalog) {
         const key = `${row.category}|||${row.subCategory}`;
         const pool = (catalog.items && catalog.items[key]) || [];
         const found = pool.find(p => p.code === value);
         if (found) {
-          row.unit = found.unit || '';
-          row.rate = toNumber(found.rate);
-          row.itemType = found.itemType || row.itemType || 'Equipment';
-          // Description from Equipment BD "Description" column
-          // fallback to "Category : Sub-Category : Item Code" if not present
-          row.desc = (found.desc && String(found.desc).trim())
-            ? found.desc
-            : `${row.category} : ${row.subCategory} : ${value}`;
-          row.descHtml = plainTextToHtml(row.desc);
+          if (!libraryRow) {
+            row.unit = found.unit || '';
+            row.rate = toNumber(found.rate);
+            row.itemType = found.itemType || row.itemType || 'Equipment';
+            row.desc = (found.desc && String(found.desc).trim())
+              ? found.desc
+              : `${row.category} : ${row.subCategory} : ${value}`;
+            row.descHtml = plainTextToHtml(row.desc);
+          }
           row.imageUrl = found.imageUrl || '';
-        } else {
+        } else if (!libraryRow) {
           row.unit = ''; row.rate = ''; row.desc = ''; row.descHtml = ''; row.imageUrl = '';
         }
       }
 
-      if (field === 'descHtml') row.desc = htmlToPlainText(value);
+      if (field === 'qty' && libraryRow) row.qtyEdited = true;
+      if (field === 'unit' && libraryRow) row.unitEdited = true;
+      if (field === 'descHtml') {
+        row.desc = htmlToPlainText(value);
+        if (libraryRow) row.descEdited = true;
+      }
 
       next[i] = row;
       return next;
@@ -388,7 +424,17 @@ export default function QuotationBuilder() {
   };
 
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
-  const removeRow = (i) => setRows(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  const removeRow = (i) => setRows(prev => {
+    const removed = prev[i];
+    if (removed?.libraryKey) setExcludedAthleticLibraryKeys(current => [...new Set([...current, removed.libraryKey])]);
+    return prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev;
+  });
+
+  const restoreAthleticDefaults = () => {
+    setExcludedAthleticLibraryKeys([]);
+    setManageAthleticDefaults(true);
+    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, []));
+  };
 
   const buildPayload = () => ({
     quoteType,
@@ -411,11 +457,15 @@ export default function QuotationBuilder() {
       }))
     } : undefined,
     items: rows
-      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && r.category && r.subCategory && r.itemCode)
+      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && (r.libraryItem || (r.category && r.subCategory && r.itemCode)))
       .map(r => ({
         category: r.category,
         subCategory: r.subCategory,
         itemCode: r.itemCode,
+        displayItem: r.libraryItem || '',
+        source: r.source || 'manual',
+        qtyDriver: r.qtyDriver || '',
+        factor: toNumber(r.factor),
         qty: toNumber(r.qty),
         unit: r.unit || '',
         itemType: r.itemType || 'Equipment',
@@ -426,7 +476,7 @@ export default function QuotationBuilder() {
         imageUrl: r.imageUrl || undefined
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows, attachLead, termsByType },
+    builderState: { rows, attachLead, termsByType, excludedAthleticLibraryKeys },
   });
 
   const persistDrafts = (next) => {
@@ -494,13 +544,21 @@ export default function QuotationBuilder() {
     }
     payload = payload || {};
     const draftMeta = payload.meta || {};
-    setQuoteType(payload.quoteType || 'standard');
+    const draftQuoteType = payload.quoteType || 'standard';
+    const draftRows = payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }];
+    setQuoteType(draftQuoteType);
     setMeta(current => ({ ...current, ...draftMeta }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
-    setRows(payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }]);
+    if (draftQuoteType === 'athletic') {
+      setAthleticRows(draftRows);
+      setExcludedAthleticLibraryKeys(payload.builderState?.excludedAthleticLibraryKeys || []);
+      setManageAthleticDefaults(false);
+    } else {
+      setStandardRows(draftRows);
+    }
     setAttachLead(payload.builderState?.attachLead || payload.attach?.leadDisplay || '');
     if (payload.builderState?.termsByType) {
       setTermsByType(payload.builderState.termsByType);
@@ -897,15 +955,28 @@ export default function QuotationBuilder() {
               <Box sx={{ px: 2, pt: 2 }}>
                 <Typography sx={{ ...sectionTitleSx, mb: 0 }}>{quoteType === 'athletic' ? 'Athletic Quotation Items' : 'Quotation Items'}</Typography>
                 <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: '#64748b' }}>
-                  Dropdowns and item details are supplied by Equipment BD.
+                  {quoteType === 'athletic'
+                    ? `${rows.filter(row => row.source === 'rate-library').length} enabled defaults from the Athletic Rate Library. Rates and calculations follow Administration; quotation overrides stay local.`
+                    : 'Dropdowns and item details are supplied by Equipment BD.'}
                 </Typography>
               </Box>
-              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5, mr: 2, mt: 2 }}>
-                Add Line
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.75, mr: 2, mt: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<RestartAlt />} onClick={restoreAthleticDefaults} sx={{ borderRadius: 1.5 }}>
+                  Reload Library Defaults
+                </Button>}
+                <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
+                  Add Line
+                </Button>
+              </Box>
             </Box>
             {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
             {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
+            {quoteType === 'athletic' && !catalogLoading && !catalogError && manageAthleticDefaults
+              && !generatedAthleticDefaults.some(row => String(row.scope).trim().toLowerCase() === 'surface') && (
+              <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>
+                No enabled Surface default is configured for {athletic.surfaceSystem}. Enable the required row in Quotation Administration or add the item manually.
+              </Alert>
+            )}
             {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
@@ -913,7 +984,7 @@ export default function QuotationBuilder() {
               <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
-                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
+                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
                   <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
@@ -929,7 +1000,10 @@ export default function QuotationBuilder() {
                       <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
+                      <TableCell>
+                        {r.libraryItem && <Typography sx={{ mb: 0.6, fontSize: '0.72rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>}
+                        <FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>{r.libraryItem ? 'Map image item' : 'Choose'}</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl>
+                      </TableCell>
                       <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
                       <TableCell>
                         <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
@@ -944,7 +1018,7 @@ export default function QuotationBuilder() {
                         </Box>
                       </TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>

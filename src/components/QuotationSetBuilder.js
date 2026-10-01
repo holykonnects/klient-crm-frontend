@@ -83,6 +83,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
 
       {!sets.length && <Box sx={{ p: 3, textAlign: 'center', color: '#64748b' }}>Add a standard or blank set to begin.</Box>}
 
+      <Box sx={{ maxHeight: 650, overflowY: 'auto', overscrollBehavior: 'contain', scrollbarGutter: 'stable' }}>
       {sets.map((set, setIndex) => (
         <Box key={set.id || setIndex} sx={{ borderBottom: '1px solid #cbd5e1', '&:last-of-type': { borderBottom: 0 } }}>
           <Box sx={{ px: 2, py: 1.25, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'minmax(260px, 1fr) 170px auto auto' }, gap: 1, alignItems: 'center', bgcolor: '#eef4fb' }}>
@@ -139,6 +140,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
           </Box>
         </Box>
       ))}
+      </Box>
 
       <Box sx={{ px: 2, py: 1.5, display: 'flex', justifyContent: 'flex-end', gap: 2, alignItems: 'center', bgcolor: '#f8fafc', borderTop: '1px solid #dbe3ef' }}>
         <Typography sx={{ fontSize: '0.82rem' }}>Subtotal <strong>₹{money(totals.subtotal)}</strong></Typography>

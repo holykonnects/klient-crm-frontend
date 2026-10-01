@@ -150,15 +150,28 @@ async function getAthleticCatalog() {
   const spreadsheetId = SHEETS.quotations.athleticSpreadsheetId;
   const presetsSheet = await resolveSheetTitle(spreadsheetId, ["Presets"]);
   const listsSheet = await resolveSheetTitle(spreadsheetId, ["Lists"]);
+  const ratesSheet = await resolveSheetTitle(spreadsheetId, ["Rate Library"]);
   const presets = rowsToObjects(await getValues(spreadsheetId, presetsSheet))
     .filter((row) => clean(row.Preset));
+  const rateLibrary = rowsToObjects(await getValues(spreadsheetId, ratesSheet))
+    .map((row, index) => ({ ...row, __rowNumber: index + 2 }))
+    .filter((row) => clean(row.Item));
   const listValues = await getValues(spreadsheetId, listsSheet);
   const [headers = [], ...rows] = listValues;
   const lists = Object.fromEntries(headers.map((header, columnIndex) => [
     clean(header),
     [...new Set(rows.map((row) => clean(row[columnIndex])).filter(Boolean))],
   ]).filter(([header]) => header));
-  return { ok: true, data: { presets, lists, ...(await getTermsCatalog()) } };
+  const equipmentCatalog = await getCatalog();
+  return {
+    ok: true,
+    data: {
+      ...equipmentCatalog.data,
+      presets,
+      lists,
+      rateLibrary,
+    },
+  };
 }
 
 async function getTermsCatalog() {
@@ -166,9 +179,9 @@ async function getTermsCatalog() {
     const sheetName = await resolveSheetTitle(SHEETS.quotations.referenceSpreadsheetId, SHEETS.quotations.termsSheetNames);
     const values = await getValues(SHEETS.quotations.referenceSpreadsheetId, sheetName, "A1:Z200");
     const result = buildTermsCatalog(values);
-    return result.tcOptions.length ? result : { tcOptions: ["Equipment", "Flooring"], tcTerms: {} };
+    return result.tcOptions.length ? result : { tcOptions: ["Equipment", "Flooring", "Athletic"], tcTerms: {} };
   } catch {
-    return { tcOptions: ["Equipment", "Flooring"], tcTerms: {} };
+    return { tcOptions: ["Equipment", "Flooring", "Athletic"], tcTerms: {} };
   }
 }
 

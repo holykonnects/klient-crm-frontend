@@ -15,14 +15,18 @@ import FolderOpen from '@mui/icons-material/FolderOpen';
 import SaveOutlined from '@mui/icons-material/SaveOutlined';
 import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import EditOutlined from '@mui/icons-material/EditOutlined';
+import ZoomIn from '@mui/icons-material/ZoomIn';
+import ZoomOut from '@mui/icons-material/ZoomOut';
+import RestartAlt from '@mui/icons-material/RestartAlt';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
-import QuotationSheetPreview, { QuotationTermsPreview } from './QuotationSheetPreview';
+import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
+import { applyAthleticImageMapping, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -48,7 +52,12 @@ const sectionTitleSx = {
   letterSpacing: 0,
   mb: 1.5
 };
-const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring'];
+const TC_FALLBACK_OPTIONS = ['Equipment', 'Flooring', 'Athletic'];
+const DEFAULT_TERMS_BY_QUOTE_TYPE = {
+  standard: 'Equipment',
+  athletic: 'Athletic',
+  'project-set': 'Equipment',
+};
 const ITEM_TYPE_OPTIONS = ['Equipment', 'Non Equipment'];
 const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 
@@ -110,6 +119,53 @@ function htmlToPlainText(value) {
   return (node.innerText || node.textContent || '').trim();
 }
 
+function calculateItemTotals(rows, pricing) {
+  let equipment = 0;
+  let nonEquipment = 0;
+  rows.forEach(row => {
+    const lineTotal = toNumber(row.qty) * toNumber(row.rateOverride !== '' ? row.rateOverride : row.rate);
+    if (row.itemType === 'Non Equipment') nonEquipment += lineTotal;
+    else equipment += lineTotal;
+  });
+  const freight = toNumber(pricing.freightAmount);
+  const installation = toNumber(pricing.installationAmount);
+  const equipmentDiscount = equipment * pctValue(pricing.equipmentDiscountPct);
+  const nonEquipmentDiscount = nonEquipment * pctValue(pricing.nonEquipmentDiscountPct);
+  const equipmentTaxable = Math.max(equipment - equipmentDiscount, 0);
+  const nonEquipmentTaxable = Math.max(nonEquipment - nonEquipmentDiscount, 0);
+  const freightInstall = freight + installation;
+  const equipmentGst = equipmentTaxable * pctValue(pricing.equipmentGstPct);
+  const nonEquipmentGst = nonEquipmentTaxable * pctValue(pricing.nonEquipmentGstPct);
+  const freightInstallGst = freightInstall * pctValue(pricing.freightInstallGstPct);
+  const grandRaw = equipmentTaxable + nonEquipmentTaxable + freightInstall + equipmentGst + nonEquipmentGst + freightInstallGst;
+  return {
+    equipment, nonEquipment, subTotal: equipment + nonEquipment, freight, installation,
+    equipmentDiscount, nonEquipmentDiscount, equipmentGst, nonEquipmentGst, freightInstallGst,
+    grand: Math.ceil(grandRaw),
+  };
+}
+
+function CompactPreviewFrame({ children }) {
+  const [zoom, setZoom] = useState(0.72);
+  const changeZoom = delta => setZoom(current => Math.min(1, Math.max(0.5, Number((current + delta).toFixed(2)))));
+  return <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
+    <Box sx={{ px: 2, py: 1.25, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+      <Box>
+        <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
+        <Typography sx={{ mt: 0.35, fontSize: '0.7rem', color: '#64748b' }}>Updates immediately from the quotation items above.</Typography>
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+        <Tooltip title="Zoom out"><span><IconButton size="small" disabled={zoom <= 0.5} onClick={() => changeZoom(-0.1)}><ZoomOut fontSize="small" /></IconButton></span></Tooltip>
+        <Button size="small" onClick={() => setZoom(0.72)} sx={{ minWidth: 58 }}>{Math.round(zoom * 100)}%</Button>
+        <Tooltip title="Zoom in"><span><IconButton size="small" disabled={zoom >= 1} onClick={() => changeZoom(0.1)}><ZoomIn fontSize="small" /></IconButton></span></Tooltip>
+      </Box>
+    </Box>
+    <Box sx={{ height: { xs: 430, md: 540 }, overflow: 'auto', bgcolor: '#e9eef5', p: { xs: 1, md: 2 }, scrollbarGutter: 'stable' }}>
+      <Box sx={{ zoom: String(zoom), width: `${100 / zoom}%` }}>{children}</Box>
+    </Box>
+  </Paper>;
+}
+
 export default function QuotationBuilder() {
   const { user } = useAuth();
 
@@ -117,7 +173,10 @@ export default function QuotationBuilder() {
   const [catalog, setCatalog] = useState(null);
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState('');
-  const [rows, setRows] = useState([{ ...emptyRow }]);
+  const [standardRows, setStandardRows] = useState([{ ...emptyRow }]);
+  const [athleticRows, setAthleticRows] = useState([]);
+  const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
+  const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
     clientName: '', projectName: '', quotationNo: '',
     dateISO: new Date().toISOString().slice(0, 10),
@@ -139,10 +198,10 @@ export default function QuotationBuilder() {
   const [adminOpen, setAdminOpen] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
   const [athletic, setAthletic] = useState({
-    preset: '400m - 8 lane benchmark', surfaceSystem: 'Sandwich System',
+    preset: '400m - 8 lane benchmark', surfaceSystem: 'Full PUR System',
     areaMethod: 'Preset benchmark area', civilWorks: 'Yes', drainageWorks: 'Yes',
     trackEquipment: 'No', installation: 'Inclusive', lengthPerimeter: '', breadth: '',
-    laneWidth: 1.22, laneQuantity: '', manualArea: '', drainPerimeter: '',
+    laneWidth: 1.22, laneQuantity: '', manualArea: '', quotedSurfaceArea: '', drainPerimeter: '',
     gstPct: 18, discountPct: 0, freightAmount: 0, certificationAmount: 0,
     validityDays: 30, paymentTerms: '50% advance; balance as agreed'
   });
@@ -152,11 +211,18 @@ export default function QuotationBuilder() {
   const [draftsOpen, setDraftsOpen] = useState(false);
   const [activeQuoteId, setActiveQuoteId] = useState('');
   const [descriptionEditor, setDescriptionEditor] = useState(null);
+  const [imageSelector, setImageSelector] = useState(null);
   const [termsByType, setTermsByType] = useState({});
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
   const [leadLookupError, setLeadLookupError] = useState('');
+
+  const rows = quoteType === 'athletic' ? athleticRows : standardRows;
+  const setRows = updater => {
+    const setter = quoteType === 'athletic' ? setAthleticRows : setStandardRows;
+    setter(current => typeof updater === 'function' ? updater(current) : updater);
+  };
 
   const canUseQuotation =
     user?.role === 'Admin' ||
@@ -212,36 +278,17 @@ export default function QuotationBuilder() {
       });
   }, [user?.username]);
 
-  const totals = useMemo(() => {
-    let equipment = 0;
-    let nonEquipment = 0;
-    rows.forEach(r => {
-      const qty = toNumber(r.qty);
-      const rate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
-      const lineTotal = qty * rate;
-      if (r.itemType === 'Non Equipment') nonEquipment += lineTotal;
-      else equipment += lineTotal;
-    });
-    const freight = toNumber(pricing.freightAmount);
-    const installation = toNumber(pricing.installationAmount);
-    const equipmentDiscount = equipment * pctValue(pricing.equipmentDiscountPct);
-    const nonEquipmentDiscount = nonEquipment * pctValue(pricing.nonEquipmentDiscountPct);
-    const equipmentTaxable = Math.max(equipment - equipmentDiscount, 0);
-    const nonEquipmentTaxable = Math.max(nonEquipment - nonEquipmentDiscount, 0);
-    const freightInstall = freight + installation;
-    const equipmentGst = equipmentTaxable * pctValue(pricing.equipmentGstPct);
-    const nonEquipmentGst = nonEquipmentTaxable * pctValue(pricing.nonEquipmentGstPct);
-    const freightInstallGst = freightInstall * pctValue(pricing.freightInstallGstPct);
-    const grandRaw = equipmentTaxable + nonEquipmentTaxable + freightInstall + equipmentGst + nonEquipmentGst + freightInstallGst;
-    return {
-      equipment, nonEquipment,
-      subTotal: equipment + nonEquipment,
-      freight, installation,
-      equipmentDiscount, nonEquipmentDiscount,
-      equipmentGst, nonEquipmentGst, freightInstallGst,
-      grand: Math.ceil(grandRaw)
-    };
-  }, [rows, pricing]);
+  const totals = useMemo(() => calculateItemTotals(rows, pricing), [rows, pricing]);
+  const athleticPricing = useMemo(() => ({
+    freightAmount: athletic.freightAmount,
+    installationAmount: athletic.certificationAmount,
+    nonEquipmentDiscountPct: athletic.discountPct,
+    equipmentDiscountPct: athletic.discountPct,
+    nonEquipmentGstPct: athletic.gstPct,
+    equipmentGstPct: athletic.gstPct,
+    freightInstallGstPct: athletic.gstPct,
+  }), [athletic]);
+  const athleticTotals = useMemo(() => calculateItemTotals(rows, athleticPricing), [rows, athleticPricing]);
   const projectSetTotals = useMemo(() => setQuoteTotals(quotationSets, setGstPct), [quotationSets, setGstPct]);
 
   const subCatsFor = (cat) => catalog?.subcategories?.[cat] || [];
@@ -270,6 +317,15 @@ export default function QuotationBuilder() {
     delete next[meta.tcType];
     return next;
   });
+
+  const handleQuoteTypeChange = (nextQuoteType) => {
+    setQuoteType(nextQuoteType);
+    if (nextQuoteType === 'athletic' && !activeQuoteId) setManageAthleticDefaults(true);
+    setMeta(current => ({
+      ...current,
+      tcType: DEFAULT_TERMS_BY_QUOTE_TYPE[nextQuoteType] || current.tcType || 'Equipment',
+    }));
+  };
 
   const handleAthleticPreset = (preset) => {
     const record = (catalog?.presets || []).find(row => String(row.Preset || '').trim() === preset);
@@ -302,42 +358,70 @@ export default function QuotationBuilder() {
     return toNumber(athletic.lengthPerimeter) * toNumber(athletic.laneWidth) * toNumber(athletic.laneQuantity);
   }, [athletic, catalog]);
 
+  const quotedSurfaceArea = athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined
+    ? athleticArea
+    : toNumber(athletic.quotedSurfaceArea);
+
+  const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
+    catalog?.rateLibrary || [],
+    athletic,
+    { area: quotedSurfaceArea, perimeter: toNumber(athletic.drainPerimeter) || toNumber(athletic.lengthPerimeter) },
+    catalog || {}
+  ), [athletic, catalog, quotedSurfaceArea]);
+
+  useEffect(() => {
+    if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
+    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, excludedAthleticLibraryKeys));
+  }, [catalog?.rateLibrary, excludedAthleticLibraryKeys, generatedAthleticDefaults, manageAthleticDefaults, quoteType]);
+
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
       const next = [...prev];
       const row = { ...next[i], [field]: value };
+      const libraryRow = row.source === 'rate-library';
 
       if (field === 'category') {
         row.subCategory = ''; row.itemCode = '';
-        row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
+        row.imageUrl = '';
+        if (!libraryRow) {
+          row.unit = ''; row.rate = ''; row.rateOverride = '';
+          row.desc = ''; row.descHtml = '';
+        }
       }
       if (field === 'subCategory') {
         row.itemCode = '';
-        row.unit = ''; row.rate = ''; row.rateOverride = '';
-        row.desc = ''; row.descHtml = ''; row.imageUrl = '';
+        row.imageUrl = '';
+        if (!libraryRow) {
+          row.unit = ''; row.rate = ''; row.rateOverride = '';
+          row.desc = ''; row.descHtml = '';
+        }
       }
       if (field === 'itemCode' && catalog) {
         const key = `${row.category}|||${row.subCategory}`;
         const pool = (catalog.items && catalog.items[key]) || [];
         const found = pool.find(p => p.code === value);
         if (found) {
-          row.unit = found.unit || '';
-          row.rate = toNumber(found.rate);
-          row.itemType = found.itemType || row.itemType || 'Equipment';
-          // Description from Equipment BD "Description" column
-          // fallback to "Category : Sub-Category : Item Code" if not present
-          row.desc = (found.desc && String(found.desc).trim())
-            ? found.desc
-            : `${row.category} : ${row.subCategory} : ${value}`;
-          row.descHtml = plainTextToHtml(row.desc);
+          if (!libraryRow) {
+            row.unit = found.unit || '';
+            row.rate = toNumber(found.rate);
+            row.itemType = found.itemType || row.itemType || 'Equipment';
+            row.desc = (found.desc && String(found.desc).trim())
+              ? found.desc
+              : `${row.category} : ${row.subCategory} : ${value}`;
+            row.descHtml = plainTextToHtml(row.desc);
+          }
           row.imageUrl = found.imageUrl || '';
-        } else {
+        } else if (!libraryRow) {
           row.unit = ''; row.rate = ''; row.desc = ''; row.descHtml = ''; row.imageUrl = '';
         }
       }
 
-      if (field === 'descHtml') row.desc = htmlToPlainText(value);
+      if (field === 'qty' && libraryRow) row.qtyEdited = true;
+      if (field === 'unit' && libraryRow) row.unitEdited = true;
+      if (field === 'descHtml') {
+        row.desc = htmlToPlainText(value);
+        if (libraryRow) row.descEdited = true;
+      }
 
       next[i] = row;
       return next;
@@ -345,14 +429,48 @@ export default function QuotationBuilder() {
   };
 
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
-  const removeRow = (i) => setRows(prev => (prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev));
+  const removeRow = (i) => setRows(prev => {
+    const removed = prev[i];
+    if (removed?.libraryKey) setExcludedAthleticLibraryKeys(current => [...new Set([...current, removed.libraryKey])]);
+    return prev.length > 1 ? prev.filter((_, idx) => idx !== i) : prev;
+  });
+
+  const restoreAthleticDefaults = () => {
+    setExcludedAthleticLibraryKeys([]);
+    setManageAthleticDefaults(true);
+    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, []));
+  };
+
+  const openAthleticImageSelector = (rowIndex, row) => setImageSelector({
+    rowIndex,
+    category: row.category || '',
+    subCategory: row.subCategory || '',
+    itemCode: row.itemCode || '',
+  });
+
+  const updateImageSelector = (field, value) => setImageSelector(current => {
+    const next = { ...current, [field]: value };
+    if (field === 'category') {
+      next.subCategory = '';
+      next.itemCode = '';
+    }
+    if (field === 'subCategory') next.itemCode = '';
+    return next;
+  });
+
+  const applyAthleticImageSelection = () => {
+    setAthleticRows(current => current.map((row, index) => index === imageSelector.rowIndex
+      ? applyAthleticImageMapping(row, imageSelector, catalog || {})
+      : row));
+    setImageSelector(null);
+  };
 
   const buildPayload = () => ({
     quoteType,
     quoteId: activeQuoteId || undefined,
     engineVersion: QUOTATION_ENGINE_VERSION,
     meta: { ...meta, termsAndConditions: selectedTerms.filter(term => htmlToPlainText(term)) },
-    pricing,
+    pricing: quoteType === 'athletic' ? athleticPricing : pricing,
     athletic: quoteType === 'athletic' ? athletic : undefined,
     setQuotation: quoteType === 'project-set' ? {
       gstPct: toNumber(setGstPct),
@@ -368,11 +486,15 @@ export default function QuotationBuilder() {
       }))
     } : undefined,
     items: rows
-      .filter(r => quoteType === 'standard' && r.category && r.subCategory && r.itemCode)
+      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && (r.libraryItem || (r.category && r.subCategory && r.itemCode)))
       .map(r => ({
         category: r.category,
         subCategory: r.subCategory,
         itemCode: r.itemCode,
+        displayItem: r.libraryItem || '',
+        source: r.source || 'manual',
+        qtyDriver: r.qtyDriver || '',
+        factor: toNumber(r.factor),
         qty: toNumber(r.qty),
         unit: r.unit || '',
         itemType: r.itemType || 'Equipment',
@@ -383,7 +505,7 @@ export default function QuotationBuilder() {
         imageUrl: r.imageUrl || undefined
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows, attachLead, termsByType },
+    builderState: { rows, attachLead, termsByType, excludedAthleticLibraryKeys },
   });
 
   const persistDrafts = (next) => {
@@ -451,13 +573,21 @@ export default function QuotationBuilder() {
     }
     payload = payload || {};
     const draftMeta = payload.meta || {};
-    setQuoteType(payload.quoteType || 'standard');
+    const draftQuoteType = payload.quoteType || 'standard';
+    const draftRows = payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }];
+    setQuoteType(draftQuoteType);
     setMeta(current => ({ ...current, ...draftMeta }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
-    setRows(payload.builderState?.rows?.length ? payload.builderState.rows : [{ ...emptyRow }]);
+    if (draftQuoteType === 'athletic') {
+      setAthleticRows(draftRows);
+      setExcludedAthleticLibraryKeys(payload.builderState?.excludedAthleticLibraryKeys || []);
+      setManageAthleticDefaults(false);
+    } else {
+      setStandardRows(draftRows);
+    }
     setAttachLead(payload.builderState?.attachLead || payload.attach?.leadDisplay || '');
     if (payload.builderState?.termsByType) {
       setTermsByType(payload.builderState.termsByType);
@@ -586,7 +716,7 @@ export default function QuotationBuilder() {
           <Tooltip title="Save a new quotation revision"><Button variant="outlined" startIcon={<SaveOutlined />} onClick={() => saveDraft()} sx={{ borderRadius: 1.5 }}>Save Draft</Button></Tooltip>
           <FormControl size="small" sx={{ minWidth: 230, ...fieldSx }}>
             <InputLabel>Quotation Type</InputLabel>
-            <Select value={quoteType} label="Quotation Type" onChange={e => setQuoteType(e.target.value)} sx={selectSx}>
+            <Select value={quoteType} label="Quotation Type" onChange={e => handleQuoteTypeChange(e.target.value)} sx={selectSx}>
               <MenuItem value="standard">Standard Sports / Equipment</MenuItem>
               <MenuItem value="athletic">Athletic Track / Automatic BOQ</MenuItem>
               <MenuItem value="project-set">Project BOQ / Multiple Sets</MenuItem>
@@ -629,7 +759,7 @@ export default function QuotationBuilder() {
               <Box sx={{ px: 1.5, py: 0.7, bgcolor: '#0f172a', color: '#fff', borderRadius: 1.25 }}><Typography sx={{ fontSize: '0.82rem', fontWeight: 800 }}>Grand Total ₹{money(projectSetTotals.grand)}</Typography></Box>
             </> : <>
               <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>{athletic.preset}</Typography>
-              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Area <strong style={{ color: '#0f172a' }}>{athleticArea ? `${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
+              <Typography sx={{ fontSize: '0.82rem', color: '#64748b' }}>Quoted Area <strong style={{ color: '#0f172a' }}>{quotedSurfaceArea ? `${quotedSurfaceArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm` : 'Waiting for dimensions'}</strong></Typography>
             </>}
           </Box>
           <Button size="small" endIcon={summaryExpanded ? <ExpandLess /> : <ExpandMore />} onClick={() => setSummaryExpanded(value => !value)} sx={{ whiteSpace: 'nowrap' }}>
@@ -779,11 +909,7 @@ export default function QuotationBuilder() {
             />
           </Box>}
 
-          {quoteType === 'project-set' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
-              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
-            </Box>
-            <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
+          {quoteType === 'project-set' && <CompactPreviewFrame>
               <QuotationSheetPreview
                 meta={meta}
                 sets={quotationSets}
@@ -797,30 +923,7 @@ export default function QuotationBuilder() {
                 onTermRemove={removeTerm}
                 onTermsReset={resetTerms}
               />
-            </Box>
-          </Paper>}
-
-          {quoteType === 'standard' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
-              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quote Output Preview</Typography>
-            </Box>
-            <Box sx={{ p: { xs: 1, md: 2 }, bgcolor: '#e9eef5' }}>
-              <QuotationSheetPreview
-                meta={meta}
-                rows={rows}
-                totals={totals}
-                pricing={pricing}
-                terms={selectedTerms}
-                termsType={meta.tcType}
-                termTypes={tcOptions}
-                onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
-                onTermChange={changeTerm}
-                onTermAdd={addTerm}
-                onTermRemove={removeTerm}
-                onTermsReset={resetTerms}
-              />
-            </Box>
-          </Paper>}
+          </CompactPreviewFrame>}
 
           {quoteType === 'athletic' && (
             <Paper sx={{ ...panelSx, mb: 2.5 }}>
@@ -865,8 +968,10 @@ export default function QuotationBuilder() {
                   </Grid>
                 ))}
                 <Grid item xs={12} md={6}>
-                  <TextField fullWidth size="medium" label="Calculated Quoted Surface Area (sqm)" value={athleticArea ? athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 }) : ''}
-                    helperText="Calculated from the selected preset and area method" inputProps={{ readOnly: true }} sx={fieldSx} />
+                  <TextField fullWidth size="medium" type="number" label="Calculated / Quoted Surface Area (sqm)" value={athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined ? athleticArea || '' : athletic.quotedSurfaceArea}
+                    onChange={e => setAthletic(current => ({ ...current, quotedSurfaceArea: e.target.value }))}
+                    helperText={athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined ? 'Auto-populated from the selected preset. Edit to override.' : `Manual override. Clear to restore calculated area${athleticArea ? ` (${athleticArea.toLocaleString('en-IN', { maximumFractionDigits: 2 })} sqm)` : ''}.`}
+                    inputProps={{ min: 0, step: 'any' }} sx={fieldSx} />
                 </Grid>
                 <Grid item xs={12}>
                   <TextField fullWidth size="medium" label="Payment Terms" value={athletic.paymentTerms}
@@ -876,45 +981,42 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
-          {quoteType === 'athletic' && <Paper sx={{ ...panelSx, mb: 2.5, p: 0, overflow: 'hidden' }}>
-            <Box sx={{ px: 2, py: 1.5, borderBottom: '1px solid #dbe3ef', bgcolor: '#f8fafc' }}>
-              <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Terms &amp; Conditions</Typography>
-            </Box>
-            <QuotationTermsPreview
-              terms={selectedTerms}
-              termsType={meta.tcType}
-              termTypes={tcOptions}
-              onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
-              onTermChange={changeTerm}
-              onTermAdd={addTerm}
-              onTermRemove={removeTerm}
-              onTermsReset={resetTerms}
-            />
-          </Paper>}
-
-          {quoteType === 'standard' && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden' }}>
+          {(quoteType === 'standard' || quoteType === 'athletic') && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden', mb: 2.5 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Box sx={{ px: 2, pt: 2 }}>
-                <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Quotation Items</Typography>
+                <Typography sx={{ ...sectionTitleSx, mb: 0 }}>{quoteType === 'athletic' ? 'Athletic Quotation Items' : 'Quotation Items'}</Typography>
                 <Typography sx={{ mt: 0.5, fontSize: '0.75rem', color: '#64748b' }}>
-                  Dropdowns and item details are supplied by Equipment BD.
+                  {quoteType === 'athletic'
+                    ? `${rows.filter(row => row.source === 'rate-library').length} enabled defaults from the Athletic Rate Library. Rates and calculations follow Administration; quotation overrides stay local.`
+                    : 'Dropdowns and item details are supplied by Equipment BD.'}
                 </Typography>
               </Box>
-              <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5, mr: 2, mt: 2 }}>
-                Add Line
-              </Button>
+              <Box sx={{ display: 'flex', gap: 0.75, mr: 2, mt: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<RestartAlt />} onClick={restoreAthleticDefaults} sx={{ borderRadius: 1.5 }}>
+                  Reload Library Defaults
+                </Button>}
+                <Button size="small" startIcon={<AddCircleOutline />} onClick={addRow} sx={{ borderRadius: 1.5 }}>
+                  Add Line
+                </Button>
+              </Box>
             </Box>
             {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
             {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
+            {quoteType === 'athletic' && !catalogLoading && !catalogError && manageAthleticDefaults
+              && !generatedAthleticDefaults.some(row => String(row.scope).trim().toLowerCase() === 'surface') && (
+              <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>
+                No enabled Surface default is configured for {athletic.surfaceSystem}. Enable the required row in Quotation Administration or add the item manually.
+              </Alert>
+            )}
             {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
-            <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
-              <Table size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& td': { verticalAlign: 'top' } }}>
+            <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
+              <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 <TableHead><TableRow>
-                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Court / Category</TableCell>
-                  <TableCell sx={{ minWidth: 165 }}>Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item Code</TableCell>
-                  <TableCell sx={{ width: 60 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
+                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
+                  <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
+                  <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
@@ -926,11 +1028,25 @@ export default function QuotationBuilder() {
                     const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
                     const lineTotal = toNumber(r.qty) * lineRate;
                     return <TableRow key={i} hover>
-                      <TableCell sx={{ fontWeight: 700, pt: 2 }}>{i + 1}</TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl></TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl></TableCell>
-                      <TableCell><FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl></TableCell>
-                      <TableCell>{r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
+                      <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>{i + 1}</Box></TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}><Typography sx={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>{r.scope || 'Athletic'}</Typography></Box>
+                        : <FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl>}</TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}><Typography sx={{ fontSize: '0.76rem', color: '#475569' }}>{r.system || 'ALL'}</Typography></Box>
+                        : <FormControl fullWidth size="small"><Select value={r.subCategory} displayEmpty disabled={!r.category} onChange={e => handleRowChange(i, 'subCategory', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{subcats.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}</Select></FormControl>}</TableCell>
+                      <TableCell>
+                        {r.source === 'rate-library'
+                          ? <Box sx={{ minHeight: 42, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}><Typography sx={{ fontSize: '0.76rem', lineHeight: 1.35, fontWeight: 700, color: '#334155' }}>{r.libraryItem}</Typography>
+                            {r.itemCode && <Typography sx={{ mt: 0.45, fontSize: '0.65rem', color: '#64748b' }}>Image reference: {r.itemCode}</Typography>}</Box>
+                          : <FormControl fullWidth size="small"><Select value={r.itemCode} displayEmpty disabled={!r.subCategory} onChange={e => handleRowChange(i, 'itemCode', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{items.map(it => <MenuItem key={it.code} value={it.code}>{it.name && it.name !== it.code ? `${it.code} — ${it.name}` : it.code}</MenuItem>)}</Select></FormControl>}
+                      </TableCell>
+                      <TableCell>{r.source === 'rate-library'
+                        ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>
+                          <Tooltip title="Choose image reference"><IconButton size="small" onClick={() => openAthleticImageSelector(i, r)}><EditOutlined fontSize="small" /></IconButton></Tooltip>
+                          {r.imageUrl && <Tooltip title="Open mapped image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip>}
+                        </Box>
+                        : r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
                       <TableCell>
                         <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
                           position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
@@ -944,9 +1060,9 @@ export default function QuotationBuilder() {
                         </Box>
                       </TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell sx={{ pt: 2, fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(lineTotal)}</TableCell>
+                      <TableCell sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>₹{money(lineTotal)}</Box></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell><Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip></TableCell>
                     </TableRow>;
@@ -955,10 +1071,27 @@ export default function QuotationBuilder() {
               </Table>
             </TableContainer>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', px: 2, py: 1.5, bgcolor: '#f8fafc', borderTop: '1px solid #e2e8f0' }}>
-              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>Select Category, then Sub Category, then Item Code—matching the New Template sheet.</Typography>
-              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(totals.subTotal)}</Typography>
+              <Typography sx={{ fontSize: '0.78rem', color: '#64748b' }}>{quoteType === 'athletic' ? 'Athletic scope and defaults remain controlled by the Rate Library. Image references are mapped separately.' : 'Select Category, then Sub Category, then Item Code—matching the New Template sheet.'}</Typography>
+              <Typography sx={{ fontSize: '0.9rem', fontWeight: 800 }}>Subtotal ₹{money(quoteType === 'athletic' ? athleticTotals.subTotal : totals.subTotal)}</Typography>
             </Box>
           </Paper>}
+
+          {(quoteType === 'standard' || quoteType === 'athletic') && <CompactPreviewFrame>
+            <QuotationSheetPreview
+              meta={meta}
+              rows={rows}
+              totals={quoteType === 'athletic' ? athleticTotals : totals}
+              pricing={quoteType === 'athletic' ? athleticPricing : pricing}
+              terms={selectedTerms}
+              termsType={meta.tcType}
+              termTypes={tcOptions}
+              onTermsTypeChange={value => setMeta(current => ({ ...current, tcType: value }))}
+              onTermChange={changeTerm}
+              onTermAdd={addTerm}
+              onTermRemove={removeTerm}
+              onTermsReset={resetTerms}
+            />
+          </CompactPreviewFrame>}
         </Grid>
       </Grid>
       <QuotationDraftsDialog
@@ -979,6 +1112,22 @@ export default function QuotationBuilder() {
             handleRowChange(descriptionEditor.rowIndex, 'descHtml', descriptionEditor.value);
             setDescriptionEditor(null);
           }}>Apply</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(imageSelector)} onClose={(event, reason) => { if (reason !== 'backdropClick') setImageSelector(null); }} maxWidth="sm" fullWidth disableEscapeKeyDown>
+        <DialogTitle>Choose Athletic Item Image</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ mb: 2, fontSize: '0.78rem', color: '#64748b' }}>This mapping changes only the image reference. The athletic scope, system, description, quantity calculation, unit and rate remain unchanged.</Typography>
+          <Grid container spacing={2}>
+            <Grid item xs={12}><FormControl fullWidth><InputLabel>Category</InputLabel><Select label="Category" value={imageSelector?.category || ''} onChange={event => updateImageSelector('category', event.target.value)}>{(catalog?.categories || []).map(category => <MenuItem key={category} value={category}>{category}</MenuItem>)}</Select></FormControl></Grid>
+            <Grid item xs={12}><FormControl fullWidth disabled={!imageSelector?.category}><InputLabel>Sub Category</InputLabel><Select label="Sub Category" value={imageSelector?.subCategory || ''} onChange={event => updateImageSelector('subCategory', event.target.value)}>{subCatsFor(imageSelector?.category).map(subCategory => <MenuItem key={subCategory} value={subCategory}>{subCategory}</MenuItem>)}</Select></FormControl></Grid>
+            <Grid item xs={12}><FormControl fullWidth disabled={!imageSelector?.subCategory}><InputLabel>Item Code / Image</InputLabel><Select label="Item Code / Image" value={imageSelector?.itemCode || ''} onChange={event => updateImageSelector('itemCode', event.target.value)}>{itemsFor(imageSelector?.category, imageSelector?.subCategory).map(item => <MenuItem key={item.code} value={item.code}>{item.name && item.name !== item.code ? `${item.code} — ${item.name}` : item.code}</MenuItem>)}</Select></FormControl></Grid>
+          </Grid>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageSelector(null)}>Cancel</Button>
+          <Button variant="outlined" color="inherit" onClick={() => setImageSelector(current => ({ ...current, category: '', subCategory: '', itemCode: '' }))}>Clear Image</Button>
+          <Button variant="contained" onClick={applyAthleticImageSelection}>Apply Image</Button>
         </DialogActions>
       </Dialog>
     </Box>

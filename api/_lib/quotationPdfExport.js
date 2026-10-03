@@ -227,7 +227,7 @@ function templateImageFormula(value, options = {}) {
   const match = url.match(/[-\w]{25,}/);
   const source = match ? (options.proxyUrl || quotationImageProxyUrl(match[0])) : url;
   if (!source || /(?:^|\/)drive\.google\.com(?:\/|$)/i.test(source)) return "";
-  return `=IMAGE("${source.replace(/"/g, '""')}",4,145,175)`;
+  return `=IMAGE("${source.replace(/"/g, '""')}",1)`;
 }
 function templateItems(payload) {
   if (payload.quoteType !== "project-set") return payload.items || [];

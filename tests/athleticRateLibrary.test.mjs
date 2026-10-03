@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAthleticImageMapping, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+import { applyAthleticImageMapping, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
 
 test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('AREA', 0, { area: 7500 }), 7500);
@@ -8,6 +8,26 @@ test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('PERIMETER', 0, { perimeter: 400 }), 400);
   assert.equal(athleticQuantity('PERIMETER_X_FACTOR', 1.125, { perimeter: 400 }), 450);
   assert.equal(athleticQuantity('MANUAL', 0, {}), 1);
+});
+
+test('athletic drainage uses the selected preset perimeter until explicitly overridden', () => {
+  const presets = [{ Preset: '400m - 8 lane benchmark', 'Drain Perimeter': 400 }];
+  const config = { preset: '400m - 8 lane benchmark', drainPerimeter: '', lengthPerimeter: '' };
+  assert.equal(athleticDrainPerimeter(config, presets), 400);
+  assert.equal(athleticDrainPerimeter({ ...config, drainPerimeter: 520 }, presets), 520);
+  assert.equal(athleticDrainPerimeter({ preset: 'Custom geometry', lengthPerimeter: 460 }, presets), 460);
+});
+
+test('drainage CUM defaults calculate from the benchmark drain perimeter', () => {
+  const library = [{
+    __rowNumber: 2, 'Include Default': 'Yes', Scope: 'Drainage', System: 'ALL', Item: 'Drain Excavation',
+    Unit: 'CUM', 'Qty Driver': 'PERIMETER_X_FACTOR', 'Thickness/Factor': 1.125, Rate: 380,
+  }];
+  const config = { drainageWorks: 'Yes', surfaceSystem: 'Full PUR System' };
+  const rows = buildAthleticDefaultRows(library, config, { area: 7500, perimeter: 400 });
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].qty, 450);
+  assert.equal(rows[0].unit, 'CUM');
 });
 
 test('default rules respect scope switches and selected surface system', () => {

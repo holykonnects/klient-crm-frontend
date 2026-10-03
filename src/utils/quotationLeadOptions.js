@@ -18,12 +18,14 @@ export function normalizeQuotationLead(option) {
       billingAddress: clean(option.billingAddress),
       gstNumber: clean(option.gstNumber),
       leadId: clean(option.leadId),
+      leadSourceName: clean(option.leadSourceName),
+      leadSourceEmail: clean(option.leadSourceEmail),
     };
   }
 
   const display = clean(option);
   const [company = '', contactName = '', mobile = ''] = display.split('|').map(clean);
-  return { value: display, display, company, contactName, mobile, email: '', billingAddress: '', gstNumber: '', leadId: '' };
+  return { value: display, display, company, contactName, mobile, email: '', billingAddress: '', gstNumber: '', leadId: '', leadSourceName: '', leadSourceEmail: '' };
 }
 
 export function filterQuotationLeads(options = [], inputValue = '', limit = 100) {
@@ -31,7 +33,7 @@ export function filterQuotationLeads(options = [], inputValue = '', limit = 100)
   if (!terms.length) return options.slice(0, limit);
   return options.filter(option => {
     const lead = normalizeQuotationLead(option);
-    const searchable = [lead.company, lead.contactName, lead.mobile, lead.email, lead.leadId, lead.billingAddress]
+    const searchable = [lead.company, lead.contactName, lead.mobile, lead.email, lead.leadId, lead.billingAddress, lead.leadSourceName, lead.leadSourceEmail]
       .join(' ')
       .toLowerCase();
     return terms.every(term => searchable.includes(term));
@@ -46,5 +48,8 @@ export function quotationMetaForLead(option, currentMeta = {}) {
     clientName: lead.company || lead.contactName || currentMeta.clientName,
     clientBillingAddress: currentMeta.clientBillingAddress || lead.billingAddress,
     clientGstNumber: currentMeta.clientGstNumber || lead.gstNumber,
+    leadSourceName: lead.leadSourceName,
+    leadSourceEmail: lead.leadSourceEmail,
+    preparedBy: lead.leadSourceEmail,
   };
 }

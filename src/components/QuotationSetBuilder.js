@@ -11,11 +11,14 @@ import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import ImageSearchOutlined from '@mui/icons-material/ImageSearchOutlined';
 import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined';
+import ArrowUpward from '@mui/icons-material/ArrowUpward';
+import ArrowDownward from '@mui/icons-material/ArrowDownward';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
 import {
   emptyQuotationSet, emptySetItem, itemQuantity, quotationSetTemplates,
   setQuoteTotals, setSubtotal, setsFromTemplate,
 } from './quotationSets';
+import { moveQuotationRow } from '../utils/quotationRowOrder';
 
 const cellInputSx = {
   '& .MuiInputBase-root': { borderRadius: 1, bgcolor: '#fff', fontSize: '0.78rem' },
@@ -54,6 +57,10 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
     updateSet(setIndex, {
       items: sets[setIndex].items.map((item, index) => index === itemIndex ? { ...item, ...changes } : item),
     });
+  };
+
+  const moveItem = (setIndex, itemIndex, direction) => {
+    updateSet(setIndex, { items: moveQuotationRow(sets[setIndex].items, itemIndex, direction) });
   };
 
   const applyTemplate = () => {
@@ -127,7 +134,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
             </Box>
           </Box>
           <TableContainer sx={{ m: 1.5, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
-            <Table size="small" sx={{ minWidth: 1840, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
+            <Table size="small" sx={{ minWidth: 1905, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
               <TableHead><TableRow>
                 <TableCell sx={{ width: 54 }}>S.No</TableCell><TableCell sx={{ width: 220 }}>Item</TableCell>
                 <TableCell sx={{ width: 110 }}>Image</TableCell>
@@ -135,7 +142,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                 <TableCell sx={{ width: 130 }}>Installation</TableCell><TableCell sx={{ width: 90 }}>Unit</TableCell>
                 <TableCell sx={{ width: 135 }}>Quantity mode</TableCell><TableCell sx={{ width: 95 }}>Factor</TableCell>
                 <TableCell sx={{ width: 110 }}>Quantity</TableCell><TableCell sx={{ width: 120 }}>Unit price</TableCell>
-                <TableCell sx={{ width: 125 }}>Amount</TableCell><TableCell sx={{ width: 50 }} />
+                <TableCell sx={{ width: 125 }}>Amount</TableCell><TableCell sx={{ width: 112 }}>Actions</TableCell>
               </TableRow></TableHead>
               <TableBody>
                 {(set.items || []).map((item, itemIndex) => {
@@ -154,11 +161,11 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                     </TableCell>
                     <TableCell>
                       <Box onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })} sx={{
-                        position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
+                        position: 'relative', minHeight: 82, cursor: 'text',
                         border: '1px solid #cbd5e1', borderRadius: 1.5, bgcolor: '#fff', px: 1.25, py: 1,
                         pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
                       }}>
-                        <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                        <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
                           {item.description || 'Add description'}
                         </Typography>
                         <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
@@ -172,7 +179,11 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                     <TableCell><TextField type="number" value={item.qtyMode === 'factor' ? quantity : item.qty} disabled={item.qtyMode === 'factor'} inputProps={{ min: 0, step: 'any' }} onChange={(event) => updateItem(setIndex, itemIndex, { qty: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell><TextField type="number" value={item.rate} inputProps={{ min: 0, step: 'any' }} onChange={(event) => updateItem(setIndex, itemIndex, { rate: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell sx={{ pt: 1.6, fontSize: '0.76rem', fontWeight: 800, whiteSpace: 'nowrap' }}>₹{money(quantity * (Number(item.rate) || 0))}</TableCell>
-                    <TableCell><Tooltip title="Remove line"><IconButton size="small" onClick={() => updateSet(setIndex, { items: set.items.filter((_, index) => index !== itemIndex) })}><DeleteOutline fontSize="small" /></IconButton></Tooltip></TableCell>
+                    <TableCell><Box sx={{ display: 'flex', alignItems: 'center' }}>
+                      <Tooltip title="Move line up"><span><IconButton size="small" disabled={itemIndex === 0} onClick={() => moveItem(setIndex, itemIndex, -1)}><ArrowUpward fontSize="small" /></IconButton></span></Tooltip>
+                      <Tooltip title="Move line down"><span><IconButton size="small" disabled={itemIndex === set.items.length - 1} onClick={() => moveItem(setIndex, itemIndex, 1)}><ArrowDownward fontSize="small" /></IconButton></span></Tooltip>
+                      <Tooltip title="Remove line"><IconButton size="small" onClick={() => updateSet(setIndex, { items: set.items.filter((_, index) => index !== itemIndex) })}><DeleteOutline fontSize="small" /></IconButton></Tooltip>
+                    </Box></TableCell>
                   </TableRow>;
                 })}
               </TableBody>
@@ -197,9 +208,10 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
         <DialogContent dividers><QuotationRichTextEditor value={editor?.value || ''} onChange={(value) => setEditor((current) => ({ ...current, value }))} /></DialogContent>
         <DialogActions>
           <Button onClick={() => setEditor(null)}>Cancel</Button>
-          <Button variant="contained" onClick={() => {
-            updateItem(editor.setIndex, editor.itemIndex, { descHtml: editor.value, description: stripHtml(editor.value) });
+          <Button type="button" variant="contained" onClick={() => {
+            const edit = editor;
             setEditor(null);
+            if (edit) updateItem(edit.setIndex, edit.itemIndex, { descHtml: edit.value, description: stripHtml(edit.value) });
           }}>Apply</Button>
         </DialogActions>
       </Dialog>

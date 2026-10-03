@@ -321,7 +321,11 @@ export function buildRow(headers, data, { timestampFields = ["Timestamp"] } = {}
   const stamp = formatTimestamp();
   return headers.map((header) => {
     if (timestampFields.includes(header)) return data[header] || stamp;
-    return data[header] ?? "";
+    const value = data[header] ?? "";
+    if (/\bid\b/i.test(String(header)) && /^\d{11,}$/.test(String(value).trim())) {
+      return `'${String(value).trim()}`;
+    }
+    return value;
   });
 }
 

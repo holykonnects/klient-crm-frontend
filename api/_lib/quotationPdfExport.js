@@ -1,0 +1,186 @@
+import fs from "fs";
+import path from "path";
+import { DRIVE_FOLDERS } from "./crmConfig.js";
+import { driveDownloadFile, getDriveAuthSubjects, uploadDriveFileDetails } from "./googleSheets.js";
+
+const BLUE = "#163f76";
+const LIGHT_BLUE = "#dce9f8";
+const BORDER = "#b8c4d4";
+const TEXT = "#172033";
+
+function clean(value) { return String(value ?? "").trim(); }
+function number(value) {
+  const parsed = Number(clean(value).replace(/[,₹%\s]/g, ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+function money(value) { return `Rs. ${number(value).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`; }
+function plainText(value) {
+  return clean(value)
+    .replace(/<\s*br\s*\/?>/gi, "\n").replace(/<\s*li\b[^>]*>/gi, "- ")
+    .replace(/<\/(?:p|div|li)>/gi, "\n").replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+    .replace(/\n{3,}/g, "\n\n").trim();
+}
+function safeFileName(value) {
+  return (clean(value) || "Quotation").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
+}
+export function quotationLineDescription(item = {}) {
+  return plainText(item.descHtml || item.descOverride || item.description || item.desc);
+}
+function driveId(value) {
+  const match = clean(value).match(/[-\w]{25,}/);
+  return match ? match[0] : "";
+}
+async function loadImage(value) {
+  const url = clean(value);
+  if (!url) return null;
+  try {
+    const id = driveId(url);
+    if (id) {
+      for (const subject of getDriveAuthSubjects()) {
+        try { return (await driveDownloadFile(id, { scopes: ["https://www.googleapis.com/auth/drive"], subject })).body; } catch {}
+      }
+      return null;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 3500);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    return response.ok ? Buffer.from(await response.arrayBuffer()) : null;
+  } catch { return null; }
+}
+async function loadImages(items) {
+  const urls = [...new Set(items.map((item) => clean(item.imageUrl)).filter(Boolean))];
+  return new Map(await Promise.all(urls.map(async (url) => [url, await loadImage(url)])));
+}
+function collectItems(payload) {
+  if (payload.quoteType === "project-set") {
+    let serial = 0;
+    return (payload.setQuotation?.sets || []).flatMap((set) => (set.items || []).map((item) => ({
+      ...item, serial: ++serial, section: clean(set.title), displayItem: clean(item.item),
+      descOverride: clean(item.description), qty: number(item.qty), rate: number(item.rate),
+    })));
+  }
+  return (payload.items || []).map((item, index) => ({ ...item, serial: index + 1 }));
+}
+
+export async function buildQuotationPdf(payload = {}) {
+  const { default: PDFDocument } = await import("pdfkit");
+  const meta = payload.meta || {};
+  const items = collectItems(payload);
+  if (!items.length) throw new Error("Add at least one complete quotation item before exporting");
+  const images = await loadImages(items);
+  const doc = new PDFDocument({ size: "A4", layout: "landscape", margin: 24, autoFirstPage: false, bufferPages: true });
+  const chunks = [];
+  const completed = new Promise((resolve, reject) => {
+    doc.on("data", (chunk) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+  });
+  const left = 24;
+  const columns = [
+    ["S.No", 30], ["Item", 118], ["Image", 62], ["Description", 236], ["Freight", 62],
+    ["Installation", 67], ["Unit", 42], ["Qty", 45], ["Unit Price", 64], ["Amount", 68],
+  ];
+  const tableWidth = columns.reduce((sum, column) => sum + column[1], 0);
+  let y = 0;
+  const cell = (text, x, top, width, height, options = {}) => {
+    doc.save().rect(x, top, width, height).fillAndStroke(options.fill || "#ffffff", BORDER).restore();
+    doc.fillColor(options.color || TEXT).font(options.bold ? "Helvetica-Bold" : "Helvetica").fontSize(options.size || 7.2)
+      .text(clean(text) || "-", x + 4, top + 5, { width: width - 8, height: height - 8, align: options.align || "left", ellipsis: true });
+  };
+  const pageHeader = (continued = false) => {
+    doc.addPage();
+    y = 22;
+    const logo = path.join(process.cwd(), "public", "assets", "rido-sports-logo.png");
+    doc.rect(left, y, tableWidth, 52).stroke(BORDER);
+    if (fs.existsSync(logo)) doc.image(logo, left + 4, y + 5, { fit: [115, 42] });
+    doc.fillColor(TEXT).font("Helvetica-Bold").fontSize(15).text("QUOTATION", left + 145, y + 10, { width: 420, align: "center" });
+    doc.font("Helvetica").fontSize(8).text(clean(meta.quotationTitle || meta.projectName || "Quotation"), left + 145, y + 31, { width: 420, align: "center" });
+    doc.fontSize(7).text(`Quotation No.: ${clean(meta.quotationNo) || "-"}\nDate: ${clean(meta.dateISO) || "-"}\nPrepared By: ${clean(meta.preparedBy) || "-"}`, left + 590, y + 8, { width: 190, lineGap: 2 });
+    y += 52;
+    if (!continued) {
+      [["Client", meta.clientName, "Project", meta.projectName], ["Billing Address", meta.clientBillingAddress, "GST Number", meta.clientGstNumber]].forEach(([a, b, c, d]) => {
+        cell(a, left, y, 90, 30, { fill: LIGHT_BLUE, bold: true }); cell(b, left + 90, y, 305, 30);
+        cell(c, left + 395, y, 90, 30, { fill: LIGHT_BLUE, bold: true }); cell(d, left + 485, y, tableWidth - 485, 30); y += 30;
+      });
+    }
+    let x = left;
+    columns.forEach(([label, width]) => { cell(label, x, y, width, 26, { fill: BLUE, color: "#ffffff", bold: true, align: "center" }); x += width; });
+    y += 26;
+  };
+  pageHeader();
+  let subtotal = 0;
+  let equipmentSubtotal = 0;
+  let nonEquipmentSubtotal = 0;
+  for (const item of items) {
+    const rate = number(item.rateOverride !== undefined ? item.rateOverride : item.rate);
+    const qty = number(item.qty);
+    const amount = qty * rate;
+    subtotal += amount;
+    if (clean(item.itemType).toLowerCase() === "non equipment") nonEquipmentSubtotal += amount;
+    else equipmentSubtotal += amount;
+    const description = quotationLineDescription(item);
+    doc.font("Helvetica").fontSize(7.2);
+    const height = Math.max(58, Math.min(118, doc.heightOfString(description || "-", { width: 228 }) + 12));
+    if (y + height > 545) pageHeader(true);
+    const values = [item.serial, [item.section, item.displayItem || item.libraryItem || item.itemCode, item.category, item.subCategory].filter(Boolean).join("\n"), "", description, item.freight, item.installation, item.unit, qty, money(rate), money(amount)];
+    let x = left;
+    columns.forEach(([, width], index) => {
+      cell(values[index], x, y, width, height, { align: index === 0 || index >= 6 ? "center" : "left", bold: index === 9 });
+      if (index === 2 && images.get(clean(item.imageUrl))) {
+        try { doc.image(images.get(clean(item.imageUrl)), x + 4, y + 4, { fit: [width - 8, height - 8], align: "center", valign: "center" }); } catch {}
+      }
+      x += width;
+    });
+    y += height;
+  }
+  const pricing = payload.pricing || {};
+  const equipmentDiscount = equipmentSubtotal * (number(pricing.equipmentDiscountPct) / 100);
+  const nonEquipmentDiscount = nonEquipmentSubtotal * (number(pricing.nonEquipmentDiscountPct) / 100);
+  const discount = equipmentDiscount + nonEquipmentDiscount;
+  const freight = number(pricing.freightAmount);
+  const installation = number(pricing.installationAmount);
+  const equipmentTaxable = Math.max(0, equipmentSubtotal - equipmentDiscount);
+  const nonEquipmentTaxable = Math.max(0, nonEquipmentSubtotal - nonEquipmentDiscount);
+  const taxable = equipmentTaxable + nonEquipmentTaxable;
+  const gst = payload.quoteType === "project-set"
+    ? subtotal * (number(payload.setQuotation?.gstPct) / 100)
+    : equipmentTaxable * (number(pricing.equipmentGstPct) / 100)
+    + nonEquipmentTaxable * (number(pricing.nonEquipmentGstPct) / 100)
+    + (freight + installation) * (number(pricing.freightInstallGstPct) / 100);
+  const totals = [["Subtotal", subtotal], ["Discount", -discount], ["Freight", freight], ["Installation", installation], ["GST", gst], ["Grand Total", Math.ceil(taxable + freight + installation + gst)]];
+  if (y + totals.length * 22 + 55 > 570) pageHeader(true);
+  const totalX = left + tableWidth - 220;
+  totals.forEach(([label, value], index) => {
+    const final = index === totals.length - 1;
+    cell(label, totalX, y, 105, 22, { fill: final ? LIGHT_BLUE : "#ffffff", bold: final });
+    cell(money(value), totalX + 105, y, 115, 22, { fill: final ? LIGHT_BLUE : "#ffffff", bold: final, align: "right" }); y += 22;
+  });
+  const terms = (meta.termsAndConditions || []).map(plainText).filter(Boolean);
+  if (terms.length) {
+    if (y + 50 > 570) pageHeader(true);
+    doc.fillColor(BLUE).font("Helvetica-Bold").fontSize(9).text(`Terms & Conditions: ${clean(meta.tcType) || "Selected terms"}`, left, y + 10); y += 28;
+    terms.forEach((term, index) => {
+      const height = Math.max(18, doc.heightOfString(`${index + 1}. ${term}`, { width: tableWidth - 12 }) + 7);
+      if (y + height > 570) pageHeader(true);
+      doc.fillColor(TEXT).font("Helvetica").fontSize(7.5).text(`${index + 1}. ${term}`, left + 6, y + 3, { width: tableWidth - 12 }); y += height;
+    });
+  }
+  const range = doc.bufferedPageRange();
+  for (let index = range.start; index < range.start + range.count; index += 1) {
+    doc.switchToPage(index);
+    doc.fillColor("#64748b").font("Helvetica").fontSize(7).text(`Rido CRM quotation | Page ${index + 1} of ${range.count}`, left, 572, { width: tableWidth, align: "center" });
+  }
+  doc.end();
+  return completed;
+}
+
+export async function exportQuotationToDrive(payload = {}) {
+  const pdf = await buildQuotationPdf(payload);
+  const meta = payload.meta || {};
+  const fileName = `${safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName)}.pdf`;
+  const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
+  return { ok: true, pdfFileId: uploaded.id, pdfFileName: fileName, pdfUrl: uploaded.webViewLink, workingCopyUrl: "" };
+}

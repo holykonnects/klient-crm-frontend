@@ -85,6 +85,8 @@ export const SHEETS = {
 };
 
 export const DRIVE_FOLDERS = {
+  quotationExports:
+    process.env.QUOTATION_EXPORT_FOLDER_ID || "1yDFrhOKCtTBv-iCwaFf8DZAMaa1ygYlP",
   emailTemplates: process.env.EMAIL_TEMPLATE_FOLDER_ID || "1uKApnHOJVkOuXc7ayrxLyrkwgkjuUGt1",
   defaultUpload:
     process.env.ORDER_UPLOAD_FOLDER_ID ||

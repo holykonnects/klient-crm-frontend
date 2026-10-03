@@ -12,7 +12,7 @@ export function createId(prefix = 'item') {
 export function emptySetItem() {
   return {
     id: createId('item'), item: '', description: '', descHtml: '', unit: '',
-    qty: 1, rate: 0, qtyMode: 'manual', factor: 1,
+    qty: 1, rate: 0, qtyMode: 'manual', factor: 1, freight: '', installation: '',
   };
 }
 
@@ -29,6 +29,8 @@ export function normalizeSets(sets = []) {
       ...item,
       id: item.id || createId('item'),
       descHtml: item.descHtml || '',
+      freight: item.freight || '',
+      installation: item.installation || '',
       qtyMode: item.qtyMode === 'factor' ? 'factor' : 'manual',
       factor: Number(item.factor) || 0,
       qty: Number(item.qty) || 0,
@@ -57,4 +59,3 @@ export function setQuoteTotals(sets, gstPct) {
   const gst = subtotal * ((Number(gstPct) || 0) / 100);
   return { subtotal, gst, grand: Math.round(subtotal + gst) };
 }
-

@@ -1,6 +1,7 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
+import { exportQuotationToDrive } from "../_lib/quotationPdfExport.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
@@ -221,6 +222,22 @@ async function getLeadsForUser(user) {
   return { ok: true, entries: availableLeads.map((lead) => lead.value), leads: availableLeads };
 }
 
+async function attachQuotationToLead(payload, pdfUrl) {
+  const leadDisplay = clean(payload?.attach?.leadDisplay);
+  if (!leadDisplay || !pdfUrl) return;
+  const [company = "", , mobile = ""] = leadDisplay.split("|").map(clean);
+  if (!company || !mobile) return;
+  const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames);
+  const values = await getValues(SHEETS.leads.spreadsheetId, sheetName);
+  const headers = values[0] || [];
+  const companyColumn = headers.findIndex((header) => normalizeHeader(header) === "company");
+  const mobileColumn = headers.findIndex((header) => normalizeHeader(header) === "mobilenumber");
+  const linkColumn = headers.findIndex((header) => normalizeHeader(header) === "quotationlink");
+  if (companyColumn < 0 || mobileColumn < 0 || linkColumn < 0) return;
+  const rowIndex = values.slice(1).findIndex((row) => clean(row[companyColumn]).toLowerCase() === company.toLowerCase() && clean(row[mobileColumn]) === mobile);
+  if (rowIndex >= 0) await updateCell(SHEETS.leads.spreadsheetId, sheetName, rowIndex + 2, linkColumn + 1, pdfUrl);
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
@@ -238,6 +255,13 @@ export default async function handler(req, res) {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       if (body.action === "saveAdminRow") return res.status(200).json(await saveAdminRow(clean(body.table), body.user, body.row || {}));
       if (body.action === "saveQuote") return res.status(200).json(await saveQuoteRevision(body.user, body.quote || {}, QUOTATION_ENGINE_VERSION));
+      if (body.action === "exportPdf") {
+        const loginRows = await getLoginRows();
+        if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
+        const output = await exportQuotationToDrive(body.payload || {});
+        await attachQuotationToLead(body.payload || {}, output.pdfUrl).catch((error) => console.warn("Quotation lead link update failed", error));
+        return res.status(200).json(output);
+      }
       if (body.action === "exportSetWorkbook") {
         const loginRows = await getLoginRows();
         if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }

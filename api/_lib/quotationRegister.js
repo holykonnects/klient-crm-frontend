@@ -2,8 +2,10 @@ import { gzipSync, gunzipSync } from "zlib";
 import { SHEETS } from "./crmConfig.js";
 import {
   appendValues, buildRow, formatTimestamp, getValues, googleFetch,
-  resolveSheetTitle, rowsToObjects, updateValues,
+  getSheetsAuthSubjects, resolveSheetTitle, rowsToObjects, updateValues,
 } from "./googleSheets.js";
+
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 
 const HEADERS = [
   "Quote ID", "Revision", "Status", "Quote Type", "Quotation No", "Title",
@@ -69,31 +71,43 @@ async function identityFor(user) {
 
 async function ensureRegister() {
   const spreadsheetId = SHEETS.quotations.registerSpreadsheetId;
-  let sheetName;
-  try {
-    sheetName = await resolveSheetTitle(spreadsheetId, SHEETS.quotations.registerSheetNames);
-  } catch {
-    sheetName = SHEETS.quotations.registerSheetNames[0];
+  const errors = [];
+  for (const subject of getSheetsAuthSubjects()) {
+    const auth = { scopes: [SHEETS_SCOPE], subject };
+    let sheetName;
     try {
-      await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          requests: [{
-            addSheet: {
-              properties: { title: sheetName, gridProperties: { frozenRowCount: 1 } },
-            },
-          }],
-        }),
-      });
+      try {
+        sheetName = await resolveSheetTitle(spreadsheetId, SHEETS.quotations.registerSheetNames, auth);
+      } catch {
+        sheetName = SHEETS.quotations.registerSheetNames[0];
+        try {
+          await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              requests: [{
+                addSheet: {
+                  properties: { title: sheetName, gridProperties: { frozenRowCount: 1 } },
+                },
+              }],
+            }),
+          }, auth);
+        } catch (error) {
+          if (!/already exists/i.test(error.message || "")) throw error;
+        }
+        sheetName = await resolveSheetTitle(spreadsheetId, [sheetName], auth);
+      }
+      const firstRow = await getValues(spreadsheetId, sheetName, "1:1", auth);
+      if (!(firstRow[0] || []).some((value) => clean(value))) {
+        await updateValues(spreadsheetId, sheetName, 1, HEADERS, auth);
+      }
+      return { spreadsheetId, sheetName, auth };
     } catch (error) {
-      if (!/already exists/i.test(error.message || "")) throw error;
+      errors.push(error);
     }
-    sheetName = await resolveSheetTitle(spreadsheetId, [sheetName]);
   }
-  const firstRow = await getValues(spreadsheetId, sheetName, "1:1");
-  if (!(firstRow[0] || []).some((value) => clean(value))) await updateValues(spreadsheetId, sheetName, 1, HEADERS);
-  return { spreadsheetId, sheetName };
+  const detail = errors.at(-1)?.message || "Google Sheets access was denied";
+  throw new Error(`Quotation Register is not writable. Share spreadsheet ${spreadsheetId} with the service account as Editor, or set GOOGLE_SHEETS_DELEGATED_USER_EMAIL in Vercel to a Workspace user who can edit it. Google response: ${detail}`);
 }
 
 function summary(row) {
@@ -111,7 +125,7 @@ function summary(row) {
 async function visibleRows(user) {
   const identity = await identityFor(user);
   const register = await ensureRegister();
-  const rows = rowsToObjects(await getValues(register.spreadsheetId, register.sheetName));
+  const rows = rowsToObjects(await getValues(register.spreadsheetId, register.sheetName, "", register.auth));
   return {
     ...register,
     identity,
@@ -144,7 +158,7 @@ export async function getSavedQuote(user, quoteId, requestedRevision) {
 }
 
 export async function saveQuoteRevision(user, submitted = {}, engineVersion = "quotation-v1") {
-  const { spreadsheetId, sheetName, identity, allRows } = await visibleRows(user);
+  const { spreadsheetId, sheetName, auth, identity, allRows } = await visibleRows(user);
   const quoteId = clean(submitted.quoteId) || `Q-${Date.now().toString(36).toUpperCase()}-${Math.random().toString(36).slice(2, 7).toUpperCase()}`;
   const existing = allRows.filter((row) => clean(row["Quote ID"]) === quoteId);
   if (existing.length && !identity.admin && normalized(existing[0].Owner) !== normalized(identity.username)) {
@@ -175,6 +189,6 @@ export async function saveQuoteRevision(user, submitted = {}, engineVersion = "q
     "Updated By Email": identity.email,
     "Engine Version": engineVersion,
   };
-  await appendValues(spreadsheetId, sheetName, buildRow(HEADERS, record, { timestampFields: [] }));
+  await appendValues(spreadsheetId, sheetName, buildRow(HEADERS, record, { timestampFields: [] }), auth);
   return { ok: true, quote: summary(record) };
 }

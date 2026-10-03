@@ -37,7 +37,8 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   });
   sheet.columns = [
     { key: "serial", width: 8 }, { key: "item", width: 30 }, { key: "description", width: 68 },
-    { key: "unit", width: 12 }, { key: "qty", width: 15 }, { key: "rate", width: 16 }, { key: "amount", width: 18 },
+    { key: "freight", width: 18 }, { key: "installation", width: 18 }, { key: "unit", width: 12 },
+    { key: "qty", width: 15 }, { key: "rate", width: 16 }, { key: "amount", width: 18 },
   ];
 
   const meta = payload.meta || {};
@@ -48,12 +49,12 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   const lightBlue = "DCE9F8";
   const border = { style: "thin", color: { argb: "CBD5E1" } };
 
-  sheet.mergeCells("A1:G1");
+  sheet.mergeCells("A1:I1");
   sheet.getCell("A1").value = "RIDO SPORTS";
   sheet.getCell("A1").font = { name: "Montserrat", size: 16, bold: true, color: { argb: "FFFFFF" } };
   sheet.getCell("A1").fill = { type: "pattern", pattern: "solid", fgColor: { argb: blue } };
   sheet.getCell("A1").alignment = { horizontal: "center" };
-  sheet.mergeCells("A2:G2");
+  sheet.mergeCells("A2:I2");
   sheet.getCell("A2").value = title;
   sheet.getCell("A2").font = { name: "Montserrat", size: 13, bold: true, color: { argb: "0F172A" } };
   sheet.getCell("A2").fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
@@ -67,11 +68,11 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   let subtotal = 0;
   sets.forEach((set, setIndex) => {
     const heading = sheet.addRow([`${setIndex + 1}. ${set.title || "Untitled set"}`]);
-    sheet.mergeCells(heading.number, 1, heading.number, 7);
+    sheet.mergeCells(heading.number, 1, heading.number, 9);
     heading.font = { name: "Montserrat", bold: true, color: { argb: blue } };
     heading.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
 
-    const header = sheet.addRow(["S.No.", "Item", "Description", "Unit", "Quantity", "Unit Price", "Amount"]);
+    const header = sheet.addRow(["S.No.", "Item", "Description", "Freight", "Installation", "Unit", "Quantity", "Unit Price", "Amount"]);
     header.eachCell((cell) => {
       cell.font = { name: "Montserrat", bold: true, color: { argb: "FFFFFF" } };
       cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "6395DF" } };
@@ -85,33 +86,33 @@ export async function buildQuotationSetWorkbook(payload = {}) {
       const amount = qty * rate;
       setSubtotal += amount;
       subtotal += amount;
-      const row = sheet.addRow([serial++, item.item || "", item.description || "", item.unit || "", qty, rate, amount]);
+      const row = sheet.addRow([serial++, item.item || "", item.description || "", item.freight || "", item.installation || "", item.unit || "", qty, rate, amount]);
       row.height = 44;
       row.eachCell((cell, column) => {
         cell.font = { name: "Montserrat", size: 9 };
-        cell.alignment = { vertical: "top", wrapText: column === 2 || column === 3, horizontal: column >= 5 ? "right" : "left" };
+        cell.alignment = { vertical: "top", wrapText: column >= 2 && column <= 5, horizontal: column >= 7 ? "right" : "left" };
         cell.border = { top: border, left: border, bottom: border, right: border };
       });
-      row.getCell(5).numFmt = "#,##0.00";
-      row.getCell(6).numFmt = "₹#,##0.00";
-      row.getCell(7).numFmt = "₹#,##0.00";
+      row.getCell(7).numFmt = "#,##0.00";
+      row.getCell(8).numFmt = "₹#,##0.00";
+      row.getCell(9).numFmt = "₹#,##0.00";
     });
-    const setTotalRow = sheet.addRow(["Set Subtotal", "", "", "", "", "", setSubtotal]);
-    sheet.mergeCells(setTotalRow.number, 1, setTotalRow.number, 6);
+    const setTotalRow = sheet.addRow(["Set Subtotal", "", "", "", "", "", "", "", setSubtotal]);
+    sheet.mergeCells(setTotalRow.number, 1, setTotalRow.number, 8);
     setTotalRow.font = { name: "Montserrat", bold: true };
     setTotalRow.alignment = { horizontal: "right" };
-    setTotalRow.getCell(7).numFmt = "₹#,##0.00";
+    setTotalRow.getCell(9).numFmt = "₹#,##0.00";
     sheet.addRow([]);
   });
 
   const gstPct = number(setQuotation.gstPct);
   const gst = subtotal * gstPct / 100;
   [["Subtotal", subtotal], [`GST @ ${gstPct}%`, gst], ["Grand Total", Math.round(subtotal + gst)]].forEach(([label, amount], index) => {
-    const row = sheet.addRow([label, "", "", "", "", "", amount]);
-    sheet.mergeCells(row.number, 1, row.number, 6);
+    const row = sheet.addRow([label, "", "", "", "", "", "", "", amount]);
+    sheet.mergeCells(row.number, 1, row.number, 8);
     row.font = { name: "Montserrat", bold: index === 2 };
     row.alignment = { horizontal: "right" };
-    row.getCell(7).numFmt = "₹#,##0.00";
+    row.getCell(9).numFmt = "₹#,##0.00";
     if (index === 2) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
   });
 
@@ -119,12 +120,12 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   if (terms.length) {
     sheet.addRow([]);
     const heading = sheet.addRow([`Terms & Conditions: ${meta.tcType || "Selected terms"}`]);
-    sheet.mergeCells(heading.number, 1, heading.number, 7);
+    sheet.mergeCells(heading.number, 1, heading.number, 9);
     heading.font = { name: "Montserrat", bold: true, color: { argb: blue } };
     heading.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
     terms.forEach((term, index) => {
       const row = sheet.addRow([index + 1, term]);
-      sheet.mergeCells(row.number, 2, row.number, 7);
+      sheet.mergeCells(row.number, 2, row.number, 9);
       row.getCell(1).alignment = { horizontal: "center", vertical: "top" };
       row.getCell(2).alignment = { wrapText: true, vertical: "top" };
       row.height = Math.max(28, Math.min(75, 18 + Math.ceil(String(term).length / 105) * 14));
@@ -133,7 +134,7 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   }
 
   sheet.eachRow((row) => row.eachCell((cell) => { cell.font = { name: "Montserrat", ...(cell.font || {}) }; }));
-  sheet.pageSetup.printArea = `A1:G${sheet.rowCount}`;
+  sheet.pageSetup.printArea = `A1:I${sheet.rowCount}`;
   sheet.headerFooter.oddFooter = "Rido CRM quotation";
   return {
     fileName: `${fileName(title || meta.quotationNo)}.xlsx`,

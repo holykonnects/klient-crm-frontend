@@ -30,7 +30,6 @@ import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefault
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
 
 const QUOTATION_API_URL = '/api/quotations';
-const QUOTATION_EXPORT_URL = '/api/gas';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 },
@@ -65,7 +64,8 @@ const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
   qty: 1, rateOverride: '',
-  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment'
+  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment',
+  freight: '', installation: ''
 };
 
 // helpers
@@ -520,7 +520,9 @@ export default function QuotationBuilder() {
         rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
         descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined,
         descHtml: r.descHtml || undefined,
-        imageUrl: r.imageUrl || undefined
+        imageUrl: r.imageUrl || undefined,
+        freight: r.freight || '',
+        installation: r.installation || ''
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
     builderState: { rows, attachLead, termsByType, excludedAthleticLibraryKeys },
@@ -674,10 +676,11 @@ export default function QuotationBuilder() {
         payload.quoteId = exportQuoteId;
       }
 
-      const j = await fetchJSON(
-        `${QUOTATION_EXPORT_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-      );
+      const j = await fetchJSON(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'exportPdf', user: user?.username || '', payload }),
+      });
 
       if (!j.ok) { alert(j.error || 'Export failed'); return; }
       const url = String(j.pdfUrl || '').trim();
@@ -1057,11 +1060,12 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+              <Table stickyHeader size="small" sx={{ minWidth: 1670, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
                   <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
+                  <TableCell sx={{ width: 110 }}>Freight</TableCell><TableCell sx={{ width: 110 }}>Installation</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
@@ -1104,6 +1108,8 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.freight || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'freight', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.installation || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'installation', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>

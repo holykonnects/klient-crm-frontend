@@ -96,10 +96,11 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
             </Box>
           </Box>
           <TableContainer sx={{ m: 1.5, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
-            <Table size="small" sx={{ minWidth: 1480, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
+            <Table size="small" sx={{ minWidth: 1740, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
               <TableHead><TableRow>
                 <TableCell sx={{ width: 54 }}>S.No</TableCell><TableCell sx={{ width: 220 }}>Item</TableCell>
-                <TableCell sx={{ width: 500 }}>Description</TableCell><TableCell sx={{ width: 90 }}>Unit</TableCell>
+                <TableCell sx={{ width: 500 }}>Description</TableCell><TableCell sx={{ width: 130 }}>Freight</TableCell>
+                <TableCell sx={{ width: 130 }}>Installation</TableCell><TableCell sx={{ width: 90 }}>Unit</TableCell>
                 <TableCell sx={{ width: 135 }}>Quantity mode</TableCell><TableCell sx={{ width: 95 }}>Factor</TableCell>
                 <TableCell sx={{ width: 110 }}>Quantity</TableCell><TableCell sx={{ width: 120 }}>Unit price</TableCell>
                 <TableCell sx={{ width: 125 }}>Amount</TableCell><TableCell sx={{ width: 50 }} />
@@ -122,6 +123,8 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                         <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                       </Box>
                     </TableCell>
+                    <TableCell><TextField value={item.freight || ''} placeholder="Included / Excluded / Value" onChange={(event) => updateItem(setIndex, itemIndex, { freight: event.target.value })} sx={cellInputSx} /></TableCell>
+                    <TableCell><TextField value={item.installation || ''} placeholder="Included / Excluded / Value" onChange={(event) => updateItem(setIndex, itemIndex, { installation: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell><TextField value={item.unit} onChange={(event) => updateItem(setIndex, itemIndex, { unit: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell><Select fullWidth size="small" value={item.qtyMode || 'manual'} onChange={(event) => updateItem(setIndex, itemIndex, { qtyMode: event.target.value })} sx={{ fontSize: '0.76rem', bgcolor: '#fff' }}><MenuItem value="manual">Manual</MenuItem><MenuItem value="factor">Base × factor</MenuItem></Select></TableCell>
                     <TableCell><TextField type="number" value={item.factor} disabled={item.qtyMode !== 'factor'} inputProps={{ step: 'any' }} onChange={(event) => updateItem(setIndex, itemIndex, { factor: event.target.value })} sx={cellInputSx} /></TableCell>

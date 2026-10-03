@@ -82,6 +82,8 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
       descHtml: '',
       imageUrl: catalogItem?.imageUrl || '',
       itemType: normalized(pick(libraryRow, ['Scope'])) === 'equipment' ? 'Equipment' : 'Non Equipment',
+      freight: clean(pick(libraryRow, ['Freight'])),
+      installation: clean(pick(libraryRow, ['Installation'])),
     };
   });
 }

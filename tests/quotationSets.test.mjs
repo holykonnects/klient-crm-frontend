@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import { buildQuotationSetWorkbook } from "../api/_lib/quotationSetExport.js";
+import { QUOTATION_CURRENCY_FORMAT } from "../api/_lib/quotationCurrency.js";
 
 const templates = JSON.parse(await readFile(new URL("../src/data/quotationSetTemplates.json", import.meta.url), "utf8"));
 
@@ -58,6 +59,9 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   const sheet = workbook.getWorksheet("Quotation");
   const header = sheet.getRow(8).values.slice(1);
   assert.deepEqual(header.slice(-3), ["Quantity", "Unit Price", "Amount"]);
+  const excelCurrencyFormat = QUOTATION_CURRENCY_FORMAT.replace(/\\/g, "");
+  assert.equal(sheet.getRow(9).getCell(7).numFmt, excelCurrencyFormat);
+  assert.equal(sheet.getRow(9).getCell(8).numFmt, excelCurrencyFormat);
   assert.ok(header.includes("Image"));
   assert.equal(sheet.columnCount, 8);
   let grandTotalRow;
@@ -65,6 +69,7 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   sheet.eachRow((row) => { if (row.getCell(1).value === "Grand Total") grandTotalRow = row; });
   sheet.eachRow((row) => { if (row.getCell(1).value === "Terms & Conditions: Flooring") termsHeadingRow = row; });
   assert.ok(Number(grandTotalRow.getCell(8).value) > 0);
+  assert.equal(grandTotalRow.getCell(8).numFmt, excelCurrencyFormat);
   assert.ok(termsHeadingRow);
   assert.equal(sheet.getRow(termsHeadingRow.number + 1).getCell(2).value, "Flooring term one");
 });

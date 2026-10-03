@@ -23,9 +23,9 @@ test('legacy lead strings remain selectable', () => {
 
 test('lead selection populates client name and only fills blank supporting fields', () => {
   assert.deepEqual(quotationMetaForLead(leads[0], { clientName: '', clientBillingAddress: '', clientGstNumber: '', preparedBy: '', notes: 'Keep' }), {
-    clientName: 'Celebration Sports', clientBillingAddress: 'Solapur, Maharashtra', clientGstNumber: '27AAAAA0000A1Z5', leadSourceName: 'Mina Das', leadSourceEmail: 'mina@ridosports.com', preparedBy: 'mina@ridosports.com', notes: 'Keep',
+    clientName: 'Celebration Sports', clientEmail: 'asha@example.test', clientBillingAddress: 'Solapur, Maharashtra', clientGstNumber: '27AAAAA0000A1Z5', leadSourceName: 'Mina Das', leadSourceEmail: 'mina@ridosports.com', preparedBy: 'mina@ridosports.com', notes: 'Keep',
   });
   assert.deepEqual(quotationMetaForLead(leads[0], { clientName: 'Old', clientBillingAddress: 'Manual address', clientGstNumber: 'Manual GST' }), {
-    clientName: 'Celebration Sports', clientBillingAddress: 'Manual address', clientGstNumber: 'Manual GST', leadSourceName: 'Mina Das', leadSourceEmail: 'mina@ridosports.com', preparedBy: 'mina@ridosports.com',
+    clientName: 'Celebration Sports', clientEmail: 'asha@example.test', clientBillingAddress: 'Manual address', clientGstNumber: 'Manual GST', leadSourceName: 'Mina Das', leadSourceEmail: 'mina@ridosports.com', preparedBy: 'mina@ridosports.com',
   });
 });

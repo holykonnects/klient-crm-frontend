@@ -237,13 +237,19 @@ export function anchoredAppendRange(sheetName, width) {
 }
 
 export async function appendValues(spreadsheetId, sheetName, row) {
+  return appendRows(spreadsheetId, sheetName, [row]);
+}
+
+export async function appendRows(spreadsheetId, sheetName, rows) {
+  const values = (rows || []).filter((row) => Array.isArray(row));
+  if (!values.length) return { updates: { updatedRows: 0 } };
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
-    anchoredAppendRange(sheetName, row.length)
+    anchoredAppendRange(sheetName, Math.max(...values.map((row) => row.length)))
   )}:append?valueInputOption=USER_ENTERED&insertDataOption=INSERT_ROWS`;
   return googleFetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ values: [row] }),
+    body: JSON.stringify({ values }),
   });
 }
 

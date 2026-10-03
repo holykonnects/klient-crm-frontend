@@ -43,11 +43,13 @@ import SearchIcon from "@mui/icons-material/Search";
 import ClearIcon from "@mui/icons-material/Clear";
 import HistoryIcon from "@mui/icons-material/History";
 import FileDownloadIcon from "@mui/icons-material/FileDownload";
+import ChecklistIcon from "@mui/icons-material/Checklist";
 import { useAuth } from "./AuthContext";
 
 import { createTheme, ThemeProvider } from "@mui/material/styles";
 import "@fontsource/montserrat";
 import LoadingOverlay from "./LoadingOverlay";
+import ProjectTasksDialog from "./ProjectTasksDialog";
 
 import MobileActionMenu from "./MobileActionMenu";
 import {
@@ -196,6 +198,10 @@ const normalizeClientEmails = (value) => parseClientEmails(value).join(", ");
 const MULTI_KEY = "Project Multiselect Fields"; // exact header name
 const FALLBACK_MULTI = new Set([norm("Vendors"), norm("Assigned Team")]);
 const PROJECT_OVERVIEW_HIDDEN = new Set([norm("Vendors")]);
+const LEGACY_TASK_FIELDS = new Set([
+  norm("Task Name"), norm("Task Owner"),
+  norm("Task Status"), norm("Task Status (Not Started / In Progress / Completed)"),
+]);
 const PROJECT_OVERVIEW_COLUMNS = [
   "Project ID (unique, auto-generated)", "Project Name", "Project Status",
   "Project Stage", "Project Manager", "Project Progress %", DELIVERY_PIN_HEADER,
@@ -274,6 +280,7 @@ export default function ProjectTable() {
 
   const [logsOpen, setLogsOpen] = useState(false);
   const [logsRows, setLogsRows] = useState([]);
+  const [tasksProject, setTasksProject] = useState(null);
 
   const [submitting, setSubmitting] = useState(false);
 
@@ -336,7 +343,7 @@ export default function ProjectTable() {
 
       if ((!visibleColumns || visibleColumns.length === 0) && Array.isArray(data.headers)) {
         const saved = JSON.parse(localStorage.getItem("visibleColumns-v2-projects") || "null");
-        if (saved) setVisibleColumns(saved);
+        if (saved) setVisibleColumns(saved.filter((header) => !LEGACY_TASK_FIELDS.has(norm(header))));
       }
     } catch (err) {
       console.error(err);
@@ -359,11 +366,11 @@ export default function ProjectTable() {
       setValidation(normalizedValidation);
 
       if (Array.isArray(data?.visibleColumns) && data.visibleColumns.length) {
-        const available = data.visibleColumns.filter((header) => !PROJECT_OVERVIEW_HIDDEN.has(norm(header)));
+        const available = data.visibleColumns.filter((header) => !PROJECT_OVERVIEW_HIDDEN.has(norm(header)) && !LEGACY_TASK_FIELDS.has(norm(header)));
         const preferred = PROJECT_OVERVIEW_COLUMNS.filter((header) => available.includes(header));
         const defaults = preferred.length ? preferred : available.slice(0, 6);
         const saved = JSON.parse(localStorage.getItem("visibleColumns-v2-projects") || "null");
-        setVisibleColumns(saved || defaults);
+        setVisibleColumns(saved ? saved.filter((header) => !LEGACY_TASK_FIELDS.has(norm(header))) : defaults);
       }
 
       if (Array.isArray(data?.readonlyColumns)) setReadonlyColumns(new Set(data.readonlyColumns));
@@ -400,7 +407,7 @@ export default function ProjectTable() {
       setHeaders(ordered);
 
       if (visibleColumns.length) {
-        const vis = visibleColumns.filter((h) => ordered.includes(h));
+        const vis = visibleColumns.filter((h) => ordered.includes(h) && !LEGACY_TASK_FIELDS.has(norm(h)));
         setVisibleColumns(vis);
       }
     } else {
@@ -459,8 +466,9 @@ export default function ProjectTable() {
   };
 
   const handleSelectAll = () => {
-    setVisibleColumns(headers);
-    localStorage.setItem("visibleColumns-v2-projects", JSON.stringify(headers));
+    const overviewHeaders = headers.filter((header) => !LEGACY_TASK_FIELDS.has(norm(header)));
+    setVisibleColumns(overviewHeaders);
+    localStorage.setItem("visibleColumns-v2-projects", JSON.stringify(overviewHeaders));
   };
 
   const handleDeselectAll = () => {
@@ -644,7 +652,6 @@ export default function ProjectTable() {
   const FILTER_LIST = [
     "Project Status",
     "Project Manager",
-    "Task Status (Not Started / In Progress / Completed)",
     "Account Owner",
   ].filter((h) => headers.includes(h));
 
@@ -1099,7 +1106,7 @@ export default function ProjectTable() {
                 Deselect All
               </Button>
             </Box>
-            {headers.map((col) => (
+            {headers.filter((col) => !LEGACY_TASK_FIELDS.has(norm(col))).map((col) => (
               <Box key={col}>
                 <Checkbox
                   size="small"
@@ -1149,7 +1156,7 @@ export default function ProjectTable() {
                     {visibleColumns.map((h) => (
                       <TableCell key={h}>{renderCell(h, row[h])}</TableCell>
                     ))}
-                    <TableCell width={160}>
+                    <TableCell width={190}>
                       <IconButton size="small" onClick={() => onEdit(row)} title="Edit" disabled={submitting}>
                         <EditIcon fontSize="small" />
                       </IconButton>
@@ -1160,6 +1167,14 @@ export default function ProjectTable() {
                         disabled={submitting}
                       >
                         <HistoryIcon fontSize="small" />
+                      </IconButton>
+                      <IconButton
+                        size="small"
+                        onClick={() => setTasksProject(row)}
+                        title="Project Tasks"
+                        disabled={submitting}
+                      >
+                        <ChecklistIcon fontSize="small" />
                       </IconButton>
                     </TableCell>
                   </TableRow>
@@ -1557,6 +1572,7 @@ export default function ProjectTable() {
           <DialogContent dividers>
             <Grid container spacing={2}>
               {headers.map((h) => {
+                if (LEGACY_TASK_FIELDS.has(norm(h))) return null;
                 const isReadonly = readonlyColumns.has(h);
                 const hasOptions = Array.isArray(validation[h]) && validation[h].length > 0;
 
@@ -1728,6 +1744,12 @@ export default function ProjectTable() {
             </Button>
           </DialogActions>
         </Dialog>
+        <ProjectTasksDialog
+          open={Boolean(tasksProject)}
+          project={tasksProject}
+          user={user}
+          onClose={() => setTasksProject(null)}
+        />
       </Box>
     </ThemeProvider>
   );

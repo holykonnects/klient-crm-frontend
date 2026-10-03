@@ -952,6 +952,7 @@ export default function QuotationBuilder() {
               gstPct={setGstPct}
               onGstChange={setSetGstPct}
               onDownloadExcel={exportSetExcel}
+              catalog={catalog}
             />
           </Box>}
 

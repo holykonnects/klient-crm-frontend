@@ -191,8 +191,8 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, 
             <Box sx={{ ...cell, bgcolor: '#dce9f8', color: '#163f76', fontWeight: 800, fontSize: '0.78rem' }}>
               {setIndex + 1}. {set.title || 'Untitled set'}
             </Box>
-            <Box sx={{ display: 'grid', gridTemplateColumns: '48px 190px minmax(330px,1fr) 80px 92px 112px 125px', bgcolor: '#244f87' }}>
-              {['S.No', 'Item', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Amount'].map(label => (
+            <Box sx={{ display: 'grid', gridTemplateColumns: '48px 170px 104px minmax(330px,1fr) 80px 92px 112px 125px', bgcolor: '#244f87' }}>
+              {['S.No', 'Item', 'Image', 'Description', 'Unit', 'Quantity', 'Unit Price', 'Amount'].map(label => (
                 <Box key={label} sx={{ ...cell, color: '#fff', fontWeight: 800, textAlign: label === 'Description' || label === 'Item' ? 'left' : 'center', borderColor: '#7894b8' }}>{label}</Box>
               ))}
             </Box>
@@ -200,9 +200,12 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, 
               const quantity = itemQuantity(set, item);
               const rate = Number(item.rate) || 0;
               const currentSerial = serial++;
-              return <Box key={item.id || itemIndex} sx={{ display: 'grid', gridTemplateColumns: '48px 190px minmax(330px,1fr) 80px 92px 112px 125px' }}>
+              return <Box key={item.id || itemIndex} sx={{ display: 'grid', gridTemplateColumns: '48px 170px 104px minmax(330px,1fr) 80px 92px 112px 125px' }}>
                 <Box sx={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{currentSerial}</Box>
                 <Box sx={cell}>{item.item || '-'}</Box>
+                <Box sx={{ ...cell, minHeight: 82, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                  {item.imageUrl ? <Box component="img" src={driveImageUrl(item.imageUrl)} alt={item.imageItemCode || item.item || 'Quotation item'} sx={{ width: 88, height: 70, objectFit: 'contain' }} /> : '-'}
+                </Box>
                 <Box className="quotation-preview-rich-text" sx={{ ...cell, minHeight: 72 }} dangerouslySetInnerHTML={{ __html: `${safeRichHtml(item.descHtml, item.description)}${commercialDetailsHtml(item)}` }} />
                 <Box sx={{ ...cell, textAlign: 'center' }}>{item.unit || '-'}</Box>
                 <Box sx={{ ...cell, textAlign: 'right' }}>{quantity}</Box>

@@ -9,6 +9,8 @@ import ContentCopy from '@mui/icons-material/ContentCopy';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import DownloadOutlined from '@mui/icons-material/DownloadOutlined';
 import EditOutlined from '@mui/icons-material/EditOutlined';
+import ImageSearchOutlined from '@mui/icons-material/ImageSearchOutlined';
+import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
 import {
   emptyQuotationSet, emptySetItem, itemQuantity, quotationSetTemplates,
@@ -31,9 +33,17 @@ function stripHtml(value) {
   return (node.innerText || node.textContent || '').trim();
 }
 
-export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChange, onDownloadExcel }) {
+function driveImageUrl(value) {
+  const url = String(value || '').trim();
+  if (!url) return '';
+  const match = url.match(/[-\w]{25,}/);
+  return match ? `https://drive.google.com/thumbnail?id=${match[0]}&sz=w320` : url;
+}
+
+export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChange, onDownloadExcel, catalog }) {
   const [templateId, setTemplateId] = useState('');
   const [editor, setEditor] = useState(null);
+  const [imageSelector, setImageSelector] = useState(null);
   const totals = setQuoteTotals(sets, gstPct);
 
   const updateSet = (setIndex, changes) => {
@@ -61,6 +71,27 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
     const next = [...sets];
     next.splice(setIndex + 1, 0, clone);
     onChange(next);
+  };
+
+  const subCategories = imageSelector?.category ? catalog?.subcategories?.[imageSelector.category] || [] : [];
+  const imageItems = imageSelector?.category && imageSelector?.subCategory
+    ? catalog?.items?.[`${imageSelector.category}|||${imageSelector.subCategory}`] || []
+    : [];
+  const updateImageSelector = (field, value) => setImageSelector(current => {
+    const next = { ...current, [field]: value };
+    if (field === 'category') { next.subCategory = ''; next.itemCode = ''; }
+    if (field === 'subCategory') next.itemCode = '';
+    return next;
+  });
+  const applyImage = () => {
+    const selected = imageItems.find(item => item.code === imageSelector.itemCode);
+    updateItem(imageSelector.setIndex, imageSelector.itemIndex, {
+      imageUrl: selected?.imageUrl || '',
+      imageCategory: selected ? imageSelector.category : '',
+      imageSubCategory: selected ? imageSelector.subCategory : '',
+      imageItemCode: selected ? imageSelector.itemCode : '',
+    });
+    setImageSelector(null);
   };
 
   return (
@@ -96,9 +127,10 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
             </Box>
           </Box>
           <TableContainer sx={{ m: 1.5, width: 'auto', overflowX: 'auto', border: '1px solid #dbe3ef', borderRadius: 2 }}>
-            <Table size="small" sx={{ minWidth: 1740, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
+            <Table size="small" sx={{ minWidth: 1840, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontSize: '0.7rem', fontWeight: 800 }, '& td': { verticalAlign: 'top', p: 0.75 } }}>
               <TableHead><TableRow>
                 <TableCell sx={{ width: 54 }}>S.No</TableCell><TableCell sx={{ width: 220 }}>Item</TableCell>
+                <TableCell sx={{ width: 110 }}>Image</TableCell>
                 <TableCell sx={{ width: 500 }}>Description</TableCell><TableCell sx={{ width: 130 }}>Freight</TableCell>
                 <TableCell sx={{ width: 130 }}>Installation</TableCell><TableCell sx={{ width: 90 }}>Unit</TableCell>
                 <TableCell sx={{ width: 135 }}>Quantity mode</TableCell><TableCell sx={{ width: 95 }}>Factor</TableCell>
@@ -111,6 +143,15 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                   return <TableRow key={item.id || itemIndex} hover>
                     <TableCell sx={{ fontSize: '0.76rem', fontWeight: 700, pt: 1.6 }}>{itemIndex + 1}</TableCell>
                     <TableCell><TextField fullWidth multiline minRows={2} maxRows={4} value={item.item} onChange={(event) => updateItem(setIndex, itemIndex, { item: event.target.value })} sx={cellInputSx} /></TableCell>
+                    <TableCell>
+                      <Box sx={{ minHeight: 70, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.25 }}>
+                        {item.imageUrl && <Box component="img" src={driveImageUrl(item.imageUrl)} alt={item.imageItemCode || item.item || 'Quotation item'} sx={{ width: 58, height: 52, objectFit: 'contain' }} />}
+                        <Tooltip title="Choose image from Equipment BD"><IconButton size="small" onClick={() => setImageSelector({
+                          setIndex, itemIndex, category: item.imageCategory || '', subCategory: item.imageSubCategory || '', itemCode: item.imageItemCode || '',
+                        })}><ImageSearchOutlined fontSize="small" /></IconButton></Tooltip>
+                        {item.imageUrl && <Tooltip title="Open image"><IconButton size="small" onClick={() => window.open(item.imageUrl, '_blank', 'noopener,noreferrer')}><OpenInNewOutlined fontSize="small" /></IconButton></Tooltip>}
+                      </Box>
+                    </TableCell>
                     <TableCell>
                       <Box onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })} sx={{
                         position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
@@ -160,6 +201,22 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
             updateItem(editor.setIndex, editor.itemIndex, { descHtml: editor.value, description: stripHtml(editor.value) });
             setEditor(null);
           }}>Apply</Button>
+        </DialogActions>
+      </Dialog>
+      <Dialog open={Boolean(imageSelector)} onClose={(event, reason) => { if (reason !== 'backdropClick') setImageSelector(null); }} maxWidth="sm" fullWidth disableEscapeKeyDown>
+        <DialogTitle>Choose Standard Set Item Image</DialogTitle>
+        <DialogContent dividers>
+          <Typography sx={{ mb: 2, fontSize: '0.78rem', color: '#64748b' }}>This changes only the image reference. The set item, description, quantity calculation, unit and rate remain unchanged.</Typography>
+          <Box sx={{ display: 'grid', gap: 2 }}>
+            <FormControl fullWidth><InputLabel>Category</InputLabel><Select label="Category" value={imageSelector?.category || ''} onChange={event => updateImageSelector('category', event.target.value)}>{(catalog?.categories || []).map(category => <MenuItem key={category} value={category}>{category}</MenuItem>)}</Select></FormControl>
+            <FormControl fullWidth disabled={!imageSelector?.category}><InputLabel>Sub Category</InputLabel><Select label="Sub Category" value={imageSelector?.subCategory || ''} onChange={event => updateImageSelector('subCategory', event.target.value)}>{subCategories.map(subCategory => <MenuItem key={subCategory} value={subCategory}>{subCategory}</MenuItem>)}</Select></FormControl>
+            <FormControl fullWidth disabled={!imageSelector?.subCategory}><InputLabel>Item Code / Image</InputLabel><Select label="Item Code / Image" value={imageSelector?.itemCode || ''} onChange={event => updateImageSelector('itemCode', event.target.value)}>{imageItems.map(item => <MenuItem key={item.code} value={item.code}>{item.name && item.name !== item.code ? `${item.code} — ${item.name}` : item.code}</MenuItem>)}</Select></FormControl>
+          </Box>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setImageSelector(null)}>Cancel</Button>
+          <Button variant="outlined" color="inherit" onClick={() => setImageSelector(current => ({ ...current, category: '', subCategory: '', itemCode: '' }))}>Clear Image</Button>
+          <Button variant="contained" onClick={applyImage}>Apply Image</Button>
         </DialogActions>
       </Dialog>
     </Box>

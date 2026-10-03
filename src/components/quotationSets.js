@@ -13,6 +13,7 @@ export function emptySetItem() {
   return {
     id: createId('item'), item: '', description: '', descHtml: '', unit: '',
     qty: 1, rate: 0, qtyMode: 'manual', factor: 1, freight: '', installation: '',
+    imageUrl: '', imageCategory: '', imageSubCategory: '', imageItemCode: '',
   };
 }
 
@@ -31,6 +32,10 @@ export function normalizeSets(sets = []) {
       descHtml: item.descHtml || '',
       freight: item.freight || '',
       installation: item.installation || '',
+      imageUrl: item.imageUrl || '',
+      imageCategory: item.imageCategory || '',
+      imageSubCategory: item.imageSubCategory || '',
+      imageItemCode: item.imageItemCode || '',
       qtyMode: item.qtyMode === 'factor' ? 'factor' : 'manual',
       factor: Number(item.factor) || 0,
       qty: Number(item.qty) || 0,

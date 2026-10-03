@@ -4,6 +4,7 @@ import { readFile } from "node:fs/promises";
 import {
   buildQuotationPdf, quotationLineDescription, templateImageFormula, templateItemRowHeight, templateRichCell,
 } from "../api/_lib/quotationPdfExport.js";
+import { verifySignedToken } from "../api/_lib/sessionAuth.js";
 
 test("native quotation PDF renders without Apps Script", async () => {
   const pdf = await buildQuotationPdf({
@@ -35,13 +36,24 @@ test("quotation builder posts PDF exports to the native quotations API", async (
   assert.match(exporter, /top_margin: "0\.2"/);
   assert.match(exporter, /startIndex: 79 \+ terms\.length, endIndex: 99/);
   assert.match(exporter, /wrapStrategy: "WRAP"/);
+  assert.match(exporter, /importFunctionsExternalUrlAccessAllowed: true/);
+  assert.match(exporter, /setTimeout\(resolve, 1500\)/);
   assert.doesNotMatch(exporter, /export async function exportQuotationToDrive[\s\S]{0,250}buildQuotationPdf/);
 });
 
-test("New Template images use valid Drive thumbnails and never export reference errors", () => {
+test("New Template images use signed CRM URLs and never export Drive references", () => {
   assert.equal(templateImageFormula("#REF!"), "");
   assert.equal(templateImageFormula("not-a-url"), "");
-  assert.match(templateImageFormula("https://drive.google.com/file/d/15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b/view"), /drive\.google\.com\/thumbnail\?id=/);
+  const previousSecret = process.env.CRM_SESSION_SECRET;
+  process.env.CRM_SESSION_SECRET = "quotation-image-test-secret";
+  const formula = templateImageFormula("https://drive.google.com/file/d/15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b/view");
+  if (previousSecret === undefined) delete process.env.CRM_SESSION_SECRET;
+  else process.env.CRM_SESSION_SECRET = previousSecret;
+  assert.match(formula, /crm\.klientkonnect\.com\/api\/quotation-image/);
+  assert.doesNotMatch(formula, /drive\.google\.com/);
+  const token = decodeURIComponent(formula.match(/token=([^"&]+)/)?.[1] || "");
+  const payload = verifySignedToken(token, { secret: "quotation-image-test-secret" });
+  assert.deepEqual(payload, { type: "quotation-image", fileId: "15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b" });
 });
 
 test("New Template descriptions retain rich text and append row commercial terms", () => {

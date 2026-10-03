@@ -4,6 +4,7 @@ import { DRIVE_FOLDERS, SHEETS } from "./crmConfig.js";
 import {
   driveCopyFile, driveDownloadFile, getAccessToken, getDriveAuthSubjects, googleFetch, uploadDriveFileDetails,
 } from "./googleSheets.js";
+import { createSignedToken } from "./sessionAuth.js";
 
 const BLUE = "#163f76";
 const LIGHT_BLUE = "#dce9f8";
@@ -206,14 +207,26 @@ function templateDate(value) {
   const [year, month, day] = clean(value).split("-");
   return year && month && day ? `${day}/${month}/${year}` : clean(value);
 }
-function templateImageFormula(value) {
+function publicAppUrl() {
+  const configured = clean(
+    process.env.PUBLIC_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "https://crm.klientkonnect.com",
+  ).replace(/\/+$/g, "");
+  return /^https?:\/\//i.test(configured) ? configured : `https://${configured}`;
+}
+function quotationImageProxyUrl(fileId) {
+  if (!fileId) return "";
+  const token = createSignedToken({ type: "quotation-image", fileId });
+  return `${publicAppUrl()}/api/quotation-image?token=${encodeURIComponent(token)}`;
+}
+function templateImageFormula(value, options = {}) {
   let url = clean(value);
   if (!url || /^#(?:REF|VALUE|N\/A|ERROR)!?$/i.test(url)) return "";
   const formulaUrl = url.match(/^=IMAGE\(\s*"([^"]+)"/i);
   if (formulaUrl) url = formulaUrl[1];
   if (!/^https?:\/\//i.test(url)) return "";
   const match = url.match(/[-\w]{25,}/);
-  const source = match ? `https://drive.google.com/thumbnail?id=${match[0]}&sz=w1000` : url;
+  const source = match ? (options.proxyUrl || quotationImageProxyUrl(match[0])) : url;
+  if (!source || /(?:^|\/)drive\.google\.com(?:\/|$)/i.test(source)) return "";
   return `=IMAGE("${source.replace(/"/g, '""')}",4,145,175)`;
 }
 function templateItems(payload) {
@@ -282,7 +295,8 @@ function templateItemRowHeight(item = {}) {
     0,
   ) || 1);
   const descriptionHeight = 22 + (wrappedLines * 15);
-  const imageHeight = templateImageFormula(item.imageUrl) ? 160 : 60;
+  const imageUrl = clean(item.imageUrl);
+  const imageHeight = /^https?:\/\//i.test(imageUrl) && !/^#(?:REF|VALUE|N\/A|ERROR)!?$/i.test(imageUrl) ? 160 : 60;
   return Math.min(400, Math.max(60, imageHeight, descriptionHeight));
 }
 async function copyNewTemplate(name) {
@@ -303,6 +317,13 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
   const metadata = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`, {}, auth);
   const sheet = (metadata.sheets || []).map((entry) => entry.properties).find((entry) => entry?.title === TEMPLATE_SHEET);
   if (!sheet) throw new Error(`${TEMPLATE_SHEET} was not found in the editable quotation copy`);
+  await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ requests: [{ updateSpreadsheetProperties: {
+      properties: { importFunctionsExternalUrlAccessAllowed: true },
+      fields: "importFunctionsExternalUrlAccessAllowed",
+    } }] }),
+  }, auth);
   const items = templateItems(payload).slice(0, ITEMS_END_ROW - ITEMS_START_ROW + 1);
   if (!items.length) throw new Error("Add at least one complete quotation item before exporting");
   const meta = payload.meta || {};
@@ -408,7 +429,7 @@ export async function exportQuotationToDrive(payload = {}) {
   const baseName = safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName);
   const { copy, auth } = await copyNewTemplate(baseName);
   const sheetId = await populateNewTemplate(copy.id, auth, payload);
-  await new Promise((resolve) => setTimeout(resolve, 500));
+  await new Promise((resolve) => setTimeout(resolve, 1500));
   const pdf = await exportNewTemplatePdf(copy.id, sheetId, auth, meta.layout || "portrait");
   const fileName = `${baseName}.pdf`;
   const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");

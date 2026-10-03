@@ -30,6 +30,15 @@ const sourceLabel = task => task['Source Type'] === 'Quotation'
   ? `Quote ${task['Quote ID'] || ''}${task['Quote Revision'] ? ` v${task['Quote Revision']}` : ''}`
   : task['Source Type'] || 'Manual';
 
+const notificationFeedback = (notification, savedLabel) => {
+  if (notification?.sent) return { severity: 'success', message: `${savedLabel} Rido CRM notification sent.` };
+  if (notification?.reason === 'disabled') return { severity: 'info', message: `${savedLabel} Email notifications are currently disabled.` };
+  if (notification?.reason === 'missing_recipient') return { severity: 'warning', message: `${savedLabel} Notification was not sent because no task owner, assigned team member, or project manager email could be resolved.` };
+  if (notification?.reason === 'no_material_changes') return { severity: 'info', message: `${savedLabel} No email was needed because no task details changed.` };
+  if (notification?.reason === 'no_tasks') return { severity: 'success', message: savedLabel };
+  return { severity: 'warning', message: `${savedLabel} The email notification could not be sent${notification?.reason ? `: ${notification.reason}` : '.'}` };
+};
+
 export default function ProjectTasksDialog({ open, project, user, onClose }) {
   const projectId = project?.['Project ID (unique, auto-generated)'] || '';
   const projectName = project?.['Project Name'] || '';
@@ -37,6 +46,7 @@ export default function ProjectTasksDialog({ open, project, user, onClose }) {
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState(null);
   const [importOpen, setImportOpen] = useState(false);
   const [quotes, setQuotes] = useState([]);
@@ -67,14 +77,15 @@ export default function ProjectTasksDialog({ open, project, user, onClose }) {
   const summary = useMemo(() => projectTaskSummary(tasks), [tasks]);
 
   const saveTask = async (task, closeEditor = true) => {
-    setSaving(true); setError('');
+    setSaving(true); setError(''); setNotice('');
     try {
-      await jsonRequest(PROJECTS_API, {
+      const result = await jsonRequest(PROJECTS_API, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ action: 'saveProjectTask', data: {
           ...task, 'Project ID': projectId, 'Project Name': projectName, ...identity,
         } }),
       });
+      setNotice(notificationFeedback(result.notification, 'Task saved.'));
       if (closeEditor) setEditing(null);
       await loadTasks();
     } catch (err) { setError(err.message); }
@@ -111,7 +122,7 @@ export default function ProjectTasksDialog({ open, project, user, onClose }) {
     const selected = quoteLines.filter(line => selectedLineIds.includes(line.quotationLineId));
     if (!selected.length) { setError('Select at least one quotation line.'); return; }
     const quote = quotes.find(item => item.quoteId === selectedQuoteId) || {};
-    setSaving(true); setError('');
+    setSaving(true); setError(''); setNotice('');
     try {
       const result = await jsonRequest(PROJECTS_API, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -120,6 +131,7 @@ export default function ProjectTasksDialog({ open, project, user, onClose }) {
           lines: selected, ...identity,
         } }),
       });
+      setNotice(notificationFeedback(result.notification, `${result.created} task${result.created === 1 ? '' : 's'} imported.`));
       setImportOpen(false); setSelectedQuoteId(''); setQuoteLines([]); setSelectedLineIds([]);
       await loadTasks();
       if (result.skipped) setError(`${result.skipped} quotation line${result.skipped === 1 ? ' was' : 's were'} already linked and skipped.`);
@@ -143,6 +155,7 @@ export default function ProjectTasksDialog({ open, project, user, onClose }) {
       </DialogTitle>
       <DialogContent dividers sx={{ p: 2 }}>
         {error && <Alert severity="warning" sx={{ mb: 2 }}>{error}</Alert>}
+        {notice && <Alert severity={notice.severity} onClose={() => setNotice('')} sx={{ mb: 2 }}>{notice.message}</Alert>}
         <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'repeat(2, 1fr)', md: 'repeat(5, minmax(0, 1fr))' }, gap: 1, mb: 2 }}>
           {[['Total', summary.total], ['Active', summary.active], ['Completed', summary.completed], ['Overdue', summary.overdue]].map(([label, value]) => <Paper key={label} variant="outlined" sx={{ p: 1.25, borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">{label}</Typography><Typography variant="h6" fontWeight={800}>{value}</Typography></Paper>)}
           <Paper variant="outlined" sx={{ p: 1.25, borderRadius: 1.5 }}><Typography variant="caption" color="text.secondary">Progress</Typography><Typography fontWeight={800}>{summary.progress}%</Typography><LinearProgress variant="determinate" value={summary.progress} sx={{ mt: 0.75 }} /></Paper>

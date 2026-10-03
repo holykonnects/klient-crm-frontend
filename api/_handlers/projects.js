@@ -1,6 +1,6 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendRows, appendValues, buildRow, formatTimestamp, getValues, googleFetch, resolveSheetTitle, rowsToObjects, updateValues } from "../_lib/googleSheets.js";
-import { notifyProjectSubmitted } from "../_lib/operationalEmails.js";
+import { notifyProjectSubmitted, notifyProjectTaskChanged, notifyProjectTasksImported } from "../_lib/operationalEmails.js";
 import { ensureUpdateAuditHeaders, withUpdateAudit } from "../_lib/updateAudit.js";
 
 const PROJECT_ID = "Project ID (unique, auto-generated)";
@@ -156,7 +156,8 @@ async function saveProjectTask(payload) {
     "Updated By Email": audited["Updated By Email"], "Updated By Role": audited["Updated By Role"],
   });
   await appendValues(store.spreadsheetId, store.sheetName, buildRow(store.headers, task, { timestampFields: [] }));
-  return { ok: true, task };
+  const notification = await safely(async () => notifyProjectTaskChanged(task, previous, await latestProjectById(projectId)));
+  return { ok: true, task, notification };
 }
 
 async function importQuotationTasks(payload) {
@@ -190,7 +191,14 @@ async function importQuotationTasks(payload) {
     if (lineId) existingKeys.add(lineId);
   });
   if (created.length) await appendRows(store.spreadsheetId, store.sheetName, created.map((task) => buildRow(store.headers, task, { timestampFields: [] })));
-  return { ok: true, created: created.length, skipped: skipped.length, tasks: created };
+  const notification = await safely(async () => notifyProjectTasksImported(created, await latestProjectById(projectId)));
+  return { ok: true, created: created.length, skipped: skipped.length, tasks: created, notification };
+}
+
+async function latestProjectById(projectId) {
+  const sheetName = await resolveSheetTitle(SHEETS.projects.spreadsheetId, SHEETS.projects.sheetNames);
+  const rows = rowsToObjects(await getValues(SHEETS.projects.spreadsheetId, sheetName));
+  return [...rows].reverse().find((row) => String(row[PROJECT_ID]) === String(projectId)) || {};
 }
 
 async function getProjectsPayload() {

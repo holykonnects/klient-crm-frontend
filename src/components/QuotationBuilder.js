@@ -26,7 +26,7 @@ import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
-import { applyAthleticImageMapping, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
+import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -361,13 +361,17 @@ export default function QuotationBuilder() {
   const quotedSurfaceArea = athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined
     ? athleticArea
     : toNumber(athletic.quotedSurfaceArea);
+  const effectiveDrainPerimeter = useMemo(
+    () => athleticDrainPerimeter(athletic, catalog?.presets || []),
+    [athletic, catalog?.presets]
+  );
 
   const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
     catalog?.rateLibrary || [],
     athletic,
-    { area: quotedSurfaceArea, perimeter: toNumber(athletic.drainPerimeter) || toNumber(athletic.lengthPerimeter) },
+    { area: quotedSurfaceArea, perimeter: effectiveDrainPerimeter },
     catalog || {}
-  ), [athletic, catalog, quotedSurfaceArea]);
+  ), [athletic, catalog, effectiveDrainPerimeter, quotedSurfaceArea]);
 
   useEffect(() => {
     if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
@@ -584,7 +588,7 @@ export default function QuotationBuilder() {
     if (draftQuoteType === 'athletic') {
       setAthleticRows(draftRows);
       setExcludedAthleticLibraryKeys(payload.builderState?.excludedAthleticLibraryKeys || []);
-      setManageAthleticDefaults(false);
+      setManageAthleticDefaults(true);
     } else {
       setStandardRows(draftRows);
     }
@@ -957,7 +961,7 @@ export default function QuotationBuilder() {
                 {[
                   ['lengthPerimeter', 'Length / Perimeter (m)'], ['breadth', 'Breadth (m)'],
                   ['laneWidth', 'Lane Width (m)'], ['laneQuantity', 'Lane Quantity'],
-                  ['manualArea', 'Manual Surveyed Area (sqm)'], ['drainPerimeter', 'Drain / Edge Perimeter (rmt)'],
+                  ['manualArea', 'Manual Surveyed Area (sqm)'],
                   ['gstPct', 'GST %'], ['discountPct', 'Discount %'],
                   ['freightAmount', 'Freight / Mobilisation'], ['certificationAmount', 'Certification / Testing'],
                   ['validityDays', 'Validity (days)'],
@@ -967,6 +971,12 @@ export default function QuotationBuilder() {
                       onChange={e => setAthletic(a => ({ ...a, [key]: e.target.value }))} sx={fieldSx} />
                   </Grid>
                 ))}
+                <Grid item xs={12} md={6}>
+                  <TextField fullWidth size="medium" type="number" label="Drain / Edge Perimeter (rmt)" value={athletic.drainPerimeter === '' || athletic.drainPerimeter === undefined ? effectiveDrainPerimeter || '' : athletic.drainPerimeter}
+                    onChange={e => setAthletic(current => ({ ...current, drainPerimeter: e.target.value }))}
+                    helperText={athletic.drainPerimeter === '' || athletic.drainPerimeter === undefined ? 'Auto-populated from the selected preset. Edit to override.' : 'Manual override. Clear to restore the preset perimeter.'}
+                    inputProps={{ min: 0, step: 'any' }} sx={fieldSx} />
+                </Grid>
                 <Grid item xs={12} md={6}>
                   <TextField fullWidth size="medium" type="number" label="Calculated / Quoted Surface Area (sqm)" value={athletic.quotedSurfaceArea === '' || athletic.quotedSurfaceArea === undefined ? athleticArea || '' : athletic.quotedSurfaceArea}
                     onChange={e => setAthletic(current => ({ ...current, quotedSurfaceArea: e.target.value }))}

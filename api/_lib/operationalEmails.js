@@ -40,7 +40,7 @@ function brandedHtml({ greeting, intro, subject, headers, data, previousData = n
     ${previousData ? `<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">What changed</div>${changedFieldsCards(headers, previousData, data)}<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">Current snapshot</div>${recordDetailsCards(priorityHeaders(headers, data), data, { limit: 8 })}` : recordDetailsCards(headers, data)}
     ${actionUrl ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(actionUrl)}" target="_blank" style="display:inline-block;background:#12315c;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">${escapeHtml(actionLabel || "Open Link")}</a></p>` : ""}
     ${calendarLink ? `<p style="margin:20px 0 0 0;"><a href="${escapeHtml(meetingUrl)}" target="_blank" style="display:inline-block;background:#6495ED;color:#ffffff;text-decoration:none;padding:10px 14px;border-radius:4px;font-size:13px;font-weight:700;">Schedule a Meeting</a></p>` : ""}
-    <p style="margin:22px 0 0 0;">Regards,<br>Klient Konnect Team</p>
+    <p style="margin:22px 0 0 0;">Regards,<br>Rido CRM Team</p>
   `;
   return brandedEmailHtml(content, { subject });
 }
@@ -235,6 +235,123 @@ export async function notifyProjectSubmitted(headers, data, historyRows = []) {
   }));
   await gmailSendRawEmail(raw);
   return { sent: true, to, cc, bcc };
+}
+
+const PROJECT_TASK_IGNORED_FIELDS = new Set([
+  "Updated At", "Updated By", "Updated By Email", "Updated By Role",
+  "updatedByName", "updatedByEmail", "updatedByRole",
+]);
+
+export function projectTaskEvent(previous = {}, task = {}) {
+  if (!clean(previous["Task ID"])) return "created";
+  const previousStatus = clean(previous.Status);
+  const status = clean(task.Status);
+  if (status !== previousStatus) {
+    if (status === "Completed") return "completed";
+    if (status === "Blocked") return "blocked";
+    if (previousStatus === "Completed") return "reopened";
+    return "status_changed";
+  }
+  const assignmentChanged = ["Task Owner", "Assigned Team"].some((field) => clean(previous[field]) !== clean(task[field]));
+  if (assignmentChanged) {
+    return clean(previous["Task Owner"]) || clean(previous["Assigned Team"]) ? "reassigned" : "assigned";
+  }
+  const changed = Object.keys(task || {}).some((field) => (
+    !PROJECT_TASK_IGNORED_FIELDS.has(field) && clean(previous[field]) !== clean(task[field])
+  ));
+  return changed ? "updated" : "unchanged";
+}
+
+function splitIdentities(value) {
+  return clean(value).split(/[;,\n]/).map(clean).filter(Boolean);
+}
+
+export function resolveProjectTaskRecipients(headers, rows, task, project = {}, verifiedUpdater = "") {
+  const ownerIndex = findHeader(headers, "Lead Owner");
+  const emailIndex = findHeader(headers, "Email");
+  const bccIndex = findHeader(headers, "Project BCC");
+  const directory = new Map();
+  (rows || []).forEach((row) => {
+    const name = ownerIndex >= 0 ? clean(row[ownerIndex]).toLowerCase() : "";
+    const email = emailIndex >= 0 ? clean(row[emailIndex]) : "";
+    if (name && email) directory.set(name, email);
+  });
+  const emailsFor = (values) => uniqueEmails(values.flatMap((value) => splitIdentities(value).map((identity) => (
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identity) ? identity : directory.get(identity.toLowerCase()) || ""
+  ))));
+  const assignees = emailsFor([task["Task Owner"], task["Assigned Team"]]);
+  const managers = emailsFor([project["Project Manager"], project["Account Owner"], project["Lead Owner"], project.Owner]);
+  const toList = assignees.length ? assignees : managers;
+  const toKeys = new Set(toList.map((email) => email.toLowerCase()));
+  const ccList = uniqueEmails([...managers, ...resolveProjectCc(headers, rows), verifiedUpdater])
+    .filter((email) => !toKeys.has(email.toLowerCase()));
+  const visible = new Set([...toList, ...ccList].map((email) => email.toLowerCase()));
+  const bccList = uniqueEmails((rows || []).flatMap((row) => bccIndex >= 0 ? splitEmails(row[bccIndex]) : []))
+    .filter((email) => !visible.has(email.toLowerCase()));
+  return { to: toList.join(","), cc: ccList.join(","), bcc: bccList.join(",") };
+}
+
+function projectTaskEventLabel(event) {
+  return ({
+    created: "Created", assigned: "Assigned", reassigned: "Reassigned", status_changed: "Status Changed",
+    completed: "Completed", blocked: "Blocked", reopened: "Reopened", updated: "Updated",
+  })[event] || "Updated";
+}
+
+async function projectTaskDirectory() {
+  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, SHEETS.validation.leadSheetNames);
+  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
+  return { headers: values[0] || [], rows: values.slice(1) };
+}
+
+async function sendProjectTaskEmail({ task, project, event, previous = null, importedTasks = [] }) {
+  if (String(process.env.ENABLE_OPERATIONAL_EMAILS || "false").toLowerCase() !== "true") {
+    return { sent: false, reason: "disabled" };
+  }
+  if (event === "unchanged") return { sent: false, reason: "no_material_changes" };
+  const updaterEmail = await validatedUpdaterEmail(task);
+  const directory = await projectTaskDirectory();
+  const recipients = resolveProjectTaskRecipients(directory.headers, directory.rows, task, project, updaterEmail);
+  if (!recipients.to) return { sent: false, reason: "missing_recipient" };
+
+  const projectName = clean(task["Project Name"] || project["Project Name"]) || "Untitled Project";
+  const projectId = clean(task["Project ID"] || project["Project ID (unique, auto-generated)"]);
+  const isImport = importedTasks.length > 0;
+  const subject = isImport
+    ? `Project Tasks Imported: ${projectName} [${projectId}]`
+    : `Project Task ${projectTaskEventLabel(event)}: ${clean(task["Task Name"])} | ${projectName}`;
+  const importedHtml = importedTasks.map((item, index) => `
+    <div style="padding:10px 12px;border-bottom:${index === importedTasks.length - 1 ? "0" : "1px solid #dbe4f0"};">
+      <div style="font-weight:700;color:#111827;">${escapeHtml(item["Task Name"])}</div>
+      <div style="font-size:12px;color:#4b5563;margin-top:3px;">${escapeHtml([item["Quotation Quantity"], item["Quotation Unit"], item["Task Owner"] || item["Assigned Team"]].filter(Boolean).join(" | "))}</div>
+    </div>`).join("");
+  const content = `
+    <div style="margin:0 0 20px;background:#6495ED;border-radius:8px;padding:18px 20px;color:#ffffff;">
+      <div style="font-size:20px;font-weight:700;line-height:1.3;">${isImport ? "Quotation Tasks Imported" : `Project Task ${escapeHtml(projectTaskEventLabel(event))}`}</div>
+      <div style="font-size:13px;line-height:1.5;margin-top:4px;">${escapeHtml(projectName)}${projectId ? ` | ${escapeHtml(projectId)}` : ""}</div>
+    </div>
+    <p style="margin:0 0 16px;font-size:14px;line-height:1.6;">${isImport ? `${importedTasks.length} quotation ${importedTasks.length === 1 ? "line has" : "lines have"} been added to the project task plan.` : `The task has been ${escapeHtml(projectTaskEventLabel(event).toLowerCase())}.`}</p>
+    ${updaterDetailsHtml(task, updaterEmail).replace("margin:0 0 18px 0", "margin:0 0 16px 0")}
+    ${isImport
+      ? `<div style="border:1px solid #dbe4f0;border-radius:8px;overflow:hidden;margin-bottom:18px;">${importedHtml}</div>`
+      : `${previous ? `<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">What changed</div>${changedFieldsCards(Object.keys(task), previous, task)}` : ""}<div style="font-size:15px;font-weight:700;margin:20px 0 8px;">Task details</div>${recordDetailsCards(Object.keys(task).filter((field) => !PROJECT_TASK_IGNORED_FIELDS.has(field)), task)}`}
+    <p style="margin:22px 0 0 0;">Regards,<br>Rido CRM Team</p>`;
+  const html = brandedEmailHtml(content, { subject });
+  const raw = base64Url(mimeMessage({
+    ...recipients, subject, html, replyTo: process.env.OPERATIONAL_REPLY_TO || "", fromName: "Rido CRM",
+  }));
+  await gmailSendRawEmail(raw);
+  return { sent: true, ...recipients, event };
+}
+
+export async function notifyProjectTaskChanged(task, previous = {}, project = {}) {
+  const event = projectTaskEvent(previous, task);
+  return sendProjectTaskEmail({ task, previous: clean(previous["Task ID"]) ? previous : null, project, event });
+}
+
+export async function notifyProjectTasksImported(tasks, project = {}) {
+  if (!Array.isArray(tasks) || !tasks.length) return { sent: false, reason: "no_tasks" };
+  return sendProjectTaskEmail({ task: tasks[0], project, event: "created", importedTasks: tasks });
 }
 
 function findHeader(headers, name) {

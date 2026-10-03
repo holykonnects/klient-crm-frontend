@@ -31,6 +31,13 @@ export function athleticQuantity(driver, factor, context = {}) {
   return multiplier || 1;
 }
 
+export function athleticDrainPerimeter(config = {}, presets = []) {
+  const override = clean(config.drainPerimeter);
+  if (override !== '') return numberValue(override);
+  const preset = (presets || []).find(row => clean(row?.Preset) === clean(config.preset));
+  return numberValue(pick(preset, ['Drain Perimeter'])) || numberValue(config.lengthPerimeter);
+}
+
 export function athleticRateApplies(row, config = {}) {
   if (!enabled(pick(row, ['Include Default']))) return false;
   const scope = normalized(pick(row, ['Scope']));

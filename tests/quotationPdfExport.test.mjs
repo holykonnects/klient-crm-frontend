@@ -51,6 +51,8 @@ test("New Template images use signed CRM URLs and never export Drive references"
   else process.env.CRM_SESSION_SECRET = previousSecret;
   assert.match(formula, /crm\.klientkonnect\.com\/api\/quotation-image/);
   assert.doesNotMatch(formula, /drive\.google\.com/);
+  assert.match(formula, /,1\)$/);
+  assert.doesNotMatch(formula, /,4,/);
   const token = decodeURIComponent(formula.match(/token=([^"&]+)/)?.[1] || "");
   const payload = verifySignedToken(token, { secret: "quotation-image-test-secret" });
   assert.deepEqual(payload, { type: "quotation-image", fileId: "15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b" });

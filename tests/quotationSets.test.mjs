@@ -19,10 +19,16 @@ function resolvedSets(template) {
 test("GOI workbook templates preserve all five quotation patterns", () => {
   assert.deepEqual(templates.map((template) => template.id), [
     "7-2-pu", "football-hockey-asphalt", "1-fifa-standard-futball-track", "futsal-48x31", "sheet1",
+    "natural-football-100x65",
   ]);
   assert.equal(templates.find((template) => template.id === "futsal-48x31").sets[0].items.length, 19);
   assert.equal(templates.find((template) => template.id === "sheet1").sets.length, 2);
   assert.equal(templates.find((template) => template.id === "sheet1").sets[0].baseQuantity, 7500);
+  const naturalFootball = templates.find((template) => template.id === "natural-football-100x65");
+  assert.equal(naturalFootball.sets.length, 4);
+  assert.equal(naturalFootball.sets.reduce((sum, set) => sum + set.items.length, 0), 31);
+  assert.equal(naturalFootball.sets[0].baseQuantity, 6500);
+  assert.equal(naturalFootball.sets[1].baseQuantity, 330);
 });
 
 test("linked quantities scale with a set base while manual quantities remain fixed", () => {
@@ -52,12 +58,22 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   const sheet = workbook.getWorksheet("Quotation");
   const header = sheet.getRow(8).values.slice(1);
   assert.deepEqual(header.slice(-3), ["Quantity", "Unit Price", "Amount"]);
-  assert.equal(sheet.columnCount, 7);
+  assert.ok(header.includes("Image"));
+  assert.equal(sheet.columnCount, 8);
   let grandTotalRow;
   let termsHeadingRow;
   sheet.eachRow((row) => { if (row.getCell(1).value === "Grand Total") grandTotalRow = row; });
   sheet.eachRow((row) => { if (row.getCell(1).value === "Terms & Conditions: Flooring") termsHeadingRow = row; });
-  assert.ok(Number(grandTotalRow.getCell(7).value) > 0);
+  assert.ok(Number(grandTotalRow.getCell(8).value) > 0);
   assert.ok(termsHeadingRow);
   assert.equal(sheet.getRow(termsHeadingRow.number + 1).getCell(2).value, "Flooring term one");
+});
+
+test("standard set rows support isolated Equipment BD image mapping and preview", async () => {
+  const builder = await readFile(new URL("../src/components/QuotationSetBuilder.js", import.meta.url), "utf8");
+  const preview = await readFile(new URL("../src/components/QuotationSheetPreview.js", import.meta.url), "utf8");
+  assert.match(builder, /Choose Standard Set Item Image/);
+  assert.match(builder, /This changes only the image reference/);
+  assert.match(builder, /imageUrl: selected\?\.imageUrl \|\| ''/);
+  assert.match(preview, /item\.imageUrl \? <Box component="img"/);
 });

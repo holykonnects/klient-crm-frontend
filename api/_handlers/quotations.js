@@ -5,6 +5,7 @@ import { exportQuotationToDrive } from "../_lib/quotationPdfExport.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
+import { resolveLeadSourceIdentity } from "../_lib/leadSourceIdentity.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
 const ADMIN_TABLES = {
@@ -205,6 +206,7 @@ async function getLeadsForUser(user) {
       const company = clean(lead.Company);
       const mobile = clean(lead["Mobile Number"]);
       const display = [company, contactName, mobile].filter(Boolean).join(" | ");
+      const sourceIdentity = resolveLeadSourceIdentity(lead["Lead Source"], loginRows);
       return {
         value: display,
         display,
@@ -215,6 +217,8 @@ async function getLeadsForUser(user) {
         email: clean(lead["Email ID"]),
         billingAddress: [lead.Street, lead.City, lead.State, lead.Country, lead.PinCode].map(clean).filter(Boolean).join(", "),
         gstNumber: clean(pick(lead, ["GST Number", "GSTIN", "GST No.", "Client GST Number"])),
+        leadSourceName: sourceIdentity.name,
+        leadSourceEmail: sourceIdentity.email,
       };
     })
     .filter((lead) => lead.value);

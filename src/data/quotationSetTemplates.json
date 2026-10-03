@@ -1280,5 +1280,351 @@
         ]
       }
     ]
+  },
+  {
+    "id": "natural-football-100x65",
+    "name": "Natural Grass Football Field 100m x 65m",
+    "title": "PROPOSAL FOR DEVELOPMENT OF NATURAL GRASS FOOTBALL FIELD 100M X 65M = 6500 SQM",
+    "gstPct": 18,
+    "sets": [
+      {
+        "title": "Ground Preparation and Natural Turf",
+        "sourceLabel": "Jan Mitram Kalyan Samiti Natural Football Ground",
+        "baseQuantity": 6500,
+        "items": [
+          {
+            "item": "Surface Prepration",
+            "description": "Surface dressing of the ground including removing vegetation and other organic material and disposal of rubbish, lead up to 50 m.",
+            "unit": "SQM",
+            "qty": 6500,
+            "rate": 41,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Subgrade Prepration ",
+            "description": "Preparation and consolidation of sub grade with power road roller of 8 to 12 tonne capacity after excavating earth to an average   22.5 cm depth, dressing to camber and consolidating with road roller including making good the undulations etc. and re rolling the sub grade and disposal of surplus earthwith lead upto 50 metres.",
+            "unit": "SQM",
+            "qty": 6500,
+            "rate": 213,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Trenching for Subsoil Drainage System",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m. All kinds of soils",
+            "unit": "CUM",
+            "qty": 145,
+            "rate": 472,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PCC (1:3:6)\n(50 mm thick)",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 20 mm nominal size derived from natural sources).",
+            "unit": "CUM",
+            "qty": 22,
+            "rate": 8280,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PVC Perforated Pipe(6kg/cm2)\nDia- 100mm (ID)",
+            "description": "Providing and laying perforated ISI mark PVC pipe (6kg/ cm2) 5m centre to centre, including end cap & Joining and inserting to the outlet perimeter drainage by making necessary hole and packing for the same after inserting. ",
+            "unit": "Metre",
+            "qty": 1300,
+            "rate": 483,
+            "qtyMode": "factor",
+            "factor": 0.2,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Non Woven Geotextile (150 GSM)",
+            "description": "Providing and laying of polypropylene fibers geotextiles separation and barrier of 140/150 GSM, as per standard procedure as per the enclosed specifications complete as required.",
+            "unit": "SQM",
+            "qty": 7280,
+            "rate": 32,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": "=6500+780"
+          },
+          {
+            "item": "Filling of aggregate",
+            "description": "Supplying and filling of aggregate of size 20mm in the sub soil drains surrounding the pipes with 0.5 % slope and ditch .",
+            "unit": "CUM",
+            "qty": 120,
+            "rate": 3335,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Good Earth",
+            "description": "Supplying and stacking of good earth at site including laying, dressing to camber and consolidating with road roller including making good the undulations etc. and re rolling the good earth layer as recommended and including royalty and carriage  upto 5km lead and disposal of surplus earth with lead upto 50 metres all complete.(Upto 60mm compacted thickness)",
+            "unit": "CUM",
+            "qty": 975,
+            "rate": 1380,
+            "qtyMode": "factor",
+            "factor": 0.15,
+            "sourceQtyFormula": "=6500*0.15"
+          },
+          {
+            "item": "Manure",
+            "description": "Supplying and spreading site manure as recommended. Cost includes labour and machinery.",
+            "unit": "CUM",
+            "qty": 162.5,
+            "rate": 3910,
+            "qtyMode": "factor",
+            "factor": 0.025,
+            "sourceQtyFormula": "=6500*0.025"
+          },
+          {
+            "item": "River Sand",
+            "description": "Supply of Sand including laying and leveling and watering as per required slope and level. (30mm thick)",
+            "unit": "CUM",
+            "qty": 195,
+            "rate": 3163,
+            "qtyMode": "factor",
+            "factor": 0.03,
+            "sourceQtyFormula": "=6500*0.03"
+          },
+          {
+            "item": "Cocopeat",
+            "description": "Supply and mix COCOPEAT@20Kg /m3 of sand including the cost of labour and machinery.",
+            "unit": "TON",
+            "qty": 10,
+            "rate": 13800,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Natural Grass \n(1  mtr X 1 mtr)",
+            "description": "Supply and laying of natural grass turf 1mtr x 1mtr including transportation, leveling of fine sand and watering at site.",
+            "unit": "SQM",
+            "qty": 6500,
+            "rate": 322,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      },
+      {
+        "title": "Surface and Perimeter Drainage",
+        "sourceLabel": "Jan Mitram Kalyan Samiti Natural Football Ground",
+        "baseQuantity": 330,
+        "items": [
+          {
+            "item": "Excavation for  Drain  ",
+            "description": "Earth work in excavation by mechanical means (Hydraulic excavator) / manual means in foundation trenches or drains including dressing of sides and ramming of bottoms, including getting out the excavated soil and disposal of surplus excavated soil as directed, within a lead of 50 m. All kinds of soils \n",
+            "unit": "CUM",
+            "qty": 195,
+            "rate": 472,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "PCC  for  Drain  ",
+            "description": "Providing and laying in position cement concrete of specified grade excluding the cost of centering and shuttering - All work up to plinth level :- 1:3:6 (1 Cement : 3 coarse sand (zone-III) derived from natural sources : 6 graded stone aggregate 20 mm nominal size derived from natural sources).",
+            "unit": "CUM",
+            "qty": 49.5,
+            "rate": 8970,
+            "qtyMode": "factor",
+            "factor": 0.15,
+            "sourceQtyFormula": "=330*1*0.15"
+          },
+          {
+            "item": "Brick work for  Drain",
+            "description": "Brick work with common burnt clay F.P.S. (non modular) bricks of class designation 7.5 in foundation and plinth in: Cement mortar 1:4 (1 cement : 4 coarse sand)",
+            "unit": "Cum",
+            "qty": 91.08,
+            "rate": 11270,
+            "qtyMode": "factor",
+            "factor": 0.276,
+            "sourceQtyFormula": "=2*330*0.6*0.23"
+          },
+          {
+            "item": "PCC COPING \n(50mm thick)",
+            "description": "Providing and laying in position cement concrete of specified grade including the cost of centering and shuttering - All work up to plinth level : 1: 1.5: 3 (1 Cement : 1.5 coarse sand (zone-III) : 3 graded stone aggregate 6 mm nominal size.",
+            "unit": "Cum",
+            "qty": 11.385,
+            "rate": 12075,
+            "qtyMode": "factor",
+            "factor": 0.0345,
+            "sourceQtyFormula": "=2*330*0.23*0.075"
+          },
+          {
+            "item": "plaster work for  Drain",
+            "description": "15 mm thick hard cement plaster on all visible surface of toe/retainning wall",
+            "unit": "Sqm",
+            "qty": 528,
+            "rate": 564,
+            "qtyMode": "factor",
+            "factor": 1.6,
+            "sourceQtyFormula": "=330*1.6"
+          },
+          {
+            "item": "RCC Drain Cover",
+            "description": "Providing and fixing precast RCC  drain cover  of size 600mm lengthx450mm widthx75 mm thick, M-25 grade, including setting in position to the required line and level. Joints to be made with cement mortar 1:3 (1cement: 3 coarse sand). All work to be completed as per the direction of the Engineer-in charge.",
+            "unit": "RMT",
+            "qty": 330,
+            "rate": 2990,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      },
+      {
+        "title": "Equipment, Irrigation and Player Facilities",
+        "sourceLabel": "Jan Mitram Kalyan Samiti Natural Football Ground",
+        "baseQuantity": 1,
+        "items": [
+          {
+            "item": "Football Goal Post",
+            "description": "Football Goal Post movable heavy duty pipe 5\u201d Dia (4mm w.t) system as per rule Book of FIFA.\nFootball Net Galvanized mesh of Poly Propylene.",
+            "unit": "PAIR",
+            "qty": 1,
+            "rate": 155250,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Players Changing & Players Support Facilities ",
+            "description": "Equipment store Room (300 SQFT)                      \nMale Toilets & changing rooms (300 SQFT) \nFemale Toilets & changing rooms (300 SQFT) \nTechnical official Room (250 SQFT) \nAdministrator Room (250 SQFT)   \nFirst-aid and emergency-response area & Recovery / stretching area (500 SQFT)",
+            "unit": "LS",
+            "qty": 1,
+            "rate": 7130000,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Automatic Sprinkler System",
+            "description": "Supply & Installation of Automatic Pop-Up Sprinkler system consisting of HDPE pipe of 90mm - 410 meter from water source to corner of Football Ground & 63mm - 160 meter & 50mm -250 meter of pressure rating 6kg/cm2 conforming to IS:4984 (2019) with Electro Fusion fittings ,35 nos medium Radius Sports Pop-Up Sprinkler of 20 meter radius capable of discharging 1.3 lps @ 4 bar with 7 nos nylon glass field solenoid value of 3\" inlet size with 20\" Jumbo Valve box, Multiple wire  controller for auto operation of the solenoid valves and pump through pump start relay with safety valves ( 2\" Quick Pressure Relief Valve to ease out the pressure in case of any issue with solenoid valve or with system), Manual Disc Filter with heavy duty metallic clamp (50m3/hr discharge capacity) for keeping the system safe from foreign particle. With monoblock pump set with 10.H.P motor complete with mechanical seal,base frame, coupling, 30 meter single core cable of 4 sq mm copper, Star-Delta Control Panel with single phase preventer, Low level protection censor for dry run protection of the pump complete as per Engineer incharge.\n",
+            "unit": "LS",
+            "qty": 1,
+            "rate": 2242500,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      },
+      {
+        "title": "High Mast Flood Lighting",
+        "sourceLabel": "Jan Mitram Kalyan Samiti Natural Football Ground",
+        "baseQuantity": 4,
+        "items": [
+          {
+            "item": "High Mast Flood Lighting System",
+            "description": "Design, fabricate, supply and installation at site of minimum 24 Mtr. height Sports Mast pole hot dip galvanized 20 side polygonal High Mast suitable for 130 km/hr and suitable to install minimum 30 no. of LED fixtures in a symmetrical arrangement complete with accessories as required to achieve required illumination level and other technical parameters. High mast should have proper mast structure foundation accessories, lightning arrester (with 16x1200 mm spike), LED aviation lighting etc as required. The 24mte. high  mast shall be delivered either in Three or maximum four sections, and shall be joined together by slip stressed-fit method at site. Entire fabricated mast shall be hot dip galvanized as per BS EN ISO 1461 having a uniform thickness of 85 microns. It shall also include accessories for high mast including head frame arrangement suitable for mounting 30 luminaries. Suitable head frame as per the design for the required illumination across the designed illumination beam to be designed, fabricated and fixed over the structure",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 1786950,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "High Mast Access and Climbing Mechanism",
+            "description": "SITC of climbing mechanism ie ladder for accessing the head frame for repair/maintenance purpose like free fall arrester /overload protection etc. the Platform shall be suitable for safe load carrying capacity of 300kg apart from light of high mast.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 208125,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "800-600W Controlled Beam Sports Flood Lights",
+            "description": "SITC of controlled beam sports light with a typical system wattage  of 800-600 W  with  a  nominal system efficacy >130Lm/W. Luminaire should have CCT of 5500- 6500K with SDCM <5 and CRI >70 with different beam angle(3,7,15,25 Degree). The housing should be of non- corrosive high pressure die- cast aluminum to stand with extreme environments with Toughened glass, having corrosion resistant powder coating with lifetime of 50K hours@LM80. Product should be suitable for continuous operation (10-12 Hrs. per day)The Ingress protection should be minimum IP66 with IK rating of 07. The luminaire should have a 10 KV /6 KA SPD in the luminaire, with PF >0.95 & THD<10%. The SPD should comply to IEC 61643. The luminaries should be designed with optimum heat exchanger and fins in order to ensure optimum thermal dissipation. The luminaire should be capable of withstanding voltage stress of 440V for24 Hrs., should have an auto shutdown > 300V and have an auto recovery feature.The Drivers should be a potted driver and with aluminium casing and mounted inside the luminaire.\nTest report issued from a reputed NABL Lab.",
+            "unit": "Nos",
+            "qty": 160,
+            "rate": 70150,
+            "qtyMode": "factor",
+            "factor": 40,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "Outdoor Feeder Pillar",
+            "description": "Supply, installation testing and commissioning of Outdoor Single Door Kiosk type weather proof distribution feeder pillar box of suitable size with a tapered at top (for protection from rain water)  and made out of not less than 2.0 mm thick for load bearing members & 1.6 mm thick for doors, compartmentalized, IP 65, epoxy powder coated treated in 7 tank process finish with following items, front and back both side openable, duly hinged doors with locking arrangement by providing both sides hold drafts and all hardware for fabrication of box. The cubical panel should be mounted with hardware on angle iron frame long legs duly primered and black painted. Frame be grouted with cement concrete 1:3:6 ratio and providing brick masonry along angle iron frame above ground level complete with connecting strips, Bakelite sheet, earth stud etc. cable entry from bottom suitable for\n3.5Cx 300/240/120/70 Sq.mm I/c & O/g respectively. The panel should comprise of as per following (Panel shall be fabricated in CPRI approved panel Manufacturer",
+            "unit": "Nos",
+            "qty": 1,
+            "rate": 281750,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "High Mast Lighting Distribution Board",
+            "description": "SITC of outdoor type Highmast Lighting Distribution board (HMLDB), along with control gear rack (CGR) fully compartmentalized cubical type made out of 2mm thick CRCA Sheet having IP65 protection with canopy, pedestal mounted, suitable for use on 415V 3Phase 4wire 50 HZ and complete with powder coated painting, of suitable size for accommodating the following component, Including providing detachable gland plate for incoming and outgoing cables entry, erected on cement concrete foundation  made,  completewithpainting, interconnections, earthing, complete\nas required erected on Cement concrete foundation. HMLDB and CGR shall be installed near the base\nof High mast.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 42550,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "2C x 1.5 sq mm Copper Cable",
+            "description": "Supply and laying 1.1kv grade 2 core*1.5 sq mm copper conductor PVC / XLPE insulated un- armoured and PVC sheathed flexiable cable in between high mast DB/CG rack and luminaries including accessories.",
+            "unit": "Mtr",
+            "qty": 3800,
+            "rate": 276,
+            "qtyMode": "factor",
+            "factor": 950,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "GI Plate Earthing",
+            "description": "Providing  earthing  with  GIearth plate, 600mmX600mmXX5mm thick with all accessories, providing masonry enclosure with cover plates having locking arrangement & watering pipe of 2.7m long, with charcoal/coke and salt, complete with all materials",
+            "unit": "Each",
+            "qty": 8,
+            "rate": 36800,
+            "qtyMode": "factor",
+            "factor": 2,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "4C x 70 sq mm XLPE Power Cable",
+            "description": "Supply & Laying of one number additional XLPE power cable of 1.1 KV grade of 4C x 70 Sqmm size direct in ground in the same trench in one tier horizontal formation including excavation, sand cushioning, protective covering and refilling the trench etc as required.",
+            "unit": "Mtr",
+            "qty": 100,
+            "rate": 368,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "4C x 25 sq mm XLPE Power Cable",
+            "description": "Supply & Laying of one number additional XLPE power cable of 1.1 KV grade of 4C x 25 Sqmm size direct in ground in the same trench in one tier horizontal formation including excavation, sand cushioning, protective covering and refilling the trench etc as required.",
+            "unit": "Mtr",
+            "qty": 500,
+            "rate": 1610,
+            "qtyMode": "manual",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          },
+          {
+            "item": "High Mast Foundation, Erection and Aiming",
+            "description": "Foundation of pole along with Pole Erection, Crane Service, Light Installation & Aiming as per requirement given in RFP / direction of Engineer-in Charge. This job includes designing and providing required RCC foundation with accessories like foundation bolt etc. Necessary erection support such as crane, tools tackles, manpower etc. as required will be provided by us.",
+            "unit": "Nos",
+            "qty": 4,
+            "rate": 414000,
+            "qtyMode": "factor",
+            "factor": 1,
+            "sourceQtyFormula": ""
+          }
+        ]
+      }
+    ]
   }
 ]

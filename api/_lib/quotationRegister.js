@@ -78,7 +78,13 @@ async function ensureRegister() {
       await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: sheetName, frozenRowCount: 1 } } }] }),
+        body: JSON.stringify({
+          requests: [{
+            addSheet: {
+              properties: { title: sheetName, gridProperties: { frozenRowCount: 1 } },
+            },
+          }],
+        }),
       });
     } catch (error) {
       if (!/already exists/i.test(error.message || "")) throw error;

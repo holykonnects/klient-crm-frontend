@@ -12,7 +12,8 @@ test('New Template metadata writes only to the intended dynamic fields', () => {
   assert.doesNotMatch(source, /clientName:\s*'E7'/);
   assert.doesNotMatch(source, /projectName:\s*'E8'/);
   assert.match(source, /restoreProtectedTemplateContent_\(sourceTemplate, template\)/);
-  assert.match(source, /\['E3:L8', 'E100:L105'\]/);
+  assert.match(source, /\['E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'F100'\]/);
+  assert.doesNotMatch(source, /source\.getRange\(a1\)\.copyTo/);
 });
 
 test('athletic export uses the New Template item contract and cannot silently fall back', () => {

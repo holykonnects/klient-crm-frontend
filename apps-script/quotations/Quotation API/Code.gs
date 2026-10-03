@@ -654,8 +654,11 @@ function applyTemplateTerms_(template, meta) {
 }
 
 function restoreProtectedTemplateContent_(source, destination) {
-  ['E3:L8', 'E100:L105'].forEach(function(a1) {
-    source.getRange(a1).copyTo(destination.getRange(a1), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
+  // Source and destination belong to different spreadsheets, so Range.copyTo()
+  // cannot be used here. The copied template already owns the formatting and
+  // merges; restore only the fixed content through each merged range's anchor.
+  ['E3', 'E4', 'E5', 'E6', 'E7', 'E8', 'F100'].forEach(function(a1) {
+    destination.getRange(a1).setValue(source.getRange(a1).getValue());
   });
 }
 

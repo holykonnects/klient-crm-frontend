@@ -1,7 +1,9 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { buildQuotationPdf, quotationLineDescription, templateRichCell } from "../api/_lib/quotationPdfExport.js";
+import {
+  buildQuotationPdf, quotationLineDescription, templateImageFormula, templateItemRowHeight, templateRichCell,
+} from "../api/_lib/quotationPdfExport.js";
 
 test("native quotation PDF renders without Apps Script", async () => {
   const pdf = await buildQuotationPdf({
@@ -30,7 +32,16 @@ test("quotation builder posts PDF exports to the native quotations API", async (
   assert.match(exporter, /const \{ copy, auth \} = await copyNewTemplate\(baseName\)/);
   assert.match(exporter, /populateNewTemplate\(copy\.id, auth, payload\)/);
   assert.match(exporter, /range: "E2:L105"/);
+  assert.match(exporter, /top_margin: "0\.2"/);
+  assert.match(exporter, /startIndex: 79 \+ terms\.length, endIndex: 99/);
+  assert.match(exporter, /wrapStrategy: "WRAP"/);
   assert.doesNotMatch(exporter, /export async function exportQuotationToDrive[\s\S]{0,250}buildQuotationPdf/);
+});
+
+test("New Template images use valid Drive thumbnails and never export reference errors", () => {
+  assert.equal(templateImageFormula("#REF!"), "");
+  assert.equal(templateImageFormula("not-a-url"), "");
+  assert.match(templateImageFormula("https://drive.google.com/file/d/15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b/view"), /drive\.google\.com\/thumbnail\?id=/);
 });
 
 test("New Template descriptions retain rich text and append row commercial terms", () => {
@@ -40,4 +51,16 @@ test("New Template descriptions retain rich text and append row commercial terms
   assert.equal(cell.userEnteredValue.stringValue, "Approved specification\nFreight: Included\nInstallation: Excluded");
   assert.ok(cell.textFormatRuns.some((run) => run.format.bold));
   assert.ok(cell.textFormatRuns.some((run) => run.format.italic));
+});
+
+test("New Template item rows expand for long wrapped descriptions", () => {
+  const shortHeight = templateItemRowHeight({ description: "Short description" });
+  const longHeight = templateItemRowHeight({ description: "Long quotation specification ".repeat(40) });
+  const imageHeight = templateItemRowHeight({
+    description: "Short description",
+    imageUrl: "https://drive.google.com/file/d/15Xvn48C8KN2ImDg-OIEMjt9Xfk-Sbw6b/view",
+  });
+  assert.equal(shortHeight, 60);
+  assert.ok(longHeight > shortHeight);
+  assert.equal(imageHeight, 160);
 });

@@ -207,10 +207,13 @@ function templateDate(value) {
   return year && month && day ? `${day}/${month}/${year}` : clean(value);
 }
 function templateImageFormula(value) {
-  const url = clean(value);
-  if (!url) return "";
+  let url = clean(value);
+  if (!url || /^#(?:REF|VALUE|N\/A|ERROR)!?$/i.test(url)) return "";
+  const formulaUrl = url.match(/^=IMAGE\(\s*"([^"]+)"/i);
+  if (formulaUrl) url = formulaUrl[1];
+  if (!/^https?:\/\//i.test(url)) return "";
   const match = url.match(/[-\w]{25,}/);
-  const source = match ? `https://drive.google.com/uc?export=view&id=${match[0]}` : url;
+  const source = match ? `https://drive.google.com/thumbnail?id=${match[0]}&sz=w1000` : url;
   return `=IMAGE("${source.replace(/"/g, '""')}",4,145,175)`;
 }
 function templateItems(payload) {
@@ -267,6 +270,20 @@ function templateRichCell(html, fallback, item = {}) {
   });
   text = text.trim();
   return { userEnteredValue: { stringValue: text }, textFormatRuns: runs.filter((run) => run.startIndex < text.length) };
+}
+function templateItemRowHeight(item = {}) {
+  const text = templateRichCell(
+    item.descHtml,
+    item.descOverride || item.description || item.desc,
+    item,
+  ).userEnteredValue.stringValue;
+  const wrappedLines = (text.split("\n").reduce(
+    (count, line) => count + Math.max(1, Math.ceil(line.length / 34)),
+    0,
+  ) || 1);
+  const descriptionHeight = 22 + (wrappedLines * 15);
+  const imageHeight = templateImageFormula(item.imageUrl) ? 160 : 60;
+  return Math.min(400, Math.max(60, imageHeight, descriptionHeight));
 }
 async function copyNewTemplate(name) {
   const errors = [];
@@ -333,21 +350,30 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
   } }];
   items.forEach((item, index) => {
     const rowIndex = ITEMS_START_ROW - 1 + index;
+    const descriptionCell = templateRichCell(item.descHtml, item.descOverride || item.description || item.desc, item);
     requests.push({ updateCells: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 7, endColumnIndex: 8 },
-      rows: [{ values: [templateRichCell(item.descHtml, item.descOverride || item.description || item.desc, item)] }],
-      fields: "userEnteredValue,textFormatRuns",
+      rows: [{ values: [{
+        ...descriptionCell,
+        userEnteredFormat: { wrapStrategy: "WRAP", verticalAlignment: "TOP" },
+      }] }],
+      fields: "userEnteredValue,textFormatRuns,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment",
     } });
     requests.push({ updateDimensionProperties: {
       range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 },
-      properties: { pixelSize: item.imageUrl ? 160 : 60 }, fields: "pixelSize",
+      properties: { pixelSize: templateItemRowHeight(item) }, fields: "pixelSize",
     } });
   });
   if (ITEMS_START_ROW + items.length <= ITEMS_END_ROW) requests.push({ updateDimensionProperties: {
     range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: ITEMS_START_ROW - 1 + items.length, endIndex: ITEMS_END_ROW },
     properties: { hiddenByUser: true }, fields: "hiddenByUser",
   } });
-  (meta.termsAndConditions || []).slice(0, 20).forEach((term, index) => {
+  const terms = (meta.termsAndConditions || []).map((term) => clean(plainText(term)) ? term : "").filter(Boolean).slice(0, 20);
+  requests.push({ updateDimensionProperties: {
+    range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: 79, endIndex: 99 },
+    properties: { hiddenByUser: false }, fields: "hiddenByUser",
+  } });
+  terms.forEach((term, index) => {
     const rowIndex = 79 + index;
     requests.push({ updateCells: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 4, endColumnIndex: 6 },
@@ -355,6 +381,10 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
       fields: "userEnteredValue,textFormatRuns",
     } });
   });
+  if (terms.length < 20) requests.push({ updateDimensionProperties: {
+    range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: 79 + terms.length, endIndex: 99 },
+    properties: { hiddenByUser: true }, fields: "hiddenByUser",
+  } });
   await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
     method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requests }),
   }, auth);
@@ -365,6 +395,7 @@ async function exportNewTemplatePdf(spreadsheetId, sheetId, auth, layout) {
     format: "pdf", gid: String(sheetId), range: "E2:L105", size: "A4",
     portrait: layout === "landscape" ? "false" : "true", fitw: "true",
     sheetnames: "false", printtitle: "false", pagenumbers: "true", gridlines: "false", fzr: "false",
+    top_margin: "0.2", bottom_margin: "0.2", left_margin: "0.2", right_margin: "0.2",
   });
   const token = await getAccessToken(auth);
   const response = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?${params}`, { headers: { Authorization: `Bearer ${token}` } });
@@ -387,4 +418,4 @@ export async function exportQuotationToDrive(payload = {}) {
   };
 }
 
-export { populateNewTemplate, templateItems, templateRichCell };
+export { populateNewTemplate, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };

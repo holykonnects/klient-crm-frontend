@@ -1,7 +1,7 @@
 // src/components/QuotationBuilder.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Grid, Typography, Button, TextField, IconButton,
+  Autocomplete, Box, Grid, Typography, Button, TextField, IconButton,
   MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
   Dialog, DialogActions, DialogContent, DialogTitle
@@ -27,6 +27,7 @@ import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
+import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -217,6 +218,7 @@ export default function QuotationBuilder() {
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
   const [leadLookupError, setLeadLookupError] = useState('');
+  const [leadLookupLoading, setLeadLookupLoading] = useState(false);
 
   const rows = quoteType === 'athletic' ? athleticRows : standardRows;
   const setRows = updater => {
@@ -247,9 +249,10 @@ export default function QuotationBuilder() {
   useEffect(() => {
     if (!user?.username) return;
     (async () => {
+      setLeadLookupLoading(true);
       const j = await fetchJSON(`${QUOTATION_API_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
-      if (j.ok && Array.isArray(j.entries)) {
-        setLeadOptions(j.entries);
+      if (j.ok && (Array.isArray(j.leads) || Array.isArray(j.entries))) {
+        setLeadOptions((j.leads || j.entries || []).map(normalizeQuotationLead));
         setLeadLookupError('');
       } else {
         setLeadOptions([]);
@@ -258,8 +261,19 @@ export default function QuotationBuilder() {
     })().catch(err => {
       setLeadOptions([]);
       setLeadLookupError(err.message || 'Lead lookup unavailable');
-    });
+    }).finally(() => setLeadLookupLoading(false));
   }, [user?.username]);
+
+  const selectedLead = useMemo(() => {
+    if (!attachLead) return null;
+    return leadOptions.find(lead => lead.value === attachLead) || normalizeQuotationLead(attachLead);
+  }, [attachLead, leadOptions]);
+
+  const handleLeadSelection = (lead) => {
+    const selected = lead ? normalizeQuotationLead(lead) : null;
+    setAttachLead(selected?.value || '');
+    if (selected) setMeta(current => quotationMetaForLead(selected, current));
+  };
 
   useEffect(() => {
     if (!user?.username) return;
@@ -805,14 +819,31 @@ export default function QuotationBuilder() {
                   onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} sx={fieldSx} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={fieldSx} error={Boolean(leadLookupError)}>
-                  <InputLabel>Attach to Lead</InputLabel>
-                  <Select value={attachLead} label="Attach to Lead" onChange={e => setAttachLead(e.target.value)} sx={selectSx}>
-                    <MenuItem value=""><em>Skip</em></MenuItem>
-                    {leadLookupError && <MenuItem value="" disabled>Lead lookup unavailable</MenuItem>}
-                    {leadOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  fullWidth
+                  autoHighlight
+                  openOnFocus
+                  options={leadOptions}
+                  value={selectedLead}
+                  loading={leadLookupLoading}
+                  filterOptions={(options, state) => filterQuotationLeads(options, state.inputValue)}
+                  getOptionLabel={option => normalizeQuotationLead(option).display}
+                  isOptionEqualToValue={(option, value) => normalizeQuotationLead(option).value === normalizeQuotationLead(value).value}
+                  onChange={(event, value) => handleLeadSelection(value)}
+                  noOptionsText={leadLookupError || 'No matching leads'}
+                  loadingText="Loading leads..."
+                  renderOption={(props, option) => {
+                    const lead = normalizeQuotationLead(option);
+                    const { key, ...optionProps } = props;
+                    return <Box component="li" key={key || lead.value} {...optionProps} sx={{ display: 'block !important', py: 1 }}>
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{lead.company || lead.contactName}</Typography>
+                      <Typography sx={{ mt: 0.2, fontSize: '0.7rem', color: '#64748b' }}>
+                        {[lead.contactName !== lead.company ? lead.contactName : '', lead.mobile, lead.leadId].filter(Boolean).join(' | ')}
+                      </Typography>
+                    </Box>;
+                  }}
+                  renderInput={params => <TextField {...params} size="small" label="Attach to Lead" error={Boolean(leadLookupError)} helperText={leadLookupError || 'Search company, contact, mobile, email or Lead ID'} sx={fieldSx} />}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client Name" value={meta.clientName}

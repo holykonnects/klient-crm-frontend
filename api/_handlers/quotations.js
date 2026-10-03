@@ -193,15 +193,32 @@ async function getLeadsForUser(user) {
 
   const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames);
   const leads = rowsToObjects(await getValues(SHEETS.leads.spreadsheetId, sheetName));
-  const entries = leads
+  const leadOptions = leads
     .filter((lead) => isAdmin || clean(lead["Lead Owner"]).toLowerCase() === clean(user).toLowerCase())
-    .map((lead) => [lead.Company, `${clean(lead["First Name"])} ${clean(lead["Last Name"])}`.trim(), lead["Mobile Number"]]
-      .map(clean)
-      .filter(Boolean)
-      .join(" | "))
-    .filter(Boolean);
+    .map((lead) => {
+      const contactName = `${clean(lead["First Name"])} ${clean(lead["Last Name"])}`.trim();
+      const company = clean(lead.Company);
+      const mobile = clean(lead["Mobile Number"]);
+      const display = [company, contactName, mobile].filter(Boolean).join(" | ");
+      return {
+        value: display,
+        display,
+        leadId: clean(lead["Lead ID"]),
+        company,
+        contactName,
+        mobile,
+        email: clean(lead["Email ID"]),
+        billingAddress: [lead.Street, lead.City, lead.State, lead.Country, lead.PinCode].map(clean).filter(Boolean).join(", "),
+        gstNumber: clean(pick(lead, ["GST Number", "GSTIN", "GST No.", "Client GST Number"])),
+      };
+    })
+    .filter((lead) => lead.value);
 
-  return { ok: true, entries: [...new Set(entries)] };
+  const unique = new Map();
+  leadOptions.forEach((lead) => unique.set(lead.value.toLowerCase(), lead));
+  const availableLeads = [...unique.values()].sort((a, b) => a.display.localeCompare(b.display));
+
+  return { ok: true, entries: availableLeads.map((lead) => lead.value), leads: availableLeads };
 }
 
 export default async function handler(req, res) {

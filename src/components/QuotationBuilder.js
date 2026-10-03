@@ -26,7 +26,7 @@ import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
-import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
+import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_EXPORT_URL = '/api/gas';
@@ -490,12 +490,12 @@ export default function QuotationBuilder() {
       }))
     } : undefined,
     items: rows
-      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && (r.libraryItem || (r.category && r.subCategory && r.itemCode)))
+      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && isExportableQuotationRow(r, quoteType))
       .map(r => ({
         category: r.category,
         subCategory: r.subCategory,
         itemCode: r.itemCode,
-        displayItem: r.libraryItem || '',
+        displayItem: r.libraryItem || r.itemCode || (quoteType === 'athletic' ? 'Manual athletic item' : ''),
         source: r.source || 'manual',
         qtyDriver: r.qtyDriver || '',
         factor: toNumber(r.factor),
@@ -648,6 +648,10 @@ export default function QuotationBuilder() {
     setExporting(true);
     try {
       const payload = buildPayload();
+      if ((quoteType === 'standard' || quoteType === 'athletic') && !payload.items.length) {
+        alert('Add at least one complete quotation item before exporting.');
+        return;
+      }
       let exportQuoteId = payload.quoteId;
       if (!exportQuoteId) {
         const saved = await saveDraft({ status: 'Draft' });
@@ -1088,6 +1092,7 @@ export default function QuotationBuilder() {
 
           {(quoteType === 'standard' || quoteType === 'athletic') && <CompactPreviewFrame>
             <QuotationSheetPreview
+              quoteType={quoteType}
               meta={meta}
               rows={rows}
               totals={quoteType === 'athletic' ? athleticTotals : totals}

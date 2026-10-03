@@ -119,3 +119,15 @@ export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) 
     imageUrl: selectedItem?.imageUrl || '',
   };
 }
+
+export function isExportableQuotationRow(row = {}, quoteType = 'standard') {
+  if (quoteType === 'athletic') {
+    return Boolean(
+      clean(row.libraryItem)
+      || clean(row.itemCode)
+      || clean(row.desc)
+      || clean(row.descHtml)
+    );
+  }
+  return Boolean(clean(row.category) && clean(row.subCategory) && clean(row.itemCode));
+}

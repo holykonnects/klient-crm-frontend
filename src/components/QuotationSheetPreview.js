@@ -6,6 +6,7 @@ import EditOutlined from '@mui/icons-material/EditOutlined';
 import RestartAlt from '@mui/icons-material/RestartAlt';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
 import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
+import { isExportableQuotationRow } from './athleticRateLibrary';
 
 function driveImageUrl(value) {
   const url = String(value || '').trim();
@@ -224,9 +225,9 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, 
   );
 }
 
-export default function QuotationSheetPreview({ meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType, termTypes = [], onTermsTypeChange, onTermChange, onTermAdd, onTermRemove, onTermsReset }) {
+export default function QuotationSheetPreview({ quoteType = 'standard', meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType, termTypes = [], onTermsTypeChange, onTermChange, onTermAdd, onTermRemove, onTermsReset }) {
   if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} terms={terms} termsType={termsType} termTypes={termTypes} onTermsTypeChange={onTermsTypeChange} onTermChange={onTermChange} onTermAdd={onTermAdd} onTermRemove={onTermRemove} onTermsReset={onTermsReset} />;
-  const quoteRows = rows.filter((row) => row.libraryItem || (row.category && row.subCategory && row.itemCode));
+  const quoteRows = rows.filter((row) => isExportableQuotationRow(row, quoteType));
   const gst = totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst;
 
   return (
@@ -248,7 +249,7 @@ export default function QuotationSheetPreview({ meta, rows = [], totals, pricing
               <Box sx={{ ...cell, textAlign: 'center', fontWeight: 700 }}>{index + 1}</Box>
               <Box sx={cell}>{row.category}</Box>
               <Box sx={cell}>{row.subCategory}</Box>
-              <Box sx={cell}>{row.libraryItem || row.itemCode}</Box>
+              <Box sx={cell}>{row.libraryItem || row.itemCode || (quoteType === 'athletic' ? 'Manual athletic item' : '-')}</Box>
               <Box sx={{ ...cell, minHeight: 92, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 {row.imageUrl ? <Box component="img" src={driveImageUrl(row.imageUrl)} alt={row.itemCode} sx={{ width: 86, height: 74, objectFit: 'contain' }} /> : '-'}
               </Box>

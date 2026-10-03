@@ -39,12 +39,10 @@ const ITEMS_END_ROW   = 70;
 
 // Template meta cell mapping for the current "New Template" sheet.
 const META_MAP = {
-  clientName:  'E7',
-  projectName: 'E8',
-  quotationNo: 'E9',
-  dateISO:     'E10',
-  preparedBy:  'E12',
-  notes:       'E15',
+  clientName:  'G11',
+  projectName: 'G12',
+  quotationNo: 'E10',
+  dateISO:     'E9',
   termsType:   'C14',
   billingAddress: 'G13',
   clientGst:   'G14',
@@ -275,11 +273,12 @@ function doPost(e){
       assertCanUseQuotation_(username);
 
       const payload = JSON.parse(e.postData && e.postData.contents ? e.postData.contents : '{}');
-      const out = payload.quoteType === 'athletic'
-        ? ((payload.items || []).length ? buildQuotationAndExport_(payload) : buildAthleticQuotationAndExport_(payload))
-        : payload.quoteType === 'project-set'
-          ? buildSetQuotationAndExport_(payload)
-          : buildQuotationAndExport_(payload);
+      if (payload.quoteType === 'athletic' && !(payload.items || []).length) {
+        throw new Error('Athletic quotation has no exportable items. Add or restore quotation items before exporting.');
+      }
+      const out = payload.quoteType === 'project-set'
+        ? buildSetQuotationAndExport_(payload)
+        : buildQuotationAndExport_(payload);
 
       if (payload.attach && payload.attach.leadDisplay && out.pdfUrl){
         try { updateLeadQuotationLink_(payload.attach.leadDisplay, out.pdfUrl, username); }
@@ -480,7 +479,7 @@ function buildQuotationAndExport_(payload){
   const { meta = {}, pricing = {}, items = [] } = payload || {};
   const {
     clientName='', projectName='', quotationNo='',
-    dateISO='', preparedBy='', notes='',
+    dateISO='',
     quotationTitle='', clientBillingAddress='', clientGstNumber='', tcType='Equipment',
     layout='portrait'
   } = meta;
@@ -502,13 +501,18 @@ function buildQuotationAndExport_(payload){
     );
   };
   const workingCopy = payload.quoteId
-    ? managedWorkingCopy_(`${payload.quoteType || 'standard'}:${payload.quoteId}`, createWorkingCopy)
+    ? managedWorkingCopy_(`new-template-v2:${payload.quoteType || 'standard'}:${payload.quoteId}`, createWorkingCopy)
     : createWorkingCopy();
   DriveApp.getFileById(workingCopy.getId()).setName(copyName);
 
   // 2) Fill the copy’s template
   const template = workingCopy.getSheetByName(TEMPLATE_SHEET_NAME);
   if (!template) throw new Error(`${TEMPLATE_SHEET_NAME} not found in working copy`);
+  const sourceTemplate = ref.getSheetByName(TEMPLATE_SHEET_NAME);
+  if (!sourceTemplate) throw new Error(`${TEMPLATE_SHEET_NAME} not found in reference workbook`);
+
+  restoreProtectedTemplateContent_(sourceTemplate, template);
+  removeQuotationItemImages_(template);
 
   // Clear line area while preserving the fixed summary/terms rows.
   template.showRows(ITEMS_START_ROW, ITEMS_END_ROW - ITEMS_START_ROW + 1);
@@ -517,11 +521,9 @@ function buildQuotationAndExport_(payload){
 
   // Meta
   if (META_MAP.clientName)  template.getRange(META_MAP.clientName).setValue(clientName);
-  if (META_MAP.projectName) template.getRange(META_MAP.projectName).setValue(projectName);
-  if (META_MAP.quotationNo) template.getRange(META_MAP.quotationNo).setValue(quotationNo);
-  if (META_MAP.dateISO)     template.getRange(META_MAP.dateISO).setValue(dateISO ? new Date(dateISO) : new Date());
-  if (META_MAP.preparedBy)  template.getRange(META_MAP.preparedBy).setValue(preparedBy);
-  if (META_MAP.notes)       template.getRange(META_MAP.notes).setValue(notes);
+  if (META_MAP.projectName) template.getRange(META_MAP.projectName).setValue(projectName || clientName);
+  if (META_MAP.quotationNo) template.getRange(META_MAP.quotationNo).setValue(labelledTemplateValue_('Refrence Number:', quotationNo));
+  if (META_MAP.dateISO)     template.getRange(META_MAP.dateISO).setValue(`Dated: ${quotationDate_(dateISO)}`);
   if (META_MAP.termsType)   template.getRange(META_MAP.termsType).setValue(tcType || 'Equipment');
   if (META_MAP.billingAddress) template.getRange(META_MAP.billingAddress).setValue(clientBillingAddress);
   if (META_MAP.clientGst)   template.getRange(META_MAP.clientGst).setValue(clientGstNumber);
@@ -651,6 +653,33 @@ function applyTemplateTerms_(template, meta) {
   });
 }
 
+function restoreProtectedTemplateContent_(source, destination) {
+  ['E3:L8', 'E100:L105'].forEach(function(a1) {
+    source.getRange(a1).copyTo(destination.getRange(a1), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
+  });
+}
+
+function removeQuotationItemImages_(sheet) {
+  sheet.getImages().forEach(function(image) {
+    const anchor = image.getAnchorCell();
+    if (anchor.getColumn() === 7 && anchor.getRow() >= ITEMS_START_ROW && anchor.getRow() <= ITEMS_END_ROW) {
+      image.remove();
+    }
+  });
+}
+
+function labelledTemplateValue_(label, value) {
+  const text = String(value || '').trim();
+  if (!text) return label;
+  return text.toLowerCase().indexOf(String(label || '').toLowerCase()) === 0 ? text : `${label}${text}`;
+}
+
+function quotationDate_(value) {
+  const date = value ? new Date(value) : new Date();
+  const safeDate = isNaN(date.getTime()) ? new Date() : date;
+  return Utilities.formatDate(safeDate, Session.getScriptTimeZone() || 'Asia/Kolkata', 'dd.MM.yyyy');
+}
+
 /** ====== Update “Quotation Link” on Leads ====== **/
 function updateLeadQuotationLink_(leadDisplay, pdfUrl, actingUser){
   // leadDisplay format: "Company | First Last | Mobile"
@@ -778,7 +807,16 @@ function insertQuotationImage_(sheet, url, row, column) {
       : UrlFetchApp.fetch(sourceUrl, { muteHttpExceptions: true, followRedirects: true }).getBlob();
     if (!String(blob.getContentType() || '').startsWith('image/')) return false;
     const image = sheet.insertImage(blob, column, row);
-    image.setWidth(170).setHeight(140);
+    const maxWidth = 170;
+    const maxHeight = 140;
+    const sourceWidth = Math.max(1, image.getWidth());
+    const sourceHeight = Math.max(1, image.getHeight());
+    const scale = Math.min(maxWidth / sourceWidth, maxHeight / sourceHeight);
+    const width = Math.max(1, Math.round(sourceWidth * scale));
+    const height = Math.max(1, Math.round(sourceHeight * scale));
+    image.setWidth(width).setHeight(height);
+    image.setAnchorCellXOffset(Math.max(0, Math.round((maxWidth - width) / 2)));
+    image.setAnchorCellYOffset(Math.max(0, Math.round((maxHeight - height) / 2)));
     return true;
   } catch (error) {
     Logger.log(`Quotation image warning for row ${row}: ${error}`);

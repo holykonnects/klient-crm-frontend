@@ -52,13 +52,12 @@ test("set workbook export keeps quantity, unit price, and amount as the final co
   const sheet = workbook.getWorksheet("Quotation");
   const header = sheet.getRow(8).values.slice(1);
   assert.deepEqual(header.slice(-3), ["Quantity", "Unit Price", "Amount"]);
-  assert.deepEqual(header.slice(3, 5), ["Freight", "Installation"]);
-  assert.equal(sheet.columnCount, 9);
+  assert.equal(sheet.columnCount, 7);
   let grandTotalRow;
   let termsHeadingRow;
   sheet.eachRow((row) => { if (row.getCell(1).value === "Grand Total") grandTotalRow = row; });
   sheet.eachRow((row) => { if (row.getCell(1).value === "Terms & Conditions: Flooring") termsHeadingRow = row; });
-  assert.ok(Number(grandTotalRow.getCell(9).value) > 0);
+  assert.ok(Number(grandTotalRow.getCell(7).value) > 0);
   assert.ok(termsHeadingRow);
   assert.equal(sheet.getRow(termsHeadingRow.number + 1).getCell(2).value, "Flooring term one");
 });

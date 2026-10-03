@@ -182,14 +182,15 @@ export async function driveExportFile(fileId, mimeType) {
   };
 }
 
-export async function driveCopyFile(fileId, body) {
+export async function driveCopyFile(fileId, body, auth = {}) {
   return googleFetch(
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?supportsAllDrives=true&fields=id,name,webViewLink,modifiedTime`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
-    }
+    },
+    auth
   );
 }
 

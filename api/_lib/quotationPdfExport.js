@@ -1,7 +1,9 @@
 import fs from "fs";
 import path from "path";
-import { DRIVE_FOLDERS } from "./crmConfig.js";
-import { driveDownloadFile, getDriveAuthSubjects, uploadDriveFileDetails } from "./googleSheets.js";
+import { DRIVE_FOLDERS, SHEETS } from "./crmConfig.js";
+import {
+  driveCopyFile, driveDownloadFile, getAccessToken, getDriveAuthSubjects, googleFetch, uploadDriveFileDetails,
+} from "./googleSheets.js";
 
 const BLUE = "#163f76";
 const LIGHT_BLUE = "#dce9f8";
@@ -24,6 +26,10 @@ function plainText(value) {
 }
 function safeFileName(value) {
   return (clean(value) || "Quotation").replace(/[\\/:*?"<>|]/g, "-").replace(/\s+/g, " ");
+}
+function decodeHtml(value) {
+  return String(value ?? "").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&").replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">").replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'");
 }
 export function quotationLineDescription(item = {}) {
   return plainText(item.descHtml || item.descOverride || item.description || item.desc);
@@ -177,10 +183,208 @@ export async function buildQuotationPdf(payload = {}) {
   return completed;
 }
 
-export async function exportQuotationToDrive(payload = {}) {
+export async function buildLegacyQuotationPdfToDrive(payload = {}) {
   const pdf = await buildQuotationPdf(payload);
   const meta = payload.meta || {};
   const fileName = `${safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName)}.pdf`;
   const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
   return { ok: true, pdfFileId: uploaded.id, pdfFileName: fileName, pdfUrl: uploaded.webViewLink, workingCopyUrl: "" };
 }
+
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
+const TEMPLATE_SHEET = "New Template";
+const ITEMS_START_ROW = 18;
+const ITEMS_END_ROW = 70;
+
+function templateRange(a1) { return `'${TEMPLATE_SHEET}'!${a1}`; }
+function templatePercent(value) {
+  const numeric = number(value);
+  return numeric > 1 ? numeric / 100 : numeric;
+}
+function templateDate(value) {
+  const [year, month, day] = clean(value).split("-");
+  return year && month && day ? `${day}/${month}/${year}` : clean(value);
+}
+function templateImageFormula(value) {
+  const url = clean(value);
+  if (!url) return "";
+  const match = url.match(/[-\w]{25,}/);
+  const source = match ? `https://drive.google.com/uc?export=view&id=${match[0]}` : url;
+  return `=IMAGE("${source.replace(/"/g, '""')}",4,145,175)`;
+}
+function templateItems(payload) {
+  if (payload.quoteType !== "project-set") return payload.items || [];
+  return (payload.setQuotation?.sets || []).flatMap((set) => (set.items || []).map((item) => ({
+    category: clean(set.title), subCategory: "Project BOQ", itemCode: clean(item.item),
+    displayItem: clean(item.item), descOverride: clean(item.description), descHtml: item.descHtml,
+    freight: item.freight, installation: item.installation, unit: item.unit,
+    qty: item.qty, rate: item.rate, itemType: "Equipment", imageUrl: item.imageUrl,
+  })));
+}
+function templatePricing(payload) {
+  if (payload.quoteType !== "project-set") return payload.pricing || {};
+  const gst = payload.setQuotation?.gstPct || 0;
+  return {
+    freightAmount: "", installationAmount: "", equipmentDiscountPct: 0, nonEquipmentDiscountPct: 0,
+    equipmentGstPct: gst, nonEquipmentGstPct: gst, freightInstallGstPct: gst,
+  };
+}
+function templateRichCell(html, fallback, item = {}) {
+  const source = clean(html) || clean(fallback).replace(/\n/g, "<br>");
+  const tokens = source.match(/<[^>]+>|[^<]+/g) || [];
+  const active = { bold: false, italic: false, underline: false };
+  const runs = [];
+  let text = "";
+  const append = (value, format = active) => {
+    const decoded = decodeHtml(value);
+    if (!decoded) return;
+    const next = { bold: Boolean(format.bold), italic: Boolean(format.italic), underline: Boolean(format.underline) };
+    const previous = runs.at(-1)?.format || {};
+    if (!runs.length || previous.bold !== next.bold || previous.italic !== next.italic || previous.underline !== next.underline) {
+      runs.push({ startIndex: text.length, format: next });
+    }
+    text += decoded;
+  };
+  const newline = () => { if (text && !text.endsWith("\n")) append("\n"); };
+  tokens.forEach((token) => {
+    if (!token.startsWith("<")) return append(token);
+    const tag = token.toLowerCase().replace(/[<>]/g, "").trim().split(/\s+/)[0];
+    if (["br", "br/", "/p", "/div", "/li"].includes(tag)) newline();
+    else if (tag === "li") { newline(); append("- "); }
+    else if (["strong", "b"].includes(tag)) active.bold = true;
+    else if (["/strong", "/b"].includes(tag)) active.bold = false;
+    else if (["em", "i"].includes(tag)) active.italic = true;
+    else if (["/em", "/i"].includes(tag)) active.italic = false;
+    else if (tag === "u") active.underline = true;
+    else if (tag === "/u") active.underline = false;
+  });
+  [["Freight", item.freight], ["Installation", item.installation]].forEach(([label, value]) => {
+    if (!clean(value)) return;
+    newline();
+    append(`${label}: `, { bold: true });
+    append(clean(value), {});
+  });
+  text = text.trim();
+  return { userEnteredValue: { stringValue: text }, textFormatRuns: runs.filter((run) => run.startIndex < text.length) };
+}
+async function copyNewTemplate(name) {
+  const errors = [];
+  for (const subject of getDriveAuthSubjects()) {
+    const auth = { scopes: [DRIVE_SCOPE, SHEETS_SCOPE], subject };
+    try {
+      const copy = await driveCopyFile(SHEETS.quotations.referenceSpreadsheetId, {
+        name,
+        parents: [DRIVE_FOLDERS.quotationWorkingCopies],
+      }, auth);
+      return { copy, auth };
+    } catch (error) { errors.push(error.message || String(error)); }
+  }
+  throw new Error(`Editable New Template copy could not be created: ${errors.at(-1) || "Google Drive access failed"}`);
+}
+async function populateNewTemplate(spreadsheetId, auth, payload) {
+  const metadata = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties(sheetId,title)`, {}, auth);
+  const sheet = (metadata.sheets || []).map((entry) => entry.properties).find((entry) => entry?.title === TEMPLATE_SHEET);
+  if (!sheet) throw new Error(`${TEMPLATE_SHEET} was not found in the editable quotation copy`);
+  const items = templateItems(payload).slice(0, ITEMS_END_ROW - ITEMS_START_ROW + 1);
+  if (!items.length) throw new Error("Add at least one complete quotation item before exporting");
+  const meta = payload.meta || {};
+  const pricing = templatePricing(payload);
+  const data = [
+    ["G11", meta.clientName], ["G12", meta.projectName || meta.clientName],
+    ["E10", meta.quotationNo ? `Refrence Number:${meta.quotationNo}` : "Refrence Number:"],
+    ["E9", `Dated: ${templateDate(meta.dateISO)}`], ["C14", meta.tcType || "Equipment"],
+    ["G13", meta.clientBillingAddress], ["G14", meta.clientGstNumber],
+    ["E16", safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName)],
+    ["L71", "=SUM(L18:L70)"],
+    ["L72", pricing.freightAmount === "" || pricing.freightAmount === undefined ? "Extra" : number(pricing.freightAmount)],
+    ["L73", pricing.installationAmount === "" || pricing.installationAmount === undefined ? "Extra" : number(pricing.installationAmount)],
+    ["K74", templatePercent(pricing.nonEquipmentDiscountPct)], ["K75", templatePercent(pricing.equipmentDiscountPct)],
+    ["K76", templatePercent(pricing.nonEquipmentGstPct)], ["K77", templatePercent(pricing.equipmentGstPct)],
+    ["K78", templatePercent(pricing.freightInstallGstPct)],
+    ["L74", '=SUMIF($M$18:$M$70,"Non Equipment",$L$18:$L$70)*$K$74'],
+    ["L75", '=SUMIF($M$18:$M$70,"Equipment",$L$18:$L$70)*$K$75'],
+    ["L76", '=(SUMIF($M$18:$M$70,"Non Equipment",$L$18:$L$70)-L74)*K76'],
+    ["L77", '=(SUMIF($M$18:$M$70,"Equipment",$L$18:$L$70)-L75)*K77'],
+    ["L78", '=SUM(IFERROR(L72,0),IFERROR(L73,0))*K78'],
+    ["L79", '=ROUNDUP(SUM(L76,L77,L71,IFERROR(L72,0),IFERROR(L73,0),L78)-L74-L75)'],
+  ].map(([a1, value]) => ({ range: templateRange(a1), values: [[value ?? ""]] }));
+  items.forEach((item, index) => {
+    const row = ITEMS_START_ROW + index;
+    const rate = item.rateOverride !== undefined && item.rateOverride !== "" ? number(item.rateOverride) : number(item.rate);
+    data.push({ range: templateRange(`B${row}:N${row}`), values: [[
+      item.category || "", item.subCategory || "", item.itemCode || "", index + 1,
+      item.displayItem || item.libraryItem || item.itemCode || "", templateImageFormula(item.imageUrl), "",
+      item.unit || "", number(item.qty), rate, `=IF(OR(J${row}="",K${row}=""),"",J${row}*K${row})`,
+      item.itemType || "Equipment", number(item.rate),
+    ]] });
+  });
+  await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchClear`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ranges: [templateRange("B18:O70"), templateRange("E80:F99")] }),
+  }, auth);
+  await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valueInputOption: "USER_ENTERED", data }),
+  }, auth);
+  const requests = [{ updateDimensionProperties: {
+    range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: ITEMS_START_ROW - 1, endIndex: ITEMS_END_ROW },
+    properties: { hiddenByUser: false }, fields: "hiddenByUser",
+  } }];
+  items.forEach((item, index) => {
+    const rowIndex = ITEMS_START_ROW - 1 + index;
+    requests.push({ updateCells: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 7, endColumnIndex: 8 },
+      rows: [{ values: [templateRichCell(item.descHtml, item.descOverride || item.description || item.desc, item)] }],
+      fields: "userEnteredValue,textFormatRuns",
+    } });
+    requests.push({ updateDimensionProperties: {
+      range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 },
+      properties: { pixelSize: item.imageUrl ? 160 : 60 }, fields: "pixelSize",
+    } });
+  });
+  if (ITEMS_START_ROW + items.length <= ITEMS_END_ROW) requests.push({ updateDimensionProperties: {
+    range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: ITEMS_START_ROW - 1 + items.length, endIndex: ITEMS_END_ROW },
+    properties: { hiddenByUser: true }, fields: "hiddenByUser",
+  } });
+  (meta.termsAndConditions || []).slice(0, 20).forEach((term, index) => {
+    const rowIndex = 79 + index;
+    requests.push({ updateCells: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 4, endColumnIndex: 6 },
+      rows: [{ values: [{ userEnteredValue: { numberValue: index + 1 } }, templateRichCell(term, plainText(term))] }],
+      fields: "userEnteredValue,textFormatRuns",
+    } });
+  });
+  await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}:batchUpdate`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requests }),
+  }, auth);
+  return sheet.sheetId;
+}
+async function exportNewTemplatePdf(spreadsheetId, sheetId, auth, layout) {
+  const params = new URLSearchParams({
+    format: "pdf", gid: String(sheetId), range: "E2:L105", size: "A4",
+    portrait: layout === "landscape" ? "false" : "true", fitw: "true",
+    sheetnames: "false", printtitle: "false", pagenumbers: "true", gridlines: "false", fzr: "false",
+  });
+  const token = await getAccessToken(auth);
+  const response = await fetch(`https://docs.google.com/spreadsheets/d/${spreadsheetId}/export?${params}`, { headers: { Authorization: `Bearer ${token}` } });
+  if (!response.ok) throw new Error(`New Template PDF export failed (${response.status}): ${await response.text()}`);
+  return Buffer.from(await response.arrayBuffer());
+}
+
+export async function exportQuotationToDrive(payload = {}) {
+  const meta = payload.meta || {};
+  const baseName = safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName);
+  const { copy, auth } = await copyNewTemplate(baseName);
+  const sheetId = await populateNewTemplate(copy.id, auth, payload);
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  const pdf = await exportNewTemplatePdf(copy.id, sheetId, auth, meta.layout || "portrait");
+  const fileName = `${baseName}.pdf`;
+  const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
+  return {
+    ok: true, pdfFileId: uploaded.id, pdfFileName: fileName, pdfUrl: uploaded.webViewLink,
+    workingCopyUrl: copy.webViewLink || `https://docs.google.com/spreadsheets/d/${copy.id}/edit`,
+  };
+}
+
+export { populateNewTemplate, templateItems, templateRichCell };

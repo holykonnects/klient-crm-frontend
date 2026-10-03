@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
-import { buildQuotationPdf, quotationLineDescription } from "../api/_lib/quotationPdfExport.js";
+import { buildQuotationPdf, quotationLineDescription, templateRichCell } from "../api/_lib/quotationPdfExport.js";
 
 test("native quotation PDF renders without Apps Script", async () => {
   const pdf = await buildQuotationPdf({
@@ -21,8 +21,23 @@ test("native quotation PDF renders without Apps Script", async () => {
 
 test("quotation builder posts PDF exports to the native quotations API", async () => {
   const source = await readFile(new URL("../src/components/QuotationBuilder.js", import.meta.url), "utf8");
+  const exporter = await readFile(new URL("../api/_lib/quotationPdfExport.js", import.meta.url), "utf8");
   assert.match(source, /action:\s*'exportPdf'/);
   assert.doesNotMatch(source, /QUOTATION_EXPORT_URL|\/api\/gas/);
   assert.match(source, /freight:\s*r\.freight/);
   assert.match(source, /installation:\s*r\.installation/);
+  assert.match(exporter, /const TEMPLATE_SHEET = "New Template"/);
+  assert.match(exporter, /const \{ copy, auth \} = await copyNewTemplate\(baseName\)/);
+  assert.match(exporter, /populateNewTemplate\(copy\.id, auth, payload\)/);
+  assert.match(exporter, /range: "E2:L105"/);
+  assert.doesNotMatch(exporter, /export async function exportQuotationToDrive[\s\S]{0,250}buildQuotationPdf/);
+});
+
+test("New Template descriptions retain rich text and append row commercial terms", () => {
+  const cell = templateRichCell("<p><strong>Approved</strong> <em>specification</em></p>", "", {
+    freight: "Included", installation: "Excluded",
+  });
+  assert.equal(cell.userEnteredValue.stringValue, "Approved specification\nFreight: Included\nInstallation: Excluded");
+  assert.ok(cell.textFormatRuns.some((run) => run.format.bold));
+  assert.ok(cell.textFormatRuns.some((run) => run.format.italic));
 });

@@ -49,6 +49,10 @@ function isAdmin(user, rows) {
   return rows.some((row) => clean(row["Login Username"]).toLowerCase() === username && clean(row.Role).toLowerCase() === "admin");
 }
 
+function isRegisterUnavailable(error) {
+  return /Quotation Register is not writable/i.test(error?.message || "");
+}
+
 function tableSpreadsheet(definition) {
   return definition.book === "athletic"
     ? SHEETS.quotations.athleticSpreadsheetId
@@ -246,15 +250,33 @@ export default async function handler(req, res) {
         return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
       }
       if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
-      if (action === "listQuotes") return res.status(200).json(await listSavedQuotes(req.query.user));
-      if (action === "getQuote") return res.status(200).json(await getSavedQuote(req.query.user, req.query.quoteId, req.query.revision));
+      if (action === "listQuotes") {
+        try { return res.status(200).json(await listSavedQuotes(req.query.user)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
+      if (action === "getQuote") {
+        try { return res.status(200).json(await getSavedQuote(req.query.user, req.query.quoteId, req.query.revision)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
       if (action === "getAdminTable") return res.status(200).json(await getAdminTable(clean(req.query.table), req.query.user));
       return res.status(400).json({ ok: false, error: "Invalid action" });
     }
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       if (body.action === "saveAdminRow") return res.status(200).json(await saveAdminRow(clean(body.table), body.user, body.row || {}));
-      if (body.action === "saveQuote") return res.status(200).json(await saveQuoteRevision(body.user, body.quote || {}, QUOTATION_ENGINE_VERSION));
+      if (body.action === "saveQuote") {
+        try { return res.status(200).json(await saveQuoteRevision(body.user, body.quote || {}, QUOTATION_ENGINE_VERSION)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
       if (body.action === "exportPdf") {
         const loginRows = await getLoginRows();
         if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }

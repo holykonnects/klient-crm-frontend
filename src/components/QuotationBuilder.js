@@ -565,13 +565,17 @@ export default function QuotationBuilder() {
           quote: { quoteId, status, pdfUrl, workingCopyUrl, payload },
         })
       });
-      if (!result.ok) throw new Error(result.error || 'Quote could not be saved');
+      if (!result.ok) {
+        const error = new Error(result.error || 'Quote could not be saved');
+        error.registerUnavailable = Boolean(result.registerUnavailable);
+        throw error;
+      }
       const saved = { ...result.quote, payload };
       setSavedDrafts(current => [saved, ...current.filter(draft => draft.quoteId !== saved.quoteId)]);
       setActiveQuoteId(saved.quoteId);
       return saved;
     } catch (error) {
-      console.error('Shared quotation register save error:', error);
+      if (!error.registerUnavailable) console.error('Shared quotation register save error:', error);
       const next = [record, ...savedDrafts.filter(draft => draft.quoteId !== quoteId)];
       if (persistDrafts(next)) setActiveQuoteId(quoteId);
       return record;

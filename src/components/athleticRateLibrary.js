@@ -82,6 +82,8 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
       descHtml: '',
       imageUrl: catalogItem?.imageUrl || '',
       itemType: normalized(pick(libraryRow, ['Scope'])) === 'equipment' ? 'Equipment' : 'Non Equipment',
+      freight: clean(pick(libraryRow, ['Freight'])),
+      installation: clean(pick(libraryRow, ['Installation'])),
     };
   });
 }
@@ -118,4 +120,16 @@ export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) 
     itemCode,
     imageUrl: selectedItem?.imageUrl || '',
   };
+}
+
+export function isExportableQuotationRow(row = {}, quoteType = 'standard') {
+  if (quoteType === 'athletic') {
+    return Boolean(
+      clean(row.libraryItem)
+      || clean(row.itemCode)
+      || clean(row.desc)
+      || clean(row.descHtml)
+    );
+  }
+  return Boolean(clean(row.category) && clean(row.subCategory) && clean(row.itemCode));
 }

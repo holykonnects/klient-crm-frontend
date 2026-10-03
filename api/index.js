@@ -11,6 +11,7 @@ import orderAttachments from "./_handlers/order-attachments.js";
 import orderInvoices from "./_handlers/order-invoices.js";
 import orders from "./_handlers/orders.js";
 import projects from "./_handlers/projects.js";
+import quotationImage from "./_handlers/quotation-image.js";
 import quotations from "./_handlers/quotations.js";
 import salesTracker from "./_handlers/sales-tracker.js";
 import tenders from "./_handlers/tenders.js";
@@ -33,6 +34,7 @@ const handlers = {
   "order-invoices": orderInvoices,
   orders,
   projects,
+  "quotation-image": quotationImage,
   quotations,
   "sales-tracker": salesTracker,
   tenders,

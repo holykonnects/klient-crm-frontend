@@ -39,6 +39,17 @@ export function getDriveAuthSubjects(env = process.env) {
   return delegatedUser ? [delegatedUser, ""] : [""];
 }
 
+export function getSheetsAuthSubjects(env = process.env) {
+  const delegatedUser = String(
+    env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL ||
+    env.GOOGLE_DELEGATED_USER_EMAIL ||
+    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL ||
+    env.GMAIL_SENDER_EMAIL ||
+    ""
+  ).trim();
+  return delegatedUser ? [delegatedUser, ""] : [""];
+}
+
 function assertGoogleEnv() {
   if (!getServiceAccountEmail() || !getPrivateKey()) {
     throw new Error(
@@ -135,8 +146,8 @@ export async function driveGetFile(fileId, fields = "id,name,mimeType,modifiedTi
   return googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`);
 }
 
-export async function driveDownloadFile(fileId) {
-  const token = await getAccessToken();
+export async function driveDownloadFile(fileId, auth = {}) {
+  const token = await getAccessToken(auth);
   const res = await fetch(
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media&supportsAllDrives=true`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -171,14 +182,15 @@ export async function driveExportFile(fileId, mimeType) {
   };
 }
 
-export async function driveCopyFile(fileId, body) {
+export async function driveCopyFile(fileId, body, auth = {}) {
   return googleFetch(
     `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}/copy?supportsAllDrives=true&fields=id,name,webViewLink,modifiedTime`,
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body || {}),
-    }
+    },
+    auth
   );
 }
 
@@ -200,13 +212,13 @@ export async function gmailSendRawEmail(raw, subject) {
   );
 }
 
-export async function getSpreadsheet(spreadsheetId) {
+export async function getSpreadsheet(spreadsheetId, auth = {}) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?fields=sheets.properties.title`;
-  return googleFetch(url);
+  return googleFetch(url, {}, auth);
 }
 
-export async function resolveSheetTitle(spreadsheetId, candidates) {
-  const spreadsheet = await getSpreadsheet(spreadsheetId);
+export async function resolveSheetTitle(spreadsheetId, candidates, auth = {}) {
+  const spreadsheet = await getSpreadsheet(spreadsheetId, auth);
   const titles = (spreadsheet.sheets || []).map((s) => s.properties?.title).filter(Boolean);
   const wanted = candidates.map((x) => String(x || "").trim()).filter(Boolean);
 
@@ -224,11 +236,11 @@ export async function resolveSheetTitle(spreadsheetId, candidates) {
   throw new Error(`Sheet not found. Tried: ${wanted.join(", ")}`);
 }
 
-export async function getValues(spreadsheetId, sheetName, a1 = "") {
+export async function getValues(spreadsheetId, sheetName, a1 = "", auth = {}) {
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
     sheetRange(sheetName, a1)
   )}`;
-  const json = await googleFetch(url);
+  const json = await googleFetch(url, {}, auth);
   return json.values || [];
 }
 
@@ -236,11 +248,11 @@ export function anchoredAppendRange(sheetName, width) {
   return sheetRange(sheetName, `A:${columnName(Math.max(1, Number(width) || 1))}`);
 }
 
-export async function appendValues(spreadsheetId, sheetName, row) {
-  return appendRows(spreadsheetId, sheetName, [row]);
+export async function appendValues(spreadsheetId, sheetName, row, auth = {}) {
+  return appendRows(spreadsheetId, sheetName, [row], auth);
 }
 
-export async function appendRows(spreadsheetId, sheetName, rows) {
+export async function appendRows(spreadsheetId, sheetName, rows, auth = {}) {
   const values = (rows || []).filter((row) => Array.isArray(row));
   if (!values.length) return { updates: { updatedRows: 0 } };
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
@@ -250,10 +262,10 @@ export async function appendRows(spreadsheetId, sheetName, rows) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ values }),
-  });
+  }, auth);
 }
 
-export async function updateValues(spreadsheetId, sheetName, rowNumber, row) {
+export async function updateValues(spreadsheetId, sheetName, rowNumber, row, auth = {}) {
   const a1 = `A${rowNumber}:${columnName(row.length)}${rowNumber}`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
     sheetRange(sheetName, a1)
@@ -262,7 +274,7 @@ export async function updateValues(spreadsheetId, sheetName, rowNumber, row) {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ values: [row] }),
-  });
+  }, auth);
 }
 
 export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value) {

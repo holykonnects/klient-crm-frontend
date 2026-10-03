@@ -1,7 +1,7 @@
 // src/components/QuotationBuilder.js
 import React, { useEffect, useMemo, useState } from 'react';
 import {
-  Box, Grid, Typography, Button, TextField, IconButton,
+  Autocomplete, Box, Grid, Typography, Button, TextField, IconButton,
   MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
   Dialog, DialogActions, DialogContent, DialogTitle
@@ -26,10 +26,10 @@ import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
-import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, reconcileAthleticRows } from './athleticRateLibrary';
+import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
+import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
 
 const QUOTATION_API_URL = '/api/quotations';
-const QUOTATION_EXPORT_URL = '/api/gas';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
 const fieldSx = {
   '& .MuiInputBase-root': { borderRadius: 1.5, backgroundColor: '#fff', minHeight: 42 },
@@ -64,7 +64,8 @@ const GST_RATE_OPTIONS = [0, 5, 12, 18, 28];
 const emptyRow = {
   category: '', subCategory: '', itemCode: '',
   qty: 1, rateOverride: '',
-  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment'
+  unit: '', rate: '', desc: '', descHtml: '', imageUrl: '', itemType: 'Equipment',
+  freight: '', installation: ''
 };
 
 // helpers
@@ -217,6 +218,7 @@ export default function QuotationBuilder() {
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
   const [leadLookupError, setLeadLookupError] = useState('');
+  const [leadLookupLoading, setLeadLookupLoading] = useState(false);
 
   const rows = quoteType === 'athletic' ? athleticRows : standardRows;
   const setRows = updater => {
@@ -247,9 +249,10 @@ export default function QuotationBuilder() {
   useEffect(() => {
     if (!user?.username) return;
     (async () => {
+      setLeadLookupLoading(true);
       const j = await fetchJSON(`${QUOTATION_API_URL}?action=getLeadsForUser&user=${encodeURIComponent(user.username)}`);
-      if (j.ok && Array.isArray(j.entries)) {
-        setLeadOptions(j.entries);
+      if (j.ok && (Array.isArray(j.leads) || Array.isArray(j.entries))) {
+        setLeadOptions((j.leads || j.entries || []).map(normalizeQuotationLead));
         setLeadLookupError('');
       } else {
         setLeadOptions([]);
@@ -258,8 +261,19 @@ export default function QuotationBuilder() {
     })().catch(err => {
       setLeadOptions([]);
       setLeadLookupError(err.message || 'Lead lookup unavailable');
-    });
+    }).finally(() => setLeadLookupLoading(false));
   }, [user?.username]);
+
+  const selectedLead = useMemo(() => {
+    if (!attachLead) return null;
+    return leadOptions.find(lead => lead.value === attachLead) || normalizeQuotationLead(attachLead);
+  }, [attachLead, leadOptions]);
+
+  const handleLeadSelection = (lead) => {
+    const selected = lead ? normalizeQuotationLead(lead) : null;
+    setAttachLead(selected?.value || '');
+    if (selected) setMeta(current => quotationMetaForLead(selected, current));
+  };
 
   useEffect(() => {
     if (!user?.username) return;
@@ -490,12 +504,12 @@ export default function QuotationBuilder() {
       }))
     } : undefined,
     items: rows
-      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && (r.libraryItem || (r.category && r.subCategory && r.itemCode)))
+      .filter(r => (quoteType === 'standard' || quoteType === 'athletic') && isExportableQuotationRow(r, quoteType))
       .map(r => ({
         category: r.category,
         subCategory: r.subCategory,
         itemCode: r.itemCode,
-        displayItem: r.libraryItem || '',
+        displayItem: r.libraryItem || r.itemCode || (quoteType === 'athletic' ? 'Manual athletic item' : ''),
         source: r.source || 'manual',
         qtyDriver: r.qtyDriver || '',
         factor: toNumber(r.factor),
@@ -506,7 +520,9 @@ export default function QuotationBuilder() {
         rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
         descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined,
         descHtml: r.descHtml || undefined,
-        imageUrl: r.imageUrl || undefined
+        imageUrl: r.imageUrl || undefined,
+        freight: r.freight || '',
+        installation: r.installation || ''
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
     builderState: { rows, attachLead, termsByType, excludedAthleticLibraryKeys },
@@ -549,13 +565,17 @@ export default function QuotationBuilder() {
           quote: { quoteId, status, pdfUrl, workingCopyUrl, payload },
         })
       });
-      if (!result.ok) throw new Error(result.error || 'Quote could not be saved');
+      if (!result.ok) {
+        const error = new Error(result.error || 'Quote could not be saved');
+        error.registerUnavailable = Boolean(result.registerUnavailable);
+        throw error;
+      }
       const saved = { ...result.quote, payload };
       setSavedDrafts(current => [saved, ...current.filter(draft => draft.quoteId !== saved.quoteId)]);
       setActiveQuoteId(saved.quoteId);
       return saved;
     } catch (error) {
-      console.error('Shared quotation register save error:', error);
+      if (!error.registerUnavailable) console.error('Shared quotation register save error:', error);
       const next = [record, ...savedDrafts.filter(draft => draft.quoteId !== quoteId)];
       if (persistDrafts(next)) setActiveQuoteId(quoteId);
       return record;
@@ -648,6 +668,10 @@ export default function QuotationBuilder() {
     setExporting(true);
     try {
       const payload = buildPayload();
+      if ((quoteType === 'standard' || quoteType === 'athletic') && !payload.items.length) {
+        alert('Add at least one complete quotation item before exporting.');
+        return;
+      }
       let exportQuoteId = payload.quoteId;
       if (!exportQuoteId) {
         const saved = await saveDraft({ status: 'Draft' });
@@ -656,10 +680,11 @@ export default function QuotationBuilder() {
         payload.quoteId = exportQuoteId;
       }
 
-      const j = await fetchJSON(
-        `${QUOTATION_EXPORT_URL}?action=buildQuotationAndExport&user=${encodeURIComponent(user?.username || '')}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }
-      );
+      const j = await fetchJSON(QUOTATION_API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'exportPdf', user: user?.username || '', payload }),
+      });
 
       if (!j.ok) { alert(j.error || 'Export failed'); return; }
       const url = String(j.pdfUrl || '').trim();
@@ -801,14 +826,31 @@ export default function QuotationBuilder() {
                   onChange={e => setMeta(m => ({ ...m, quotationTitle: e.target.value }))} sx={fieldSx} />
               </Grid>
               <Grid item xs={12} md={6}>
-                <FormControl fullWidth size="small" sx={fieldSx} error={Boolean(leadLookupError)}>
-                  <InputLabel>Attach to Lead</InputLabel>
-                  <Select value={attachLead} label="Attach to Lead" onChange={e => setAttachLead(e.target.value)} sx={selectSx}>
-                    <MenuItem value=""><em>Skip</em></MenuItem>
-                    {leadLookupError && <MenuItem value="" disabled>Lead lookup unavailable</MenuItem>}
-                    {leadOptions.map(s => <MenuItem key={s} value={s}>{s}</MenuItem>)}
-                  </Select>
-                </FormControl>
+                <Autocomplete
+                  fullWidth
+                  autoHighlight
+                  openOnFocus
+                  options={leadOptions}
+                  value={selectedLead}
+                  loading={leadLookupLoading}
+                  filterOptions={(options, state) => filterQuotationLeads(options, state.inputValue)}
+                  getOptionLabel={option => normalizeQuotationLead(option).display}
+                  isOptionEqualToValue={(option, value) => normalizeQuotationLead(option).value === normalizeQuotationLead(value).value}
+                  onChange={(event, value) => handleLeadSelection(value)}
+                  noOptionsText={leadLookupError || 'No matching leads'}
+                  loadingText="Loading leads..."
+                  renderOption={(props, option) => {
+                    const lead = normalizeQuotationLead(option);
+                    const { key, ...optionProps } = props;
+                    return <Box component="li" key={key || lead.value} {...optionProps} sx={{ display: 'block !important', py: 1 }}>
+                      <Typography sx={{ fontSize: '0.82rem', fontWeight: 700, color: '#1e293b' }}>{lead.company || lead.contactName}</Typography>
+                      <Typography sx={{ mt: 0.2, fontSize: '0.7rem', color: '#64748b' }}>
+                        {[lead.contactName !== lead.company ? lead.contactName : '', lead.mobile, lead.leadId].filter(Boolean).join(' | ')}
+                      </Typography>
+                    </Box>;
+                  }}
+                  renderInput={params => <TextField {...params} size="small" label="Attach to Lead" error={Boolean(leadLookupError)} helperText={leadLookupError || 'Search company, contact, mobile, email or Lead ID'} sx={fieldSx} />}
+                />
               </Grid>
               <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Client Name" value={meta.clientName}
@@ -1022,11 +1064,12 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1450, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+              <Table stickyHeader size="small" sx={{ minWidth: 1670, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
                   <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
+                  <TableCell sx={{ width: 110 }}>Freight</TableCell><TableCell sx={{ width: 110 }}>Installation</TableCell>
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 45 }} />
@@ -1069,6 +1112,8 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.freight || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'freight', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" value={r.installation || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'installation', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
@@ -1088,6 +1133,7 @@ export default function QuotationBuilder() {
 
           {(quoteType === 'standard' || quoteType === 'athletic') && <CompactPreviewFrame>
             <QuotationSheetPreview
+              quoteType={quoteType}
               meta={meta}
               rows={rows}
               totals={quoteType === 'athletic' ? athleticTotals : totals}

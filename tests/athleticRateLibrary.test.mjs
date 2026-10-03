@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAthleticImageMapping, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+import { applyAthleticImageMapping, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
 
 test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('AREA', 0, { area: 7500 }), 7500);
@@ -81,4 +81,12 @@ test('image mapping cannot replace athletic scope or pricing details', () => {
   assert.equal(mapped.unit, row.unit);
   assert.equal(mapped.qty, row.qty);
   assert.equal(mapped.rate, row.rate);
+});
+
+test('athletic export keeps rate-library and manually described items', () => {
+  assert.equal(isExportableQuotationRow({ libraryItem: 'Full PUR surface' }, 'athletic'), true);
+  assert.equal(isExportableQuotationRow({ desc: 'Manual athletic work', qty: 2, rate: 100 }, 'athletic'), true);
+  assert.equal(isExportableQuotationRow({ qty: 1, itemType: 'Equipment' }, 'athletic'), false);
+  assert.equal(isExportableQuotationRow({ category: 'Court', subCategory: 'Nets', itemCode: 'HEAV' }, 'standard'), true);
+  assert.equal(isExportableQuotationRow({ itemCode: 'HEAV' }, 'standard'), false);
 });

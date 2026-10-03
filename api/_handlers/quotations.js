@@ -1,6 +1,7 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
+import { exportQuotationToDrive } from "../_lib/quotationPdfExport.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
@@ -46,6 +47,10 @@ function canUseQuotation(user, rows) {
 function isAdmin(user, rows) {
   const username = clean(user).toLowerCase();
   return rows.some((row) => clean(row["Login Username"]).toLowerCase() === username && clean(row.Role).toLowerCase() === "admin");
+}
+
+function isRegisterUnavailable(error) {
+  return /Quotation Register is not writable/i.test(error?.message || "");
 }
 
 function tableSpreadsheet(definition) {
@@ -193,15 +198,48 @@ async function getLeadsForUser(user) {
 
   const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames);
   const leads = rowsToObjects(await getValues(SHEETS.leads.spreadsheetId, sheetName));
-  const entries = leads
+  const leadOptions = leads
     .filter((lead) => isAdmin || clean(lead["Lead Owner"]).toLowerCase() === clean(user).toLowerCase())
-    .map((lead) => [lead.Company, `${clean(lead["First Name"])} ${clean(lead["Last Name"])}`.trim(), lead["Mobile Number"]]
-      .map(clean)
-      .filter(Boolean)
-      .join(" | "))
-    .filter(Boolean);
+    .map((lead) => {
+      const contactName = `${clean(lead["First Name"])} ${clean(lead["Last Name"])}`.trim();
+      const company = clean(lead.Company);
+      const mobile = clean(lead["Mobile Number"]);
+      const display = [company, contactName, mobile].filter(Boolean).join(" | ");
+      return {
+        value: display,
+        display,
+        leadId: clean(lead["Lead ID"]),
+        company,
+        contactName,
+        mobile,
+        email: clean(lead["Email ID"]),
+        billingAddress: [lead.Street, lead.City, lead.State, lead.Country, lead.PinCode].map(clean).filter(Boolean).join(", "),
+        gstNumber: clean(pick(lead, ["GST Number", "GSTIN", "GST No.", "Client GST Number"])),
+      };
+    })
+    .filter((lead) => lead.value);
 
-  return { ok: true, entries: [...new Set(entries)] };
+  const unique = new Map();
+  leadOptions.forEach((lead) => unique.set(lead.value.toLowerCase(), lead));
+  const availableLeads = [...unique.values()].sort((a, b) => a.display.localeCompare(b.display));
+
+  return { ok: true, entries: availableLeads.map((lead) => lead.value), leads: availableLeads };
+}
+
+async function attachQuotationToLead(payload, pdfUrl) {
+  const leadDisplay = clean(payload?.attach?.leadDisplay);
+  if (!leadDisplay || !pdfUrl) return;
+  const [company = "", , mobile = ""] = leadDisplay.split("|").map(clean);
+  if (!company || !mobile) return;
+  const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames);
+  const values = await getValues(SHEETS.leads.spreadsheetId, sheetName);
+  const headers = values[0] || [];
+  const companyColumn = headers.findIndex((header) => normalizeHeader(header) === "company");
+  const mobileColumn = headers.findIndex((header) => normalizeHeader(header) === "mobilenumber");
+  const linkColumn = headers.findIndex((header) => normalizeHeader(header) === "quotationlink");
+  if (companyColumn < 0 || mobileColumn < 0 || linkColumn < 0) return;
+  const rowIndex = values.slice(1).findIndex((row) => clean(row[companyColumn]).toLowerCase() === company.toLowerCase() && clean(row[mobileColumn]) === mobile);
+  if (rowIndex >= 0) await updateCell(SHEETS.leads.spreadsheetId, sheetName, rowIndex + 2, linkColumn + 1, pdfUrl);
 }
 
 export default async function handler(req, res) {
@@ -212,15 +250,40 @@ export default async function handler(req, res) {
         return res.status(200).json(req.query.type === "athletic" ? await getAthleticCatalog() : await getCatalog());
       }
       if (action === "getLeadsForUser") return res.status(200).json(await getLeadsForUser(req.query.user));
-      if (action === "listQuotes") return res.status(200).json(await listSavedQuotes(req.query.user));
-      if (action === "getQuote") return res.status(200).json(await getSavedQuote(req.query.user, req.query.quoteId, req.query.revision));
+      if (action === "listQuotes") {
+        try { return res.status(200).json(await listSavedQuotes(req.query.user)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
+      if (action === "getQuote") {
+        try { return res.status(200).json(await getSavedQuote(req.query.user, req.query.quoteId, req.query.revision)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
       if (action === "getAdminTable") return res.status(200).json(await getAdminTable(clean(req.query.table), req.query.user));
       return res.status(400).json({ ok: false, error: "Invalid action" });
     }
     if (req.method === "POST") {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       if (body.action === "saveAdminRow") return res.status(200).json(await saveAdminRow(clean(body.table), body.user, body.row || {}));
-      if (body.action === "saveQuote") return res.status(200).json(await saveQuoteRevision(body.user, body.quote || {}, QUOTATION_ENGINE_VERSION));
+      if (body.action === "saveQuote") {
+        try { return res.status(200).json(await saveQuoteRevision(body.user, body.quote || {}, QUOTATION_ENGINE_VERSION)); }
+        catch (error) {
+          if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
+          throw error;
+        }
+      }
+      if (body.action === "exportPdf") {
+        const loginRows = await getLoginRows();
+        if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
+        const output = await exportQuotationToDrive(body.payload || {});
+        await attachQuotationToLead(body.payload || {}, output.pdfUrl).catch((error) => console.warn("Quotation lead link update failed", error));
+        return res.status(200).json(output);
+      }
       if (body.action === "exportSetWorkbook") {
         const loginRows = await getLoginRows();
         if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }

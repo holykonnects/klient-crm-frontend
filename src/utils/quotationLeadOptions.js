@@ -46,6 +46,7 @@ export function quotationMetaForLead(option, currentMeta = {}) {
   return {
     ...currentMeta,
     clientName: lead.company || lead.contactName || currentMeta.clientName,
+    clientEmail: lead.email,
     clientBillingAddress: currentMeta.clientBillingAddress || lead.billingAddress,
     clientGstNumber: currentMeta.clientGstNumber || lead.gstNumber,
     leadSourceName: lead.leadSourceName,

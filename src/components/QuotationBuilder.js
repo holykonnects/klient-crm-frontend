@@ -182,7 +182,7 @@ export default function QuotationBuilder() {
   const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
   const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
-    clientName: '', projectName: '', quotationNo: '',
+    clientName: '', clientEmail: '', projectName: '', quotationNo: '',
     dateISO: new Date().toISOString().slice(0, 10),
     preparedBy: '', notes: '', layout: 'portrait',
     leadSourceName: '', leadSourceEmail: '',
@@ -866,6 +866,10 @@ export default function QuotationBuilder() {
                   onChange={e => setMeta(m => ({ ...m, projectName: e.target.value }))} sx={fieldSx} />
               </Grid>
               <Grid item xs={12} md={6}>
+                <TextField fullWidth size="small" type="email" label="Client Email ID" value={meta.clientEmail}
+                  onChange={e => setMeta(m => ({ ...m, clientEmail: e.target.value }))} sx={fieldSx} />
+              </Grid>
+              <Grid item xs={12} md={6}>
                 <TextField fullWidth size="small" label="Quotation No." value={meta.quotationNo}
                   onChange={e => setMeta(m => ({ ...m, quotationNo: e.target.value }))} sx={fieldSx} />
               </Grid>
@@ -1108,11 +1112,11 @@ export default function QuotationBuilder() {
                         : r.imageUrl ? <Tooltip title="Open item image"><IconButton size="small" onClick={() => safeOpen(r.imageUrl)}><PictureInPictureAlt fontSize="small" /></IconButton></Tooltip> : <Typography sx={{ color: '#94a3b8', pt: 1 }}>—</Typography>}</TableCell>
                       <TableCell>
                         <Box onClick={() => setDescriptionEditor({ rowIndex: i, value: r.descHtml || plainTextToHtml(r.desc) })} sx={{
-                          position: 'relative', minHeight: 82, cursor: 'text',
+                          position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
                           border: '1px solid #cbd5e1', borderRadius: 1.5, bgcolor: '#fff', px: 1.25, py: 1,
                           pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
                         }}>
-                          <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: r.desc ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                          <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: r.desc ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>
                             {r.desc || 'Populated from Equipment BD'}
                           </Typography>
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>

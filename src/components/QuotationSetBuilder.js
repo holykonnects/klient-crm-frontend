@@ -161,11 +161,11 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                     </TableCell>
                     <TableCell>
                       <Box onClick={() => setEditor({ setIndex, itemIndex, value: item.descHtml || item.description })} sx={{
-                        position: 'relative', minHeight: 82, cursor: 'text',
+                        position: 'relative', minHeight: 82, maxHeight: 104, overflow: 'hidden', cursor: 'text',
                         border: '1px solid #cbd5e1', borderRadius: 1.5, bgcolor: '#fff', px: 1.25, py: 1,
                         pr: 5, '&:hover': { borderColor: '#64748b', bgcolor: '#fbfdff' }
                       }}>
-                        <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>
+                        <Typography sx={{ fontSize: '0.76rem', lineHeight: 1.45, color: item.description ? '#334155' : '#94a3b8', whiteSpace: 'pre-wrap', display: '-webkit-box', WebkitLineClamp: 5, WebkitBoxOrient: 'vertical', overflow: 'hidden', overflowWrap: 'anywhere' }}>
                           {item.description || 'Add description'}
                         </Typography>
                         <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>

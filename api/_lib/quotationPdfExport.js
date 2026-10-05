@@ -6,6 +6,8 @@ import {
 } from "./googleSheets.js";
 import { createSignedToken } from "./sessionAuth.js";
 import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
+import { quotationImageReference } from "./quotationImages.js";
+import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
 
 const BLUE = "#163f76";
 const LIGHT_BLUE = "#dce9f8";
@@ -220,13 +222,9 @@ function quotationImageProxyUrl(fileId) {
   return `${publicAppUrl()}/api/quotation-image?token=${encodeURIComponent(token)}`;
 }
 function templateImageFormula(value, options = {}) {
-  let url = clean(value);
-  if (!url || /^#(?:REF|VALUE|N\/A|ERROR)!?$/i.test(url)) return "";
-  const formulaUrl = url.match(/^=IMAGE\(\s*"([^"]+)"/i);
-  if (formulaUrl) url = formulaUrl[1];
-  if (!/^https?:\/\//i.test(url)) return "";
-  const match = url.match(/[-\w]{25,}/);
-  const source = match ? (options.proxyUrl || quotationImageProxyUrl(match[0])) : url;
+  const reference = quotationImageReference(value);
+  if (!reference) return "";
+  const source = reference.fileId ? (options.proxyUrl || quotationImageProxyUrl(reference.fileId)) : reference.url;
   if (!source || /(?:^|\/)drive\.google\.com(?:\/|$)/i.test(source)) return "";
   return `=IMAGE("${source.replace(/"/g, '""')}",1)`;
 }
@@ -245,6 +243,17 @@ function templatePricing(payload) {
   return {
     freightAmount: "", installationAmount: "", equipmentDiscountPct: 0, nonEquipmentDiscountPct: 0,
     equipmentGstPct: gst, nonEquipmentGstPct: gst, freightInstallGstPct: gst,
+  };
+}
+
+function templateCommercials(items, pricing, field) {
+  const summary = quotationCommercialSummary(items, field);
+  const globalValue = pricing[`${field}Amount`];
+  const amount = quotationChargeAmount(globalValue) + summary.amount;
+  const hasAmount = amount > 0 || /^\s*(?:₹\s*)?0(?:\.0+)?\s*$/.test(String(globalValue ?? ''));
+  return {
+    label: quotationCommercialLabel(field === 'freight' ? 'Freight' : 'Installation', summary),
+    value: hasAmount ? amount : (String(globalValue ?? '').trim() || (summary.entries.length ? 'As specified' : 'Extra')),
   };
 }
 function templateRichCell(html, fallback) {
@@ -334,6 +343,8 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
   if (!items.length) throw new Error("Add at least one complete quotation item before exporting");
   const meta = payload.meta || {};
   const pricing = templatePricing(payload);
+  const freight = templateCommercials(items, pricing, "freight");
+  const installation = templateCommercials(items, pricing, "installation");
   const data = [
     ["G11", meta.clientName], ["G12", meta.projectName || meta.clientName],
     ["E10", meta.quotationNo ? `Refrence Number:${meta.quotationNo}` : "Refrence Number:"],
@@ -341,8 +352,8 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
     ["G13", meta.clientBillingAddress], ["G14", meta.clientGstNumber],
     ["E16", safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName)],
     ["L71", "=SUM(L18:L70)"],
-    ["L72", pricing.freightAmount === "" || pricing.freightAmount === undefined ? "Extra" : number(pricing.freightAmount)],
-    ["L73", pricing.installationAmount === "" || pricing.installationAmount === undefined ? "Extra" : number(pricing.installationAmount)],
+    ["E72", freight.label], ["L72", freight.value],
+    ["E73", installation.label], ["L73", installation.value],
     ["K74", templatePercent(pricing.nonEquipmentDiscountPct)], ["K75", templatePercent(pricing.equipmentDiscountPct)],
     ["K76", templatePercent(pricing.nonEquipmentGstPct)], ["K77", templatePercent(pricing.equipmentGstPct)],
     ["K78", templatePercent(pricing.freightInstallGstPct)],
@@ -378,6 +389,19 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
     range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: ITEMS_START_ROW - 1, endIndex: ITEMS_END_ROW },
     properties: { hiddenByUser: false }, fields: "hiddenByUser",
   } }];
+  [freight, installation].forEach((commercial, index) => {
+    const rowIndex = 71 + index;
+    requests.push({ repeatCell: {
+      range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 4, endColumnIndex: 12 },
+      cell: { userEnteredFormat: { wrapStrategy: "WRAP", verticalAlignment: "TOP" } },
+      fields: "userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment",
+    } });
+    const lines = commercial.label.split("\n").reduce((sum, line) => sum + Math.max(1, Math.ceil(line.length / 80)), 0);
+    requests.push({ updateDimensionProperties: {
+      range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 },
+      properties: { pixelSize: Math.max(20, lines * 16 + 6) }, fields: "pixelSize",
+    } });
+  });
   [
     [10, 11, ITEMS_START_ROW - 1, ITEMS_END_ROW],
     [11, 12, ITEMS_START_ROW - 1, 79],
@@ -463,4 +487,4 @@ export async function exportQuotationToDrive(payload = {}) {
   };
 }
 
-export { populateNewTemplate, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };
+export { populateNewTemplate, templateCommercials, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };

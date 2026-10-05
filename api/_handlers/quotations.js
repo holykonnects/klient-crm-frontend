@@ -6,6 +6,7 @@ import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quota
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
 import { resolveLeadSourceIdentity } from "../_lib/leadSourceIdentity.js";
+import { quotationImageReference, resolveQuotationImages } from "../_lib/quotationImages.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
@@ -303,6 +304,18 @@ async function attachQuotationToLead(payload, pdfUrl) {
   if (rowIndex >= 0) await updateCell(SHEETS.leads.spreadsheetId, sheetName, rowIndex + 2, linkColumn + 1, pdfUrl);
 }
 
+async function prepareQuotationExport(payload = {}) {
+  const items = payload.quoteType === "project-set"
+    ? (payload.setQuotation?.sets || []).flatMap((set) => set.items || []) : payload.items || [];
+  const needsCatalog = items.some((item) => !quotationImageReference(item.imageUrl) && (
+    payload.quoteType === "project-set"
+      ? item.imageCategory && item.imageSubCategory && item.imageItemCode
+      : item.category && item.subCategory && item.itemCode
+  ));
+  const catalog = needsCatalog ? (await getCatalog()).data : {};
+  return resolveQuotationImages(payload, catalog);
+}
+
 export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
@@ -341,14 +354,16 @@ export default async function handler(req, res) {
       if (body.action === "exportPdf") {
         const loginRows = await getLoginRows();
         if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
-        const output = await exportQuotationToDrive(body.payload || {});
+        const payload = await prepareQuotationExport(body.payload || {});
+        const output = await exportQuotationToDrive(payload);
         await attachQuotationToLead(body.payload || {}, output.pdfUrl).catch((error) => console.warn("Quotation lead link update failed", error));
         return res.status(200).json(output);
       }
       if (body.action === "exportSetWorkbook") {
         const loginRows = await getLoginRows();
         if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
-        const output = await buildQuotationSetWorkbook(body.payload || {});
+        const payload = await prepareQuotationExport(body.payload || {});
+        const output = await buildQuotationSetWorkbook(payload);
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
         res.setHeader("Content-Disposition", `attachment; filename="${output.fileName.replace(/"/g, "")}"`);
         return res.status(200).send(output.buffer);

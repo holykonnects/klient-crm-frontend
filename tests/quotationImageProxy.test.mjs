@@ -9,5 +9,5 @@ test("the API router exposes the signed quotation image proxy", async () => {
   assert.match(handler, /verifySignedToken\(token\)/);
   assert.match(handler, /payload\.type !== "quotation-image"/);
   assert.match(handler, /startsWith\("image\/"\)/);
-  assert.match(handler, /driveDownloadFile/);
+  assert.match(handler, /downloadQuotationImage/);
 });

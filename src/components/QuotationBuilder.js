@@ -31,6 +31,8 @@ import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
 import { moveQuotationRow } from '../utils/quotationRowOrder';
+import QuotationChargeField from './QuotationChargeField';
+import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
@@ -131,8 +133,8 @@ function calculateItemTotals(rows, pricing) {
     if (row.itemType === 'Non Equipment') nonEquipment += lineTotal;
     else equipment += lineTotal;
   });
-  const freight = toNumber(pricing.freightAmount);
-  const installation = toNumber(pricing.installationAmount);
+  const freight = quotationChargeAmount(pricing.freightAmount) + quotationCommercialSummary(rows, 'freight').amount;
+  const installation = quotationChargeAmount(pricing.installationAmount) + quotationCommercialSummary(rows, 'installation').amount;
   const equipmentDiscount = equipment * pctValue(pricing.equipmentDiscountPct);
   const nonEquipmentDiscount = nonEquipment * pctValue(pricing.nonEquipmentDiscountPct);
   const equipmentTaxable = Math.max(equipment - equipmentDiscount, 0);
@@ -1122,8 +1124,8 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      <TableCell><TextField fullWidth size="small" value={r.freight || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'freight', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" value={r.installation || ''} placeholder="Included / Excluded / Value" onChange={e => handleRowChange(i, 'installation', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>
+                      <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>

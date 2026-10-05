@@ -14,6 +14,7 @@ import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined';
 import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import ArrowDownward from '@mui/icons-material/ArrowDownward';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
+import QuotationChargeField from './QuotationChargeField';
 import {
   emptyQuotationSet, emptySetItem, itemQuantity, quotationSetTemplates,
   setQuoteTotals, setSubtotal, setsFromTemplate,
@@ -171,8 +172,8 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
                         <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                       </Box>
                     </TableCell>
-                    <TableCell><TextField value={item.freight || ''} placeholder="Included / Excluded / Value" onChange={(event) => updateItem(setIndex, itemIndex, { freight: event.target.value })} sx={cellInputSx} /></TableCell>
-                    <TableCell><TextField value={item.installation || ''} placeholder="Included / Excluded / Value" onChange={(event) => updateItem(setIndex, itemIndex, { installation: event.target.value })} sx={cellInputSx} /></TableCell>
+                    <TableCell><QuotationChargeField label={`Freight for item ${itemIndex + 1}`} value={item.freight} onChange={value => updateItem(setIndex, itemIndex, { freight: value })} sx={cellInputSx} /></TableCell>
+                    <TableCell><QuotationChargeField label={`Installation for item ${itemIndex + 1}`} value={item.installation} onChange={value => updateItem(setIndex, itemIndex, { installation: value })} sx={cellInputSx} /></TableCell>
                     <TableCell><TextField value={item.unit} onChange={(event) => updateItem(setIndex, itemIndex, { unit: event.target.value })} sx={cellInputSx} /></TableCell>
                     <TableCell><Select fullWidth size="small" value={item.qtyMode || 'manual'} onChange={(event) => updateItem(setIndex, itemIndex, { qtyMode: event.target.value })} sx={{ fontSize: '0.76rem', bgcolor: '#fff' }}><MenuItem value="manual">Manual</MenuItem><MenuItem value="factor">Base × factor</MenuItem></Select></TableCell>
                     <TableCell><TextField type="number" value={item.factor} disabled={item.qtyMode !== 'factor'} inputProps={{ step: 'any' }} onChange={(event) => updateItem(setIndex, itemIndex, { factor: event.target.value })} sx={cellInputSx} /></TableCell>

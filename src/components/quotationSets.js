@@ -1,4 +1,5 @@
 import templates from '../data/quotationSetTemplates.json';
+import { quotationCommercialSummary } from '../utils/quotationCommercials';
 
 export const quotationSetTemplates = templates;
 
@@ -61,6 +62,10 @@ export function setSubtotal(set) {
 
 export function setQuoteTotals(sets, gstPct) {
   const subtotal = (sets || []).reduce((sum, set) => sum + setSubtotal(set), 0);
-  const gst = subtotal * ((Number(gstPct) || 0) / 100);
-  return { subtotal, gst, grand: Math.round(subtotal + gst) };
+  const items = (sets || []).flatMap(set => set.items || []);
+  const freight = quotationCommercialSummary(items, 'freight').amount;
+  const installation = quotationCommercialSummary(items, 'installation').amount;
+  const taxable = subtotal + freight + installation;
+  const gst = taxable * ((Number(gstPct) || 0) / 100);
+  return { subtotal, freight, installation, gst, grand: Math.round(taxable + gst) };
 }

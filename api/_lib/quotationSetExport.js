@@ -1,34 +1,10 @@
-import { driveDownloadFile, getDriveAuthSubjects } from "./googleSheets.js";
+import { downloadQuotationImage } from "./quotationImages.js";
 import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
+import { quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
 
 function number(value) {
   const parsed = Number(String(value ?? "").replace(/[,₹%\s]/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
-}
-
-function driveId(value) {
-  const match = String(value || "").match(/[-\w]{25,}/);
-  return match ? match[0] : "";
-}
-
-async function loadImage(value) {
-  const url = String(value || "").trim();
-  if (!url) return null;
-  try {
-    const id = driveId(url);
-    if (id) {
-      for (const subject of getDriveAuthSubjects()) {
-        try { return await driveDownloadFile(id, { scopes: ["https://www.googleapis.com/auth/drive"], subject }); } catch {}
-      }
-      return null;
-    }
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 3500);
-    const response = await fetch(url, { signal: controller.signal });
-    clearTimeout(timer);
-    if (!response.ok) return null;
-    return { contentType: response.headers.get("content-type") || "image/png", body: Buffer.from(await response.arrayBuffer()) };
-  } catch { return null; }
 }
 
 function imageDimensions(buffer = Buffer.alloc(0)) {
@@ -79,7 +55,7 @@ function plainText(value) {
     .trim();
 }
 
-export async function buildQuotationSetWorkbook(payload = {}) {
+export async function buildQuotationSetWorkbook(payload = {}, { loadImage = downloadQuotationImage } = {}) {
   const { default: ExcelJS } = await import("exceljs");
   const workbook = new ExcelJS.Workbook();
   workbook.creator = "Rido CRM";
@@ -154,6 +130,9 @@ export async function buildQuotationSetWorkbook(payload = {}) {
       row.getCell(7).numFmt = QUOTATION_CURRENCY_FORMAT;
       row.getCell(8).numFmt = QUOTATION_CURRENCY_FORMAT;
       if (image?.body?.length) {
+        if (!/^image\/(png|jpeg|gif)(?:;|$)/i.test(image.contentType || "")) {
+          throw new Error(`Image for ${item.item || "quotation item"} must be PNG, JPEG or GIF for Excel export.`);
+        }
         const extension = /jpe?g/i.test(image.contentType) ? "jpeg" : /gif/i.test(image.contentType) ? "gif" : "png";
         const imageId = workbook.addImage({ buffer: image.body, extension });
         const size = fittedImageSize(image.body);
@@ -173,14 +152,30 @@ export async function buildQuotationSetWorkbook(payload = {}) {
   });
 
   const gstPct = number(setQuotation.gstPct);
-  const gst = subtotal * gstPct / 100;
-  [["Subtotal", subtotal], [`GST @ ${gstPct}%`, gst], ["Grand Total", Math.round(subtotal + gst)]].forEach(([label, amount], index) => {
+  const items = sets.flatMap(set => set.items || []);
+  const freight = quotationCommercialSummary(items, "freight");
+  const installation = quotationCommercialSummary(items, "installation");
+  if (freight.entries.length || installation.entries.length) {
+    const heading = sheet.addRow(["Freight & Installation"]);
+    sheet.mergeCells(heading.number, 1, heading.number, 8);
+    heading.font = { name: "Montserrat", bold: true };
+    items.forEach((item, index) => {
+      if (!String(item.freight ?? "").trim() && !String(item.installation ?? "").trim()) return;
+      const row = sheet.addRow([index + 1, item.item || "", "Freight", String(item.freight ?? ""), "Installation", String(item.installation ?? "")]);
+      sheet.mergeCells(row.number, 6, row.number, 8);
+      row.eachCell(cell => { cell.alignment = { wrapText: true, vertical: "top" }; });
+      row.height = Math.max(30, Math.ceil(Math.max(String(item.freight || "").length, String(item.installation || "").length) / 55) * 14 + 16);
+    });
+  }
+  const taxable = subtotal + freight.amount + installation.amount;
+  const gst = taxable * gstPct / 100;
+  [["Subtotal", subtotal], ["Freight", freight.amount], ["Installation", installation.amount], [`GST @ ${gstPct}%`, gst], ["Grand Total", Math.round(taxable + gst)]].forEach(([label, amount]) => {
     const row = sheet.addRow([label, "", "", "", "", "", "", amount]);
     sheet.mergeCells(row.number, 1, row.number, 7);
-    row.font = { name: "Montserrat", bold: index === 2 };
+    row.font = { name: "Montserrat", bold: label === "Grand Total" };
     row.alignment = { horizontal: "right" };
     row.getCell(8).numFmt = QUOTATION_CURRENCY_FORMAT;
-    if (index === 2) row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
+    if (label === "Grand Total") row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
   });
 
   const terms = Array.isArray(meta.termsAndConditions) ? meta.termsAndConditions.map(plainText).filter(Boolean) : [];

@@ -31,18 +31,22 @@ test("quotation administration preserves row one headers for existing tables", (
   assert.deepEqual(parsed.rows, [{ __rowNumber: 2, Item: "Track", Rate: 250 }]);
 });
 
-test("admin can edit and add Equipment BD rows using the delegated Sheets editor", async () => {
+test("admin retries another configured editor, reports denied identities, and never retries a lost append response", async () => {
   const originalFetch = globalThis.fetch;
   const originalEmail = process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
   const originalKey = process.env.GOOGLE_PRIVATE_KEY;
   const originalSubject = process.env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL;
+  const originalDriveSubject = process.env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL;
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const delegatedUser = "quotation-editor@example.com";
   process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL = "service@example.com";
   process.env.GOOGLE_PRIVATE_KEY = privateKey.export({ type: "pkcs8", format: "pem" });
-  process.env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL = delegatedUser;
+  process.env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL = "blocked-editor@example.com";
+  process.env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL = delegatedUser;
 
   const writes = [];
+  let denyEquipment = false;
+  let loseAppendResponse = false;
   const jsonResponse = (body, status = 200) => new Response(JSON.stringify(body), {
     status, headers: { "Content-Type": "application/json" },
   });
@@ -55,19 +59,23 @@ test("admin can edit and add Equipment BD rows using the delegated Sheets editor
     }
     const spreadsheetId = url.pathname.match(/\/spreadsheets\/([^/]+)/)?.[1];
     const sheetName = spreadsheetId === SHEETS.validation.spreadsheetId ? "CRM Login" : "Equipment BD";
+    if (sheetName === "Equipment BD" && (denyEquipment || init.headers.Authorization !== `Bearer ${delegatedUser}`)) {
+      return jsonResponse({ error: { message: "The caller does not have permission" } }, 403);
+    }
     if (url.pathname.endsWith(`/spreadsheets/${spreadsheetId}`)) {
       return jsonResponse({ sheets: [{ properties: { title: sheetName } }] });
     }
     if (init.method === "PUT" || init.method === "POST") {
       writes.push({ method: init.method, auth: init.headers.Authorization, body: JSON.parse(init.body) });
+      if (init.method === "POST" && loseAppendResponse) throw new TypeError("Network connection was lost");
       if (init.headers.Authorization !== `Bearer ${delegatedUser}`) {
         return jsonResponse({ error: { message: "The caller does not have permission" } }, 403);
       }
-      return jsonResponse(init.method === "POST" ? { updates: { updatedRange: "'Equipment BD'!A3:E3" } } : {});
+      return jsonResponse(init.method === "POST" ? { updates: { updatedRange: "'Equipment BD'!A3:D3" } } : {});
     }
     return jsonResponse({ values: sheetName === "CRM Login"
       ? [["Login Username", "Role"], ["admin", "Admin"]]
-      : [["Court", "Item", "concat"], ["Basketball", "Ball", "Basketball : Ball"]] });
+      : [["Court", "SubCategory", "Item", "concat"], ["Basketball", "Equipment", "Ball", "Basketball : Equipment : Ball"]] });
   };
 
   const request = async (row) => {
@@ -84,9 +92,23 @@ test("admin can edit and add Equipment BD rows using the delegated Sheets editor
   try {
     assert.equal((await request({ __rowNumber: 2, Court: "Football", Item: "Goal" })).created, false);
     assert.equal((await request({ Court: "Tennis", Item: "Net" })).created, true);
-    assert.equal(writes.length, 4);
+    assert.equal(writes.length, 5);
     assert.ok(writes.every((write) => write.auth === `Bearer ${delegatedUser}`));
     assert.match(writes.at(-1).body.values[0][0], /^=A3&/);
+
+    denyEquipment = true;
+    let deniedResponse;
+    await quotationHandler({ method: "GET", query: { action: "getAdminTable", table: "equipment", user: "admin" } }, {
+      status() { return this; }, json(body) { deniedResponse = body; },
+    });
+    assert.match(deniedResponse.error, /blocked-editor@example.com: The caller does not have permission/);
+    assert.match(deniedResponse.error, /quotation-editor@example.com: The caller does not have permission/);
+    assert.match(deniedResponse.error, /service account service@example.com: The caller does not have permission/);
+
+    denyEquipment = false;
+    loseAppendResponse = true;
+    await assert.rejects(request({ Court: "Football", Item: "Goal" }), /Network connection was lost/);
+    assert.equal(writes.filter((write) => write.method === "POST").length, 2);
   } finally {
     globalThis.fetch = originalFetch;
     if (originalEmail === undefined) delete process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL;
@@ -95,5 +117,7 @@ test("admin can edit and add Equipment BD rows using the delegated Sheets editor
     else process.env.GOOGLE_PRIVATE_KEY = originalKey;
     if (originalSubject === undefined) delete process.env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL;
     else process.env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL = originalSubject;
+    if (originalDriveSubject === undefined) delete process.env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL;
+    else process.env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL = originalDriveSubject;
   }
 });

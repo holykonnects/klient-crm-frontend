@@ -71,8 +71,13 @@ async function readAdminSheet(spreadsheetId, definition, auth) {
   return { sheetName, values };
 }
 
-function adminSheetAccessError(table, spreadsheetId, error) {
-  return new Error(`Quotation Administration cannot access ${ADMIN_TABLES[table].sheetNames[0]} in spreadsheet ${spreadsheetId}. Share it with the service account as Editor, or set GOOGLE_SHEETS_DELEGATED_USER_EMAIL to a Workspace user who can edit it. Google response: ${error?.message || "Access denied"}`);
+function adminSheetAuthFailure(auth, error) {
+  const identity = auth.subject || `service account ${process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL || "(not configured)"}`;
+  return `${identity}: ${error?.message || "Access denied"}`;
+}
+
+function adminSheetAccessError(table, spreadsheetId, failures) {
+  return new Error(`Google Sheets denied access to ${ADMIN_TABLES[table].sheetNames[0]} in spreadsheet ${spreadsheetId}. Identities tried: ${failures.join("; ")}`);
 }
 
 async function getAdminTable(table, user) {
@@ -81,15 +86,15 @@ async function getAdminTable(table, user) {
   const loginRows = await getLoginRows();
   if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
   const spreadsheetId = tableSpreadsheet(definition);
-  let lastError;
+  const failures = [];
   for (const auth of adminSheetAuthCandidates()) {
     try {
       const { sheetName, values } = await readAdminSheet(spreadsheetId, definition, auth);
       const parsed = parseQuotationAdminTable(values);
       return { ok: true, table, sheetName, ...parsed, readOnly: definition.readOnly, engineVersion: QUOTATION_ENGINE_VERSION };
-    } catch (error) { lastError = error; }
+    } catch (error) { failures.push(adminSheetAuthFailure(auth, error)); }
   }
-  throw adminSheetAccessError(table, spreadsheetId, lastError);
+  throw adminSheetAccessError(table, spreadsheetId, failures);
 }
 
 async function saveAdminRow(table, user, submitted) {
@@ -99,12 +104,13 @@ async function saveAdminRow(table, user, submitted) {
   if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
   const spreadsheetId = tableSpreadsheet(definition);
   const rowNumber = Number(submitted.__rowNumber) || 0;
-  let lastError;
+  const failures = [];
   let saved;
   for (const auth of adminSheetAuthCandidates()) {
     let sheetName;
     let headers;
     let editableHeaders;
+    let mutationStarted = false;
     try {
       const sheet = await readAdminSheet(spreadsheetId, definition, auth);
       sheetName = sheet.sheetName;
@@ -113,16 +119,22 @@ async function saveAdminRow(table, user, submitted) {
       editableHeaders = headers.filter((header) => header && !definition.readOnly.includes(header));
       if (rowNumber >= 2) {
         const firstHeader = editableHeaders[0];
+        mutationStarted = Boolean(firstHeader);
         if (firstHeader) await updateCell(spreadsheetId, sheetName, rowNumber, headers.indexOf(firstHeader) + 1, submitted[firstHeader] ?? "", auth);
         saved = { auth, sheetName, headers, editableHeaders };
       } else {
+        mutationStarted = true;
         const appended = await appendValues(spreadsheetId, sheetName, buildRow(headers, submitted, { timestampFields: [] }), auth);
         saved = { auth, sheetName, headers, createdRow: appendedRowNumber(appended) };
       }
       break;
-    } catch (error) { lastError = error; }
+    } catch (error) {
+      // A lost write response must not cause another append under a different identity.
+      if (mutationStarted && ![401, 403].includes(error.googleStatus)) throw error;
+      failures.push(adminSheetAuthFailure(auth, error));
+    }
   }
-  if (!saved) throw adminSheetAccessError(table, spreadsheetId, lastError);
+  if (!saved) throw adminSheetAccessError(table, spreadsheetId, failures);
 
   if (rowNumber >= 2) {
     await Promise.all(saved.editableHeaders.slice(1).map((header) =>

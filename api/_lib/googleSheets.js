@@ -40,14 +40,13 @@ export function getDriveAuthSubjects(env = process.env) {
 }
 
 export function getSheetsAuthSubjects(env = process.env) {
-  const delegatedUser = String(
-    env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL ||
-    env.GOOGLE_DELEGATED_USER_EMAIL ||
-    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL ||
-    env.GMAIL_SENDER_EMAIL ||
-    ""
-  ).trim();
-  return delegatedUser ? [delegatedUser, ""] : [""];
+  const delegatedUsers = [
+    env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL,
+    env.GOOGLE_DELEGATED_USER_EMAIL,
+    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL,
+    env.GMAIL_SENDER_EMAIL,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  return [...new Set(delegatedUsers), ""];
 }
 
 function assertGoogleEnv() {
@@ -120,7 +119,11 @@ export async function googleFetch(url, init = {}, auth = {}) {
   });
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(json.error?.message || text || `Google API failed: ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(json.error?.message || text || `Google API failed: ${res.status}`);
+    error.googleStatus = res.status;
+    throw error;
+  }
   return json;
 }
 

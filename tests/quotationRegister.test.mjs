@@ -21,6 +21,15 @@ test('quotation register can reuse the configured Drive delegated identity', () 
   assert.deepEqual(getSheetsAuthSubjects({ GOOGLE_DRIVE_DELEGATED_USER_EMAIL: 'crm@ridosports.com' }), ['crm@ridosports.com', '']);
 });
 
+test('Sheets tries every configured delegated editor and removes repeated identities', () => {
+  assert.deepEqual(getSheetsAuthSubjects({
+    GOOGLE_SHEETS_DELEGATED_USER_EMAIL: ' blocked@example.com ',
+    GOOGLE_DELEGATED_USER_EMAIL: 'editor@example.com',
+    GOOGLE_DRIVE_DELEGATED_USER_EMAIL: 'EDITOR@example.com',
+    GMAIL_SENDER_EMAIL: 'sender@example.com',
+  }), ['blocked@example.com', 'editor@example.com', 'sender@example.com', '']);
+});
+
 test('an unavailable quotation register returns a non-500 browser fallback response', () => {
   assert.match(handlerSource, /res\.status\(200\)\.json\(\{ ok: false, registerUnavailable: true/);
 });

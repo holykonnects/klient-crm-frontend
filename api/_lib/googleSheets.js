@@ -277,7 +277,7 @@ export async function updateValues(spreadsheetId, sheetName, rowNumber, row, aut
   }, auth);
 }
 
-export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value) {
+export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value, auth = {}) {
   const cell = `${columnName(columnNumber)}${rowNumber}`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
     sheetRange(sheetName, cell)
@@ -286,7 +286,7 @@ export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumb
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ values: [[value]] }),
-  });
+  }, auth);
 }
 
 export function appendedRowNumber(appendResult) {

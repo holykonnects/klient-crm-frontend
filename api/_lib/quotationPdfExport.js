@@ -279,19 +279,31 @@ function templateRichCell(html, fallback) {
   text = text.trim();
   return { userEnteredValue: { stringValue: text }, textFormatRuns: runs.filter((run) => run.startIndex < text.length) };
 }
-function templateItemRowHeight(item = {}) {
+function templateDescriptionLayout(item = {}) {
   const text = templateRichCell(
     item.descHtml,
     item.descOverride || item.description || item.desc,
   ).userEnteredValue.stringValue;
-  const wrappedLines = (text.split("\n").reduce(
-    (count, line) => count + Math.max(1, Math.ceil(line.length / 34)),
-    0,
-  ) || 1);
-  const descriptionHeight = 24 + (wrappedLines * 18);
   const imageUrl = clean(item.imageUrl);
   const imageHeight = /^https?:\/\//i.test(imageUrl) && !/^#(?:REF|VALUE|N\/A|ERROR)!?$/i.test(imageUrl) ? 160 : 60;
-  return Math.max(60, imageHeight, descriptionHeight);
+  const maximumHeight = 380;
+  let selected = { fontSize: 5, height: maximumHeight, wrappedLines: 1 };
+
+  for (const fontSize of [9, 8, 7, 6, 5]) {
+    const charactersPerLine = Math.max(34, Math.floor(34 * (9 / fontSize)));
+    const wrappedLines = text.split("\n").reduce(
+      (count, line) => count + Math.max(1, Math.ceil(line.length / charactersPerLine)),
+      0,
+    ) || 1;
+    const height = Math.ceil(24 + (wrappedLines * fontSize * 1.7));
+    selected = { fontSize, height: Math.min(maximumHeight, Math.max(60, imageHeight, height)), wrappedLines };
+    if (height <= maximumHeight) break;
+  }
+
+  return selected;
+}
+function templateItemRowHeight(item = {}) {
+  return templateDescriptionLayout(item).height;
 }
 async function copyNewTemplate(name) {
   const errors = [];
@@ -379,18 +391,22 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
   });
   items.forEach((item, index) => {
     const rowIndex = ITEMS_START_ROW - 1 + index;
+    const descriptionLayout = templateDescriptionLayout(item);
     const descriptionCell = templateRichCell(item.descHtml, item.descOverride || item.description || item.desc, item);
     requests.push({ updateCells: {
       range: { sheetId: sheet.sheetId, startRowIndex: rowIndex, endRowIndex: rowIndex + 1, startColumnIndex: 7, endColumnIndex: 8 },
       rows: [{ values: [{
         ...descriptionCell,
-        userEnteredFormat: { wrapStrategy: "WRAP", verticalAlignment: "TOP" },
+        userEnteredFormat: {
+          wrapStrategy: "WRAP", verticalAlignment: "TOP",
+          textFormat: { fontSize: descriptionLayout.fontSize },
+        },
       }] }],
-      fields: "userEnteredValue,textFormatRuns,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment",
+      fields: "userEnteredValue,textFormatRuns,userEnteredFormat.wrapStrategy,userEnteredFormat.verticalAlignment,userEnteredFormat.textFormat.fontSize",
     } });
     requests.push({ updateDimensionProperties: {
       range: { sheetId: sheet.sheetId, dimension: "ROWS", startIndex: rowIndex, endIndex: rowIndex + 1 },
-      properties: { pixelSize: templateItemRowHeight(item) }, fields: "pixelSize",
+      properties: { pixelSize: descriptionLayout.height }, fields: "pixelSize",
     } });
   });
   if (ITEMS_START_ROW + items.length <= ITEMS_END_ROW) requests.push({ updateDimensionProperties: {
@@ -447,4 +463,4 @@ export async function exportQuotationToDrive(payload = {}) {
   };
 }
 
-export { populateNewTemplate, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };
+export { populateNewTemplate, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };

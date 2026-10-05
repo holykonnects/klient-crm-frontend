@@ -192,6 +192,7 @@ function generateLeadIDs() {
   var mobileNumberColumn = 5; // Column F for Mobile Number (0-based index is 5)
   var leadIDColumn = 22;      // Column W for Lead ID (0-based index is 22)
   var timestampColumn = 0;    // Column A for the initial timestamp (0-based index is 0)
+  sheet.getRange(2, leadIDColumn + 1, Math.max(1, sheet.getMaxRows() - 1), 1).setNumberFormat('@');
 
   // Create a map to store mobile number and associated Lead IDs based on the initial timestamp
   var mobileNumberMap = {};
@@ -203,7 +204,7 @@ function generateLeadIDs() {
     var leadID = row[leadIDColumn];
 
     if (mobileNumber && leadID) {
-      mobileNumberMap[mobileNumber] = leadID; // Store mobile number and its corresponding lead ID
+      mobileNumberMap[mobileNumber] = String(leadID); // Preserve IDs as text when the scheduler rewrites them.
     }
   }
 

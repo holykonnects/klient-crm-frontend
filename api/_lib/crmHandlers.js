@@ -123,7 +123,14 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
   const data = await withUpdateAudit({ ...(payload || {}) });
   const timestamp = data.Timestamp || formatTimestamp();
   data.Timestamp = timestamp;
-  data["Lead ID"] = data["Lead ID"] || findExistingLeadId(values, headers, data["Mobile Number"]) || generateLeadId(timestamp);
+  const existingLeadId = data["Lead ID"] || findExistingLeadId(values, headers, data["Mobile Number"]);
+  if (existingLeadId && (/^[\d.]+e[+-]?\d+$/i.test(String(existingLeadId).trim()) ||
+    (typeof existingLeadId === "number" && !Number.isSafeInteger(existingLeadId)))) {
+    throw new Error("This Lead ID has been converted to a rounded number. Refresh the lead after its ID is restored as text before updating it.");
+  }
+  const leadIdColumn = headers.indexOf("Lead ID");
+  data["Lead ID"] = existingLeadId ? String(existingLeadId).trim()
+    : generateLeadId(timestamp, values.slice(1).map((row) => row[leadIdColumn]));
   data["Prefilled Link"] = data["Prefilled Link"] || buildLeadPrefilledLink(data);
   const previousLead = findPreviousRecord(values, headers, data, [["Lead ID"], ["Mobile Number"]]);
 
@@ -316,30 +323,35 @@ function cleanRecordValue(value) {
   return String(value ?? "").trim().toLowerCase();
 }
 
-function generateLeadId(timestamp) {
-  const parsed = parseTimestamp(timestamp) || new Date();
-  const pad = (n, size = 2) => String(n).padStart(size, "0");
-  return [
-    parsed.getFullYear(),
-    pad(parsed.getMonth() + 1),
-    pad(parsed.getDate()),
-    pad(parsed.getHours()),
-    pad(parsed.getMinutes()),
-    pad(parsed.getSeconds()),
-    pad(parsed.getMilliseconds(), 3),
-  ].join("");
-}
+const generatedLeadIds = new Set();
+const leadIdDateFormat = new Intl.DateTimeFormat("en-GB", {
+  timeZone: "Asia/Kolkata", year: "numeric", month: "2-digit", day: "2-digit",
+  hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+});
 
-function parseTimestamp(value) {
-  if (value instanceof Date && Number.isFinite(value.getTime())) return value;
-  const text = String(value || "").trim();
-  const indian = text.match(/^(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+export function generateLeadId(timestamp, existingIds = [], now = new Date()) {
+  const text = String(timestamp || "").trim();
+  const indian = text.match(/^(\d{2})\/(\d{2})\/(\d{4}),?\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?$/);
+  let date = now;
   if (indian) {
-    const [, dd, mm, yyyy, hh, min, ss, ms = "0"] = indian;
-    return new Date(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss), Number(ms));
+    const [, dd, mm, yyyy, hh, min, ss, ms] = indian;
+    const milliseconds = ms == null ? now.getUTCMilliseconds() : Number(ms.padEnd(3, "0"));
+    date = new Date(Date.UTC(Number(yyyy), Number(mm) - 1, Number(dd), Number(hh), Number(min), Number(ss), milliseconds) - 330 * 60 * 1000);
+  } else if (timestamp instanceof Date || /^\d{4}-\d{2}-\d{2}T/.test(text)) {
+    const parsed = new Date(timestamp);
+    if (Number.isFinite(parsed.getTime())) date = parsed;
   }
-  const d = new Date(text);
-  return Number.isFinite(d.getTime()) ? d : null;
+  const occupied = new Set(existingIds.map((id) => String(id ?? "").trim()));
+  let id;
+  do {
+    const parts = Object.fromEntries(leadIdDateFormat.formatToParts(date).map((part) => [part.type, part.value]));
+    id = [parts.year, parts.month, parts.day, parts.hour, parts.minute, parts.second,
+      String(date.getUTCMilliseconds()).padStart(3, "0")].join("");
+    date = new Date(date.getTime() + 1);
+  } while (occupied.has(id) || generatedLeadIds.has(id));
+  generatedLeadIds.add(id);
+  if (generatedLeadIds.size > 10000) generatedLeadIds.delete(generatedLeadIds.values().next().value);
+  return id;
 }
 
 function buildLeadPrefilledLink(data) {

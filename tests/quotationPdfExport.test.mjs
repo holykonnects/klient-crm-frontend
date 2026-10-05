@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import {
-  buildQuotationPdf, quotationLineDescription, templateImageFormula, templateItemRowHeight, templateRichCell,
+  buildQuotationPdf, quotationLineDescription, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateRichCell,
 } from "../api/_lib/quotationPdfExport.js";
 import { verifySignedToken } from "../api/_lib/sessionAuth.js";
 import { QUOTATION_CURRENCY_FORMAT } from "../api/_lib/quotationCurrency.js";
@@ -79,7 +79,8 @@ test("New Template item rows expand for long wrapped descriptions", () => {
   });
   assert.equal(shortHeight, 60);
   assert.ok(longHeight > shortHeight);
-  assert.ok(longHeight > 400);
+  assert.ok(longHeight <= 380);
+  assert.ok(templateDescriptionLayout({ description: "Long quotation specification ".repeat(40) }).fontSize < 9);
   assert.equal(imageHeight, 160);
 });
 

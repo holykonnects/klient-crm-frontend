@@ -40,14 +40,13 @@ export function getDriveAuthSubjects(env = process.env) {
 }
 
 export function getSheetsAuthSubjects(env = process.env) {
-  const delegatedUser = String(
-    env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL ||
-    env.GOOGLE_DELEGATED_USER_EMAIL ||
-    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL ||
-    env.GMAIL_SENDER_EMAIL ||
-    ""
-  ).trim();
-  return delegatedUser ? [delegatedUser, ""] : [""];
+  const delegatedUsers = [
+    env.GOOGLE_SHEETS_DELEGATED_USER_EMAIL,
+    env.GOOGLE_DELEGATED_USER_EMAIL,
+    env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL,
+    env.GMAIL_SENDER_EMAIL,
+  ].map((value) => String(value || "").trim().toLowerCase()).filter(Boolean);
+  return [...new Set(delegatedUsers), ""];
 }
 
 function assertGoogleEnv() {
@@ -120,7 +119,11 @@ export async function googleFetch(url, init = {}, auth = {}) {
   });
   const text = await res.text();
   const json = text ? JSON.parse(text) : {};
-  if (!res.ok) throw new Error(json.error?.message || text || `Google API failed: ${res.status}`);
+  if (!res.ok) {
+    const error = new Error(json.error?.message || text || `Google API failed: ${res.status}`);
+    error.googleStatus = res.status;
+    throw error;
+  }
   return json;
 }
 
@@ -277,7 +280,7 @@ export async function updateValues(spreadsheetId, sheetName, rowNumber, row, aut
   }, auth);
 }
 
-export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value) {
+export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumber, value, auth = {}) {
   const cell = `${columnName(columnNumber)}${rowNumber}`;
   const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(
     sheetRange(sheetName, cell)
@@ -286,7 +289,7 @@ export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumb
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ values: [[value]] }),
-  });
+  }, auth);
 }
 
 export function appendedRowNumber(appendResult) {

@@ -1,5 +1,5 @@
 import { SHEETS } from "../_lib/crmConfig.js";
-import { appendValues, appendedRowNumber, buildRow, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
+import { appendValues, appendedRowNumber, buildRow, getSheetsAuthSubjects, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
 import { exportQuotationToDrive } from "../_lib/quotationPdfExport.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
@@ -8,6 +8,7 @@ import { buildTermsCatalog } from "../_lib/quotationTerms.js";
 import { resolveLeadSourceIdentity } from "../_lib/leadSourceIdentity.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
+const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
 const ADMIN_TABLES = {
   equipment: { book: "standard", sheetNames: ["Equipment BD"], readOnly: ["concat"] },
   terms: { book: "standard", sheetNames: ["tc"], readOnly: [] },
@@ -60,16 +61,40 @@ function tableSpreadsheet(definition) {
     : SHEETS.quotations.referenceSpreadsheetId;
 }
 
+function adminSheetAuthCandidates() {
+  return getSheetsAuthSubjects().map((subject) => ({ scopes: [SHEETS_SCOPE], subject }));
+}
+
+async function readAdminSheet(spreadsheetId, definition, auth) {
+  const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames, auth);
+  const values = await getValues(spreadsheetId, sheetName, "", auth);
+  return { sheetName, values };
+}
+
+function adminSheetAuthFailure(auth, error) {
+  const identity = auth.subject || `service account ${process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL || process.env.GOOGLE_CLIENT_EMAIL || "(not configured)"}`;
+  return `${identity}: ${error?.message || "Access denied"}`;
+}
+
+function adminSheetAccessError(table, spreadsheetId, failures) {
+  return new Error(`Google Sheets denied access to ${ADMIN_TABLES[table].sheetNames[0]} in spreadsheet ${spreadsheetId}. Identities tried: ${failures.join("; ")}`);
+}
+
 async function getAdminTable(table, user) {
   const definition = ADMIN_TABLES[table];
   if (!definition) throw new Error(`Unknown quotation configuration table: ${table}`);
   const loginRows = await getLoginRows();
   if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
   const spreadsheetId = tableSpreadsheet(definition);
-  const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
-  const values = await getValues(spreadsheetId, sheetName);
-  const parsed = parseQuotationAdminTable(values);
-  return { ok: true, table, sheetName, ...parsed, readOnly: definition.readOnly, engineVersion: QUOTATION_ENGINE_VERSION };
+  const failures = [];
+  for (const auth of adminSheetAuthCandidates()) {
+    try {
+      const { sheetName, values } = await readAdminSheet(spreadsheetId, definition, auth);
+      const parsed = parseQuotationAdminTable(values);
+      return { ok: true, table, sheetName, ...parsed, readOnly: definition.readOnly, engineVersion: QUOTATION_ENGINE_VERSION };
+    } catch (error) { failures.push(adminSheetAuthFailure(auth, error)); }
+  }
+  throw adminSheetAccessError(table, spreadsheetId, failures);
 }
 
 async function saveAdminRow(table, user, submitted) {
@@ -78,31 +103,63 @@ async function saveAdminRow(table, user, submitted) {
   const loginRows = await getLoginRows();
   if (!isAdmin(user, loginRows)) { const error = new Error("Admin access is required"); error.status = 403; throw error; }
   const spreadsheetId = tableSpreadsheet(definition);
-  const sheetName = await resolveSheetTitle(spreadsheetId, definition.sheetNames);
-  const values = await getValues(spreadsheetId, sheetName);
-  const { headers } = parseQuotationAdminTable(values);
-  if (!headers.length) throw new Error(`No headers were found in quotation configuration sheet: ${sheetName}`);
-  const editableHeaders = headers.filter((header) => header && !definition.readOnly.includes(header));
   const rowNumber = Number(submitted.__rowNumber) || 0;
+  const failures = [];
+  let saved;
+  for (const auth of adminSheetAuthCandidates()) {
+    let sheetName;
+    let headers;
+    let editableHeaders;
+    let mutationStarted = false;
+    try {
+      const sheet = await readAdminSheet(spreadsheetId, definition, auth);
+      sheetName = sheet.sheetName;
+      headers = parseQuotationAdminTable(sheet.values).headers;
+      if (!headers.length) throw new Error(`No headers were found in quotation configuration sheet: ${sheetName}`);
+      editableHeaders = headers.filter((header) => header && !definition.readOnly.includes(header));
+      if (rowNumber >= 2) {
+        const firstHeader = editableHeaders[0];
+        mutationStarted = Boolean(firstHeader);
+        if (firstHeader) await updateCell(spreadsheetId, sheetName, rowNumber, headers.indexOf(firstHeader) + 1, submitted[firstHeader] ?? "", auth);
+        saved = { auth, sheetName, headers, editableHeaders };
+      } else {
+        mutationStarted = true;
+        const appended = await appendValues(spreadsheetId, sheetName, buildRow(headers, submitted, { timestampFields: [] }), auth);
+        saved = { auth, sheetName, headers, createdRow: appendedRowNumber(appended) };
+      }
+      break;
+    } catch (error) {
+      // A lost write response must not cause another append under a different identity.
+      if (mutationStarted && ![401, 403].includes(error.googleStatus)) throw error;
+      failures.push(adminSheetAuthFailure(auth, error));
+    }
+  }
+  if (!saved) throw adminSheetAccessError(table, spreadsheetId, failures);
 
   if (rowNumber >= 2) {
-    await Promise.all(editableHeaders.map((header) => updateCell(spreadsheetId, sheetName, rowNumber, headers.indexOf(header) + 1, submitted[header] ?? "")));
+    await Promise.all(saved.editableHeaders.slice(1).map((header) =>
+      updateCell(spreadsheetId, saved.sheetName, rowNumber, saved.headers.indexOf(header) + 1, submitted[header] ?? "", saved.auth)
+    ));
     return { ok: true, created: false, rowNumber, engineVersion: QUOTATION_ENGINE_VERSION };
   }
 
-  const appended = await appendValues(spreadsheetId, sheetName, buildRow(headers, submitted, { timestampFields: [] }));
-  const createdRow = appendedRowNumber(appended);
+  const { createdRow, headers, sheetName, auth } = saved;
   if (table === "equipment" && createdRow && headers.includes("concat")) {
     const concatColumn = headers.indexOf("concat") + 1;
-    await updateCell(spreadsheetId, sheetName, createdRow, concatColumn, `=A${createdRow}&" : "&B${createdRow}&" : "&C${createdRow}`);
+    await updateCell(spreadsheetId, sheetName, createdRow, concatColumn, `=A${createdRow}&" : "&B${createdRow}&" : "&C${createdRow}`, auth);
   }
   return { ok: true, created: true, rowNumber: createdRow, engineVersion: QUOTATION_ENGINE_VERSION };
 }
 
 async function getLoginRows() {
-  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, ["CRM Login"]);
-  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
-  return rowsToObjects(values);
+  let lastError;
+  for (const auth of adminSheetAuthCandidates()) {
+    try {
+      const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, ["CRM Login"], auth);
+      return rowsToObjects(await getValues(SHEETS.validation.spreadsheetId, sheetName, "", auth));
+    } catch (error) { lastError = error; }
+  }
+  throw lastError;
 }
 
 async function getCatalog() {

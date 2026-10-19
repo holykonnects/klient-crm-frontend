@@ -1,13 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import ExcelJS from "exceljs";
-import { downloadQuotationImage, quotationImageAuthSubjects, quotationImageReference, resolveQuotationImages } from "../api/_lib/quotationImages.js";
-import { templateImageFormula, templateItems } from "../api/_lib/quotationPdfExport.js";
+import { downloadQuotationImage, normalizeQuotationImage, quotationImageAuthSubjects, quotationImageReference, resolveQuotationImages } from "../api/_lib/quotationImages.js";
+import { templateImageFormula, templateItems, validateQuotationExportImages } from "../api/_lib/quotationPdfExport.js";
 import { buildQuotationSetWorkbook } from "../api/_lib/quotationSetExport.js";
 
 const id = "1obzLMUEVUyb2n7t1yv_PU6K4Ak4_bE_X";
 const url = `https://drive.google.com/file/d/${id}/view`;
 const catalog = { items: { "Track|||Kerbing": [{ code: "KERB", imageUrl: url }] } };
+const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1cAAAAASUVORK5CYII=", "base64");
 
 test("all quotation types use the same image reference and New Template formula", () => {
   for (const input of [url, id, `=IMAGE("${url}",1)`, `https://drive.google.com/uc?id=${id}`]) {
@@ -40,7 +41,7 @@ test("image extraction includes the configured Sheets identity and surfaces perm
       assert.equal(fileId, id);
       attempts.push(auth.subject);
       if (auth.subject === "drive@example.com") throw new Error("permission denied");
-      return { contentType: "image/png", body: Buffer.from("image") };
+      return { contentType: "image/png", body: png };
     },
   });
   assert.deepEqual(attempts, ["drive@example.com", "sheets@example.com"]);
@@ -48,10 +49,56 @@ test("image extraction includes the configured Sheets identity and surfaces perm
   await assert.rejects(downloadQuotationImage(url, { subjects: [""], download: async () => { throw new Error("permission denied"); } }), /could not be downloaded: permission denied/);
 });
 
+test("valid image bytes are accepted even with generic, missing or incorrect MIME headers", async () => {
+  for (const contentType of ["application/octet-stream", "", "text/plain"]) {
+    assert.equal(normalizeQuotationImage({ body: png, contentType }).contentType, "image/png");
+  }
+  const image = await downloadQuotationImage(url, { subjects: [""], download: async () => ({ body: png, contentType: "application/octet-stream" }) });
+  assert.equal(image.contentType, "image/png");
+  const external = await downloadQuotationImage("https://example.com/image", { fetchImage: async () => new Response(png, { headers: { "Content-Type": "application/octet-stream" } }) });
+  assert.deepEqual(external.body, png);
+  assert.equal(external.contentType, "image/png");
+  assert.equal(normalizeQuotationImage({ body: Buffer.from([255, 216, 255, 224]), contentType: "application/octet-stream" }).contentType, "image/jpeg");
+  assert.equal(normalizeQuotationImage({ body: Buffer.from("GIF89a1234"), contentType: "application/octet-stream" }).contentType, "image/gif");
+  assert.equal(normalizeQuotationImage({ body: Buffer.from("RIFF1234WEBP1234"), contentType: "application/octet-stream" }).contentType, "image/webp");
+});
+
+test("HTML, JSON and empty responses are not treated as images even with image MIME headers", () => {
+  assert.throws(() => normalizeQuotationImage({ body: Buffer.from("<!DOCTYPE html><html>Login</html>"), contentType: "image/png" }), /HTML page/);
+  assert.throws(() => normalizeQuotationImage({ body: Buffer.from('{"ok":false}'), contentType: "image/png" }), /returned JSON/);
+  assert.throws(() => normalizeQuotationImage({ body: Buffer.alloc(0), contentType: "image/png" }), /empty response/);
+  assert.throws(() => normalizeQuotationImage({ body: Buffer.from("not an image"), contentType: "image/png" }), /unsupported or unreadable/);
+});
+
+test("Drive image validation retries another identity after an unreadable response", async () => {
+  const attempts = [];
+  const image = await downloadQuotationImage(url, {
+    subjects: ["first@example.com", "second@example.com"],
+    download: async (fileId, { subject }) => {
+      attempts.push(subject);
+      return subject.startsWith("first")
+        ? { body: Buffer.from("<html>No access</html>"), contentType: "text/html" }
+        : { body: png, contentType: "application/octet-stream" };
+    },
+  });
+  assert.equal(attempts.length, 2);
+  assert.equal(image.contentType, "image/png");
+});
+
+test("PDF validation downloads original references once and identifies a failing item", async () => {
+  const payload = { items: [{ displayItem: "Kerbing", imageUrl: url }, { displayItem: "Drain Cover", imageUrl: url }] };
+  const downloads = [];
+  await validateQuotationExportImages(payload, { download: async source => { downloads.push(source); } });
+  assert.deepEqual(downloads, [url]);
+  await assert.rejects(validateQuotationExportImages(payload, { download: async () => { throw new Error("returned HTML"); } }), /Image for Kerbing: returned HTML/);
+});
+
 test("BOQ Excel embeds image bytes and keeps their aspect ratio", async () => {
   const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aT1cAAAAASUVORK5CYII=", "base64");
   const payload = { setQuotation: { sets: [{ title: "Civil", items: [{ item: "Kerbing", imageUrl: url, qty: 1, rate: 10 }] }] } };
-  const output = await buildQuotationSetWorkbook(payload, { loadImage: async () => ({ contentType: "image/png", body: png }) });
+  const output = await buildQuotationSetWorkbook(payload, { loadImage: source => downloadQuotationImage(source, {
+    subjects: [""], download: async () => ({ contentType: "application/octet-stream", body: png }),
+  }) });
   const workbook = new ExcelJS.Workbook();
   await workbook.xlsx.load(output.buffer);
   const images = workbook.getWorksheet("Quotation").getImages();

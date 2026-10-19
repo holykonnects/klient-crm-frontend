@@ -496,15 +496,21 @@ export async function waitForQuotationImages(spreadsheetId, auth, payload, { rea
   if (failures.length) throw new Error(`Quotation photographs could not load: ${failures.map(({ item, index }) => item.displayItem || item.itemCode || `item ${index + 1}`).join(', ')}. Check the image mapping and CRM image endpoint access, then retry.`);
 }
 
+export async function validateQuotationExportImages(payload, { download = downloadQuotationImage } = {}) {
+  const sources = new Map();
+  templateItems(payload).forEach((item, index) => {
+    if (item.imageUrl && !sources.has(item.imageUrl)) sources.set(item.imageUrl, item.displayItem || item.libraryItem || item.itemCode || `item ${index + 1}`);
+  });
+  await Promise.all([...sources].map(async ([source, label]) => {
+    try { await download(source); }
+    catch (error) { throw new Error(`Image for ${label}: ${error.message || 'could not be downloaded'}`); }
+  }));
+}
+
 export async function exportQuotationToDrive(payload = {}) {
   const meta = payload.meta || {};
   const baseName = safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName);
-  const imageSources = [...new Set(templateItems(payload).map(item => item.imageUrl).filter(Boolean))];
-  await Promise.all(imageSources.map(async source => {
-    const reference = quotationImageReference(source);
-    if (!reference) throw new Error('Quotation image reference is invalid');
-    await downloadQuotationImage(reference.fileId ? quotationImageProxyUrl(reference.fileId) : source);
-  }));
+  await validateQuotationExportImages(payload);
   const { copy, auth } = await copyNewTemplate(baseName);
   const sheetId = await populateNewTemplate(copy.id, auth, payload);
   await waitForQuotationImages(copy.id, auth, payload);

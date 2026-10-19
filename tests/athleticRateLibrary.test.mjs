@@ -7,7 +7,8 @@ test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('AREA_X_FACTOR', 0.075, { area: 7500 }), 562.5);
   assert.equal(athleticQuantity('PERIMETER', 0, { perimeter: 400 }), 400);
   assert.equal(athleticQuantity('PERIMETER_X_FACTOR', 1.125, { perimeter: 400 }), 450);
-  assert.equal(athleticQuantity('MANUAL', 0, {}), 1);
+  assert.equal(athleticQuantity('MANUAL', 0, {}), 0);
+  assert.equal(athleticQuantity('MANUAL', '', {}), 1);
 });
 
 test('athletic drainage uses the selected preset perimeter until explicitly overridden', () => {

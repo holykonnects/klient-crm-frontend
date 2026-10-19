@@ -45,6 +45,7 @@ export function quotationMetaForLead(option, currentMeta = {}) {
   if (!lead.value) return currentMeta;
   return {
     ...currentMeta,
+    leadId: lead.leadId,
     clientName: lead.company || lead.contactName || currentMeta.clientName,
     clientEmail: lead.email,
     clientBillingAddress: currentMeta.clientBillingAddress || lead.billingAddress,

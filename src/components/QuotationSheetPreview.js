@@ -7,6 +7,7 @@ import RestartAlt from '@mui/icons-material/RestartAlt';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
 import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
 import { isExportableQuotationRow } from './athleticRateLibrary';
+import { quotationOutputRows } from '../utils/quotationOutput';
 
 function CommercialPreview({ items }) {
   if (!items.some(item => String(item.freight ?? '').trim() || String(item.installation ?? '').trim())) return null;
@@ -248,7 +249,7 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, 
 
 export default function QuotationSheetPreview({ quoteType = 'standard', meta, rows = [], totals, pricing, sets, gstPct, terms = [], termsType, termTypes = [], onTermsTypeChange, onTermChange, onTermAdd, onTermRemove, onTermsReset }) {
   if (Array.isArray(sets)) return <SetQuotationPreview meta={meta} sets={sets} gstPct={gstPct} terms={terms} termsType={termsType} termTypes={termTypes} onTermsTypeChange={onTermsTypeChange} onTermChange={onTermChange} onTermAdd={onTermAdd} onTermRemove={onTermRemove} onTermsReset={onTermsReset} />;
-  const quoteRows = rows.filter((row) => isExportableQuotationRow(row, quoteType));
+  const quoteRows = quotationOutputRows(rows.filter((row) => isExportableQuotationRow(row, quoteType)), pricing);
   const gst = totals.equipmentGst + totals.nonEquipmentGst + totals.freightInstallGst;
 
   return (
@@ -263,7 +264,7 @@ export default function QuotationSheetPreview({ quoteType = 'standard', meta, ro
         </Box>
 
         {quoteRows.length ? quoteRows.map((row, index) => {
-          const rate = Number(row.rateOverride !== '' ? row.rateOverride : row.rate) || 0;
+          const rate = Number(row.rateOverride != null && row.rateOverride !== '' ? row.rateOverride : row.rate) || 0;
           const amount = (Number(row.qty) || 0) * rate;
           return (
             <Box key={`${row.itemCode}-${index}`} sx={{ display: 'grid', gridTemplateColumns: '44px 125px 130px 115px 104px minmax(260px,1fr) 72px 72px 105px 118px' }}>

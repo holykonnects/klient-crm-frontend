@@ -39,7 +39,7 @@ test("quotation builder posts PDF exports to the native quotations API", async (
   assert.match(exporter, /startIndex: 79 \+ terms\.length, endIndex: 99/);
   assert.match(exporter, /wrapStrategy: "WRAP"/);
   assert.match(exporter, /importFunctionsExternalUrlAccessAllowed: true/);
-  assert.match(exporter, /setTimeout\(resolve, 1500\)/);
+  assert.match(exporter, /await waitForQuotationImages\(copy.id, auth, payload\)/);
   assert.doesNotMatch(exporter, /templateRange\("F100"\)/);
   assert.doesNotMatch(exporter, /export async function exportQuotationToDrive[\s\S]{0,250}buildQuotationPdf/);
 });

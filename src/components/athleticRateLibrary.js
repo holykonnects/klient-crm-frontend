@@ -28,7 +28,12 @@ export function athleticQuantity(driver, factor, context = {}) {
   if (mode === 'AREA_X_FACTOR') return area * multiplier;
   if (mode === 'PERIMETER') return perimeter;
   if (mode === 'PERIMETER_X_FACTOR') return perimeter * multiplier;
-  return multiplier || 1;
+  return clean(factor) === '' ? 1 : multiplier;
+}
+
+export function updateAthleticCalculation(row, driver, factor, context) {
+  const qty = athleticQuantity(driver, factor, context);
+  return { ...row, qtyDriver: driver, factor, calculationEdited: true, qtyEdited: driver === 'MANUAL', qty, suggestedQty: qty };
 }
 
 export function athleticDrainPerimeter(config = {}, presets = []) {
@@ -57,7 +62,8 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
     const catalogItem = (catalog.items?.[`${category}|||${subCategory}`] || []).find(item => item.code === itemCode);
     const libraryItem = clean(pick(libraryRow, ['Item'])) || `Athletic item ${index + 1}`;
     const driver = clean(pick(libraryRow, ['Qty Driver', 'Quantity Driver'])) || 'MANUAL';
-    const factor = numberValue(pick(libraryRow, ['Thickness/Factor', 'Factor']));
+    const factorValue = pick(libraryRow, ['Thickness/Factor', 'Factor']);
+    const factor = driver.toUpperCase() === 'MANUAL' && numberValue(factorValue) === 0 ? '' : numberValue(factorValue);
     const qty = athleticQuantity(driver, factor, context);
     const rowNumber = numberValue(libraryRow.__rowNumber) || index + 2;
     return {
@@ -80,7 +86,7 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
       unit: clean(pick(libraryRow, ['Unit'])) || catalogItem?.unit || '',
       desc: clean(pick(libraryRow, ['Description'])) || catalogItem?.desc || libraryItem,
       descHtml: '',
-      imageUrl: catalogItem?.imageUrl || '',
+      imageUrl: catalogItem?.imageUrl || clean(pick(libraryRow, ['Images', 'Image URL', 'ImageURL'])),
       itemType: normalized(pick(libraryRow, ['Scope'])) === 'equipment' ? 'Equipment' : 'Non Equipment',
       freight: clean(pick(libraryRow, ['Freight'])),
       installation: clean(pick(libraryRow, ['Installation'])),
@@ -88,7 +94,7 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
   });
 }
 
-export function reconcileAthleticRows(existingRows = [], generatedRows = [], excludedKeys = []) {
+export function reconcileAthleticRows(existingRows = [], generatedRows = [], excludedKeys = [], context = {}) {
   const excluded = new Set(excludedKeys);
   const existingLibrary = new Map(existingRows.filter(row => row.source === 'rate-library').map(row => [row.libraryKey, row]));
   const defaults = generatedRows.filter(row => !excluded.has(row.libraryKey)).map(row => {
@@ -98,14 +104,20 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
       ...row,
       ...existing,
       rate: row.rate,
+      qtyDriver: existing.calculationEdited ? existing.qtyDriver : row.qtyDriver,
+      factor: existing.calculationEdited ? existing.factor : row.factor,
+      imageUrl: existing.imageMappingEdited || existing.imageUrl ? existing.imageUrl : row.imageUrl,
       unit: existing.unitEdited ? existing.unit : row.unit,
       desc: existing.descEdited ? existing.desc : row.desc,
       descHtml: existing.descEdited ? existing.descHtml : row.descHtml,
       suggestedQty: row.suggestedQty,
-      qty: existing.qtyEdited ? existing.qty : row.qty,
+      qty: existing.qtyEdited ? existing.qty : existing.calculationEdited
+        ? athleticQuantity(existing.qtyDriver, existing.factor, context) : row.qty,
     };
   });
-  return [...defaults, ...existingRows.filter(row => row.source !== 'rate-library')];
+  const manualRows = existingRows.filter(row => row.source !== 'rate-library').map(row => row.calculationEdited && !row.qtyEdited
+    ? { ...row, qty: athleticQuantity(row.qtyDriver, row.factor, context) } : row);
+  return [...defaults, ...manualRows];
 }
 
 export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) {
@@ -119,6 +131,7 @@ export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) 
     subCategory,
     itemCode,
     imageUrl: selectedItem?.imageUrl || '',
+    imageMappingEdited: true,
   };
 }
 

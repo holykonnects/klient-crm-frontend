@@ -4,7 +4,7 @@ import {
   Autocomplete, Box, Grid, Typography, Button, TextField, IconButton,
   MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
   Table, TableBody, TableCell, TableContainer, TableHead, TableRow, Tooltip,
-  Dialog, DialogActions, DialogContent, DialogTitle
+  Dialog, DialogActions, DialogContent, DialogTitle, Switch, FormControlLabel
 } from '@mui/material';
 import AddCircleOutline from '@mui/icons-material/AddCircleOutline';
 import DeleteOutline from '@mui/icons-material/DeleteOutline';
@@ -33,6 +33,9 @@ import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } fr
 import { moveQuotationRow } from '../utils/quotationRowOrder';
 import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
+import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
+import { updateAthleticCalculation } from './athleticRateLibrary';
+import { readQuotationResponse, runQuotationPdfExport } from '../utils/quotationRequest';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
@@ -87,16 +90,7 @@ function downloadBlob(blob, name) {
   URL.revokeObjectURL(url);
 }
 async function fetchJSON(url, init) {
-  const r = await fetch(url, init);
-  const text = await r.text();
-  try {
-    const parsed = JSON.parse(text);
-    if (!r.ok && parsed && !parsed.error) parsed.error = `Request failed with status ${r.status}`;
-    return parsed;
-  } catch {
-    const detail = text ? `: ${text.slice(0, 240)}` : '';
-    throw new Error(`Invalid JSON from server${detail}`);
-  }
+  return readQuotationResponse(await fetch(url, init));
 }
 function toNumber(value) {
   if (value === '' || value === null || value === undefined) return 0;
@@ -128,8 +122,8 @@ function htmlToPlainText(value) {
 function calculateItemTotals(rows, pricing) {
   let equipment = 0;
   let nonEquipment = 0;
-  rows.forEach(row => {
-    const lineTotal = toNumber(row.qty) * toNumber(row.rateOverride !== '' ? row.rateOverride : row.rate);
+  quotationOutputRows(rows, pricing).forEach(row => {
+    const lineTotal = toNumber(row.qty) * toNumber(row.rateOverride != null && row.rateOverride !== '' ? row.rateOverride : row.rate);
     if (row.itemType === 'Non Equipment') nonEquipment += lineTotal;
     else equipment += lineTotal;
   });
@@ -181,6 +175,8 @@ export default function QuotationBuilder() {
   const [catalogError, setCatalogError] = useState('');
   const [standardRows, setStandardRows] = useState([{ ...emptyRow }]);
   const [athleticRows, setAthleticRows] = useState([]);
+  const [commercialSettings, setCommercialSettings] = useState({});
+  const [calculationEditor, setCalculationEditor] = useState(null);
   const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
   const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
@@ -201,6 +197,7 @@ export default function QuotationBuilder() {
     freightInstallGstPct: 18
   });
   const [exporting, setExporting] = useState(false);
+  const [exportStage, setExportStage] = useState('');
   const [lastExport, setLastExport] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
@@ -226,7 +223,7 @@ export default function QuotationBuilder() {
   const [leadLookupError, setLeadLookupError] = useState('');
   const [leadLookupLoading, setLeadLookupLoading] = useState(false);
 
-  const rows = quoteType === 'athletic' ? athleticRows : standardRows;
+  const rows = useMemo(() => quoteType === 'athletic' ? athleticRows : applyQuotationCommercialSettings(standardRows, commercialSettings), [quoteType, athleticRows, standardRows, commercialSettings]);
   const setRows = updater => {
     const setter = quoteType === 'athletic' ? setAthleticRows : setStandardRows;
     setter(current => typeof updater === 'function' ? updater(current) : updater);
@@ -279,7 +276,13 @@ export default function QuotationBuilder() {
     const selected = lead ? normalizeQuotationLead(lead) : null;
     setAttachLead(selected?.value || '');
     if (selected) setMeta(current => quotationMetaForLead(selected, current));
+    else setMeta(current => ({ ...current, leadId: '', leadSourceName: '', leadSourceEmail: '', preparedBy: '' }));
   };
+
+  useEffect(() => {
+    const lead = leadOptions.find(option => option.value === attachLead);
+    if (lead) setMeta(current => ({ ...current, leadId: lead.leadId, leadSourceName: lead.leadSourceName, leadSourceEmail: lead.leadSourceEmail }));
+  }, [attachLead, leadOptions]);
 
   useEffect(() => {
     if (!user?.username) return;
@@ -301,7 +304,8 @@ export default function QuotationBuilder() {
   const totals = useMemo(() => calculateItemTotals(rows, pricing), [rows, pricing]);
   const athleticPricing = useMemo(() => ({
     freightAmount: athletic.freightAmount,
-    installationAmount: athletic.certificationAmount,
+    installationAmount: athletic.installationAmount ?? '',
+    certificationAmount: athletic.certificationAmount,
     nonEquipmentDiscountPct: athletic.discountPct,
     equipmentDiscountPct: athletic.discountPct,
     nonEquipmentGstPct: athletic.gstPct,
@@ -361,6 +365,7 @@ export default function QuotationBuilder() {
       ...current,
       preset,
       areaMethod: customMethod,
+      quotedSurfaceArea: '',
       lengthPerimeter: record ? usable(record['Track Length']) : current.lengthPerimeter,
       laneQuantity: record ? usable(record.Lanes) : current.laneQuantity,
       laneWidth: record ? (toNumber(record['Lane Width']) || 1.22) : current.laneWidth,
@@ -395,8 +400,8 @@ export default function QuotationBuilder() {
 
   useEffect(() => {
     if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
-    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, excludedAthleticLibraryKeys));
-  }, [catalog?.rateLibrary, excludedAthleticLibraryKeys, generatedAthleticDefaults, manageAthleticDefaults, quoteType]);
+    setAthleticRows(current => reconcileAthleticRows(current, generatedAthleticDefaults, excludedAthleticLibraryKeys, { area: quotedSurfaceArea, perimeter: effectiveDrainPerimeter }));
+  }, [catalog?.rateLibrary, excludedAthleticLibraryKeys, generatedAthleticDefaults, manageAthleticDefaults, quoteType, quotedSurfaceArea, effectiveDrainPerimeter]);
 
   const handleRowChange = (i, field, value) => {
     setRows(prev => {
@@ -524,7 +529,7 @@ export default function QuotationBuilder() {
         unit: r.unit || '',
         itemType: r.itemType || 'Equipment',
         rate: toNumber(r.rate),
-        rateOverride: r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
+        rateOverride: r.rateOverride != null && r.rateOverride !== '' ? toNumber(r.rateOverride) : undefined,
         descOverride: (r.desc && String(r.desc).trim()) ? r.desc : undefined,
         descHtml: r.descHtml || undefined,
         imageUrl: r.imageUrl || undefined,
@@ -532,7 +537,7 @@ export default function QuotationBuilder() {
         installation: r.installation || ''
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows, attachLead, termsByType, excludedAthleticLibraryKeys },
+    builderState: { rows: quoteType === 'standard' ? standardRows : rows, commercialSettings, attachLead, termsByType, excludedAthleticLibraryKeys },
   });
 
   const persistDrafts = (next) => {
@@ -610,6 +615,7 @@ export default function QuotationBuilder() {
     setMeta(current => ({ ...current, ...draftMeta }));
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
+    setCommercialSettings(payload.builderState?.commercialSettings || {});
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
     if (draftQuoteType === 'athletic') {
@@ -663,6 +669,7 @@ export default function QuotationBuilder() {
       alert(error.message || 'Excel export failed.');
     } finally {
       setExporting(false);
+      setExportStage('');
     }
   };
 
@@ -687,11 +694,11 @@ export default function QuotationBuilder() {
         payload.quoteId = exportQuoteId;
       }
 
-      const j = await fetchJSON(QUOTATION_API_URL, {
+      const j = await runQuotationPdfExport(payload, user?.username || '', body => fetchJSON(QUOTATION_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'exportPdf', user: user?.username || '', payload }),
-      });
+        body: JSON.stringify(body),
+      }), setExportStage);
 
       if (!j.ok) { alert(j.error || 'Export failed'); return; }
       const url = String(j.pdfUrl || '').trim();
@@ -703,11 +710,13 @@ export default function QuotationBuilder() {
       safeOpen(url);
       setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
       await saveDraft({ status: 'Exported', pdfUrl: url, workingCopyUrl: j.workingCopyUrl, quoteId: exportQuoteId });
+      if (j.linkWarning) alert(j.linkWarning);
     } catch (e) {
       console.error(e);
-      alert('Export failed. See console for details.');
+      alert(e.message || 'Export failed. Your draft is still saved.');
     } finally {
       setExporting(false);
+      setExportStage('');
     }
   };
 
@@ -776,7 +785,7 @@ export default function QuotationBuilder() {
           )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
             sx={{ borderRadius: 1.5, px: 2.5, bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}>
-            {exporting ? 'Exporting...' : 'Export PDF'}
+            {exporting ? exportStage || 'Exporting...' : 'Export PDF'}
           </Button>
         </Box>
       </Box>
@@ -1017,7 +1026,7 @@ export default function QuotationBuilder() {
                   ['laneWidth', 'Lane Width (m)'], ['laneQuantity', 'Lane Quantity'],
                   ['manualArea', 'Manual Surveyed Area (sqm)'],
                   ['gstPct', 'GST %'], ['discountPct', 'Discount %'],
-                  ['freightAmount', 'Freight / Mobilisation'], ['certificationAmount', 'Certification / Testing'],
+                  ['freightAmount', 'Freight / Mobilisation'], ['installationAmount', 'Installation Charge'], ['certificationAmount', 'Line Marking / Class II Certification'],
                   ['validityDays', 'Validity (days)'],
                 ].map(([key, label]) => (
                   <Grid item xs={12} md={6} key={key}>
@@ -1066,6 +1075,21 @@ export default function QuotationBuilder() {
             </Box>
             {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
             {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
+            {quoteType === 'standard' && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, px: 2, pb: 2 }}>
+              {['freight', 'installation'].map(field => {
+                const setting = commercialSettings[field] || {};
+                const label = field === 'freight' ? 'Freight' : 'Installation';
+                const update = patch => setCommercialSettings(current => ({ ...current, [field]: { ...current[field], ...patch } }));
+                return <Box key={field} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  <FormControlLabel label={label} control={<Switch checked={setting.enabled !== false} onChange={event => update({ enabled: event.target.checked })} />} />
+                  <TextField select size="small" label={`${label} mode`} value={setting.mode || 'per-item'} disabled={setting.enabled === false} onChange={event => update({ mode: event.target.value })} sx={{ minWidth: 150 }}>
+                    <MenuItem value="per-item">Per item</MenuItem><MenuItem value="all">All items</MenuItem>
+                  </TextField>
+                  {setting.mode === 'all' && <Box sx={{ minWidth: 180, flex: 1 }}><QuotationChargeField label={`${label} per item`} disabled={setting.enabled === false} value={setting.value ?? 'Included'} onChange={value => update({ value })} sx={fieldSx} /></Box>}
+                </Box>;
+              })}
+            </Box>}
+            {quoteType === 'athletic' && rows.some(row => !row.imageUrl) && <Alert severity="info" sx={{ mx: 2, mb: 2 }}>Images not selected: {rows.filter(row => !row.imageUrl).length}</Alert>}
             {quoteType === 'athletic' && !catalogLoading && !catalogError && manageAthleticDefaults
               && !generatedAthleticDefaults.some(row => String(row.scope).trim().toLowerCase() === 'surface') && (
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>
@@ -1090,7 +1114,7 @@ export default function QuotationBuilder() {
                   {rows.map((r, i) => {
                     const subcats = subCatsFor(r.category);
                     const items = itemsFor(r.category, r.subCategory);
-                    const lineRate = toNumber(r.rateOverride !== '' ? r.rateOverride : r.rate);
+                    const lineRate = toNumber(r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : r.rate);
                     const lineTotal = toNumber(r.qty) * lineRate;
                     return <TableRow key={i} hover>
                       <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>{i + 1}</Box></TableCell>
@@ -1124,11 +1148,13 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>
-                      <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>
+                      <TableCell><QuotationChargeField disabled={quoteType === 'standard' && (commercialSettings.freight?.enabled === false || commercialSettings.freight?.mode === 'all')} label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>
+                      <TableCell><QuotationChargeField disabled={quoteType === 'standard' && (commercialSettings.installation?.enabled === false || commercialSettings.installation?.mode === 'all')} label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>
                       <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.source === 'rate-library' ? r.qtyDriver : ''} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
+                        {quoteType === 'athletic' && <Tooltip title="Edit quantity calculation"><IconButton size="small" aria-label={`Edit calculation for item ${i + 1}`} onClick={() => setCalculationEditor({ rowIndex: i, driver: r.qtyEdited ? 'MANUAL' : r.qtyDriver || 'MANUAL', factor: r.qtyEdited || !r.qtyDriver ? r.qty : r.factor })}><EditOutlined fontSize="small" /></IconButton></Tooltip>}
+                      </TableCell>
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>₹{money(lineTotal)}</Box></TableCell>
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell>
@@ -1175,6 +1201,20 @@ export default function QuotationBuilder() {
         onOpen={(draft) => openDraft(draft, false)}
         onDuplicate={(draft) => openDraft(draft, true)}
       />
+      <Dialog open={Boolean(calculationEditor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setCalculationEditor(null); }} fullWidth maxWidth="sm" disableEscapeKeyDown>
+        <DialogTitle>Quantity Calculation</DialogTitle>
+        <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          <TextField select fullWidth label="Calculation basis" value={calculationEditor?.driver || 'MANUAL'} onChange={event => setCalculationEditor(current => ({ ...current, driver: event.target.value }))}>
+            {[['AREA', 'Surface area'], ['AREA_X_FACTOR', 'Surface area × depth / factor'], ['PERIMETER', 'Drain perimeter'], ['PERIMETER_X_FACTOR', 'Drain perimeter × section / factor'], ['MANUAL', 'Manual quantity']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
+          </TextField>
+          {['AREA_X_FACTOR', 'PERIMETER_X_FACTOR', 'MANUAL'].includes(calculationEditor?.driver) && <TextField fullWidth type="number" label={calculationEditor?.driver === 'MANUAL' ? 'Quantity' : 'Depth (metres) / factor'} value={calculationEditor?.factor ?? ''} inputProps={{ min: 0, step: 'any' }} onChange={event => setCalculationEditor(current => ({ ...current, factor: event.target.value }))} />}
+        </DialogContent>
+        <DialogActions><Button onClick={() => setCalculationEditor(null)}>Cancel</Button><Button variant="contained" onClick={() => {
+          const edit = calculationEditor;
+          if (edit) setAthleticRows(current => current.map((row, index) => index === edit.rowIndex ? updateAthleticCalculation(row, edit.driver, edit.factor, { area: quotedSurfaceArea, perimeter: effectiveDrainPerimeter }) : row));
+          setCalculationEditor(null);
+        }}>Apply</Button></DialogActions>
+      </Dialog>
       <Dialog open={Boolean(descriptionEditor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setDescriptionEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
         <DialogTitle>Format Description</DialogTitle>
         <DialogContent dividers>

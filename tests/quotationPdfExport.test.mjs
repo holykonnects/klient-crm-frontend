@@ -26,20 +26,20 @@ test("native quotation PDF renders without Apps Script", async () => {
 test("quotation builder posts PDF exports to the native quotations API", async () => {
   const source = await readFile(new URL("../src/components/QuotationBuilder.js", import.meta.url), "utf8");
   const exporter = await readFile(new URL("../api/_lib/quotationPdfExport.js", import.meta.url), "utf8");
-  assert.match(source, /action:\s*'exportPdf'/);
+  assert.match(source, /runQuotationPdfExport\(payload/);
   assert.doesNotMatch(source, /QUOTATION_EXPORT_URL|\/api\/gas/);
   assert.match(source, /freight:\s*r\.freight/);
   assert.match(source, /installation:\s*r\.installation/);
   assert.match(exporter, /const TEMPLATE_SHEET = "New Template"/);
-  assert.match(exporter, /const \{ copy, auth \} = await copyNewTemplate\(baseName\)/);
-  assert.match(exporter, /populateNewTemplate\(copy\.id, auth, payload\)/);
+  assert.match(exporter, /dependencies\.copy \|\| copyNewTemplate/);
+  assert.match(exporter, /dependencies\.populate \|\| populateNewTemplate/);
   assert.match(exporter, /range: "E2:L110"/);
   assert.match(exporter, /templateRange\("E8"\)[\s\S]{0,100}meta\.clientEmail/);
   assert.match(exporter, /top_margin: "0\.2"/);
   assert.match(exporter, /startIndex: 79 \+ terms\.length, endIndex: 99/);
   assert.match(exporter, /wrapStrategy: "WRAP"/);
   assert.match(exporter, /importFunctionsExternalUrlAccessAllowed: true/);
-  assert.match(exporter, /setTimeout\(resolve, 1500\)/);
+  assert.match(exporter, /dependencies\.wait \|\| waitForQuotationImages/);
   assert.doesNotMatch(exporter, /templateRange\("F100"\)/);
   assert.doesNotMatch(exporter, /export async function exportQuotationToDrive[\s\S]{0,250}buildQuotationPdf/);
 });

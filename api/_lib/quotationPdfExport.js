@@ -6,8 +6,11 @@ import {
 } from "./googleSheets.js";
 import { createSignedToken } from "./sessionAuth.js";
 import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
-import { quotationImageReference } from "./quotationImages.js";
+import { downloadQuotationImage, quotationImageReference } from "./quotationImages.js";
 import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
+import { quotationOutputRows } from "../../src/utils/quotationOutput.js";
+import { quotationSignoffText } from "./quotationSignoff.js";
+import { createQuotationExportReceipt, readQuotationExportReceipt } from "./quotationExportReceipt.js";
 
 const BLUE = "#163f76";
 const LIGHT_BLUE = "#dce9f8";
@@ -212,7 +215,7 @@ function templateDate(value) {
 }
 function publicAppUrl() {
   const configured = clean(
-    process.env.PUBLIC_APP_URL || process.env.VERCEL_PROJECT_PRODUCTION_URL || "https://crm.klientkonnect.com",
+    process.env.PUBLIC_APP_URL || (process.env.VERCEL_ENV === "preview" ? process.env.VERCEL_URL : "") || process.env.VERCEL_PROJECT_PRODUCTION_URL || "https://crm.klientkonnect.com",
   ).replace(/\/+$/g, "");
   return /^https?:\/\//i.test(configured) ? configured : `https://${configured}`;
 }
@@ -229,7 +232,7 @@ function templateImageFormula(value, options = {}) {
   return `=IMAGE("${source.replace(/"/g, '""')}",1)`;
 }
 function templateItems(payload) {
-  if (payload.quoteType !== "project-set") return payload.items || [];
+  if (payload.quoteType !== "project-set") return quotationOutputRows(payload.items || [], payload.pricing);
   return (payload.setQuotation?.sets || []).flatMap((set) => (set.items || []).map((item) => ({
     category: clean(set.title), subCategory: "Project BOQ", itemCode: clean(item.item),
     displayItem: clean(item.item), descOverride: clean(item.description), descHtml: item.descHtml,
@@ -364,6 +367,11 @@ async function populateNewTemplate(spreadsheetId, auth, payload) {
     ["L78", '=SUM(IFERROR(L72,0),IFERROR(L73,0))*K78'],
     ["L79", '=ROUNDUP(SUM(L76,L77,L71,IFERROR(L72,0),IFERROR(L73,0),L78)-L74-L75)'],
   ].map(([a1, value]) => ({ range: templateRange(a1), values: [[value ?? ""]] }));
+  const footer = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${encodeURIComponent(templateRange("E100:L110"))}`, {}, auth);
+  (footer.values || []).forEach((row, rowIndex) => row.forEach((value, columnIndex) => {
+    const updated = quotationSignoffText(value, meta);
+    if (updated !== String(value ?? "")) data.push({ range: templateRange(`${String.fromCharCode(69 + columnIndex)}${100 + rowIndex}`), values: [[updated]] });
+  }));
   if (clean(meta.clientEmail)) data.push({
     range: templateRange("E8"), values: [[`Email ID: ${clean(meta.clientEmail)}`]],
   });
@@ -472,19 +480,68 @@ async function exportNewTemplatePdf(spreadsheetId, sheetId, auth, layout) {
   return Buffer.from(await response.arrayBuffer());
 }
 
-export async function exportQuotationToDrive(payload = {}) {
+export async function waitForQuotationImages(spreadsheetId, auth, payload, { read = googleFetch, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), attempts = 6 } = {}) {
+  const images = templateItems(payload).map((item, index) => ({ item, index })).filter(({ item }) => item.imageUrl);
+  if (!images.length) return;
+  let failures = [];
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    await sleep(1200);
+    const result = await read(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}?ranges=${encodeURIComponent(templateRange(`G18:G${17 + templateItems(payload).length}`))}&includeGridData=true&fields=sheets.data.rowData.values(effectiveValue,formattedValue)`, {}, auth);
+    const rows = result.sheets?.[0]?.data?.[0]?.rowData || [];
+    failures = images.filter(({ index }) => {
+      const cell = rows[index]?.values?.[0];
+      return cell?.effectiveValue?.errorValue || /^#(?:REF!|ERROR!|VALUE!|N\/A)/.test(cell?.formattedValue || '');
+    });
+    if (!failures.length && attempt > 0) return;
+  }
+  if (failures.length) throw new Error(`Quotation photographs could not load: ${failures.map(({ item, index }) => item.displayItem || item.itemCode || `item ${index + 1}`).join(', ')}. Check the image mapping and CRM image endpoint access, then retry.`);
+}
+
+export async function validateQuotationExportImages(payload, { download = downloadQuotationImage } = {}) {
+  const sources = new Map();
+  templateItems(payload).forEach((item, index) => {
+    if (item.imageUrl && !sources.has(item.imageUrl)) sources.set(item.imageUrl, item.displayItem || item.libraryItem || item.itemCode || `item ${index + 1}`);
+  });
+  await Promise.all([...sources].map(async ([source, label]) => {
+    try { await download(source); }
+    catch (error) { throw new Error(`Image for ${label}: ${error.message || 'could not be downloaded'}`); }
+  }));
+}
+
+export async function startQuotationPdfExport(payload = {}, user, dependencies = {}) {
   const meta = payload.meta || {};
   const baseName = safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName);
-  const { copy, auth } = await copyNewTemplate(baseName);
-  const sheetId = await populateNewTemplate(copy.id, auth, payload);
-  await new Promise((resolve) => setTimeout(resolve, 1500));
-  const pdf = await exportNewTemplatePdf(copy.id, sheetId, auth, meta.layout || "portrait");
+  await (dependencies.validate || validateQuotationExportImages)(payload);
+  const { copy, auth } = await (dependencies.copy || copyNewTemplate)(baseName);
+  const state = { phase: 'copied', fileId: copy.id, auth, baseName,
+    workingCopyUrl: copy.webViewLink || `https://docs.google.com/spreadsheets/d/${copy.id}/edit` };
+  return { ok: true, payload, exportToken: createQuotationExportReceipt(state, payload, user), workingCopyUrl: state.workingCopyUrl };
+}
+
+export async function prepareQuotationPdfExport(payload, token, user, dependencies = {}) {
+  const state = readQuotationExportReceipt(token, payload, user, 'copied');
+  const sheetId = await (dependencies.populate || populateNewTemplate)(state.fileId, state.auth, payload);
+  return { ok: true, exportToken: createQuotationExportReceipt({ ...state, phase: 'prepared', sheetId }, payload, user), workingCopyUrl: state.workingCopyUrl };
+}
+
+export async function finishQuotationPdfExport(payload, token, user, dependencies = {}) {
+  const state = readQuotationExportReceipt(token, payload, user, 'prepared');
+  await (dependencies.wait || waitForQuotationImages)(state.fileId, state.auth, payload);
+  const pdf = await (dependencies.render || exportNewTemplatePdf)(state.fileId, state.sheetId, state.auth, payload.meta?.layout || 'portrait');
+  const { baseName } = state;
   const fileName = `${baseName}.pdf`;
-  const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
+  const uploaded = await (dependencies.upload || uploadDriveFileDetails)({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
   return {
     ok: true, pdfFileId: uploaded.id, pdfFileName: fileName, pdfUrl: uploaded.webViewLink,
-    workingCopyUrl: copy.webViewLink || `https://docs.google.com/spreadsheets/d/${copy.id}/edit`,
+    workingCopyUrl: state.workingCopyUrl,
+    exportToken: createQuotationExportReceipt({ ...state, phase: 'complete', pdfUrl: uploaded.webViewLink }, payload, user),
   };
+}
+
+export async function exportQuotationToDrive(payload = {}) {
+  const started = await startQuotationPdfExport(payload, 'legacy');
+  const prepared = await prepareQuotationPdfExport(payload, started.exportToken, 'legacy');
+  return finishQuotationPdfExport(payload, prepared.exportToken, 'legacy');
 }
 
 export { populateNewTemplate, templateCommercials, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };

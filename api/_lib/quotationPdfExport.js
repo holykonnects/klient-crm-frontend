@@ -9,6 +9,7 @@ import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
 import { downloadQuotationImage, quotationImageReference } from "./quotationImages.js";
 import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
 import { quotationOutputRows } from "../../src/utils/quotationOutput.js";
+import { quotationGeneratedByEmail } from "../../src/utils/quotationAuthor.js";
 import { quotationSignoffText } from "./quotationSignoff.js";
 import { createQuotationExportReceipt, readQuotationExportReceipt } from "./quotationExportReceipt.js";
 
@@ -111,7 +112,7 @@ export async function buildQuotationPdf(payload = {}) {
     if (fs.existsSync(logo)) doc.image(logo, left + 4, y + 5, { fit: [115, 42] });
     doc.fillColor(TEXT).font("Helvetica-Bold").fontSize(15).text("QUOTATION", left + 145, y + 10, { width: 420, align: "center" });
     doc.font("Helvetica").fontSize(8).text(clean(meta.quotationTitle || meta.projectName || "Quotation"), left + 145, y + 31, { width: 420, align: "center" });
-    doc.fontSize(7).text(`Quotation No.: ${clean(meta.quotationNo) || "-"}\nDate: ${clean(meta.dateISO) || "-"}\nPrepared By: ${clean(meta.preparedBy) || "-"}`, left + 590, y + 8, { width: 190, lineGap: 2 });
+    doc.fontSize(7).text(`Quotation No.: ${clean(meta.quotationNo) || "-"}\nDate: ${clean(meta.dateISO) || "-"}\nPrepared By: ${quotationGeneratedByEmail(meta) || "-"}`, left + 590, y + 8, { width: 190, lineGap: 2 });
     y += 52;
     if (!continued) {
       [["Client", meta.clientName, "Project", meta.projectName], ["Client Email ID", meta.clientEmail, "GST Number", meta.clientGstNumber], ["Billing Address", meta.clientBillingAddress, "", ""]].forEach(([a, b, c, d]) => {

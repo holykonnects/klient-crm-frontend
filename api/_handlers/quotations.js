@@ -3,6 +3,7 @@ import { appendValues, appendedRowNumber, buildRow, getSheetsAuthSubjects, getVa
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
 import { exportQuotationToDrive, startQuotationPdfExport, prepareQuotationPdfExport, finishQuotationPdfExport } from "../_lib/quotationPdfExport.js";
 import { readQuotationExportReceipt } from "../_lib/quotationExportReceipt.js";
+import { refreshQuotationAuthor } from "../../src/utils/quotationAuthor.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
@@ -311,7 +312,7 @@ async function prepareQuotationExport(payload = {}, user, loginRows) {
     const selected = payload.meta?.leadId
       ? leads.find(lead => lead.leadId === payload.meta.leadId)
       : leads.find(lead => lead.value === payload.attach.leadDisplay);
-    payload = { ...payload, meta: { ...payload.meta, leadSourceName: selected?.leadSourceName || 'Team Rido', leadSourceEmail: selected?.leadSourceEmail || '' } };
+    payload = { ...payload, meta: refreshQuotationAuthor(payload.meta, { name: selected?.leadSourceName || 'Team Rido', email: selected?.leadSourceEmail || '' }) };
   }
   const items = payload.quoteType === "project-set"
     ? (payload.setQuotation?.sets || []).flatMap((set) => set.items || []) : payload.items || [];

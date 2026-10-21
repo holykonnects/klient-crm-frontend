@@ -1,3 +1,5 @@
+import { refreshQuotationAuthor } from './quotationAuthor.js';
+
 const clean = value => String(value ?? '').trim();
 
 export function normalizeQuotationLead(option) {
@@ -44,14 +46,11 @@ export function quotationMetaForLead(option, currentMeta = {}) {
   const lead = normalizeQuotationLead(option);
   if (!lead.value) return currentMeta;
   return {
-    ...currentMeta,
+    ...refreshQuotationAuthor(currentMeta, { name: lead.leadSourceName, email: lead.leadSourceEmail }),
     leadId: lead.leadId,
     clientName: lead.company || lead.contactName || currentMeta.clientName,
     clientEmail: lead.email,
     clientBillingAddress: currentMeta.clientBillingAddress || lead.billingAddress,
     clientGstNumber: currentMeta.clientGstNumber || lead.gstNumber,
-    leadSourceName: lead.leadSourceName,
-    leadSourceEmail: lead.leadSourceEmail,
-    preparedBy: lead.leadSourceEmail,
   };
 }

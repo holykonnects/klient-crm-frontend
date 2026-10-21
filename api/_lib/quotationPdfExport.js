@@ -10,6 +10,7 @@ import { downloadQuotationImage, quotationImageReference } from "./quotationImag
 import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
 import { quotationOutputRows } from "../../src/utils/quotationOutput.js";
 import { quotationSignoffText } from "./quotationSignoff.js";
+import { createQuotationExportReceipt, readQuotationExportReceipt } from "./quotationExportReceipt.js";
 
 const BLUE = "#163f76";
 const LIGHT_BLUE = "#dce9f8";
@@ -507,20 +508,40 @@ export async function validateQuotationExportImages(payload, { download = downlo
   }));
 }
 
-export async function exportQuotationToDrive(payload = {}) {
+export async function startQuotationPdfExport(payload = {}, user, dependencies = {}) {
   const meta = payload.meta || {};
   const baseName = safeFileName(meta.quotationTitle || meta.quotationNo || meta.clientName);
-  await validateQuotationExportImages(payload);
-  const { copy, auth } = await copyNewTemplate(baseName);
-  const sheetId = await populateNewTemplate(copy.id, auth, payload);
-  await waitForQuotationImages(copy.id, auth, payload);
-  const pdf = await exportNewTemplatePdf(copy.id, sheetId, auth, meta.layout || "portrait");
+  await (dependencies.validate || validateQuotationExportImages)(payload);
+  const { copy, auth } = await (dependencies.copy || copyNewTemplate)(baseName);
+  const state = { phase: 'copied', fileId: copy.id, auth, baseName,
+    workingCopyUrl: copy.webViewLink || `https://docs.google.com/spreadsheets/d/${copy.id}/edit` };
+  return { ok: true, payload, exportToken: createQuotationExportReceipt(state, payload, user), workingCopyUrl: state.workingCopyUrl };
+}
+
+export async function prepareQuotationPdfExport(payload, token, user, dependencies = {}) {
+  const state = readQuotationExportReceipt(token, payload, user, 'copied');
+  const sheetId = await (dependencies.populate || populateNewTemplate)(state.fileId, state.auth, payload);
+  return { ok: true, exportToken: createQuotationExportReceipt({ ...state, phase: 'prepared', sheetId }, payload, user), workingCopyUrl: state.workingCopyUrl };
+}
+
+export async function finishQuotationPdfExport(payload, token, user, dependencies = {}) {
+  const state = readQuotationExportReceipt(token, payload, user, 'prepared');
+  await (dependencies.wait || waitForQuotationImages)(state.fileId, state.auth, payload);
+  const pdf = await (dependencies.render || exportNewTemplatePdf)(state.fileId, state.sheetId, state.auth, payload.meta?.layout || 'portrait');
+  const { baseName } = state;
   const fileName = `${baseName}.pdf`;
-  const uploaded = await uploadDriveFileDetails({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
+  const uploaded = await (dependencies.upload || uploadDriveFileDetails)({ name: fileName, label: fileName, type: "application/pdf", base64: pdf.toString("base64") }, DRIVE_FOLDERS.quotationExports, "QUOTATION");
   return {
     ok: true, pdfFileId: uploaded.id, pdfFileName: fileName, pdfUrl: uploaded.webViewLink,
-    workingCopyUrl: copy.webViewLink || `https://docs.google.com/spreadsheets/d/${copy.id}/edit`,
+    workingCopyUrl: state.workingCopyUrl,
+    exportToken: createQuotationExportReceipt({ ...state, phase: 'complete', pdfUrl: uploaded.webViewLink }, payload, user),
   };
+}
+
+export async function exportQuotationToDrive(payload = {}) {
+  const started = await startQuotationPdfExport(payload, 'legacy');
+  const prepared = await prepareQuotationPdfExport(payload, started.exportToken, 'legacy');
+  return finishQuotationPdfExport(payload, prepared.exportToken, 'legacy');
 }
 
 export { populateNewTemplate, templateCommercials, templateDescriptionLayout, templateImageFormula, templateItemRowHeight, templateItems, templateRichCell };

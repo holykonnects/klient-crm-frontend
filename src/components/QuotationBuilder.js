@@ -35,6 +35,7 @@ import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
 import { updateAthleticCalculation } from './athleticRateLibrary';
+import { readQuotationResponse, runQuotationPdfExport } from '../utils/quotationRequest';
 
 const QUOTATION_API_URL = '/api/quotations';
 const QUOTATION_ENGINE_VERSION = 'quotation-v1';
@@ -89,16 +90,7 @@ function downloadBlob(blob, name) {
   URL.revokeObjectURL(url);
 }
 async function fetchJSON(url, init) {
-  const r = await fetch(url, init);
-  const text = await r.text();
-  try {
-    const parsed = JSON.parse(text);
-    if (!r.ok && parsed && !parsed.error) parsed.error = `Request failed with status ${r.status}`;
-    return parsed;
-  } catch {
-    const detail = text ? `: ${text.slice(0, 240)}` : '';
-    throw new Error(`Invalid JSON from server${detail}`);
-  }
+  return readQuotationResponse(await fetch(url, init));
 }
 function toNumber(value) {
   if (value === '' || value === null || value === undefined) return 0;
@@ -205,6 +197,7 @@ export default function QuotationBuilder() {
     freightInstallGstPct: 18
   });
   const [exporting, setExporting] = useState(false);
+  const [exportStage, setExportStage] = useState('');
   const [lastExport, setLastExport] = useState(null);
   const [adminOpen, setAdminOpen] = useState(false);
   const [summaryExpanded, setSummaryExpanded] = useState(false);
@@ -676,6 +669,7 @@ export default function QuotationBuilder() {
       alert(error.message || 'Excel export failed.');
     } finally {
       setExporting(false);
+      setExportStage('');
     }
   };
 
@@ -700,11 +694,11 @@ export default function QuotationBuilder() {
         payload.quoteId = exportQuoteId;
       }
 
-      const j = await fetchJSON(QUOTATION_API_URL, {
+      const j = await runQuotationPdfExport(payload, user?.username || '', body => fetchJSON(QUOTATION_API_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action: 'exportPdf', user: user?.username || '', payload }),
-      });
+        body: JSON.stringify(body),
+      }), setExportStage);
 
       if (!j.ok) { alert(j.error || 'Export failed'); return; }
       const url = String(j.pdfUrl || '').trim();
@@ -716,11 +710,13 @@ export default function QuotationBuilder() {
       safeOpen(url);
       setLastExport({ url, name: j.pdfFileName, workingCopyUrl: j.workingCopyUrl });
       await saveDraft({ status: 'Exported', pdfUrl: url, workingCopyUrl: j.workingCopyUrl, quoteId: exportQuoteId });
+      if (j.linkWarning) alert(j.linkWarning);
     } catch (e) {
       console.error(e);
-      alert('Export failed. See console for details.');
+      alert(e.message || 'Export failed. Your draft is still saved.');
     } finally {
       setExporting(false);
+      setExportStage('');
     }
   };
 
@@ -789,7 +785,7 @@ export default function QuotationBuilder() {
           )}
           <Button variant="contained" onClick={exportPdf} disabled={exporting}
             sx={{ borderRadius: 1.5, px: 2.5, bgcolor: '#2563eb', '&:hover': { bgcolor: '#1d4ed8' } }}>
-            {exporting ? 'Exporting...' : 'Export PDF'}
+            {exporting ? exportStage || 'Exporting...' : 'Export PDF'}
           </Button>
         </Box>
       </Box>

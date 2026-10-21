@@ -1,7 +1,8 @@
 import { SHEETS } from "../_lib/crmConfig.js";
 import { appendValues, appendedRowNumber, buildRow, getSheetsAuthSubjects, getValues, resolveSheetTitle, rowsToObjects, updateCell } from "../_lib/googleSheets.js";
 import { buildQuotationSetWorkbook } from "../_lib/quotationSetExport.js";
-import { exportQuotationToDrive } from "../_lib/quotationPdfExport.js";
+import { exportQuotationToDrive, startQuotationPdfExport, prepareQuotationPdfExport, finishQuotationPdfExport } from "../_lib/quotationPdfExport.js";
+import { readQuotationExportReceipt } from "../_lib/quotationExportReceipt.js";
 import { getSavedQuote, listSavedQuotes, saveQuoteRevision } from "../_lib/quotationRegister.js";
 import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
@@ -249,8 +250,8 @@ async function getTermsCatalog() {
   }
 }
 
-async function getLeadsForUser(user) {
-  const loginRows = await getLoginRows();
+async function getLeadsForUser(user, suppliedLoginRows) {
+  const loginRows = suppliedLoginRows || await getLoginRows();
   if (!canUseQuotation(user, loginRows)) throw new Error("Unauthorized: no access to Quotation");
   const role = clean(loginRows.find((r) => clean(r["Login Username"]).toLowerCase() === clean(user).toLowerCase())?.Role);
   const isAdmin = role.toLowerCase() === "admin";
@@ -304,9 +305,9 @@ async function attachQuotationToLead(payload, pdfUrl) {
   if (rowIndex >= 0) await updateCell(SHEETS.leads.spreadsheetId, sheetName, rowIndex + 2, linkColumn + 1, pdfUrl);
 }
 
-async function prepareQuotationExport(payload = {}, user) {
+async function prepareQuotationExport(payload = {}, user, loginRows) {
   if (payload.attach?.leadDisplay) {
-    const leads = (await getLeadsForUser(user)).leads || [];
+    const leads = (await getLeadsForUser(user, loginRows)).leads || [];
     const selected = payload.meta?.leadId
       ? leads.find(lead => lead.leadId === payload.meta.leadId)
       : leads.find(lead => lead.value === payload.attach.leadDisplay);
@@ -357,6 +358,24 @@ export default async function handler(req, res) {
           if (isRegisterUnavailable(error)) return res.status(200).json({ ok: false, registerUnavailable: true, error: error.message });
           throw error;
         }
+      }
+      if (["startPdfExport", "preparePdfExport", "finishPdfExport", "linkExportedPdf"].includes(body.action)) {
+        const startedAt = Date.now();
+        const loginRows = await getLoginRows();
+        if (!canUseQuotation(body.user, loginRows)) { const error = new Error("Unauthorized: no access to Quotation"); error.status = 403; throw error; }
+        try {
+          if (body.action === "startPdfExport") {
+            const payload = await prepareQuotationExport(body.payload || {}, body.user, loginRows);
+            return res.status(200).json(await startQuotationPdfExport(payload, body.user));
+          }
+          if (body.action === "preparePdfExport") return res.status(200).json(await prepareQuotationPdfExport(body.payload || {}, body.exportToken, body.user));
+          if (body.action === "linkExportedPdf") {
+            const state = readQuotationExportReceipt(body.exportToken, body.payload || {}, body.user, 'complete');
+            await attachQuotationToLead(body.payload || {}, state.pdfUrl);
+            return res.status(200).json({ ok: true });
+          }
+          return res.status(200).json(await finishQuotationPdfExport(body.payload || {}, body.exportToken, body.user));
+        } finally { console.info("Quotation PDF stage", { action: body.action, durationMs: Date.now() - startedAt }); }
       }
       if (body.action === "exportPdf") {
         const loginRows = await getLoginRows();

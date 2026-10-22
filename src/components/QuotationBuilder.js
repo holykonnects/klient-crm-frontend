@@ -19,6 +19,7 @@ import ZoomIn from '@mui/icons-material/ZoomIn';
 import ZoomOut from '@mui/icons-material/ZoomOut';
 import RestartAlt from '@mui/icons-material/RestartAlt';
 import CalculateOutlined from '@mui/icons-material/CalculateOutlined';
+import MenuBookOutlined from '@mui/icons-material/MenuBookOutlined';
 import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import ArrowDownward from '@mui/icons-material/ArrowDownward';
 import '@fontsource/montserrat';
@@ -30,6 +31,8 @@ import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
 import AthleticVolumeCalculator from './AthleticVolumeCalculator';
 import AthleticUnitField from './AthleticUnitField';
+import QuotationSpecificationReference from './QuotationSpecificationReference';
+import { athleticSpecificationDetails } from './athleticSpecificationReference';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
@@ -185,6 +188,7 @@ export default function QuotationBuilder() {
   });
   const [calculationEditor, setCalculationEditor] = useState(null);
   const [volumeCalculatorOpen, setVolumeCalculatorOpen] = useState(false);
+  const [specificationReferenceOpen, setSpecificationReferenceOpen] = useState(false);
   const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
   const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
@@ -1008,7 +1012,10 @@ export default function QuotationBuilder() {
 
           {quoteType === 'athletic' && (
             <Paper sx={{ ...panelSx, mb: 2.5 }}>
-              <Typography sx={sectionTitleSx}>Athletic Track Configuration</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
+                <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Athletic Track Configuration</Typography>
+                <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setSpecificationReferenceOpen(true)}>Specification Reference</Button>
+              </Box>
               <Grid container spacing={1.5}>
                 {[
                   ['surfaceSystem', 'Surface System', catalog?.lists?.['Track Systems'] || []],
@@ -1134,6 +1141,7 @@ export default function QuotationBuilder() {
                     const items = itemsFor(r.category, r.subCategory);
                     const lineRate = toNumber(r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : r.rate);
                     const lineTotal = toNumber(r.qty) * lineRate;
+                    const specification = quoteType === 'athletic' ? athleticSpecificationDetails(r) : null;
                     return <TableRow key={i} hover>
                       <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>{i + 1}</Box></TableCell>
                       <TableCell>{r.source === 'rate-library'
@@ -1172,6 +1180,8 @@ export default function QuotationBuilder() {
                         ? <AthleticUnitField row={athleticRows[i]} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
                         : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={quoteType === 'athletic' ? athleticCalculationLabel(r) : r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
+                        {specification && r.libraryQtyDriver === 'AREA_X_FACTOR' && <Typography variant="caption" component="div" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>Library: {specification.referenceThickness}<br />Current: {specification.currentThickness}</Typography>}
+                        {specification?.warning && <Tooltip title={specification.warning}><Typography component="div" variant="caption" color="error" sx={{ mt: 0.5 }}>Approval required</Typography></Tooltip>}
                         {quoteType === 'athletic' && <Tooltip title="Edit quantity calculation"><IconButton size="small" aria-label={`Edit calculation for item ${i + 1}`} onClick={() => setCalculationEditor({ rowIndex: i, driver: r.qtyEdited ? 'MANUAL' : r.qtyDriver || 'MANUAL', factor: r.qtyEdited || !r.qtyDriver ? r.qty : r.factor })}><EditOutlined fontSize="small" /></IconButton></Tooltip>}
                       </TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
@@ -1216,6 +1226,7 @@ export default function QuotationBuilder() {
           </CompactPreviewFrame>}
         </Grid>
       </Grid>
+      {specificationReferenceOpen && <QuotationSpecificationReference rows={athleticRows} onClose={() => setSpecificationReferenceOpen(false)} />}
       {volumeCalculatorOpen && quoteType === 'athletic' && <AthleticVolumeCalculator
         rows={athleticRows} quotedArea={quotedSurfaceArea} onClose={() => setVolumeCalculatorOpen(false)}
         onApply={(rowIndex, conversion) => setAthleticRows(current => current.map((row, index) =>

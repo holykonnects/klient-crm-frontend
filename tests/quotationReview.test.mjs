@@ -51,6 +51,23 @@ test('all-items settings are reversible and also apply to newly added items', ()
   assert.equal(rows[0].freight, '100');
 });
 
+test('athletic top-level commercial settings preserve images, scope and saved per-item values', () => {
+  const original = { libraryItem: 'Drainage', category: 'Track', subCategory: 'Kerbing', itemCode: 'KERB',
+    imageUrl: 'https://example.com/kerb.png', desc: 'Civil scope', qty: 10, rate: 20,
+    freight: '100', installation: 'Extra' };
+  const settings = { freight: { mode: 'all', value: 'Excluded' }, installation: { mode: 'all', value: 'Included' } };
+  const saved = JSON.parse(JSON.stringify({ rows: [original], athleticCommercialSettings: settings }));
+  const [output] = applyQuotationCommercialSettings(saved.rows, saved.athleticCommercialSettings);
+  assert.equal(output.freight, 'Excluded');
+  assert.equal(output.installation, 'Included');
+  assert.equal(output.imageUrl, original.imageUrl);
+  assert.equal(output.desc, original.desc);
+  assert.equal(output.qty, original.qty);
+  assert.equal(output.rate, original.rate);
+  assert.equal(templateItems({ quoteType: 'athletic', items: [output] })[0].imageUrl, original.imageUrl);
+  assert.deepEqual(applyQuotationCommercialSettings(saved.rows, {}), [original]);
+});
+
 test('owner signoff resolves email and login IDs, never source channels, and preserves bank text', () => {
   const login = [{ 'Login Username': 'user123', Name: 'Asha Rao', Email: 'asha@example.com', 'User ID': '123' }];
   for (const owner of ['user123', '123', 'asha@example.com']) assert.deepEqual(resolveLeadOwnerIdentity(owner, login), { name: 'Asha Rao', email: 'asha@example.com' });

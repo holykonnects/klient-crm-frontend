@@ -2,6 +2,7 @@ import { SHEETS } from "../_lib/crmConfig.js";
 import { appendRows, appendValues, buildRow, formatTimestamp, getValues, googleFetch, resolveSheetTitle, rowsToObjects, updateValues } from "../_lib/googleSheets.js";
 import { notifyProjectSubmitted, notifyProjectTaskChanged, notifyProjectTasksImported } from "../_lib/operationalEmails.js";
 import { ensureUpdateAuditHeaders, withUpdateAudit } from "../_lib/updateAudit.js";
+import { PROJECT_SITE_VIDEO_HEADER, normalizeProjectSiteVideo } from "../../src/utils/projectSiteVideo.js";
 
 const PROJECT_ID = "Project ID (unique, auto-generated)";
 export const DELIVERY_PIN_HEADER = "Delivery PIN Code";
@@ -231,8 +232,12 @@ async function addOrUpdateProject(payload) {
   const existingHeaders = values[0] || [];
   if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
   const headers = await ensureProjectHeaders(sheetName, existingHeaders);
+  const previous = rowsToObjects(values).filter(row => String(row[PROJECT_ID]) === String(payload[PROJECT_ID] || '')).at(-1);
+  const video = normalizeProjectSiteVideo(Object.prototype.hasOwnProperty.call(payload, PROJECT_SITE_VIDEO_HEADER)
+    ? payload[PROJECT_SITE_VIDEO_HEADER] : previous?.[PROJECT_SITE_VIDEO_HEADER]);
   const data = await withUpdateAudit({
     ...payload,
+    [PROJECT_SITE_VIDEO_HEADER]: video,
     [DELIVERY_PIN_HEADER]: requireDeliveryPin(payload[DELIVERY_PIN_HEADER]),
     Timestamp: formatTimestamp(),
   });
@@ -249,8 +254,15 @@ async function addOrUpdateProject(payload) {
 
 async function ensureProjectHeaders(sheetName, existingHeaders) {
   const auditHeaders = await ensureUpdateAuditHeaders(SHEETS.projects, sheetName, existingHeaders);
-  if (auditHeaders.includes(DELIVERY_PIN_HEADER)) return auditHeaders;
-  const headers = [...auditHeaders, DELIVERY_PIN_HEADER];
+  const missing = [DELIVERY_PIN_HEADER, PROJECT_SITE_VIDEO_HEADER].filter(header => !auditHeaders.includes(header));
+  if (!missing.length) return auditHeaders;
+  const headers = [...auditHeaders, ...missing];
+  const metadata = await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS.projects.spreadsheetId}?fields=sheets.properties`, {});
+  const sheet = metadata.sheets?.find(entry => entry.properties?.title === sheetName)?.properties;
+  if (sheet && sheet.gridProperties.columnCount < headers.length) await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${SHEETS.projects.spreadsheetId}:batchUpdate`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ requests: [{ appendDimension: { sheetId: sheet.sheetId, dimension: 'COLUMNS', length: headers.length - sheet.gridProperties.columnCount } }] }),
+  });
   await updateValues(SHEETS.projects.spreadsheetId, sheetName, 1, headers);
   return headers;
 }

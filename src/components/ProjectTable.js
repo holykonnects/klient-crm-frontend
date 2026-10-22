@@ -58,6 +58,7 @@ import {
   extractMobileFromLinkedClient,
 } from "../utils/linkedClientContact";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
+import { PROJECT_SITE_VIDEO_HEADER, normalizeProjectSiteVideo } from "../utils/projectSiteVideo";
 
 const WEB_APP_BASE = "/api/projects";
 
@@ -204,7 +205,7 @@ const LEGACY_TASK_FIELDS = new Set([
 ]);
 const PROJECT_OVERVIEW_COLUMNS = [
   "Project ID (unique, auto-generated)", "Project Name", "Project Status",
-  "Project Stage", "Project Manager", "Project Progress %", DELIVERY_PIN_HEADER,
+  "Project Stage", "Project Manager", "Project Progress %", DELIVERY_PIN_HEADER, PROJECT_SITE_VIDEO_HEADER,
 ];
 
 /** CSV helpers */
@@ -519,6 +520,9 @@ export default function ProjectTable() {
   // ✅ submit guard + "Saving..." button state (prevents multiple submits)
   const handleSubmit = async () => {
     if (submitting) return; // hard guard
+    let video;
+    try { video = normalizeProjectSiteVideo(editingRow?.[PROJECT_SITE_VIDEO_HEADER]); }
+    catch (error) { alert(error.message); return; }
     const deliveryPin = String(editingRow?.[DELIVERY_PIN_HEADER] || "").trim();
     if (!/^\d{6}$/.test(deliveryPin)) {
       alert("Delivery PIN Code is required and must contain exactly 6 digits.");
@@ -537,6 +541,7 @@ export default function ProjectTable() {
         data: {
           ...serializeRow(editingRow || {}),
           [DELIVERY_PIN_HEADER]: deliveryPin,
+          [PROJECT_SITE_VIDEO_HEADER]: video,
           updatedByName: user?.username || user?.email || "",
           updatedByEmail: user?.email || user?.username || "",
         },
@@ -583,6 +588,11 @@ export default function ProjectTable() {
 
   const renderCell = (header, value) => {
     if (value === null || value === undefined || value === "") return "";
+    if (header === PROJECT_SITE_VIDEO_HEADER) {
+      try {
+        return <a href={normalizeProjectSiteVideo(value)} target="_blank" rel="noopener noreferrer">Watch Site Video</a>;
+      } catch { return 'Invalid Drive link'; }
+    }
     if (header === "Project Status") {
       const color = PROJECT_STATUS_COLORS[String(value)] || "default";
       return (
@@ -1592,6 +1602,17 @@ export default function ProjectTable() {
                       />
                     </Grid>
                   );
+                }
+
+                if (h === PROJECT_SITE_VIDEO_HEADER) {
+                  let invalid = false;
+                  try { normalizeProjectSiteVideo(editingRow?.[h]); } catch { invalid = true; }
+                  return <Grid item xs={12} sm={6} key={h}>
+                    <TextField fullWidth size="small" type="url" label={h} value={editingRow?.[h] || ''}
+                      onChange={event => setFieldValue(h, event.target.value)} error={invalid}
+                      helperText={invalid ? 'Enter a Google Drive file link.' : undefined}
+                      disabled={isReadonly || submitting} />
+                  </Grid>;
                 }
 
                 if (h === CLIENT_EMAIL_HEADER) {

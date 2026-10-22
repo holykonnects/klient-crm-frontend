@@ -18,6 +18,7 @@ import EditOutlined from '@mui/icons-material/EditOutlined';
 import ZoomIn from '@mui/icons-material/ZoomIn';
 import ZoomOut from '@mui/icons-material/ZoomOut';
 import RestartAlt from '@mui/icons-material/RestartAlt';
+import CalculateOutlined from '@mui/icons-material/CalculateOutlined';
 import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import ArrowDownward from '@mui/icons-material/ArrowDownward';
 import '@fontsource/montserrat';
@@ -27,6 +28,8 @@ import QuotationRichTextEditor from './QuotationRichTextEditor';
 import QuotationSheetPreview from './QuotationSheetPreview';
 import QuotationSetBuilder from './QuotationSetBuilder';
 import QuotationDraftsDialog from './QuotationDraftsDialog';
+import AthleticVolumeCalculator from './AthleticVolumeCalculator';
+import AthleticUnitField from './AthleticUnitField';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
@@ -34,7 +37,7 @@ import { moveQuotationRow } from '../utils/quotationRowOrder';
 import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
-import { updateAthleticCalculation } from './athleticRateLibrary';
+import { applyAthleticVolume, updateAthleticCalculation } from './athleticRateLibrary';
 import { readQuotationResponse, runQuotationPdfExport } from '../utils/quotationRequest';
 import { refreshQuotationAuthor } from '../utils/quotationAuthor';
 
@@ -177,7 +180,11 @@ export default function QuotationBuilder() {
   const [standardRows, setStandardRows] = useState([{ ...emptyRow }]);
   const [athleticRows, setAthleticRows] = useState([]);
   const [commercialSettings, setCommercialSettings] = useState({});
+  const [athleticCommercialSettings, setAthleticCommercialSettings] = useState({
+    freight: { mode: 'all', value: 'Included' }, installation: { mode: 'all', value: 'Included' },
+  });
   const [calculationEditor, setCalculationEditor] = useState(null);
+  const [volumeCalculatorOpen, setVolumeCalculatorOpen] = useState(false);
   const [excludedAthleticLibraryKeys, setExcludedAthleticLibraryKeys] = useState([]);
   const [manageAthleticDefaults, setManageAthleticDefaults] = useState(true);
   const [meta, setMeta] = useState({
@@ -224,7 +231,12 @@ export default function QuotationBuilder() {
   const [leadLookupError, setLeadLookupError] = useState('');
   const [leadLookupLoading, setLeadLookupLoading] = useState(false);
 
-  const rows = useMemo(() => quoteType === 'athletic' ? athleticRows : applyQuotationCommercialSettings(standardRows, commercialSettings), [quoteType, athleticRows, standardRows, commercialSettings]);
+  const activeCommercialSettings = quoteType === 'athletic' ? athleticCommercialSettings : commercialSettings;
+  const setActiveCommercialSettings = quoteType === 'athletic' ? setAthleticCommercialSettings : setCommercialSettings;
+  const showFreightColumn = activeCommercialSettings.freight?.enabled !== false && activeCommercialSettings.freight?.mode !== 'all';
+  const showInstallationColumn = activeCommercialSettings.installation?.enabled !== false && activeCommercialSettings.installation?.mode !== 'all';
+  const rows = useMemo(() => applyQuotationCommercialSettings(quoteType === 'athletic' ? athleticRows : standardRows,
+    quoteType === 'athletic' ? athleticCommercialSettings : commercialSettings), [quoteType, athleticRows, standardRows, commercialSettings, athleticCommercialSettings]);
   const setRows = updater => {
     const setter = quoteType === 'athletic' ? setAthleticRows : setStandardRows;
     setter(current => typeof updater === 'function' ? updater(current) : updater);
@@ -446,7 +458,7 @@ export default function QuotationBuilder() {
         }
       }
 
-      if (field === 'qty' && libraryRow) row.qtyEdited = true;
+      if (field === 'qty' && (libraryRow || quoteType === 'athletic')) row.qtyEdited = true;
       if (field === 'unit' && libraryRow) row.unitEdited = true;
       if (field === 'descHtml') {
         row.desc = htmlToPlainText(value);
@@ -538,7 +550,7 @@ export default function QuotationBuilder() {
         installation: r.installation || ''
       })),
     attach: attachLead ? { leadDisplay: attachLead } : null,
-    builderState: { rows: quoteType === 'standard' ? standardRows : rows, commercialSettings, attachLead, termsByType, excludedAthleticLibraryKeys },
+    builderState: { rows: quoteType === 'athletic' ? athleticRows : standardRows, commercialSettings, athleticCommercialSettings, attachLead, termsByType, excludedAthleticLibraryKeys },
   });
 
   const persistDrafts = (next) => {
@@ -617,6 +629,7 @@ export default function QuotationBuilder() {
     setPricing(current => ({ ...current, ...(payload.pricing || {}) }));
     setAthletic(current => ({ ...current, ...(payload.athletic || {}) }));
     setCommercialSettings(payload.builderState?.commercialSettings || {});
+    setAthleticCommercialSettings(payload.builderState?.athleticCommercialSettings || {});
     setQuotationSets(normalizeSets(payload.setQuotation?.sets || []));
     setSetGstPct(payload.setQuotation?.gstPct ?? 18);
     if (draftQuoteType === 'athletic') {
@@ -1066,6 +1079,8 @@ export default function QuotationBuilder() {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.75, mr: 2, mt: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<CalculateOutlined />}
+                  onClick={() => setVolumeCalculatorOpen(true)} sx={{ borderRadius: 1.5 }}>SQM to CUM</Button>}
                 {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<RestartAlt />} onClick={restoreAthleticDefaults} sx={{ borderRadius: 1.5 }}>
                   Reload Library Defaults
                 </Button>}
@@ -1076,11 +1091,11 @@ export default function QuotationBuilder() {
             </Box>
             {catalogLoading && <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 2, pb: 2 }}><CircularProgress size={16} /><Typography variant="body2">Loading Equipment BD…</Typography></Box>}
             {catalogError && <Alert severity="error" sx={{ mx: 2, mb: 2 }}>{catalogError}</Alert>}
-            {quoteType === 'standard' && <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, px: 2, pb: 2 }}>
+            <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1fr' }, gap: 2, px: 2, pb: 2 }}>
               {['freight', 'installation'].map(field => {
-                const setting = commercialSettings[field] || {};
+                const setting = activeCommercialSettings[field] || {};
                 const label = field === 'freight' ? 'Freight' : 'Installation';
-                const update = patch => setCommercialSettings(current => ({ ...current, [field]: { ...current[field], ...patch } }));
+                const update = patch => setActiveCommercialSettings(current => ({ ...current, [field]: { ...current[field], ...patch } }));
                 return <Box key={field} sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
                   <FormControlLabel label={label} control={<Switch checked={setting.enabled !== false} onChange={event => update({ enabled: event.target.checked })} />} />
                   <TextField select size="small" label={`${label} mode`} value={setting.mode || 'per-item'} disabled={setting.enabled === false} onChange={event => update({ mode: event.target.value })} sx={{ minWidth: 150 }}>
@@ -1089,7 +1104,7 @@ export default function QuotationBuilder() {
                   {setting.mode === 'all' && <Box sx={{ minWidth: 180, flex: 1 }}><QuotationChargeField label={`${label} per item`} disabled={setting.enabled === false} value={setting.value ?? 'Included'} onChange={value => update({ value })} sx={fieldSx} /></Box>}
                 </Box>;
               })}
-            </Box>}
+            </Box>
             {quoteType === 'athletic' && rows.some(row => !row.imageUrl) && <Alert severity="info" sx={{ mx: 2, mb: 2 }}>Images not selected: {rows.filter(row => !row.imageUrl).length}</Alert>}
             {quoteType === 'athletic' && !catalogLoading && !catalogError && manageAthleticDefaults
               && !generatedAthleticDefaults.some(row => String(row.scope).trim().toLowerCase() === 'surface') && (
@@ -1101,12 +1116,12 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1740, tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+              <Table stickyHeader size="small" sx={{ minWidth: 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 <TableHead><TableRow>
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
                   <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
-                  <TableCell sx={{ width: 110 }}>Freight</TableCell><TableCell sx={{ width: 110 }}>Installation</TableCell>
+                  {showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}{showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 112 }}>Actions</TableCell>
@@ -1149,9 +1164,11 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      <TableCell><QuotationChargeField disabled={quoteType === 'standard' && (commercialSettings.freight?.enabled === false || commercialSettings.freight?.mode === 'all')} label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>
-                      <TableCell><QuotationChargeField disabled={quoteType === 'standard' && (commercialSettings.installation?.enabled === false || commercialSettings.installation?.mode === 'all')} label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>
-                      <TableCell><TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} /></TableCell>
+                      {showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
+                      {showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
+                      <TableCell>{quoteType === 'athletic'
+                        ? <AthleticUnitField row={athleticRows[i]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
+                        : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
                         {quoteType === 'athletic' && <Tooltip title="Edit quantity calculation"><IconButton size="small" aria-label={`Edit calculation for item ${i + 1}`} onClick={() => setCalculationEditor({ rowIndex: i, driver: r.qtyEdited ? 'MANUAL' : r.qtyDriver || 'MANUAL', factor: r.qtyEdited || !r.qtyDriver ? r.qty : r.factor })}><EditOutlined fontSize="small" /></IconButton></Tooltip>}
                       </TableCell>
@@ -1195,6 +1212,10 @@ export default function QuotationBuilder() {
           </CompactPreviewFrame>}
         </Grid>
       </Grid>
+      {volumeCalculatorOpen && quoteType === 'athletic' && <AthleticVolumeCalculator
+        rows={athleticRows} quotedArea={quotedSurfaceArea} onClose={() => setVolumeCalculatorOpen(false)}
+        onApply={(rowIndex, conversion) => setAthleticRows(current => current.map((row, index) =>
+          index === rowIndex ? applyAthleticVolume(row, conversion) : row))} />}
       <QuotationDraftsDialog
         open={draftsOpen}
         drafts={savedDrafts}

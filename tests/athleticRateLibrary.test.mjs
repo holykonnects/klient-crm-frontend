@@ -1,6 +1,78 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAthleticImageMapping, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+import { applyAthleticImageMapping, applyAthleticVolume, athleticVolume, athleticUnitDepth, convertAthleticUnit, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+
+test('unit changes convert quantities both ways and retain area linkage', () => {
+  const original = { unit: 'SQM', qty: 6600, qtyDriver: 'AREA', rate: 100, desc: 'GSB', imageUrl: '/gsb.png' };
+  assert.equal(convertAthleticUnit(original, 'CUM'), null);
+  const volume = convertAthleticUnit(original, 'CUM', 0.075);
+  assert.equal(volume.qty, 495);
+  assert.equal(volume.qtyDriver, 'AREA_X_FACTOR');
+  assert.equal(volume.qtyEdited, false);
+  const area = convertAthleticUnit(volume, 'SQM');
+  assert.equal(area.qty, 6600);
+  assert.equal(area.qtyDriver, 'AREA');
+  assert.equal(area.rate, 100);
+  assert.equal(area.desc, original.desc);
+  assert.equal(area.imageUrl, original.imageUrl);
+  assert.equal(convertAthleticUnit(area, 'CUM').qty, 495);
+  assert.equal(athleticUnitDepth({ ...volume, factor: 0.1 }), 0.1);
+});
+
+test('library volume factors are reused but drainage section factors are not treated as depth', () => {
+  assert.equal(convertAthleticUnit({ unit: 'CUM', qty: 495, qtyDriver: 'AREA_X_FACTOR', factor: 0.075 }, 'SQM').qty, 6600);
+  assert.equal(convertAthleticUnit({ unit: 'CUM', qty: 450, qtyDriver: 'PERIMETER_X_FACTOR', factor: 1.125 }, 'SQM'), null);
+  assert.equal(convertAthleticUnit({ unit: 'SQM', qty: 100 }, 'CUM', -1), null);
+});
+
+test('manual unit conversions remain fixed, aliases do not double-convert, and unrelated units retain quantities', () => {
+  const volume = convertAthleticUnit({ unit: 'sqm', qty: 100, qtyEdited: true }, 'm3', 0.15);
+  assert.equal(volume.qty, 15);
+  assert.equal(volume.qtyDriver, 'MANUAL');
+  assert.equal(volume.qtyEdited, true);
+  assert.equal(convertAthleticUnit(volume, 'CUM').qty, 15);
+  assert.equal(convertAthleticUnit(volume, 'SQM').qty, 100);
+  assert.equal(convertAthleticUnit(volume, 'NOS').qty, 15);
+  const restored = JSON.parse(JSON.stringify(volume));
+  assert.equal(convertAthleticUnit(restored, 'SQM').qty, 100);
+});
+
+test('SQM to CUM converts millimetres, centimetres and metres consistently', () => {
+  for (const [depth, unit] of [[75, 'mm'], [7.5, 'cm'], [0.075, 'm']]) {
+    assert.deepEqual(athleticVolume('6,600', depth, unit), { depthMetres: 0.075, volume: 495 });
+  }
+  assert.equal(athleticVolume(12.5, 200, 'mm').volume, 2.5);
+  for (const [area, depth, unit] of [['', 75, 'mm'], [6600, '', 'mm'], [0, 75, 'mm'], [-1, 75, 'mm'], [10, -1, 'm'], [Infinity, 1, 'm'], [10, 'abc', 'mm'], [10, 1, 'ft'], [1e308, 1e308, 'm']]) {
+    assert.equal(athleticVolume(area, depth, unit), null);
+  }
+});
+
+test('linked volume follows quoted area and preserves rate, description and images', () => {
+  const original = { source: 'rate-library', libraryKey: 'civil', rate: 3525, desc: 'GSB', imageUrl: '/gsb.png', unit: 'SQM' };
+  const applied = applyAthleticVolume(original, { area: 6600, depth: 75, depthUnit: 'mm', linkedArea: true });
+  assert.equal(applied.qty, 495);
+  assert.equal(applied.unit, 'CUM');
+  assert.equal(applied.qtyDriver, 'AREA_X_FACTOR');
+  assert.equal(applied.factor, 0.075);
+  assert.equal(applied.qtyEdited, false);
+  const updated = reconcileAthleticRows([applied], [{ ...original, qty: 8000, suggestedQty: 8000 }], [], { area: 8000 });
+  assert.equal(updated[0].qty, 600);
+  assert.equal(updated[0].unit, 'CUM');
+  assert.equal(updated[0].rate, original.rate);
+  assert.equal(updated[0].desc, original.desc);
+  assert.equal(updated[0].imageUrl, original.imageUrl);
+  assert.equal(original.unit, 'SQM');
+});
+
+test('custom area volume stays fixed and survives draft serialization', () => {
+  const applied = applyAthleticVolume({ desc: 'Manual work' }, { area: 100, depth: 15, depthUnit: 'cm', linkedArea: false });
+  const saved = JSON.parse(JSON.stringify(applied));
+  const updated = reconcileAthleticRows([saved], [], [], { area: 8000 });
+  assert.equal(updated[0].qty, 15);
+  assert.equal(updated[0].qtyDriver, 'MANUAL');
+  assert.equal(updated[0].unit, 'CUM');
+  assert.throws(() => applyAthleticVolume({}, { area: 10, depth: '' }), /positive/);
+});
 
 test('athletic quantity drivers calculate from area and perimeter', () => {
   assert.equal(athleticQuantity('AREA', 0, { area: 7500 }), 7500);

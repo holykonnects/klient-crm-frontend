@@ -36,6 +36,59 @@ export function updateAthleticCalculation(row, driver, factor, context) {
   return { ...row, qtyDriver: driver, factor, calculationEdited: true, qtyEdited: driver === 'MANUAL', qty, suggestedQty: qty };
 }
 
+export function athleticVolume(area, depth, depthUnit = 'mm') {
+  const divisor = { mm: 1000, cm: 100, m: 1 }[depthUnit];
+  const sqm = Number(String(area ?? '').trim().replace(/,/g, ''));
+  const thickness = Number(String(depth ?? '').trim());
+  if (!divisor || !String(area ?? '').trim() || !String(depth ?? '').trim()
+    || !Number.isFinite(sqm) || !Number.isFinite(thickness) || sqm <= 0 || thickness <= 0) return null;
+  const depthMetres = thickness / divisor;
+  const volume = sqm * depthMetres;
+  return Number.isFinite(volume) && volume > 0 ? { depthMetres, volume } : null;
+}
+
+export function applyAthleticVolume(row, { area, depth, depthUnit, linkedArea }) {
+  const result = athleticVolume(area, depth, depthUnit);
+  if (!result) throw new Error('Enter a positive area and thickness.');
+  return {
+    ...updateAthleticCalculation(row, linkedArea ? 'AREA_X_FACTOR' : 'MANUAL',
+      linkedArea ? result.depthMetres : result.volume, { area }),
+    unit: 'CUM', unitEdited: true, volumeDepthMetres: result.depthMetres,
+  };
+}
+
+const volumeUnit = value => {
+  const unit = clean(value).toUpperCase().replace(/\s/g, '');
+  if (['SQM', 'M2', 'M²'].includes(unit)) return 'SQM';
+  if (['CUM', 'M3', 'M³'].includes(unit)) return 'CUM';
+  return unit;
+};
+
+export function athleticUnitDepth(row) {
+  const depth = volumeUnit(row.unit) === 'CUM' && row.qtyDriver === 'AREA_X_FACTOR'
+    ? Number(row.factor) : Number(row.volumeDepthMetres);
+  return Number.isFinite(depth) && depth > 0 ? depth : null;
+}
+
+export function convertAthleticUnit(row, unit, depthMetres = athleticUnitDepth(row)) {
+  const from = volumeUnit(row.unit);
+  const to = volumeUnit(unit);
+  if (from === to || !['SQM', 'CUM'].includes(from) || !['SQM', 'CUM'].includes(to)) {
+    return { ...row, unit, unitEdited: true };
+  }
+  if (!Number.isFinite(depthMetres) || depthMetres <= 0) return null;
+  const quantity = numberValue(row.qty);
+  const qty = to === 'CUM' ? quantity * depthMetres : quantity / depthMetres;
+  if (!Number.isFinite(qty)) return null;
+  const linked = !row.qtyEdited && (from === 'SQM' ? row.qtyDriver === 'AREA' : row.qtyDriver === 'AREA_X_FACTOR');
+  return {
+    ...row, unit, unitEdited: true, volumeDepthMetres: depthMetres,
+    qty, suggestedQty: qty, calculationEdited: true, qtyEdited: !linked,
+    qtyDriver: linked ? (to === 'CUM' ? 'AREA_X_FACTOR' : 'AREA') : 'MANUAL',
+    factor: linked ? (to === 'CUM' ? depthMetres : 1) : qty,
+  };
+}
+
 export function athleticDrainPerimeter(config = {}, presets = []) {
   const override = clean(config.drainPerimeter);
   if (override !== '') return numberValue(override);

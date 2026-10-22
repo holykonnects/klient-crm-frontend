@@ -66,8 +66,20 @@ const volumeUnit = value => {
 
 export function athleticUnitDepth(row) {
   const depth = volumeUnit(row.unit) === 'CUM' && row.qtyDriver === 'AREA_X_FACTOR'
-    ? Number(row.factor) : Number(row.volumeDepthMetres);
+    ? Number(row.factor) : Number(row.volumeDepthMetres)
+      || (volumeUnit(row.libraryUnit) === 'CUM' && row.libraryQtyDriver === 'AREA_X_FACTOR' ? Number(row.libraryFactor) : 0);
   return Number.isFinite(depth) && depth > 0 ? depth : null;
+}
+
+export function athleticCalculationLabel(row) {
+  if (row.qtyEdited || row.qtyDriver === 'MANUAL') return 'Manual quantity';
+  const factor = numberValue(row.factor);
+  if (row.qtyDriver === 'AREA') return 'Quoted surface area';
+  if (row.qtyDriver === 'AREA_X_FACTOR') return volumeUnit(row.unit) === 'CUM'
+    ? `Area x ${Number((factor * 1000).toFixed(6))} mm depth` : `Area x ${factor}`;
+  if (row.qtyDriver === 'PERIMETER') return 'Drain / edge perimeter';
+  if (row.qtyDriver === 'PERIMETER_X_FACTOR') return `Perimeter x ${factor} section / factor`;
+  return 'Manual quantity';
 }
 
 export function convertAthleticUnit(row, unit, depthMetres = athleticUnitDepth(row)) {
@@ -128,6 +140,9 @@ export function buildAthleticDefaultRows(rateLibrary = [], config = {}, context 
       system: clean(pick(libraryRow, ['System'])),
       qtyDriver: driver,
       factor,
+      libraryQtyDriver: driver,
+      libraryFactor: factor,
+      libraryUnit: clean(pick(libraryRow, ['Unit'])) || catalogItem?.unit || '',
       suggestedQty: qty,
       qty,
       qtyEdited: false,
@@ -157,6 +172,9 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
       ...row,
       ...existing,
       rate: row.rate,
+      libraryQtyDriver: row.libraryQtyDriver,
+      libraryFactor: row.libraryFactor,
+      libraryUnit: row.libraryUnit,
       qtyDriver: existing.calculationEdited ? existing.qtyDriver : row.qtyDriver,
       factor: existing.calculationEdited ? existing.factor : row.factor,
       imageUrl: existing.imageMappingEdited || existing.imageUrl ? existing.imageUrl : row.imageUrl,

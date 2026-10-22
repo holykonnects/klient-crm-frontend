@@ -1,6 +1,23 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyAthleticImageMapping, applyAthleticVolume, athleticVolume, athleticUnitDepth, convertAthleticUnit, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+import { applyAthleticImageMapping, applyAthleticVolume, athleticCalculationLabel, athleticVolume, athleticUnitDepth, convertAthleticUnit, athleticDrainPerimeter, athleticQuantity, athleticRateApplies, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from '../src/components/athleticRateLibrary.js';
+
+test('library thickness remains available after switching units and refreshing defaults', () => {
+  const config = { civilWorks: 'Yes' };
+  const library = [{ __rowNumber: 2, Item: 'GSB', Scope: 'Civil', Unit: 'CUM', 'Include Default': 'Yes', 'Qty Driver': 'AREA_X_FACTOR', 'Thickness/Factor': 0.075 }];
+  const [row] = buildAthleticDefaultRows(library, config, { area: 6600 });
+  assert.equal(athleticUnitDepth(row), 0.075);
+  assert.equal(athleticCalculationLabel(row), 'Area x 75 mm depth');
+  const area = convertAthleticUnit(row, 'SQM');
+  delete area.volumeDepthMetres;
+  assert.equal(convertAthleticUnit(area, 'CUM').qty, 495);
+  const refreshed = reconcileAthleticRows([area], buildAthleticDefaultRows([{ ...library[0], 'Thickness/Factor': 0.1 }], config, { area: 6600 }), [], { area: 6600 });
+  assert.equal(athleticUnitDepth(refreshed[0]), 0.1);
+  assert.equal(convertAthleticUnit(refreshed[0], 'CUM').qty, 660);
+  assert.equal(athleticCalculationLabel({ qtyDriver: 'AREA' }), 'Quoted surface area');
+  assert.equal(athleticCalculationLabel({ qtyDriver: 'AREA', qtyEdited: true }), 'Manual quantity');
+  assert.equal(athleticCalculationLabel({ qtyDriver: 'PERIMETER_X_FACTOR', factor: 1.125, unit: 'CUM' }), 'Perimeter x 1.125 section / factor');
+});
 
 test('unit changes convert quantities both ways and retain area linkage', () => {
   const original = { unit: 'SQM', qty: 6600, qtyDriver: 'AREA', rate: 100, desc: 'GSB', imageUrl: '/gsb.png' };

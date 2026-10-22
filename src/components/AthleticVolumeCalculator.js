@@ -3,13 +3,14 @@ import {
   Alert, Box, Button, Checkbox, Dialog, DialogActions, DialogContent, DialogTitle,
   FormControlLabel, MenuItem, TextField, Typography,
 } from '@mui/material';
-import { athleticVolume } from './athleticRateLibrary';
+import { athleticUnitDepth, athleticVolume } from './athleticRateLibrary';
 
 export default function AthleticVolumeCalculator({ rows, quotedArea, onApply, onClose }) {
-  const [rowIndex, setRowIndex] = useState('');
+  const defaultIndex = rows.findIndex(row => athleticUnitDepth(row));
+  const [rowIndex, setRowIndex] = useState(defaultIndex >= 0 ? defaultIndex : '');
   const [linkedArea, setLinkedArea] = useState(true);
   const [customArea, setCustomArea] = useState(quotedArea || '');
-  const [depth, setDepth] = useState('');
+  const [depth, setDepth] = useState(defaultIndex >= 0 ? athleticUnitDepth(rows[defaultIndex]) * 1000 : '');
   const [depthUnit, setDepthUnit] = useState('mm');
   const area = linkedArea ? quotedArea : customArea;
   const result = athleticVolume(area, depth, depthUnit);
@@ -38,7 +39,13 @@ export default function AthleticVolumeCalculator({ rows, quotedArea, onApply, on
         </Typography>}
       </Box>
       <TextField select fullWidth label="Apply to quotation item" value={rowIndex}
-        onChange={event => setRowIndex(event.target.value)}>
+        onChange={event => {
+          const index = event.target.value;
+          setRowIndex(index);
+          const libraryDepth = athleticUnitDepth(rows[index]);
+          setDepth(libraryDepth ? libraryDepth * 1000 : '');
+          setDepthUnit('mm');
+        }}>
         {rows.map((row, index) => <MenuItem key={index} value={index} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
           {index + 1}. {row.libraryItem || row.itemCode || row.desc || 'Unnamed item'}
         </MenuItem>)}

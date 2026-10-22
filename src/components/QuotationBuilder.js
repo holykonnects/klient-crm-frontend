@@ -37,7 +37,7 @@ import { moveQuotationRow } from '../utils/quotationRowOrder';
 import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
-import { applyAthleticVolume, updateAthleticCalculation } from './athleticRateLibrary';
+import { applyAthleticVolume, athleticCalculationLabel, updateAthleticCalculation } from './athleticRateLibrary';
 import { readQuotationResponse, runQuotationPdfExport } from '../utils/quotationRequest';
 import { refreshQuotationAuthor } from '../utils/quotationAuthor';
 
@@ -1167,9 +1167,9 @@ export default function QuotationBuilder() {
                       {showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
                       {showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
                       <TableCell>{quoteType === 'athletic'
-                        ? <AthleticUnitField row={athleticRows[i]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
+                        ? <AthleticUnitField row={athleticRows[i]} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
                         : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
-                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
+                      <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={quoteType === 'athletic' ? athleticCalculationLabel(r) : r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
                         {quoteType === 'athletic' && <Tooltip title="Edit quantity calculation"><IconButton size="small" aria-label={`Edit calculation for item ${i + 1}`} onClick={() => setCalculationEditor({ rowIndex: i, driver: r.qtyEdited ? 'MANUAL' : r.qtyDriver || 'MANUAL', factor: r.qtyEdited || !r.qtyDriver ? r.qty : r.factor })}><EditOutlined fontSize="small" /></IconButton></Tooltip>}
                       </TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>

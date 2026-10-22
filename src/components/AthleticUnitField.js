@@ -1,14 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField, Typography } from '@mui/material';
 import { athleticVolume, convertAthleticUnit } from './athleticRateLibrary';
 
-export default function AthleticUnitField({ row, onChange, sx }) {
-  const [value, setValue] = useState(row.unit || '');
+export default function AthleticUnitField({ row, options = [], onChange, sx }) {
   const [pending, setPending] = useState(null);
   const [depth, setDepth] = useState('');
   const [depthUnit, setDepthUnit] = useState('mm');
-  useEffect(() => setValue(row.unit || ''), [row.unit]);
-  const commit = () => {
+  const unitNames = { SQM: 'Square metres', CUM: 'Cubic metres', RMT: 'Running metres', SQFT: 'Square feet', CFT: 'Cubic feet', Nos: 'Number', Set: 'Set', Job: 'Job', LS: 'Lump sum' };
+  const units = [...new Set(['SQM', 'CUM', 'RMT', 'SQFT', 'CFT', 'Nos', 'Set', 'Job', 'LS', ...options, row.unit].filter(Boolean))];
+  const commit = value => {
     if (value === (row.unit || '')) return;
     const converted = convertAthleticUnit(row, value);
     if (converted) onChange(converted);
@@ -16,13 +16,16 @@ export default function AthleticUnitField({ row, onChange, sx }) {
   };
   const thickness = athleticVolume(1, depth, depthUnit)?.depthMetres;
   const converted = thickness ? convertAthleticUnit(row, pending, thickness) : null;
-  const cancel = () => { setPending(null); setValue(row.unit || ''); };
+  const cancel = () => setPending(null);
 
   return <>
-    <TextField fullWidth size="small" label="Unit" value={value} sx={sx}
+    <TextField select fullWidth size="small" label="Unit" value={row.unit || ''} sx={sx}
+      SelectProps={{ renderValue: selected => selected }}
       helperText={row.unitEdited ? 'Rate unchanged' : undefined}
-      onChange={event => setValue(event.target.value)} onBlur={commit}
-      onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); event.currentTarget.querySelector('input')?.blur(); } }} />
+      onChange={event => commit(event.target.value)}>
+      <MenuItem value="" disabled>Select unit</MenuItem>
+      {units.map(unit => <MenuItem key={unit} value={unit}>{unitNames[unit] ? `${unit} - ${unitNames[unit]}` : unit}</MenuItem>)}
+    </TextField>
     <Dialog open={pending !== null} fullWidth maxWidth="xs" disableEscapeKeyDown
       onClose={(event, reason) => { if (reason !== 'backdropClick') cancel(); }}>
       <DialogTitle>Convert {row.unit} to {pending}</DialogTitle>

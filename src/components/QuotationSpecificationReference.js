@@ -13,8 +13,8 @@ export default function QuotationSpecificationReference({ rows, onClose }) {
       </Tabs>
       <TableContainer sx={{ maxHeight: '55vh', overflow: 'auto' }}>
         <Table stickyHeader size="small" sx={{ minWidth: 740, '& td': { verticalAlign: 'top' }, '& th': { fontWeight: 700 } }}>
-          <TableHead><TableRow>{(tab === 0 ? ['Quotation type', 'Element', 'Observed specification', 'Quotation basis', 'Source'] : ['Item', 'Library reference thickness', 'Current thickness', 'Calculation basis / review']).map(label => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
-          <TableBody>{tab === 0 ? QUOTATION_SPECIFICATION_REFERENCE.map((row, index) => <TableRow key={index}>{row.map((value, column) => <TableCell key={column}>{value}</TableCell>)}</TableRow>)
+          <TableHead><TableRow>{(tab === 0 ? ['Quotation type', 'Element', 'Observed specification', 'Quotation basis'] : ['Item', 'Library reference thickness', 'Current thickness', 'Calculation basis / review']).map(label => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
+          <TableBody>{tab === 0 ? QUOTATION_SPECIFICATION_REFERENCE.map((row, index) => <TableRow key={index}>{row.slice(0, 4).map((value, column) => <TableCell key={column}>{value}</TableCell>)}</TableRow>)
             : rows.map((row, index) => {
               const details = athleticSpecificationDetails(row);
               return <TableRow key={index}>
@@ -25,7 +25,7 @@ export default function QuotationSpecificationReference({ rows, onClose }) {
             })}</TableBody>
         </Table>
       </TableContainer>
-      {tab === 0 && <Typography variant="caption" component="p" sx={{ mt: 2 }}>Sources: Yash Global School athletic quotation (16 October 2026); GOI Mumbai workbook; Jan Mitram Kalyan Samiti natural football quotation (3 October 2026). Conflicting values are flagged rather than adopted as defaults.</Typography>}
+      {tab === 0 && <Typography variant="caption" component="p" sx={{ mt: 2 }}>Based on previous quotations. Conflicting values are flagged rather than adopted as defaults.</Typography>}
     </DialogContent>
     <DialogActions><Button onClick={onClose}>Close</Button></DialogActions>
   </Dialog>;

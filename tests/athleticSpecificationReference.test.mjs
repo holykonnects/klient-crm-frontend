@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 import { athleticSpecificationDetails, QUOTATION_SPECIFICATION_REFERENCE } from '../src/components/athleticSpecificationReference.js';
+
+test('reference chart display omits source names and uses a generic benchmark note', async () => {
+  const source = await readFile(new URL('../src/components/QuotationSpecificationReference.js', import.meta.url), 'utf8');
+  assert.match(source, /row\.slice\(0, 4\)/);
+  assert.doesNotMatch(source, /Yash|GOI Mumbai|Jan Mitram|'Source'/);
+  assert.match(source, /Based on previous quotations/);
+});
 
 test('reference chart includes source-labelled alternatives and conflicting historical values', () => {
   assert.ok(QUOTATION_SPECIFICATION_REFERENCE.every(row => row.length === 5 && row[4]));

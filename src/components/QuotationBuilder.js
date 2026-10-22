@@ -1121,10 +1121,12 @@ export default function QuotationBuilder() {
                   <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
                   <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
                   <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
-                  {showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}{showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
+                  {quoteType !== 'athletic' && showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}{quoteType !== 'athletic' && showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
                   <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 112 }}>Actions</TableCell>
+                  {quoteType === 'athletic' && showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}
+                  {quoteType === 'athletic' && showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
                 </TableRow></TableHead>
                 <TableBody>
                   {rows.map((r, i) => {
@@ -1164,8 +1166,8 @@ export default function QuotationBuilder() {
                           <Tooltip title="Edit and format description"><IconButton size="small" sx={{ position: 'absolute', top: 6, right: 6, bgcolor: '#f8fafc' }}><EditOutlined fontSize="small" /></IconButton></Tooltip>
                         </Box>
                       </TableCell>
-                      {showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
-                      {showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
+                      {quoteType !== 'athletic' && showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
+                      {quoteType !== 'athletic' && showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
                       <TableCell>{quoteType === 'athletic'
                         ? <AthleticUnitField row={athleticRows[i]} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
                         : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
@@ -1182,6 +1184,8 @@ export default function QuotationBuilder() {
                           <Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip>
                         </Box>
                       </TableCell>
+                      {quoteType === 'athletic' && showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
+                      {quoteType === 'athletic' && showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
                     </TableRow>;
                   })}
                 </TableBody>

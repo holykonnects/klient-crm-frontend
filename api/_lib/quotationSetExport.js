@@ -1,6 +1,6 @@
 import { downloadQuotationImage } from "./quotationImages.js";
 import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
-import { quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
+import { quotationCommercialSummary, quotationCommercialValue } from "../../src/utils/quotationCommercials.js";
 import { quotationGeneratedByEmail } from "../../src/utils/quotationAuthor.js";
 
 function number(value) {
@@ -156,25 +156,14 @@ export async function buildQuotationSetWorkbook(payload = {}, { loadImage = down
   const items = sets.flatMap(set => set.items || []);
   const freight = quotationCommercialSummary(items, "freight");
   const installation = quotationCommercialSummary(items, "installation");
-  if (freight.entries.length || installation.entries.length) {
-    const heading = sheet.addRow(["Freight & Installation"]);
-    sheet.mergeCells(heading.number, 1, heading.number, 8);
-    heading.font = { name: "Montserrat", bold: true };
-    items.forEach((item, index) => {
-      if (!String(item.freight ?? "").trim() && !String(item.installation ?? "").trim()) return;
-      const row = sheet.addRow([index + 1, item.item || "", "Freight", String(item.freight ?? ""), "Installation", String(item.installation ?? "")]);
-      sheet.mergeCells(row.number, 6, row.number, 8);
-      row.eachCell(cell => { cell.alignment = { wrapText: true, vertical: "top" }; });
-      row.height = Math.max(30, Math.ceil(Math.max(String(item.freight || "").length, String(item.installation || "").length) / 55) * 14 + 16);
-    });
-  }
   const taxable = subtotal + freight.amount + installation.amount;
   const gst = taxable * gstPct / 100;
-  [["Subtotal", subtotal], ["Freight", freight.amount], ["Installation", installation.amount], [`GST @ ${gstPct}%`, gst], ["Grand Total", Math.round(taxable + gst)]].forEach(([label, amount]) => {
+  [["Subtotal", subtotal], ["Freight", quotationCommercialValue(freight)], ["Installation", quotationCommercialValue(installation)], [`GST @ ${gstPct}%`, gst], ["Grand Total", Math.round(taxable + gst)]].forEach(([label, amount]) => {
     const row = sheet.addRow([label, "", "", "", "", "", "", amount]);
     sheet.mergeCells(row.number, 1, row.number, 7);
     row.font = { name: "Montserrat", bold: label === "Grand Total" };
-    row.alignment = { horizontal: "right" };
+    row.alignment = { horizontal: "right", wrapText: true };
+    if (typeof amount === 'string') row.height = Math.max(30, Math.ceil(amount.length / 18) * 14);
     row.getCell(8).numFmt = QUOTATION_CURRENCY_FORMAT;
     if (label === "Grand Total") row.fill = { type: "pattern", pattern: "solid", fgColor: { argb: lightBlue } };
   });

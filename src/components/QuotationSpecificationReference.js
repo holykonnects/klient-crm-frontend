@@ -13,8 +13,8 @@ export default function QuotationSpecificationReference({ rows, onClose }) {
       </Tabs>
       <TableContainer sx={{ maxHeight: '55vh', overflow: 'auto' }}>
         <Table stickyHeader size="small" sx={{ minWidth: 740, '& td': { verticalAlign: 'top' }, '& th': { fontWeight: 700 } }}>
-          <TableHead><TableRow>{(tab === 0 ? ['Quotation type', 'Element', 'Observed specification', 'Quotation basis'] : ['Item', 'Library reference thickness', 'Current thickness', 'Calculation basis / review']).map(label => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
-          <TableBody>{tab === 0 ? QUOTATION_SPECIFICATION_REFERENCE.map((row, index) => <TableRow key={index}>{row.slice(0, 4).map((value, column) => <TableCell key={column}>{value}</TableCell>)}</TableRow>)
+          <TableHead><TableRow>{(tab === 0 ? ['Quotation type', 'Element', 'Observed specification', 'Quotation basis', 'Source'] : ['Item', 'Library reference thickness', 'Current thickness', 'Calculation basis / review']).map(label => <TableCell key={label}>{label}</TableCell>)}</TableRow></TableHead>
+          <TableBody>{tab === 0 ? QUOTATION_SPECIFICATION_REFERENCE.map((row, index) => <TableRow key={index}>{[...row.slice(0, 4), `Previous ${row[0].toLowerCase()} quotations`].map((value, column) => <TableCell key={column}>{value}</TableCell>)}</TableRow>)
             : rows.map((row, index) => {
               const details = athleticSpecificationDetails(row);
               return <TableRow key={index}>

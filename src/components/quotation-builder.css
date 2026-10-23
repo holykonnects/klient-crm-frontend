@@ -30,3 +30,50 @@
   margin: 2px 0;
   padding-left: 18px;
 }
+
+/* Preserve one shared column grid instead of the CRM's generic equal-cell sizing. */
+table.athletic-quotation-items.MuiTable-root {
+  display: table;
+  max-width: none;
+  table-layout: fixed;
+}
+
+table.athletic-quotation-items .MuiTableHead-root {
+  display: table-header-group;
+  width: auto;
+  min-width: 0;
+}
+
+table.athletic-quotation-items .MuiTableBody-root {
+  display: table-row-group;
+  width: auto;
+  min-width: 0;
+}
+
+table.athletic-quotation-items .MuiTableCell-root {
+  box-sizing: border-box;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  padding-left: 6px;
+  padding-right: 6px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  text-align: left;
+}
+
+table.athletic-quotation-items .MuiFormControl-root,
+table.athletic-quotation-items .MuiInputBase-root {
+  width: 100%;
+  min-width: 0;
+}
+
+table.athletic-quotation-items .MuiInputBase-input {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+table.athletic-quotation-items td[data-column="unit"] .MuiSelect-select {
+  padding-left: 8px;
+  padding-right: 24px;
+}

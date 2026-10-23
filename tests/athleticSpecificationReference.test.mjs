@@ -3,10 +3,12 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 import { athleticSpecificationDetails, QUOTATION_SPECIFICATION_REFERENCE } from '../src/components/athleticSpecificationReference.js';
 
-test('reference chart display omits source names and uses a generic benchmark note', async () => {
+test('reference chart displays generic sources without site names', async () => {
   const source = await readFile(new URL('../src/components/QuotationSpecificationReference.js', import.meta.url), 'utf8');
   assert.match(source, /row\.slice\(0, 4\)/);
-  assert.doesNotMatch(source, /Yash|GOI Mumbai|Jan Mitram|'Source'/);
+  assert.doesNotMatch(source, /Yash|GOI Mumbai|Jan Mitram/);
+  assert.match(source, /'Source'/);
+  assert.match(source, /Previous.*quotations/);
   assert.match(source, /Based on previous quotations/);
 });
 

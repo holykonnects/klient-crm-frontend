@@ -4,13 +4,15 @@ import {
   FormControlLabel, MenuItem, TextField, Typography,
 } from '@mui/material';
 import { athleticUnitDepth, athleticVolume } from './athleticRateLibrary';
+import AthleticItemContext from './AthleticItemContext';
 
-export default function AthleticVolumeCalculator({ rows, quotedArea, onApply, onClose }) {
-  const defaultIndex = rows.findIndex(row => athleticUnitDepth(row));
-  const [rowIndex, setRowIndex] = useState(defaultIndex >= 0 ? defaultIndex : '');
-  const [linkedArea, setLinkedArea] = useState(true);
-  const [customArea, setCustomArea] = useState(quotedArea || '');
-  const [depth, setDepth] = useState(defaultIndex >= 0 ? athleticUnitDepth(rows[defaultIndex]) * 1000 : '');
+export default function AthleticVolumeCalculator({ rows, rowIndex, quotedArea, onApply, onClose }) {
+  const row = rows[rowIndex];
+  const defaultDepth = athleticUnitDepth(row);
+  const useQuotedArea = !row.qtyEdited && ['AREA', 'AREA_X_FACTOR'].includes(row.qtyDriver);
+  const [linkedArea, setLinkedArea] = useState(useQuotedArea);
+  const [customArea, setCustomArea] = useState(String(row.unit).toUpperCase() === 'SQM' ? row.qty : defaultDepth && String(row.unit).toUpperCase() === 'CUM' ? Number(row.qty) / defaultDepth : quotedArea || '');
+  const [depth, setDepth] = useState(defaultDepth ? defaultDepth * 1000 : '');
   const [depthUnit, setDepthUnit] = useState('mm');
   const area = linkedArea ? quotedArea : customArea;
   const result = athleticVolume(area, depth, depthUnit);
@@ -20,6 +22,7 @@ export default function AthleticVolumeCalculator({ rows, quotedArea, onApply, on
     onClose={(event, reason) => { if (reason !== 'backdropClick') onClose(); }}>
     <DialogTitle>SQM to CUM</DialogTitle>
     <DialogContent dividers sx={{ display: 'grid', gap: 2, pt: 2 }}>
+      <AthleticItemContext row={row} quotedArea={quotedArea} />
       <FormControlLabel label="Use quoted surface area" control={<Checkbox checked={linkedArea}
         onChange={event => setLinkedArea(event.target.checked)} />} />
       <TextField fullWidth type="number" label="Area (SQM)" value={area || ''}
@@ -38,18 +41,6 @@ export default function AthleticVolumeCalculator({ rows, quotedArea, onApply, on
           {format(Number(String(area).replace(/,/g, '')))} SQM x {format(result.depthMetres)} m
         </Typography>}
       </Box>
-      <TextField select fullWidth label="Apply to quotation item" value={rowIndex}
-        onChange={event => {
-          const index = event.target.value;
-          setRowIndex(index);
-          const libraryDepth = athleticUnitDepth(rows[index]);
-          setDepth(libraryDepth ? libraryDepth * 1000 : '');
-          setDepthUnit('mm');
-        }}>
-        {rows.map((row, index) => <MenuItem key={index} value={index} sx={{ whiteSpace: 'normal', overflowWrap: 'anywhere' }}>
-          {index + 1}. {row.libraryItem || row.itemCode || row.desc || 'Unnamed item'}
-        </MenuItem>)}
-      </TextField>
       <Alert severity="warning">The item unit will become CUM. Its unit price remains unchanged and must be checked for CUM pricing.</Alert>
     </DialogContent>
     <DialogActions>

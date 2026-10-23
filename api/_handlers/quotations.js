@@ -9,6 +9,7 @@ import { parseQuotationAdminTable } from "../_lib/quotationAdmin.js";
 import { buildTermsCatalog } from "../_lib/quotationTerms.js";
 import { resolveLeadOwnerIdentity } from "../_lib/leadSourceIdentity.js";
 import { quotationImageReference, resolveQuotationImages } from "../_lib/quotationImages.js";
+import { fieldEventIssues } from "../../src/components/fieldEventPackages.js";
 
 export const QUOTATION_ENGINE_VERSION = "quotation-v1";
 const SHEETS_SCOPE = "https://www.googleapis.com/auth/spreadsheets";
@@ -307,6 +308,10 @@ async function attachQuotationToLead(payload, pdfUrl) {
 }
 
 async function prepareQuotationExport(payload = {}, user, loginRows) {
+  if (payload.quoteType === 'athletic' && payload.athletic?.fieldEvents) {
+    const issues = fieldEventIssues(payload.athletic.fieldEvents, payload.items || []);
+    if (issues.length) throw new Error(`Field-event export needs review: ${issues.join(' ')}`);
+  }
   if (payload.attach?.leadDisplay) {
     const leads = (await getLeadsForUser(user, loginRows)).leads || [];
     const selected = payload.meta?.leadId

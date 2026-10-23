@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Alert, Button, Dialog, DialogActions, DialogContent, DialogTitle, MenuItem, TextField, Typography } from '@mui/material';
 import { athleticVolume, convertAthleticUnit } from './athleticRateLibrary';
+import AthleticItemContext from './AthleticItemContext';
 
-export default function AthleticUnitField({ row, options = [], onChange, sx }) {
+export default function AthleticUnitField({ row, quotedArea, options = [], onChange, sx }) {
   const [pending, setPending] = useState(null);
   const [depth, setDepth] = useState('');
   const [depthUnit, setDepthUnit] = useState('mm');
@@ -30,6 +31,7 @@ export default function AthleticUnitField({ row, options = [], onChange, sx }) {
       onClose={(event, reason) => { if (reason !== 'backdropClick') cancel(); }}>
       <DialogTitle>Convert {row.unit} to {pending}</DialogTitle>
       <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+        <AthleticItemContext row={row} quotedArea={quotedArea} />
         <TextField autoFocus type="number" label="Depth / thickness" value={depth}
           inputProps={{ min: 0, step: 'any' }} onChange={event => setDepth(event.target.value)} />
         <TextField select label="Depth unit" value={depthUnit} onChange={event => setDepthUnit(event.target.value)}>

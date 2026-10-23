@@ -32,6 +32,13 @@ import QuotationDraftsDialog from './QuotationDraftsDialog';
 import AthleticVolumeCalculator from './AthleticVolumeCalculator';
 import AthleticUnitField from './AthleticUnitField';
 import QuotationSpecificationReference from './QuotationSpecificationReference';
+import AthleticItemContext from './AthleticItemContext';
+import AthleticLayoutPreview from './AthleticLayoutPreview';
+import { athleticTableColumns } from '../utils/athleticTableLayout';
+import './quotation-builder.css';
+import AthleticFieldEventBuilder from './AthleticFieldEventBuilder';
+import { buildFieldEventRows, fieldEventIssues, isFieldEventRate } from './fieldEventPackages';
+import { updateQuotationDescriptionDraft } from '../utils/quotationDescriptionDraft';
 import { athleticSpecificationDetails } from './athleticSpecificationReference';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
@@ -239,6 +246,8 @@ export default function QuotationBuilder() {
   const setActiveCommercialSettings = quoteType === 'athletic' ? setAthleticCommercialSettings : setCommercialSettings;
   const showFreightColumn = activeCommercialSettings.freight?.enabled !== false && activeCommercialSettings.freight?.mode !== 'all';
   const showInstallationColumn = activeCommercialSettings.installation?.enabled !== false && activeCommercialSettings.installation?.mode !== 'all';
+  const athleticColumns = athleticTableColumns({ freight: showFreightColumn, installation: showInstallationColumn });
+  const athleticTableMinWidth = athleticColumns.reduce((sum, column) => sum + column.width, 0);
   const rows = useMemo(() => applyQuotationCommercialSettings(quoteType === 'athletic' ? athleticRows : standardRows,
     quoteType === 'athletic' ? athleticCommercialSettings : commercialSettings), [quoteType, athleticRows, standardRows, commercialSettings, athleticCommercialSettings]);
   const setRows = updater => {
@@ -383,6 +392,8 @@ export default function QuotationBuilder() {
       preset,
       areaMethod: customMethod,
       quotedSurfaceArea: '',
+      diagramStraightLength: '',
+      diagramInnerRadius: '',
       lengthPerimeter: record ? usable(record['Track Length']) : current.lengthPerimeter,
       laneQuantity: record ? usable(record.Lanes) : current.laneQuantity,
       laneWidth: record ? (toNumber(record['Lane Width']) || 1.22) : current.laneWidth,
@@ -408,12 +419,13 @@ export default function QuotationBuilder() {
     [athletic, catalog?.presets]
   );
 
-  const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
-    catalog?.rateLibrary || [],
+  const generatedAthleticDefaults = useMemo(() => [...buildAthleticDefaultRows(
+    (catalog?.rateLibrary || []).filter(row => !isFieldEventRate(row)),
     athletic,
     { area: quotedSurfaceArea, perimeter: effectiveDrainPerimeter },
     catalog || {}
-  ), [athletic, catalog, effectiveDrainPerimeter, quotedSurfaceArea]);
+  ), ...buildFieldEventRows(athletic.fieldEvents || {}, catalog?.rateLibrary || [], catalog || {})], [athletic, catalog, effectiveDrainPerimeter, quotedSurfaceArea]);
+  const eventIssues = quoteType === 'athletic' ? fieldEventIssues(athletic.fieldEvents || {}, athleticRows) : [];
 
   useEffect(() => {
     if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
@@ -540,6 +552,10 @@ export default function QuotationBuilder() {
         itemCode: r.itemCode,
         displayItem: r.libraryItem || r.itemCode || (quoteType === 'athletic' ? 'Manual athletic item' : ''),
         source: r.source || 'manual',
+        fieldEventId: r.fieldEventId,
+        fieldEventRateMissing: r.fieldEventRateMissing,
+        libraryKey: r.libraryKey,
+        libraryUnit: r.libraryUnit,
         qtyDriver: r.qtyDriver || '',
         factor: toNumber(r.factor),
         qty: toNumber(r.qty),
@@ -693,6 +709,7 @@ export default function QuotationBuilder() {
 
   const exportPdf = async () => {
     if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
+    if (eventIssues.length) { alert(eventIssues.join('\n')); return; }
     if (quoteType === 'project-set' && !quotationSets.some(set => (set.items || []).length)) {
       alert('Add at least one project set before exporting.');
       return;
@@ -1014,7 +1031,6 @@ export default function QuotationBuilder() {
             <Paper sx={{ ...panelSx, mb: 2.5 }}>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1, flexWrap: 'wrap', mb: 1.5 }}>
                 <Typography sx={{ ...sectionTitleSx, mb: 0 }}>Athletic Track Configuration</Typography>
-                <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setSpecificationReferenceOpen(true)}>Specification Reference</Button>
               </Box>
               <Grid container spacing={1.5}>
                 {[
@@ -1075,6 +1091,12 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
+          {quoteType === 'athletic' && <AthleticLayoutPreview config={athletic} presets={catalog?.presets || []} quotedArea={quotedSurfaceArea} onChange={patch => setAthletic(current => ({ ...current, ...patch }))} />}
+          {quoteType === 'athletic' && <AthleticFieldEventBuilder selections={athletic.fieldEvents || {}} issues={eventIssues}
+            onChange={fieldEvents => {
+              setExcludedAthleticLibraryKeys(current => current.filter(key => !key.startsWith('field-event:')));
+              setAthletic(current => ({ ...current, fieldEvents }));
+            }} />}
           {(quoteType === 'standard' || quoteType === 'athletic') && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden', mb: 2.5 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Box sx={{ px: 2, pt: 2 }}>
@@ -1086,8 +1108,7 @@ export default function QuotationBuilder() {
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', gap: 0.75, mr: 2, mt: 2, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
-                {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<CalculateOutlined />}
-                  onClick={() => setVolumeCalculatorOpen(true)} sx={{ borderRadius: 1.5 }}>SQM to CUM</Button>}
+                {quoteType === 'athletic' && <Button size="small" startIcon={<MenuBookOutlined />} onClick={() => setSpecificationReferenceOpen(true)}>Specification Reference</Button>}
                 {quoteType === 'athletic' && <Button size="small" variant="outlined" startIcon={<RestartAlt />} onClick={restoreAthleticDefaults} sx={{ borderRadius: 1.5 }}>
                   Reload Library Defaults
                 </Button>}
@@ -1123,15 +1144,16 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+              <Table className={quoteType === 'athletic' ? 'athletic-quotation-items' : undefined} stickyHeader size="small" sx={{ minWidth: quoteType === 'athletic' ? athleticTableMinWidth : 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th, & td': { px: quoteType === 'athletic' ? 0.75 : 2, overflowWrap: 'anywhere' }, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+                {quoteType === 'athletic' && <colgroup>{athleticColumns.map(column => <col key={column.key} data-column={column.key} style={{ width: column.key === 'description' ? undefined : column.width }} />)}</colgroup>}
                 <TableHead><TableRow>
-                  <TableCell sx={{ width: 46 }}>S.No</TableCell><TableCell sx={{ minWidth: 155 }}>Scope / Category</TableCell>
-                  <TableCell sx={{ minWidth: 165 }}>System / Sub Category</TableCell><TableCell sx={{ minWidth: 190 }}>Item / Code</TableCell>
-                  <TableCell sx={{ width: 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
+                  <TableCell sx={{ width: quoteType === 'athletic' ? 38 : 46 }}>S.No</TableCell><TableCell sx={{ width: quoteType === 'athletic' ? 90 : 155, whiteSpace: 'normal !important' }}>Scope / Category</TableCell>
+                  <TableCell sx={{ width: quoteType === 'athletic' ? 105 : 165, whiteSpace: 'normal !important' }}>System / Sub Category</TableCell><TableCell sx={{ width: 220 }}>Item / Code</TableCell>
+                  <TableCell sx={{ width: quoteType === 'athletic' ? 70 : 92 }}>Image</TableCell><TableCell sx={{ width: 390 }}>Description</TableCell>
                   {quoteType !== 'athletic' && showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}{quoteType !== 'athletic' && showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
                   <TableCell sx={{ width: 90 }}>Unit</TableCell><TableCell sx={{ width: 95 }}>Quantity</TableCell>
                   <TableCell sx={{ width: 115 }}>Unit Price</TableCell><TableCell sx={{ width: 135 }}>Total Amount</TableCell>
-                  <TableCell sx={{ minWidth: 145 }}>Type</TableCell><TableCell sx={{ width: 112 }}>Actions</TableCell>
+                  <TableCell sx={{ width: quoteType === 'athletic' ? 110 : 145 }}>Type</TableCell><TableCell sx={{ width: 112 }}>Actions</TableCell>
                   {quoteType === 'athletic' && showFreightColumn && <TableCell sx={{ width: 110 }}>Freight</TableCell>}
                   {quoteType === 'athletic' && showInstallationColumn && <TableCell sx={{ width: 110 }}>Installation</TableCell>}
                 </TableRow></TableHead>
@@ -1176,13 +1198,14 @@ export default function QuotationBuilder() {
                       </TableCell>
                       {quoteType !== 'athletic' && showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
                       {quoteType !== 'athletic' && showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
-                      <TableCell>{quoteType === 'athletic'
-                        ? <AthleticUnitField row={athleticRows[i]} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
+                      <TableCell data-column="unit">{quoteType === 'athletic'
+                        ? <AthleticUnitField row={athleticRows[i]} quotedArea={quotedSurfaceArea} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
                         : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={quoteType === 'athletic' ? athleticCalculationLabel(r) : r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />
                         {specification && r.libraryQtyDriver === 'AREA_X_FACTOR' && <Typography variant="caption" component="div" sx={{ mt: 0.5, overflowWrap: 'anywhere' }}>Library: {specification.referenceThickness}<br />Current: {specification.currentThickness}</Typography>}
                         {specification?.warning && <Tooltip title={specification.warning}><Typography component="div" variant="caption" color="error" sx={{ mt: 0.5 }}>Approval required</Typography></Tooltip>}
                         {quoteType === 'athletic' && <Tooltip title="Edit quantity calculation"><IconButton size="small" aria-label={`Edit calculation for item ${i + 1}`} onClick={() => setCalculationEditor({ rowIndex: i, driver: r.qtyEdited ? 'MANUAL' : r.qtyDriver || 'MANUAL', factor: r.qtyEdited || !r.qtyDriver ? r.qty : r.factor })}><EditOutlined fontSize="small" /></IconButton></Tooltip>}
+                        {quoteType === 'athletic' && <Tooltip title="SQM to CUM for this item"><IconButton size="small" aria-label={`Convert SQM to CUM for item ${i + 1}`} onClick={() => setVolumeCalculatorOpen({ rowIndex: i })}><CalculateOutlined fontSize="small" /></IconButton></Tooltip>}
                       </TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : (r.rate ?? '')} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'rateOverride', e.target.value)} sx={fieldSx} /></TableCell>
                       <TableCell sx={{ fontWeight: 800, whiteSpace: 'nowrap' }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>₹{money(lineTotal)}</Box></TableCell>
@@ -1228,7 +1251,7 @@ export default function QuotationBuilder() {
       </Grid>
       {specificationReferenceOpen && <QuotationSpecificationReference rows={athleticRows} onClose={() => setSpecificationReferenceOpen(false)} />}
       {volumeCalculatorOpen && quoteType === 'athletic' && <AthleticVolumeCalculator
-        rows={athleticRows} quotedArea={quotedSurfaceArea} onClose={() => setVolumeCalculatorOpen(false)}
+        rows={athleticRows} rowIndex={volumeCalculatorOpen.rowIndex} quotedArea={quotedSurfaceArea} onClose={() => setVolumeCalculatorOpen(false)}
         onApply={(rowIndex, conversion) => setAthleticRows(current => current.map((row, index) =>
           index === rowIndex ? applyAthleticVolume(row, conversion) : row))} />}
       <QuotationDraftsDialog
@@ -1241,6 +1264,7 @@ export default function QuotationBuilder() {
       <Dialog open={Boolean(calculationEditor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setCalculationEditor(null); }} fullWidth maxWidth="sm" disableEscapeKeyDown>
         <DialogTitle>Quantity Calculation</DialogTitle>
         <DialogContent dividers sx={{ display: 'grid', gap: 2 }}>
+          {calculationEditor && <AthleticItemContext row={athleticRows[calculationEditor.rowIndex]} quotedArea={quotedSurfaceArea} />}
           <TextField select fullWidth label="Calculation basis" value={calculationEditor?.driver || 'MANUAL'} onChange={event => setCalculationEditor(current => ({ ...current, driver: event.target.value }))}>
             {[['AREA', 'Surface area'], ['AREA_X_FACTOR', 'Surface area × depth / factor'], ['PERIMETER', 'Drain perimeter'], ['PERIMETER_X_FACTOR', 'Drain perimeter × section / factor'], ['MANUAL', 'Manual quantity']].map(([value, label]) => <MenuItem key={value} value={value}>{label}</MenuItem>)}
           </TextField>
@@ -1252,10 +1276,10 @@ export default function QuotationBuilder() {
           setCalculationEditor(null);
         }}>Apply</Button></DialogActions>
       </Dialog>
-      <Dialog open={Boolean(descriptionEditor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setDescriptionEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
+      {descriptionEditor && <Dialog open onClose={(event, reason) => { if (reason !== 'backdropClick') setDescriptionEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
         <DialogTitle>Format Description</DialogTitle>
         <DialogContent dividers>
-          <QuotationRichTextEditor value={descriptionEditor?.value || ''} onChange={value => setDescriptionEditor(current => ({ ...current, value }))} />
+          <QuotationRichTextEditor value={descriptionEditor.value || ''} onChange={value => setDescriptionEditor(current => updateQuotationDescriptionDraft(current, value))} />
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setDescriptionEditor(null)}>Cancel</Button>
@@ -1265,7 +1289,7 @@ export default function QuotationBuilder() {
             if (edit) handleRowChange(edit.rowIndex, 'descHtml', edit.value);
           }}>Apply</Button>
         </DialogActions>
-      </Dialog>
+      </Dialog>}
       <Dialog open={Boolean(imageSelector)} onClose={(event, reason) => { if (reason !== 'backdropClick') setImageSelector(null); }} maxWidth="sm" fullWidth disableEscapeKeyDown>
         <DialogTitle>Choose Athletic Item Image</DialogTitle>
         <DialogContent dividers>

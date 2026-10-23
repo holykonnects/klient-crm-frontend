@@ -34,6 +34,8 @@ import AthleticUnitField from './AthleticUnitField';
 import QuotationSpecificationReference from './QuotationSpecificationReference';
 import AthleticItemContext from './AthleticItemContext';
 import AthleticLayoutPreview from './AthleticLayoutPreview';
+import { athleticTableColumns } from '../utils/athleticTableLayout';
+import './quotation-builder.css';
 import AthleticFieldEventBuilder from './AthleticFieldEventBuilder';
 import { buildFieldEventRows, fieldEventIssues, isFieldEventRate } from './fieldEventPackages';
 import { updateQuotationDescriptionDraft } from '../utils/quotationDescriptionDraft';
@@ -244,6 +246,8 @@ export default function QuotationBuilder() {
   const setActiveCommercialSettings = quoteType === 'athletic' ? setAthleticCommercialSettings : setCommercialSettings;
   const showFreightColumn = activeCommercialSettings.freight?.enabled !== false && activeCommercialSettings.freight?.mode !== 'all';
   const showInstallationColumn = activeCommercialSettings.installation?.enabled !== false && activeCommercialSettings.installation?.mode !== 'all';
+  const athleticColumns = athleticTableColumns({ freight: showFreightColumn, installation: showInstallationColumn });
+  const athleticTableMinWidth = athleticColumns.reduce((sum, column) => sum + column.width, 0);
   const rows = useMemo(() => applyQuotationCommercialSettings(quoteType === 'athletic' ? athleticRows : standardRows,
     quoteType === 'athletic' ? athleticCommercialSettings : commercialSettings), [quoteType, athleticRows, standardRows, commercialSettings, athleticCommercialSettings]);
   const setRows = updater => {
@@ -1140,7 +1144,8 @@ export default function QuotationBuilder() {
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
             <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
-              <Table stickyHeader size="small" sx={{ minWidth: 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th, & td': { px: quoteType === 'athletic' ? 0.75 : 2, overflowWrap: 'anywhere' }, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+              <Table className={quoteType === 'athletic' ? 'athletic-quotation-items' : undefined} stickyHeader size="small" sx={{ minWidth: quoteType === 'athletic' ? athleticTableMinWidth : 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th, & td': { px: quoteType === 'athletic' ? 0.75 : 2, overflowWrap: 'anywhere' }, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
+                {quoteType === 'athletic' && <colgroup>{athleticColumns.map(column => <col key={column.key} data-column={column.key} style={{ width: column.key === 'description' ? undefined : column.width }} />)}</colgroup>}
                 <TableHead><TableRow>
                   <TableCell sx={{ width: quoteType === 'athletic' ? 38 : 46 }}>S.No</TableCell><TableCell sx={{ width: quoteType === 'athletic' ? 90 : 155, whiteSpace: 'normal !important' }}>Scope / Category</TableCell>
                   <TableCell sx={{ width: quoteType === 'athletic' ? 105 : 165, whiteSpace: 'normal !important' }}>System / Sub Category</TableCell><TableCell sx={{ width: 220 }}>Item / Code</TableCell>
@@ -1193,7 +1198,7 @@ export default function QuotationBuilder() {
                       </TableCell>
                       {quoteType !== 'athletic' && showFreightColumn && <TableCell><QuotationChargeField label={`Freight for item ${i + 1}`} value={r.freight} onChange={value => handleRowChange(i, 'freight', value)} sx={fieldSx} /></TableCell>}
                       {quoteType !== 'athletic' && showInstallationColumn && <TableCell><QuotationChargeField label={`Installation for item ${i + 1}`} value={r.installation} onChange={value => handleRowChange(i, 'installation', value)} sx={fieldSx} /></TableCell>}
-                      <TableCell>{quoteType === 'athletic'
+                      <TableCell data-column="unit">{quoteType === 'athletic'
                         ? <AthleticUnitField row={athleticRows[i]} quotedArea={quotedSurfaceArea} options={[...(catalog?.lists?.Units || catalog?.lists?.Unit || []), ...(catalog?.rateLibrary || []).map(row => row.Unit).filter(Boolean)]} sx={fieldSx} onChange={converted => setAthleticRows(current => current.map((row, index) => index === i ? converted : row))} />
                         : <TextField fullWidth size="small" value={r.unit || ''} onChange={e => handleRowChange(i, 'unit', e.target.value)} sx={fieldSx} />}</TableCell>
                       <TableCell><TextField fullWidth size="small" type="number" value={r.qty} inputProps={{ min: 0, step: 'any' }} onChange={e => handleRowChange(i, 'qty', e.target.value)} helperText={quoteType === 'athletic' ? athleticCalculationLabel(r) : r.qtyEdited ? 'Manual quantity' : r.qtyDriver || ''} sx={fieldSx} />

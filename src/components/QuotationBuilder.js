@@ -1092,7 +1092,7 @@ export default function QuotationBuilder() {
           )}
 
           {quoteType === 'athletic' && <AthleticLayoutPreview config={athletic} presets={catalog?.presets || []} quotedArea={quotedSurfaceArea} onChange={patch => setAthletic(current => ({ ...current, ...patch }))} />}
-          {quoteType === 'athletic' && <AthleticFieldEventBuilder selections={athletic.fieldEvents || {}} issues={eventIssues}
+          {quoteType === 'athletic' && <AthleticFieldEventBuilder selections={athletic.fieldEvents || {}} issues={eventIssues} catalog={catalog || {}}
             onChange={fieldEvents => {
               setExcludedAthleticLibraryKeys(current => current.filter(key => !key.startsWith('field-event:')));
               setAthletic(current => ({ ...current, fieldEvents }));

@@ -5,6 +5,7 @@ import DeleteOutline from '@mui/icons-material/DeleteOutline';
 import EditOutlined from '@mui/icons-material/EditOutlined';
 import RestartAlt from '@mui/icons-material/RestartAlt';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
+import { updateQuotationDescriptionDraft } from '../utils/quotationDescriptionDraft';
 import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
 import { isExportableQuotationRow } from './athleticRateLibrary';
 import { quotationOutputRows } from '../utils/quotationOutput';
@@ -142,7 +143,7 @@ function TermsPreview({
     <Dialog open={Boolean(editor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
       <DialogTitle>Format Term &amp; Condition</DialogTitle>
       <DialogContent dividers>
-        <QuotationRichTextEditor value={editor?.value || ''} onChange={value => setEditor(current => ({ ...current, value }))} placeholder="Enter the term or condition" />
+        {editor && <QuotationRichTextEditor value={editor.value || ''} onChange={value => setEditor(current => updateQuotationDescriptionDraft(current, value))} placeholder="Enter the term or condition" />}
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setEditor(null)}>Cancel</Button>

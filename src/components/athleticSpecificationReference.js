@@ -39,3 +39,17 @@ export function athleticSpecificationDetails(row = {}) {
     warning: conflicts.length ? `Approval required: calculation uses ${Number(current.toFixed(6))} mm, but item wording also states ${conflicts.join(', ')} mm. Verify the approved specification.` : '',
   };
 }
+
+export function athleticItemReferences(row = {}) {
+  const name = String(row.libraryItem || row.itemCode || row.desc || '').toLowerCase();
+  const patterns = [
+    [/\bgsb\b|granular sub.base/, 'GSB'], [/\bwmm\b|wet mix macadam/, 'WMM'],
+    [/\bbm\b|bituminous macadam/, 'BM'], [/\bbc\b|bituminous concrete/, 'BC'],
+    [/sandwich/, 'Sandwich synthetic'], [/pur|epdm/, 'Full PUR'],
+    [/tack/, 'Tack coat'], [/drain.*cover/, 'Drain covers'],
+    [/rcc.*pipe|pipe.*rcc/, 'RCC drainage'], [/pcc/, 'Drainage PCC'],
+    [/weed|pesticide/, 'Weedicide'], [/sub.?grade/, 'Subgrade'], [/clean|jungle/, 'Ground clearing'],
+  ];
+  const match = patterns.find(([pattern]) => pattern.test(name));
+  return match ? QUOTATION_SPECIFICATION_REFERENCE.filter(reference => reference[0] === 'Athletic track' && reference[1].startsWith(match[1])) : [];
+}

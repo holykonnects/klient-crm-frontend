@@ -14,6 +14,7 @@ import OpenInNewOutlined from '@mui/icons-material/OpenInNewOutlined';
 import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import ArrowDownward from '@mui/icons-material/ArrowDownward';
 import QuotationRichTextEditor from './QuotationRichTextEditor';
+import { updateQuotationDescriptionDraft } from '../utils/quotationDescriptionDraft';
 import QuotationChargeField from './QuotationChargeField';
 import {
   emptyQuotationSet, emptySetItem, itemQuantity, quotationSetTemplates,
@@ -206,7 +207,7 @@ export default function QuotationSetBuilder({ sets, onChange, gstPct, onGstChang
 
       <Dialog open={Boolean(editor)} onClose={(event, reason) => { if (reason !== 'backdropClick') setEditor(null); }} maxWidth="md" fullWidth disableEscapeKeyDown>
         <DialogTitle>Format Description</DialogTitle>
-        <DialogContent dividers><QuotationRichTextEditor value={editor?.value || ''} onChange={(value) => setEditor((current) => ({ ...current, value }))} /></DialogContent>
+        <DialogContent dividers>{editor && <QuotationRichTextEditor value={editor.value || ''} onChange={(value) => setEditor((current) => updateQuotationDescriptionDraft(current, value))} />}</DialogContent>
         <DialogActions>
           <Button onClick={() => setEditor(null)}>Cancel</Button>
           <Button type="button" variant="contained" onClick={() => {

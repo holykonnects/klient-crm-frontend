@@ -1,11 +1,67 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildFieldEventRows, fieldEventIssues, isFieldEventRate } from '../src/components/fieldEventPackages.js';
+import { buildFieldEventRows, fieldEventIssues, isFieldEventRate, fieldEventEquipmentOptions } from '../src/components/fieldEventPackages.js';
 import { reconcileAthleticRows, isExportableQuotationRow } from '../src/components/athleticRateLibrary.js';
 import { templateItems } from '../api/_lib/quotationPdfExport.js';
 import { athleticLayout, TRACK_DRAWING_REFERENCE } from '../src/utils/athleticLayout.js';
 
 const selections = { longJump: { enabled: true, baseDepth: 100, sandDepth: 300, layoutReviewed: true } };
+
+const equipmentCatalog = { items: { 'Athletics|||Shot put': [
+  { code: 'SP1', name: 'Competition shot', unit: 'Nos', rate: 850, desc: 'Competition shot, supply only', imageUrl: '/shot.png' },
+  { code: 'SP2', name: 'Stop board', unit: 'Nos', rate: 2000, desc: 'Stop board, supply only' },
+] } };
+
+test('equipment-only selections create exactly one row per selected catalogue item, without civil scope', () => {
+  const [shot, board] = fieldEventEquipmentOptions(equipmentCatalog);
+  const selected = { shot: { enabled: true, scopeMode: 'equipment', equipmentIds: [shot.id, shot.id], count: 5 } };
+  const rows = buildFieldEventRows(selected, [], equipmentCatalog);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].qty, 1);
+  assert.equal(rows[0].rate, 850);
+  assert.equal(rows[0].desc, 'Competition shot, supply only');
+  assert.equal(rows[0].imageUrl, '/shot.png');
+  assert.equal(rows[0].itemType, 'Equipment');
+  assert.equal(rows[0].scope, 'Field Events');
+  assert.equal(rows[0].system, 'Shot put');
+  assert.equal(rows[0].itemCode, 'SP1');
+  assert.deepEqual(fieldEventIssues(selected, rows), []);
+  assert.equal(templateItems({ quoteType: 'athletic', items: rows }).length, 1);
+  selected.shot.equipmentIds.push(board.id);
+  assert.equal(buildFieldEventRows(selected, [], equipmentCatalog).length, 2);
+});
+
+test('equipment-only validation rejects empty, missing, unpriced and nonpositive quantity selections', () => {
+  const [shot] = fieldEventEquipmentOptions(equipmentCatalog);
+  const selected = { shot: { enabled: true, scopeMode: 'equipment', equipmentIds: [] } };
+  assert.match(fieldEventIssues(selected, []).join(' '), /at least one/);
+  selected.shot.equipmentIds = ['missing-id'];
+  assert.equal(buildFieldEventRows(selected, [], equipmentCatalog).length, 0);
+  assert.match(fieldEventIssues(selected, []).join(' '), /selected equipment is missing/);
+  selected.shot.equipmentIds = [shot.id];
+  const unpriced = structuredClone(equipmentCatalog);
+  delete unpriced.items['Athletics|||Shot put'][0].rate;
+  const rows = buildFieldEventRows(selected, [], unpriced);
+  assert.match(fieldEventIssues(selected, rows).join(' '), /unit price required/);
+  assert.deepEqual(fieldEventIssues(selected, [{ ...rows[0], rateOverride: 0 }]), []);
+  assert.match(fieldEventIssues(selected, [{ ...rows[0], qty: 0 }]).join(' '), /positive quantity/);
+});
+
+test('equipment selection survives saved drafts and preserves row edits; deselection removes the row', () => {
+  const [shot] = fieldEventEquipmentOptions(equipmentCatalog);
+  const selected = JSON.parse(JSON.stringify({ shot: { enabled: true, scopeMode: 'equipment', equipmentIds: [shot.id] } }));
+  const rows = buildFieldEventRows(selected, [], equipmentCatalog);
+  const edited = [{ ...rows[0], qty: 3, qtyEdited: true, desc: 'Reviewed specification', descEdited: true, rateOverride: 900 }];
+  const refreshed = reconcileAthleticRows(edited, buildFieldEventRows(selected, [], equipmentCatalog), [], { area: 6600 });
+  assert.equal(refreshed.length, 1);
+  assert.equal(refreshed[0].qty, 3);
+  assert.equal(refreshed[0].desc, 'Reviewed specification');
+  assert.equal(refreshed[0].rateOverride, 900);
+  selected.shot.equipmentIds = [];
+  assert.deepEqual(reconcileAthleticRows(refreshed, buildFieldEventRows(selected, [], equipmentCatalog)), []);
+  selected.shot.scopeMode = 'facility';
+  assert.equal(buildFieldEventRows(selected, [], equipmentCatalog).length, 5);
+});
 
 test('field event dimensions generate scoped quantities, independent of track area', () => {
   const rows = buildFieldEventRows(selections);

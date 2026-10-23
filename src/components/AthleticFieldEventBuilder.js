@@ -1,6 +1,6 @@
 import React from 'react';
-import { Alert, Box, Button, Checkbox, FormControlLabel, Link, TextField, Typography } from '@mui/material';
-import { FIELD_EVENTS, fieldEventConfig } from './fieldEventPackages';
+import { Alert, Autocomplete, Box, Button, Checkbox, FormControlLabel, Link, MenuItem, TextField, Typography } from '@mui/material';
+import { FIELD_EVENTS, fieldEventConfig, fieldEventEquipmentOptions } from './fieldEventPackages';
 
 export function FieldEventDiagram({ event, config }) {
   const circle = ['shot', 'discus'].includes(event.id);
@@ -26,16 +26,27 @@ export function FieldEventDiagram({ event, config }) {
   </svg>;
 }
 
-export default function AthleticFieldEvents({ selections = {}, onChange, issues = [] }) {
+export default function AthleticFieldEvents({ selections = {}, onChange, issues = [], catalog = {} }) {
+  const equipmentOptions = React.useMemo(() => fieldEventEquipmentOptions(catalog), [catalog]);
   const update = (event, patch) => onChange({ ...selections, [event.id]: { ...fieldEventConfig(event, selections), ...patch } });
   return <Box component="section" aria-label="Field event packages" sx={{ py: 2, mb: 2.5, borderTop: '1px solid #dbe3ef' }}>
     <Typography variant="subtitle2" sx={{ mb: 1 }}>Field Event Packages</Typography>
     <Alert severity="warning" sx={{ mb: 1.5 }}>Event sketches are separate from the track plan. Throwing sectors, cages, clearances and shared-use conflicts require an approved site layout. Reference dimensions do not establish certification.</Alert>
-    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>{FIELD_EVENTS.map(event => <FormControlLabel key={event.id} label={event.label} control={<Checkbox checked={Boolean(selections[event.id]?.enabled)} onChange={e => update(event, { enabled: e.target.checked })} />} />)}</Box>
+    <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>{FIELD_EVENTS.map(event => <FormControlLabel key={event.id} label={event.label} control={<Checkbox checked={Boolean(selections[event.id]?.enabled)} onChange={e => update(event, { enabled: e.target.checked, scopeMode: selections[event.id]?.scopeMode || (selections[event.id] ? 'facility' : 'equipment') })} />} />)}</Box>
     {FIELD_EVENTS.filter(event => selections[event.id]?.enabled).map(event => {
       const config = fieldEventConfig(event, selections);
       return <Box key={event.id} sx={{ py: 2, borderBottom: '1px solid #dbe3ef' }}>
         <Typography variant="subtitle2">{event.label}</Typography>
+        <TextField select label="Quotation scope" size="small" value={config.scopeMode || 'facility'} onChange={e => update(event, { scopeMode: e.target.value })} sx={{ my: 2, width: { xs: '100%', sm: 320 } }}>
+          <MenuItem value="equipment">Equipment only</MenuItem><MenuItem value="facility">Full facility package</MenuItem>
+        </TextField>
+        {config.scopeMode === 'equipment' ? <Autocomplete multiple disableCloseOnSelect options={equipmentOptions}
+          value={equipmentOptions.filter(item => (config.equipmentIds || []).includes(item.id))}
+          isOptionEqualToValue={(option, value) => option.id === value.id}
+          getOptionLabel={item => `${item.category} / ${item.subCategory} / ${item.code}${item.name && item.name !== item.code ? ` - ${item.name}` : ''}`}
+          onChange={(_, items) => update(event, { equipmentIds: items.map(item => item.id) })}
+          renderInput={params => <TextField {...params} label="Equipment" placeholder="Search equipment" />}
+          noOptionsText="No Equipment BD items available" /> : <>
         <Typography variant="body2" color="text.secondary" sx={{ my: 1 }}>{event.reference} <Link href={event.url} target="_blank" rel="noopener noreferrer">Reference</Link></Typography>
         {event.id === 'javelin' && <Button size="small" onClick={() => update(event, { length: 36.5, width: 4 })}>Use Supplied Drawing Runway: 36.50 m x 4 m</Button>}
         <Box sx={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 230px), 1fr))', gap: 2, my: 2 }}>
@@ -46,6 +57,7 @@ export default function AthleticFieldEvents({ selections = {}, onChange, issues 
           <FormControlLabel label="Site layout / safety provisions reviewed" control={<Checkbox checked={Boolean(config.layoutReviewed)} onChange={e => update(event, { layoutReviewed: e.target.checked })} />} />
           <FormControlLabel label="Project-specific dimension deviations approved" control={<Checkbox checked={Boolean(config.referenceOverrideAccepted)} onChange={e => update(event, { referenceOverrideAccepted: e.target.checked })} />} />
         </Box>
+        </>}
       </Box>;
     })}
     {issues.length > 0 && <Alert severity="warning" sx={{ mt: 2 }}><Typography variant="body2" fontWeight={700}>Field-event details required before export</Typography><Box component="ul" sx={{ pl: 2, my: 0.5 }}>{issues.slice(0, 8).map((issue, index) => <li key={index}>{issue}</li>)}</Box>{issues.length > 8 && <Typography variant="caption">{issues.length - 8} additional items require attention.</Typography>}</Alert>}

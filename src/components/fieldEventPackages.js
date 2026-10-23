@@ -19,6 +19,39 @@ export const fieldEventConfig = (event, selections = {}) => ({ count: 1, ...even
 const number = value => Number.isFinite(Number(value)) && Number(value) > 0 ? Number(value) : 0;
 const key = value => String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
 
+export function fieldEventEquipmentOptions(catalog = {}) {
+  const options = new Map();
+  for (const [group, items] of Object.entries(catalog.items || {})) {
+    const [category, subCategory] = group.split('|||');
+    for (const item of items) {
+      if (!item.code) continue;
+      const id = JSON.stringify([category, subCategory, item.code]);
+      options.set(id, { ...item, id, category, subCategory });
+    }
+  }
+  return [...options.values()];
+}
+
+const equipmentRowKey = (event, id) => `field-event:${event.id}:equipment:${id}`;
+
+function buildEquipmentRows(event, config, catalog) {
+  const options = fieldEventEquipmentOptions(catalog);
+  return [...new Set(config.equipmentIds || [])].flatMap(id => {
+    const item = options.find(option => option.id === id);
+    if (!item) return [];
+    const rawRate = String(item.rate ?? '').replace(/[,\s\u20b9]/g, '');
+    const hasRate = rawRate !== '' && Number.isFinite(Number(rawRate)) && Number(rawRate) >= 0;
+    const [row] = buildAthleticDefaultRows([{
+      Item: item.name || item.code, Scope: 'Field Events', System: event.label,
+      Category: item.category, 'Sub Category': item.subCategory, 'Item Code': item.code,
+      Unit: item.unit, Rate: hasRate ? Number(rawRate) : '', Description: item.desc,
+      'Include Default': 'Yes', 'Qty Driver': 'MANUAL', 'Thickness/Factor': 1,
+    }], { surfaceSystem: event.label }, {}, catalog);
+    return [{ ...row, libraryKey: equipmentRowKey(event, id), fieldEventId: event.id,
+      fieldEventRateMissing: !hasRate, rate: hasRate ? Number(rawRate) : '', itemType: 'Equipment' }];
+  });
+}
+
 export function fieldEventComponents(event, config) {
   const circle = ['shot', 'discus'].includes(event.id);
   const area = circle ? Math.PI * (number(config.diameter) / 2) ** 2 : number(config.length) * number(config.width);
@@ -49,6 +82,7 @@ export const isFieldEventRate = row => eventRateNames.has(key(row.Item));
 export function buildFieldEventRows(selections = {}, rateLibrary = [], catalog = {}) {
   return FIELD_EVENTS.filter(event => selections[event.id]?.enabled).flatMap(event => {
     const config = fieldEventConfig(event, selections);
+    if (config.scopeMode === 'equipment') return buildEquipmentRows(event, config, catalog);
     return fieldEventComponents(event, config).map(component => {
       const candidates = rateLibrary.filter(row => key(row.Item) === key(component.name) && key(row.Unit) === key(component.unit));
       const matched = candidates.length === 1 ? candidates[0] : null;
@@ -68,6 +102,12 @@ export function fieldEventIssues(selections = {}, rows = []) {
   const issues = [];
   for (const event of FIELD_EVENTS.filter(event => selections[event.id]?.enabled)) {
     const config = fieldEventConfig(event, selections);
+    if (config.scopeMode === 'equipment') {
+      const ids = [...new Set(config.equipmentIds || [])];
+      if (!ids.length) issues.push(`${event.label}: select at least one equipment item.`);
+      for (const id of ids) if (!rows.some(row => row.libraryKey === equipmentRowKey(event, id))) issues.push(`${event.label}: selected equipment is missing. Reselect the item from Equipment BD.`);
+      continue;
+    }
     if (!Number.isInteger(Number(config.count)) || number(config.count) < 1) issues.push(`${event.label}: number of facilities must be a positive whole number.`);
     for (const [field, label] of event.fields) if (!number(config[field])) issues.push(`${event.label}: ${label} is required.`);
     for (const component of fieldEventComponents(event, config)) if (!rows.some(row => row.libraryKey === `field-event:${event.id}:${component.id}`)) issues.push(`${component.name}: package component is missing.`);

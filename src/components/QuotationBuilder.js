@@ -33,6 +33,9 @@ import AthleticVolumeCalculator from './AthleticVolumeCalculator';
 import AthleticUnitField from './AthleticUnitField';
 import QuotationSpecificationReference from './QuotationSpecificationReference';
 import AthleticItemContext from './AthleticItemContext';
+import AthleticLayoutPreview from './AthleticLayoutPreview';
+import AthleticFieldEventBuilder from './AthleticFieldEventBuilder';
+import { buildFieldEventRows, fieldEventIssues, isFieldEventRate } from './fieldEventPackages';
 import { updateQuotationDescriptionDraft } from '../utils/quotationDescriptionDraft';
 import { athleticSpecificationDetails } from './athleticSpecificationReference';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
@@ -385,6 +388,8 @@ export default function QuotationBuilder() {
       preset,
       areaMethod: customMethod,
       quotedSurfaceArea: '',
+      diagramStraightLength: '',
+      diagramInnerRadius: '',
       lengthPerimeter: record ? usable(record['Track Length']) : current.lengthPerimeter,
       laneQuantity: record ? usable(record.Lanes) : current.laneQuantity,
       laneWidth: record ? (toNumber(record['Lane Width']) || 1.22) : current.laneWidth,
@@ -410,12 +415,13 @@ export default function QuotationBuilder() {
     [athletic, catalog?.presets]
   );
 
-  const generatedAthleticDefaults = useMemo(() => buildAthleticDefaultRows(
-    catalog?.rateLibrary || [],
+  const generatedAthleticDefaults = useMemo(() => [...buildAthleticDefaultRows(
+    (catalog?.rateLibrary || []).filter(row => !isFieldEventRate(row)),
     athletic,
     { area: quotedSurfaceArea, perimeter: effectiveDrainPerimeter },
     catalog || {}
-  ), [athletic, catalog, effectiveDrainPerimeter, quotedSurfaceArea]);
+  ), ...buildFieldEventRows(athletic.fieldEvents || {}, catalog?.rateLibrary || [], catalog || {})], [athletic, catalog, effectiveDrainPerimeter, quotedSurfaceArea]);
+  const eventIssues = quoteType === 'athletic' ? fieldEventIssues(athletic.fieldEvents || {}, athleticRows) : [];
 
   useEffect(() => {
     if (quoteType !== 'athletic' || !manageAthleticDefaults || !catalog?.rateLibrary) return;
@@ -542,6 +548,10 @@ export default function QuotationBuilder() {
         itemCode: r.itemCode,
         displayItem: r.libraryItem || r.itemCode || (quoteType === 'athletic' ? 'Manual athletic item' : ''),
         source: r.source || 'manual',
+        fieldEventId: r.fieldEventId,
+        fieldEventRateMissing: r.fieldEventRateMissing,
+        libraryKey: r.libraryKey,
+        libraryUnit: r.libraryUnit,
         qtyDriver: r.qtyDriver || '',
         factor: toNumber(r.factor),
         qty: toNumber(r.qty),
@@ -695,6 +705,7 @@ export default function QuotationBuilder() {
 
   const exportPdf = async () => {
     if (!canUseQuotation) { alert('You do not have access to Quotation Builder.'); return; }
+    if (eventIssues.length) { alert(eventIssues.join('\n')); return; }
     if (quoteType === 'project-set' && !quotationSets.some(set => (set.items || []).length)) {
       alert('Add at least one project set before exporting.');
       return;
@@ -1076,6 +1087,12 @@ export default function QuotationBuilder() {
             </Paper>
           )}
 
+          {quoteType === 'athletic' && <AthleticLayoutPreview config={athletic} presets={catalog?.presets || []} quotedArea={quotedSurfaceArea} onChange={patch => setAthletic(current => ({ ...current, ...patch }))} />}
+          {quoteType === 'athletic' && <AthleticFieldEventBuilder selections={athletic.fieldEvents || {}} issues={eventIssues}
+            onChange={fieldEvents => {
+              setExcludedAthleticLibraryKeys(current => current.filter(key => !key.startsWith('field-event:')));
+              setAthletic(current => ({ ...current, fieldEvents }));
+            }} />}
           {(quoteType === 'standard' || quoteType === 'athletic') && <Paper sx={{ ...panelSx, p: 0, overflow: 'hidden', mb: 2.5 }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 1.5, gap: 1 }}>
               <Box sx={{ px: 2, pt: 2 }}>

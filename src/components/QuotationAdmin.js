@@ -116,7 +116,7 @@ export default function QuotationAdmin({ user, onClose }) {
   const editorOptions = (header) => {
     if (table !== 'rates') return null;
     if (header === 'Include Default') return ['Yes', 'No'];
-    if (header === 'Scope') return ['Civil', 'Drainage', 'Surface', 'Equipment', 'Installation'];
+    if (header === 'Scope') return ['Civil', 'Drainage', 'Surface', 'Equipment', 'Installation', 'Field Events'];
     if (header === 'System') return ['ALL', ...(rateCatalog?.lists?.['Track Systems'] || [])];
     if (header === 'Qty Driver') return ['AREA', 'AREA_X_FACTOR', 'PERIMETER', 'PERIMETER_X_FACTOR', 'MANUAL'];
     if (header === 'Category') return rateCatalog?.categories || [];

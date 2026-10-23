@@ -175,6 +175,8 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
       libraryQtyDriver: row.libraryQtyDriver,
       libraryFactor: row.libraryFactor,
       libraryUnit: row.libraryUnit,
+      fieldEventArea: row.fieldEventArea,
+      fieldEventRateMissing: row.fieldEventRateMissing,
       qtyDriver: existing.calculationEdited ? existing.qtyDriver : row.qtyDriver,
       factor: existing.calculationEdited ? existing.factor : row.factor,
       imageUrl: existing.imageMappingEdited || existing.imageUrl ? existing.imageUrl : row.imageUrl,
@@ -183,7 +185,7 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
       descHtml: existing.descEdited ? existing.descHtml : row.descHtml,
       suggestedQty: row.suggestedQty,
       qty: existing.qtyEdited ? existing.qty : existing.calculationEdited
-        ? athleticQuantity(existing.qtyDriver, existing.factor, context) : row.qty,
+        ? athleticQuantity(existing.qtyDriver, existing.factor, row.fieldEventId ? { ...context, area: row.fieldEventArea } : context) : row.qty,
     };
   });
   const manualRows = existingRows.filter(row => row.source !== 'rate-library').map(row => row.calculationEdited && !row.qtyEdited

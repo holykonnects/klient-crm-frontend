@@ -10,21 +10,13 @@ import { itemQuantity, setQuoteTotals, setSubtotal } from './quotationSets';
 import { isExportableQuotationRow } from './athleticRateLibrary';
 import { quotationOutputRows } from '../utils/quotationOutput';
 import { quotationGeneratedByEmail } from '../utils/quotationAuthor';
+import { quotationCommercialSummary, quotationCommercialValue } from '../utils/quotationCommercials';
 
-function CommercialPreview({ items }) {
-  if (!items.some(item => String(item.freight ?? '').trim() || String(item.installation ?? '').trim())) return null;
-  return <Box>
-    <Box sx={{ ...cell, bgcolor: '#dce9f8', fontWeight: 700 }}>Freight &amp; Installation</Box>
-    <Box sx={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 1fr', bgcolor: '#edf3fa' }}>
-      {['S.No', 'Item', 'Freight', 'Installation'].map(label => <Box key={label} sx={{ ...cell, fontWeight: 700 }}>{label}</Box>)}
-    </Box>
-    {items.map((item, index) => (String(item.freight ?? '').trim() || String(item.installation ?? '').trim()) &&
-      <Box key={index} sx={{ display: 'grid', gridTemplateColumns: '48px 1fr 1fr 1fr' }}>
-        {[index + 1, item.displayItem || item.libraryItem || item.item || item.itemCode || '-', item.freight || '-', item.installation || '-'].map((value, column) =>
-          <Box key={column} sx={{ ...cell, whiteSpace: 'pre-wrap', overflowWrap: 'anywhere' }}>{value}</Box>)}
-      </Box>)}
-  </Box>;
+function commercialValue(items, field, globalValue) {
+  return quotationCommercialValue(quotationCommercialSummary(items, field), globalValue);
 }
+
+const displaySummaryValue = value => typeof value === 'number' ? `₹${money(value)}` : value;
 
 function driveImageUrl(value) {
   const url = String(value || '').trim();
@@ -230,14 +222,13 @@ function SetQuotationPreview({ meta, sets, gstPct, terms, termsType, termTypes, 
             </Box>
           </Box>
         )) : <Box sx={{ ...cell, py: 4, textAlign: 'center', color: '#64748b' }}>Add a standard or blank set to populate the quotation output.</Box>}
-        <CommercialPreview items={sets.flatMap(set => set.items || [])} />
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 260px' }}>
           <Box sx={{ ...cell, minHeight: 100 }}><strong>Notes:</strong> {meta.notes || '-'}</Box>
           <Box>
-            {[['Subtotal', totals.subtotal], ['Freight', totals.freight], ['Installation', totals.installation], [`GST @ ${Number(gstPct) || 0}%`, totals.gst], ['Grand Total', totals.grand]].map(([label, value]) => (
+            {[['Subtotal', totals.subtotal], ['Freight', commercialValue(sets.flatMap(set => set.items || []), 'freight')], ['Installation', commercialValue(sets.flatMap(set => set.items || []), 'installation')], [`GST @ ${Number(gstPct) || 0}%`, totals.gst], ['Grand Total', totals.grand]].map(([label, value]) => (
               <Box key={label} sx={{ display: 'grid', gridTemplateColumns: '130px 130px', bgcolor: label === 'Grand Total' ? '#dce9f8' : '#fff' }}>
                 <Box sx={{ ...cell, fontWeight: label === 'Grand Total' ? 800 : 600 }}>{label}</Box>
-                <Box sx={{ ...cell, textAlign: 'right', fontWeight: label === 'Grand Total' ? 800 : 600 }}>₹{money(value)}</Box>
+                <Box sx={{ ...cell, textAlign: 'right', fontWeight: label === 'Grand Total' ? 800 : 600 }}>{displaySummaryValue(value)}</Box>
               </Box>
             ))}
           </Box>
@@ -288,7 +279,6 @@ export default function QuotationSheetPreview({ quoteType = 'standard', meta, ro
           <Box sx={{ ...cell, py: 4, textAlign: 'center', color: '#64748b' }}>Select an item to populate the quotation output.</Box>
         )}
 
-        <CommercialPreview items={quoteRows} />
         <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 260px' }}>
           <Box sx={{ ...cell, minHeight: 116 }}>
             <strong>Notes:</strong> {meta.notes || '-'}
@@ -297,14 +287,14 @@ export default function QuotationSheetPreview({ quoteType = 'standard', meta, ro
             {[
               ['Subtotal', totals.subTotal],
               ['Discount', -(totals.equipmentDiscount + totals.nonEquipmentDiscount)],
-              ['Freight', totals.freight],
-              ['Installation', totals.installation],
+              ['Freight', commercialValue(quoteRows, 'freight', pricing?.freightAmount)],
+              ['Installation', commercialValue(quoteRows, 'installation', pricing?.installationAmount)],
               ['GST', gst],
               ['Grand Total', totals.grand],
             ].map(([label, value]) => (
               <Box key={label} sx={{ display: 'grid', gridTemplateColumns: '130px 130px', bgcolor: label === 'Grand Total' ? '#dce9f8' : '#fff' }}>
                 <Box sx={{ ...cell, fontWeight: label === 'Grand Total' ? 800 : 600 }}>{label}</Box>
-                <Box sx={{ ...cell, textAlign: 'right', fontWeight: label === 'Grand Total' ? 800 : 600 }}>₹{money(value)}</Box>
+                <Box sx={{ ...cell, textAlign: 'right', fontWeight: label === 'Grand Total' ? 800 : 600 }}>{displaySummaryValue(value)}</Box>
               </Box>
             ))}
           </Box>

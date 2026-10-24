@@ -11,6 +11,14 @@ export function quotationCommercialSummary(items = [], field) {
   return { entries, amount: entries.reduce((sum, entry) => sum + quotationChargeAmount(entry.value), 0) };
 }
 
-export function quotationCommercialLabel(label, summary) {
-  return [label, ...summary.entries.map((entry) => `${entry.serial}. ${entry.item}: ${entry.value}`)].join('\n');
+export function quotationCommercialLabel(label) {
+  return label;
+}
+
+export function quotationCommercialValue(summary, globalValue = '') {
+  const values = [globalValue, ...summary.entries.map(entry => entry.value)].map(value => String(value ?? '').trim()).filter(Boolean);
+  const wording = [...new Set(values.filter(value => !/^(?:₹\s*)?\d[\d,]*(?:\.\d+)?$/.test(value)))];
+  const amount = quotationChargeAmount(globalValue) + summary.amount;
+  if (!wording.length) return values.length ? amount : 'Extra';
+  return [...(amount ? [`₹ ${amount.toLocaleString('en-IN', { maximumFractionDigits: 2 })}`] : []), ...wording].join('; ');
 }

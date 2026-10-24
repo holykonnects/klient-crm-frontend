@@ -7,7 +7,7 @@ import {
 import { createSignedToken } from "./sessionAuth.js";
 import { QUOTATION_CURRENCY_FORMAT } from "./quotationCurrency.js";
 import { downloadQuotationImage, quotationImageReference } from "./quotationImages.js";
-import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary } from "../../src/utils/quotationCommercials.js";
+import { quotationChargeAmount, quotationCommercialLabel, quotationCommercialSummary, quotationCommercialValue } from "../../src/utils/quotationCommercials.js";
 import { quotationOutputRows } from "../../src/utils/quotationOutput.js";
 import { quotationGeneratedByEmail } from "../../src/utils/quotationAuthor.js";
 import { quotationSignoffText } from "./quotationSignoff.js";
@@ -94,8 +94,8 @@ export async function buildQuotationPdf(payload = {}) {
   });
   const left = 24;
   const columns = [
-    ["S.No", 30], ["Item", 118], ["Image", 62], ["Description", 236], ["Freight", 62],
-    ["Installation", 67], ["Unit", 42], ["Qty", 45], ["Unit Price", 64], ["Amount", 68],
+    ["S.No", 30], ["Item", 118], ["Image", 62], ["Description", 365],
+    ["Unit", 42], ["Qty", 45], ["Unit Price", 64], ["Amount", 68],
   ];
   const tableWidth = columns.reduce((sum, column) => sum + column[1], 0);
   let y = 0;
@@ -139,10 +139,10 @@ export async function buildQuotationPdf(payload = {}) {
     doc.font("Helvetica").fontSize(7.2);
     const height = Math.max(58, Math.min(118, doc.heightOfString(description || "-", { width: 228 }) + 12));
     if (y + height > 545) pageHeader(true);
-    const values = [item.serial, [item.section, item.displayItem || item.libraryItem || item.itemCode, item.category, item.subCategory].filter(Boolean).join("\n"), "", description, item.freight, item.installation, item.unit, qty, money(rate), money(amount)];
+    const values = [item.serial, [item.section, item.displayItem || item.libraryItem || item.itemCode, item.category, item.subCategory].filter(Boolean).join("\n"), "", description, item.unit, qty, money(rate), money(amount)];
     let x = left;
     columns.forEach(([, width], index) => {
-      cell(values[index], x, y, width, height, { align: index === 0 || index >= 6 ? "center" : "left", bold: index === 9 });
+      cell(values[index], x, y, width, height, { align: index === 0 || index >= 4 ? "center" : "left", bold: index === 7 });
       if (index === 2 && images.get(clean(item.imageUrl))) {
         try { doc.image(images.get(clean(item.imageUrl)), x + 4, y + 4, { fit: [width - 8, height - 8], align: "center", valign: "center" }); } catch {}
       }
@@ -154,23 +154,23 @@ export async function buildQuotationPdf(payload = {}) {
   const equipmentDiscount = equipmentSubtotal * (number(pricing.equipmentDiscountPct) / 100);
   const nonEquipmentDiscount = nonEquipmentSubtotal * (number(pricing.nonEquipmentDiscountPct) / 100);
   const discount = equipmentDiscount + nonEquipmentDiscount;
-  const freight = number(pricing.freightAmount);
-  const installation = number(pricing.installationAmount);
+  const freight = quotationChargeAmount(pricing.freightAmount) + quotationCommercialSummary(items, 'freight').amount;
+  const installation = quotationChargeAmount(pricing.installationAmount) + quotationCommercialSummary(items, 'installation').amount;
   const equipmentTaxable = Math.max(0, equipmentSubtotal - equipmentDiscount);
   const nonEquipmentTaxable = Math.max(0, nonEquipmentSubtotal - nonEquipmentDiscount);
   const taxable = equipmentTaxable + nonEquipmentTaxable;
   const gst = payload.quoteType === "project-set"
-    ? subtotal * (number(payload.setQuotation?.gstPct) / 100)
+    ? (subtotal + freight + installation) * (number(payload.setQuotation?.gstPct) / 100)
     : equipmentTaxable * (number(pricing.equipmentGstPct) / 100)
     + nonEquipmentTaxable * (number(pricing.nonEquipmentGstPct) / 100)
     + (freight + installation) * (number(pricing.freightInstallGstPct) / 100);
-  const totals = [["Subtotal", subtotal], ["Discount", -discount], ["Freight", freight], ["Installation", installation], ["GST", gst], ["Grand Total", Math.ceil(taxable + freight + installation + gst)]];
+  const totals = [["Subtotal", subtotal], ["Discount", -discount], ["Freight", templateCommercials(items, pricing, 'freight').value], ["Installation", templateCommercials(items, pricing, 'installation').value], ["GST", gst], ["Grand Total", Math.ceil(taxable + freight + installation + gst)]];
   if (y + totals.length * 22 + 55 > 570) pageHeader(true);
   const totalX = left + tableWidth - 220;
   totals.forEach(([label, value], index) => {
     const final = index === totals.length - 1;
     cell(label, totalX, y, 105, 22, { fill: final ? LIGHT_BLUE : "#ffffff", bold: final });
-    cell(money(value), totalX + 105, y, 115, 22, { fill: final ? LIGHT_BLUE : "#ffffff", bold: final, align: "right" }); y += 22;
+    cell(typeof value === 'number' ? money(value) : value, totalX + 105, y, 115, 22, { fill: final ? LIGHT_BLUE : "#ffffff", bold: final, align: "right" }); y += 22;
   });
   const terms = (meta.termsAndConditions || []).map(plainText).filter(Boolean);
   if (terms.length) {
@@ -253,11 +253,9 @@ function templatePricing(payload) {
 function templateCommercials(items, pricing, field) {
   const summary = quotationCommercialSummary(items, field);
   const globalValue = pricing[`${field}Amount`];
-  const amount = quotationChargeAmount(globalValue) + summary.amount;
-  const hasAmount = amount > 0 || /^\s*(?:₹\s*)?0(?:\.0+)?\s*$/.test(String(globalValue ?? ''));
   return {
     label: quotationCommercialLabel(field === 'freight' ? 'Freight' : 'Installation', summary),
-    value: hasAmount ? amount : (String(globalValue ?? '').trim() || (summary.entries.length ? 'As specified' : 'Extra')),
+    value: quotationCommercialValue(summary, globalValue),
   };
 }
 function templateRichCell(html, fallback) {

@@ -1,5 +1,5 @@
 // src/components/QuotationBuilder.js
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Autocomplete, Box, Grid, Typography, Button, TextField, IconButton,
   MenuItem, Select, FormControl, InputLabel, Paper, Alert, CircularProgress,
@@ -44,7 +44,7 @@ import { athleticSpecificationDetails } from './athleticSpecificationReference';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
-import { moveQuotationRow, moveQuotationRowTo } from '../utils/quotationRowOrder';
+import { moveQuotationRow, moveQuotationRowTo, quotationDragScrollDelta } from '../utils/quotationRowOrder';
 import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
@@ -238,6 +238,7 @@ export default function QuotationBuilder() {
   const [imageSelector, setImageSelector] = useState(null);
   const [termsByType, setTermsByType] = useState({});
   const [draggedRowIndex, setDraggedRowIndex] = useState(null);
+  const athleticItemsTableRef = useRef(null);
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -260,6 +261,19 @@ export default function QuotationBuilder() {
   const canUseQuotation =
     user?.role === 'Admin' ||
     (Array.isArray(user?.pageAccess) && user.pageAccess.includes('Quotation'));
+
+  useEffect(() => {
+    if (draggedRowIndex === null) return undefined;
+    const autoScroll = event => {
+      const container = athleticItemsTableRef.current;
+      if (!container) return;
+      const bounds = container.getBoundingClientRect();
+      const delta = quotationDragScrollDelta(event.clientY, bounds.top, bounds.bottom);
+      if (delta) container.scrollTop += delta;
+    };
+    window.addEventListener('dragover', autoScroll);
+    return () => window.removeEventListener('dragover', autoScroll);
+  }, [draggedRowIndex]);
 
   // Load catalog
   useEffect(() => {
@@ -1146,7 +1160,7 @@ export default function QuotationBuilder() {
             {!catalogLoading && !catalogError && !(catalog?.categories || []).length && (
               <Alert severity="warning" sx={{ mx: 2, mb: 2 }}>Equipment BD loaded, but no Category, Sub Category and Item Code records were found.</Alert>
             )}
-            <TableContainer sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
+            <TableContainer ref={athleticItemsTableRef} sx={{ mx: 2, mb: 2, width: 'auto', maxHeight: 470, overflowX: 'auto', overflowY: 'auto !important', border: '1px solid #dbe3ef', borderRadius: 2, scrollbarGutter: 'stable' }}>
               <Table className={quoteType === 'athletic' ? 'athletic-quotation-items' : undefined} stickyHeader size="small" sx={{ minWidth: quoteType === 'athletic' ? athleticTableMinWidth : 1520 + (showFreightColumn ? 110 : 0) + (showInstallationColumn ? 110 : 0), tableLayout: 'fixed', '& th, & td': { px: quoteType === 'athletic' ? 0.75 : 2, overflowWrap: 'anywhere' }, '& th': { bgcolor: '#f8fafc', color: '#475569', fontWeight: 800, whiteSpace: 'nowrap' }, '& tbody td': { verticalAlign: 'top !important', py: 1 } }}>
                 {quoteType === 'athletic' && <colgroup>{athleticColumns.map(column => <col key={column.key} data-column={column.key} style={{ width: column.key === 'description' ? undefined : column.width }} />)}</colgroup>}
                 <TableHead><TableRow>

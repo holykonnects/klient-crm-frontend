@@ -188,9 +188,19 @@ export function reconcileAthleticRows(existingRows = [], generatedRows = [], exc
         ? athleticQuantity(existing.qtyDriver, existing.factor, row.fieldEventId ? { ...context, area: row.fieldEventArea } : context) : row.qty,
     };
   });
-  const manualRows = existingRows.filter(row => row.source !== 'rate-library').map(row => row.calculationEdited && !row.qtyEdited
-    ? { ...row, qty: athleticQuantity(row.qtyDriver, row.factor, context) } : row);
-  return [...defaults, ...manualRows];
+  const defaultsByKey = new Map(defaults.map(row => [row.libraryKey, row]));
+  const preserved = existingRows.flatMap(row => {
+    if (row.source === 'rate-library') {
+      const updated = defaultsByKey.get(row.libraryKey);
+      if (!updated) return [];
+      defaultsByKey.delete(row.libraryKey);
+      return [updated];
+    }
+    return [row.calculationEdited && !row.qtyEdited
+      ? { ...row, qty: athleticQuantity(row.qtyDriver, row.factor, context) }
+      : row];
+  });
+  return [...preserved, ...defaults.filter(row => defaultsByKey.has(row.libraryKey))];
 }
 
 export function applyAthleticImageMapping(row = {}, mapping = {}, catalog = {}) {

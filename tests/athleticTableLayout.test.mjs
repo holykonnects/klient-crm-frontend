@@ -7,7 +7,8 @@ test('athletic columns prioritise item and description without repeating generic
   const columns = athleticTableColumns();
   const widths = Object.fromEntries(columns.map(column => [column.key, column.width]));
   assert.equal(columns.length, 12);
-  assert.equal(widths.serial, 40);
+  assert.equal(widths.serial, 64);
+  assert.equal(widths.actions, 144);
   assert.ok(widths.description > widths.item && widths.item > widths.system && widths.system > widths.scope);
   assert.ok(athleticTableColumns({ freight: true, installation: true }).slice(-2).every(column => ['freight', 'installation'].includes(column.key)));
 });

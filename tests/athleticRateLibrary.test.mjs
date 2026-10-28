@@ -140,6 +140,15 @@ test('library defaults preserve user quantity overrides while rates refresh', ()
   assert.equal(reconciled[0].rate, 3600);
 });
 
+test('library refresh preserves the quotation order and appends newly enabled defaults', () => {
+  const row = key => ({ source: 'rate-library', libraryKey: key, libraryItem: key, qty: 1, rate: 100 });
+  const existing = [row('third'), { source: 'manual', desc: 'Manual line' }, row('first'), row('second')];
+  const refreshed = [{ ...row('first'), rate: 110 }, { ...row('second'), rate: 120 }, { ...row('third'), rate: 130 }, row('new')];
+  const result = reconcileAthleticRows(existing, refreshed);
+  assert.deepEqual(result.map(item => item.libraryKey || item.desc), ['third', 'Manual line', 'first', 'second', 'new']);
+  assert.deepEqual(result.filter(item => item.libraryKey).map(item => item.rate), [130, 110, 120, 100]);
+});
+
 test('library text refreshes unless the quotation has an explicit override', () => {
   const base = {
     source: 'rate-library', libraryKey: 'rate-library:2:gsb', qty: 1, suggestedQty: 1,

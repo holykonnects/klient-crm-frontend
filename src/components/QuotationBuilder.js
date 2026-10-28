@@ -22,6 +22,7 @@ import CalculateOutlined from '@mui/icons-material/CalculateOutlined';
 import MenuBookOutlined from '@mui/icons-material/MenuBookOutlined';
 import ArrowUpward from '@mui/icons-material/ArrowUpward';
 import ArrowDownward from '@mui/icons-material/ArrowDownward';
+import DragIndicator from '@mui/icons-material/DragIndicator';
 import '@fontsource/montserrat';
 import { useAuth } from './AuthContext';
 import QuotationAdmin from './QuotationAdmin';
@@ -43,7 +44,7 @@ import { athleticSpecificationDetails } from './athleticSpecificationReference';
 import { itemQuantity, normalizeSets, setQuoteTotals } from './quotationSets';
 import { applyAthleticImageMapping, athleticDrainPerimeter, buildAthleticDefaultRows, isExportableQuotationRow, reconcileAthleticRows } from './athleticRateLibrary';
 import { filterQuotationLeads, normalizeQuotationLead, quotationMetaForLead } from '../utils/quotationLeadOptions';
-import { moveQuotationRow } from '../utils/quotationRowOrder';
+import { moveQuotationRow, moveQuotationRowTo } from '../utils/quotationRowOrder';
 import QuotationChargeField from './QuotationChargeField';
 import { quotationChargeAmount, quotationCommercialSummary } from '../utils/quotationCommercials';
 import { applyQuotationCommercialSettings, quotationOutputRows } from '../utils/quotationOutput';
@@ -236,6 +237,7 @@ export default function QuotationBuilder() {
   const [descriptionEditor, setDescriptionEditor] = useState(null);
   const [imageSelector, setImageSelector] = useState(null);
   const [termsByType, setTermsByType] = useState({});
+  const [draggedRowIndex, setDraggedRowIndex] = useState(null);
 
   const [leadOptions, setLeadOptions] = useState([]);
   const [attachLead, setAttachLead] = useState('');
@@ -488,6 +490,7 @@ export default function QuotationBuilder() {
 
   const addRow = () => setRows(prev => [...prev, { ...emptyRow }]);
   const moveRow = (index, direction) => setRows(prev => moveQuotationRow(prev, index, direction));
+  const moveRowTo = (fromIndex, toIndex) => setRows(prev => moveQuotationRowTo(prev, fromIndex, toIndex));
   const removeRow = (i) => setRows(prev => {
     const removed = prev[i];
     if (removed?.libraryKey) setExcludedAthleticLibraryKeys(current => [...new Set([...current, removed.libraryKey])]);
@@ -1164,8 +1167,23 @@ export default function QuotationBuilder() {
                     const lineRate = toNumber(r.rateOverride != null && r.rateOverride !== '' ? r.rateOverride : r.rate);
                     const lineTotal = toNumber(r.qty) * lineRate;
                     const specification = quoteType === 'athletic' ? athleticSpecificationDetails(r) : null;
-                    return <TableRow key={i} hover>
-                      <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>{i + 1}</Box></TableCell>
+                    return <TableRow key={r.libraryKey || r.fieldEventId || `${r.itemCode || 'manual'}-${i}`} hover
+                      onDragOver={quoteType === 'athletic' ? event => event.preventDefault() : undefined}
+                      onDrop={quoteType === 'athletic' ? event => {
+                        event.preventDefault();
+                        if (draggedRowIndex !== null) moveRowTo(draggedRowIndex, i);
+                        setDraggedRowIndex(null);
+                      } : undefined}
+                      sx={draggedRowIndex === i ? { opacity: 0.55, bgcolor: '#eff6ff' } : undefined}>
+                      <TableCell sx={{ fontWeight: 700 }}><Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}>
+                        {quoteType === 'athletic'
+                          ? <Select size="small" value={i + 1} aria-label={`Position for item ${i + 1}`}
+                            onChange={event => moveRowTo(i, Number(event.target.value) - 1)}
+                            sx={{ minWidth: 54, fontSize: '0.72rem', '& .MuiSelect-select': { py: 0.75, px: 1 } }}>
+                            {rows.map((_, position) => <MenuItem key={position} value={position + 1}>{position + 1}</MenuItem>)}
+                          </Select>
+                          : i + 1}
+                      </Box></TableCell>
                       <TableCell>{r.source === 'rate-library'
                         ? <Box sx={{ minHeight: 42, display: 'flex', alignItems: 'center' }}><Typography sx={{ fontSize: '0.76rem', fontWeight: 700, color: '#334155' }}>{r.scope || 'Athletic'}</Typography></Box>
                         : <FormControl fullWidth size="small"><Select value={r.category} displayEmpty disabled={catalogLoading} onChange={e => handleRowChange(i, 'category', e.target.value)} sx={selectSx}><MenuItem value=""><em>Choose</em></MenuItem>{(catalog?.categories || []).map(c => <MenuItem key={c} value={c}>{c}</MenuItem>)}</Select></FormControl>}</TableCell>
@@ -1212,6 +1230,18 @@ export default function QuotationBuilder() {
                       <TableCell><FormControl fullWidth size="small"><Select value={r.itemType || 'Equipment'} onChange={e => handleRowChange(i, 'itemType', e.target.value)} sx={selectSx}>{ITEM_TYPE_OPTIONS.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}</Select></FormControl></TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                          {quoteType === 'athletic' && <Tooltip title="Drag to reorder">
+                            <IconButton size="small" draggable aria-label={`Drag item ${i + 1} to reorder`}
+                              onDragStart={event => {
+                                setDraggedRowIndex(i);
+                                event.dataTransfer.effectAllowed = 'move';
+                                event.dataTransfer.setData('text/plain', String(i));
+                              }}
+                              onDragEnd={() => setDraggedRowIndex(null)}
+                              sx={{ cursor: 'grab', '&:active': { cursor: 'grabbing' } }}>
+                              <DragIndicator fontSize="small" />
+                            </IconButton>
+                          </Tooltip>}
                           <Tooltip title="Move line up"><span><IconButton size="small" disabled={i === 0} onClick={() => moveRow(i, -1)}><ArrowUpward fontSize="small" /></IconButton></span></Tooltip>
                           <Tooltip title="Move line down"><span><IconButton size="small" disabled={i === rows.length - 1} onClick={() => moveRow(i, 1)}><ArrowDownward fontSize="small" /></IconButton></span></Tooltip>
                           <Tooltip title="Remove line"><span><IconButton size="small" disabled={rows.length === 1} onClick={() => removeRow(i)}><DeleteOutline fontSize="small" /></IconButton></span></Tooltip>

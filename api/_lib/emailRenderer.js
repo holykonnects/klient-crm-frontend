@@ -202,9 +202,11 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
 </html>`;
 }
 
-export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "", fromName = "Rido CRM" }) {
+export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "", fromName = "Rido CRM", inlineAttachments = [] }) {
   const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
-  const attachments = inlineLogoAttachments(html);
+  const attachments = [...inlineLogoAttachments(html), ...inlineAttachments.map(attachment => ({
+    ...attachment, content: base64Mime(attachment.body),
+  }))];
   const headers = [
     sender ? `From: ${clean(fromName) || "Rido CRM"} <${sender}>` : "",
     `To: ${to}`,

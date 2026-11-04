@@ -9,6 +9,13 @@ function safeJSON(text) {
 }
 
 const EmailService = {
+  async campaign(action, payload = {}, method = 'GET') {
+    const response = await fetch(method === 'GET' ? `${API}?${new URLSearchParams({ action, ...payload })}` : API,
+      method === 'GET' ? undefined : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, action }) });
+    const result = safeJSON(await response.text());
+    if (!response.ok || !result?.ok) throw new Error(result?.error || 'The email request could not be confirmed. Refresh the campaign before continuing.');
+    return result;
+  },
   async getTemplates(userEmail = "") {
     const params = new URLSearchParams({ action: "getTemplates", user: userEmail });
     const res = await fetch(`${API}?${params.toString()}`);

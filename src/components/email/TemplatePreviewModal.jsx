@@ -1,16 +1,27 @@
 import { useEffect, useState } from "react";
-import { Box, Dialog, Typography } from "@mui/material";
+import { Alert, Box, CircularProgress, Dialog, Typography } from "@mui/material";
 import EmailService from "./EmailService";
+import EmailHtmlPreview from './EmailHtmlPreview';
 
 export default function TemplatePreviewModal({ open, onClose, templateId, userEmail = "" }) {
   const [html, setHtml] = useState("");
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (open) {
+    let active = true;
+    if (open && templateId) {
+      setHtml('');
+      setError('');
+      setLoading(true);
       EmailService.previewTemplate(templateId, userEmail).then((res) => {
+        if (!active) return;
+        if (!res?.ok) throw new Error(res?.error || 'Unable to load the template preview.');
         setHtml(res.html || "");
-      });
+      }).catch(err => { if (active) setError(err.message); })
+        .finally(() => { if (active) setLoading(false); });
     }
+    return () => { active = false; };
   }, [open, templateId, userEmail]);
 
   return (
@@ -20,16 +31,7 @@ export default function TemplatePreviewModal({ open, onClose, templateId, userEm
           Template Preview
         </Typography>
 
-        <Box
-          mt={2}
-          sx={{
-            border: "1px solid #ddd",
-            padding: 2,
-            maxHeight: "70vh",
-            overflowY: "auto",
-          }}
-          dangerouslySetInnerHTML={{ __html: html }}
-        />
+        <Box mt={2}>{loading ? <CircularProgress aria-label="Loading template preview" /> : error ? <Alert severity="error">{error}</Alert> : <EmailHtmlPreview html={html} />}</Box>
       </Box>
     </Dialog>
   );

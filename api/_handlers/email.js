@@ -4,19 +4,177 @@ import {
   buildRow,
   driveCopyFile,
   driveExportFile,
+  driveDownloadFile,
   driveGetFile,
   driveListFiles,
   formatTimestamp,
   getValues,
+  getSpreadsheet,
+  googleFetch,
+  updateCell,
   gmailSendRawEmail,
   resolveSheetTitle,
   rowsToObjects,
 } from "../_lib/googleSheets.js";
 import { handleLeadPost } from "../_lib/crmHandlers.js";
-import { base64Url, brandedEmailHtml, mimeMessage } from "../_lib/emailRenderer.js";
+import { base64Url, mimeMessage } from "../_lib/emailRenderer.js";
+import { prepareTemplateEmail, templateEmailHtml } from "../_lib/emailTemplates.js";
+import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
+import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, validEmail } from '../_lib/emailCampaigns.js';
+import { createHash } from 'node:crypto';
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const EMAIL_PAGE_KEY = "Email";
+const DISPATCH_SHEET = 'CRM_Email_Dispatches';
+const campaignSpreadsheetId = () => process.env.EMAIL_CAMPAIGN_SHEET_ID || SHEETS.email.spreadsheetId;
+let cachedTemplate;
+
+async function appendDispatchRow(row) {
+  const range = encodeURIComponent(`'${DISPATCH_SHEET}'!A:F`);
+  return googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${campaignSpreadsheetId()}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }),
+  });
+}
+
+function previewHtml(prepared, template) {
+  if (prepared.htmlBytes > 3 * 1024 * 1024) throw Object.assign(new Error('The template HTML is too large to preview. Remove unused document content and try again.'), { status: 413 });
+  let html = prepared.html;
+  for (const attachment of prepared.inlineAttachments) {
+    const token = createSignedToken({ type: 'email-template-image', templateId: template.id, version: template.version,
+      cid: attachment.cid, exp: Math.floor(Date.now() / 1000) + 1800 });
+    const params = new URLSearchParams({ action: 'emailTemplateImage', token });
+    html = html.replaceAll(`cid:${attachment.cid}`, `/api/email?${params.toString().replace(/&/g, '&amp;')}`);
+  }
+  return html;
+}
+
+async function templateImage(req, res) {
+  let receipt;
+  try { receipt = verifySignedToken(clean(req.query.token)); }
+  catch { throw Object.assign(new Error('Template preview image has expired. Preview the template again.'), { status: 403 }); }
+  if (receipt.type !== 'email-template-image') throw Object.assign(new Error('Invalid image token.'), { status: 403 });
+  const template = await loadTemplate(receipt.templateId);
+  if (template.version !== receipt.version) throw new Error('The template changed. Preview it again.');
+  const image = prepareTemplateEmail(template.html).inlineAttachments.find(attachment => attachment.cid === receipt.cid);
+  if (!image) throw new Error('Template image not found.');
+  res.setHeader('Content-Type', image.contentType);
+  res.setHeader('Cache-Control', 'private, max-age=300');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.status(200).send(image.body);
+}
+
+async function loadTemplate(id) {
+  if (!id) throw new Error('Select an email template.');
+  const meta = await driveGetFile(id, 'id,name,mimeType,modifiedTime,webViewLink,parents');
+  if (!(meta.parents || []).includes(DRIVE_FOLDERS.emailTemplates)) throw Object.assign(new Error('Select a template from the CRM email template folder.'), { status: 403 });
+  if (cachedTemplate?.id === id && cachedTemplate.modifiedTime === meta.modifiedTime && cachedTemplate.expires > Date.now()) return { ...cachedTemplate, meta };
+  let exported;
+  if (meta.mimeType === GOOGLE_DOC_MIME) exported = await driveExportFile(id, 'text/html');
+  else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id);
+  else throw new Error('Use a Google Docs or HTML email template.');
+  const html = exported.body.toString('utf8');
+  const version = createHash('sha256').update(html).digest('hex');
+  cachedTemplate = { id, modifiedTime: meta.modifiedTime, expires: Date.now() + 60000, html, version };
+  return { ...cachedTemplate, meta };
+}
+
+async function campaignSheets(user) {
+  await assertCanUseEmail(user);
+  const spreadsheet = await getSpreadsheet(campaignSpreadsheetId());
+  const excluded = new Set([...SHEETS.email.eventSheetNames, ...SHEETS.email.settingsSheetNames, DISPATCH_SHEET]);
+  return { ok: true, data: (spreadsheet.sheets || []).map(sheet => sheet.properties?.title).filter(title => title && !excluded.has(title)) };
+}
+
+async function readCampaign(sheet, user) {
+  const { data } = await campaignSheets(user);
+  if (!data.includes(sheet)) throw new Error('Select a campaign sheet from the available list.');
+  return campaignRecipients(await getValues(campaignSpreadsheetId(), sheet));
+}
+
+async function ledger(create = false) {
+  const id = campaignSpreadsheetId();
+  try { return await getValues(id, DISPATCH_SHEET); }
+  catch (error) {
+    const spreadsheet = await getSpreadsheet(id);
+    if ((spreadsheet.sheets || []).some(sheet => sheet.properties?.title === DISPATCH_SHEET)) throw error;
+    if (!create) return [];
+    try {
+      await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requests: [{ addSheet: { properties: { title: DISPATCH_SHEET, gridProperties: { frozenRowCount: 1 } } } }] }),
+      });
+    } catch (creationError) {
+      const current = await getSpreadsheet(id);
+      if (!(current.sheets || []).some(sheet => sheet.properties?.title === DISPATCH_SHEET)) throw creationError;
+    }
+    return getValues(id, DISPATCH_SHEET);
+  }
+}
+
+async function previewCampaign(body, user) {
+  await assertCanUseEmail(user);
+  const template = await loadTemplate(clean(body.templateId));
+  const recipient = body.recipient || {};
+  const html = templateEmailHtml(template.html, campaignPlaceholders(recipient, body.quotationLink));
+  const prepared = prepareTemplateEmail(html);
+  return { ok: true, html: previewHtml(prepared, template), version: template.version, htmlBytes: prepared.htmlBytes, imageBytes: prepared.imageBytes,
+    missing: [...new Set(html.match(/\{\{[A-Z_]+\}\}/g) || [])] };
+}
+
+async function sendCampaign(body, session) {
+  const access = await assertCanUseEmail(session.sub);
+  let recipient;
+  let columns;
+  if (body.sheet) {
+    const campaign = await readCampaign(clean(body.sheet), session.sub);
+    columns = campaign.columns;
+    recipient = campaign.recipients.find(row => row.rowNumber === Number(body.rowNumber));
+    if (!recipient || recipient.email !== clean(body.expectedEmail).toLowerCase()) throw new Error('The campaign row changed. Refresh the recipient list before sending.');
+  } else recipient = { email: clean(body.recipient?.email).toLowerCase(), firstName: clean(body.recipient?.firstName), company: clean(body.recipient?.company) };
+  if (!validEmail(recipient.email)) throw new Error('Enter a valid recipient email address.');
+  const subject = clean(body.subject);
+  const replyTo = clean(body.replyTo || session.email || session.sub);
+  if (!subject || /[\r\n]/.test(subject) || !validEmail(replyTo)) throw new Error('Enter a subject without line breaks and a valid reply-to email address.');
+  const template = await loadTemplate(clean(body.templateId));
+  if (!body.version || body.version !== template.version) throw new Error('The template has changed. Preview it again before sending.');
+  const placeholders = campaignPlaceholders(recipient, body.quotationLink);
+  const prepared = prepareTemplateEmail(templateEmailHtml(template.html, placeholders));
+  const missing = prepared.html.match(/\{\{[A-Z_]+\}\}/g);
+  if (missing) throw new Error(`Complete the template placeholders before sending: ${[...new Set(missing)].join(', ')}`);
+  const message = mimeMessage({ to: recipient.email, subject, replyTo, ...prepared });
+  if (Buffer.byteLength(message) > 28 * 1024 * 1024) throw Object.assign(new Error('The encoded email is too large. Reduce image sizes.'), { status: 413 });
+  const key = campaignDispatchKey({ campaign: body.campaign, sheet: body.sheet || 'single', email: recipient.email, templateId: body.templateId });
+  const initial = await ledger(true);
+  if (!initial.length) await appendDispatchRow(['Dispatch Key', 'Attempt', 'Status', 'Created At', 'Gmail Message ID', 'Detail']);
+  const result = await dispatchCampaign({ key,
+    readClaims: () => ledger(),
+    claim: row => appendDispatchRow(row),
+    updateClaim: async (token, status, messageId, detail) => {
+      const rows = await ledger();
+      const index = rows.findIndex(row => row[1] === token);
+      if (index < 0) throw new Error('Dispatch record not found.');
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 3, status);
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 5, messageId);
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 6, detail);
+    },
+    send: () => gmailSendRawEmail(base64Url(message)),
+  });
+  if (!result.skipped) {
+    try {
+      if (body.sheet) {
+        const latest = await readCampaign(clean(body.sheet), session.sub);
+        if (!latest.recipients.some(row => row.rowNumber === recipient.rowNumber && row.email === recipient.email)) throw new Error('Recipient moved after sending.');
+        columns = latest.columns;
+        for (const [field, value] of [['status', 'Sent'], ['sentAt', formatTimestamp()], ['template', template.meta.name]]) {
+          if (columns[field] >= 0) await updateCell(campaignSpreadsheetId(), body.sheet, recipient.rowNumber, columns[field] + 1, value);
+        }
+      }
+      await logEmailEvent({ Timestamp: formatTimestamp(), to: recipient.email, subject, templateId: body.templateId,
+        templateText: template.meta.name, sentBy: access.user, firstName: recipient.firstName, companyName: recipient.company, status: 'SENT' });
+    } catch { result.warning = [result.warning, 'Email sent, but campaign status or event logging needs review. Do not resend.'].filter(Boolean).join(' '); }
+  }
+  return result;
+}
 
 function json(res, status, body) {
   return res.status(status).json(body);
@@ -71,14 +229,6 @@ function escapeRegExp(value) {
   return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
-function applyPlaceholders(html, placeholders = {}) {
-  let next = String(html || "");
-  Object.entries(placeholders || {}).forEach(([key, value]) => {
-    next = next.replaceAll(`{{${key}}}`, value == null ? "" : String(value));
-  });
-  return next;
-}
-
 async function listTemplates(userEmail) {
   await assertCanUseEmail(userEmail);
   const result = await driveListFiles({
@@ -88,6 +238,7 @@ async function listTemplates(userEmail) {
   });
   const templates = (result.files || [])
     .filter((file) => file.mimeType !== "application/vnd.google-apps.folder")
+    .filter(file => [GOOGLE_DOC_MIME, 'text/html'].includes(file.mimeType))
     .filter((file) => !/\.([0-9]+)$/.test(file.name || ""))
     .map((file) => ({
       id: file.id,
@@ -101,8 +252,10 @@ async function listTemplates(userEmail) {
 async function previewTemplate(id, userEmail) {
   await assertCanUseEmail(userEmail);
   if (!id) throw new Error("Missing template id");
-  const exported = await driveExportFile(id, "text/html");
-  return { ok: true, html: brandedEmailHtml(exported.body.toString("utf8"), { subject: "Template Preview" }) };
+  const template = await loadTemplate(id);
+  const html = templateEmailHtml(template.html);
+  const prepared = prepareTemplateEmail(html);
+  return { ok: true, html: previewHtml(prepared, template), htmlBytes: prepared.htmlBytes, imageBytes: prepared.imageBytes };
 }
 
 async function openTemplate(id, userEmail) {
@@ -204,9 +357,13 @@ async function sendEmail(body) {
   }
 
   const exported = await driveExportFile(templateId, "text/html");
-  const html = brandedEmailHtml(applyPlaceholders(exported.body.toString("utf8"), body.placeholders || {}), { subject });
+  const { html, inlineAttachments } = prepareTemplateEmail(templateEmailHtml(exported.body.toString("utf8"), body.placeholders || {}));
   const replyTo = clean(body.fromEmail) || access.user;
-  const raw = base64Url(mimeMessage({ to, subject, html, replyTo }));
+  const message = mimeMessage({ to, subject, html, replyTo, inlineAttachments });
+  if (Buffer.byteLength(message, 'utf8') > 28 * 1024 * 1024) {
+    throw Object.assign(new Error('The email is too large after encoding. Reduce template image sizes before sending.'), { status: 413 });
+  }
+  const raw = base64Url(message);
   await gmailSendRawEmail(raw);
 
   await logEmailEvent({
@@ -232,7 +389,14 @@ export default async function handler(req, res) {
   try {
     if (req.method === "GET") {
       const action = clean(req.query.action);
+      if (action === 'emailTemplateImage') return await templateImage(req, res);
       const userEmail = requestUser(req);
+      if (action === 'getCampaignSheets' || action === 'getCampaignRecipients') {
+        const session = requireSession(req);
+        if (action === 'getCampaignSheets') return json(res, 200, await campaignSheets(session.sub));
+        const campaign = await readCampaign(clean(req.query.sheet), session.sub);
+        return json(res, 200, { ok: true, data: campaign.recipients });
+      }
       if (action === "getTemplates") return json(res, 200, await listTemplates(userEmail));
       if (action === "previewTemplate") return json(res, 200, await previewTemplate(clean(req.query.id), userEmail));
       if (action === "openTemplate") return json(res, 200, await openTemplate(clean(req.query.id), userEmail));
@@ -245,6 +409,10 @@ export default async function handler(req, res) {
       const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {};
       const action = clean(body.action);
       const userEmail = requestUser(req, body);
+      if (action === 'previewCampaignEmail' || action === 'sendCampaignEmail') {
+        const session = requireSession(req);
+        return json(res, 200, action === 'previewCampaignEmail' ? await previewCampaign(body, session.sub) : await sendCampaign(body, session));
+      }
       if (action === "versionTemplate") return json(res, 200, await versionTemplate(clean(body.templateId), userEmail));
       if (action === "createLead") return json(res, 200, await createLead(body, userEmail));
       if (action === "sendEmail") return json(res, 200, await sendEmail(body));

@@ -16,6 +16,7 @@ import BackupIcon from "@mui/icons-material/Backup";
 import PreviewIcon from "@mui/icons-material/Preview";
 import CloseIcon from "@mui/icons-material/Close";
 import { useAuth } from "../AuthContext";
+import EmailHtmlPreview from './EmailHtmlPreview';
 
 const EMAIL_API = "/api/email";
 
@@ -176,8 +177,7 @@ export default function EmailTemplatesTable() {
             border: "1px solid #e0e0e0",
             padding: 2,
           }}
-          dangerouslySetInnerHTML={{ __html: previewHtml }}
-        />
+        ><EmailHtmlPreview html={previewHtml} /></DialogContent>
       </Dialog>
     </Box>
   );

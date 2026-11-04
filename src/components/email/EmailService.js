@@ -1,37 +1,25 @@
+import { readEmailResponse } from './emailApiResponse';
 const API = "/api/email";
-
-function safeJSON(text) {
-  try {
-    return JSON.parse(text);
-  } catch (e) {
-    return null;
-  }
-}
 
 const EmailService = {
   async campaign(action, payload = {}, method = 'GET') {
     const response = await fetch(method === 'GET' ? `${API}?${new URLSearchParams({ action, ...payload })}` : API,
       method === 'GET' ? undefined : { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...payload, action }) });
-    const result = safeJSON(await response.text());
-    if (!response.ok || !result?.ok) throw new Error(result?.error || 'The email request could not be confirmed. Refresh the campaign before continuing.');
+    const result = await readEmailResponse(response);
+    if (!result?.ok) throw new Error('The email request could not be confirmed. Refresh the campaign before continuing.');
     return result;
   },
   async getTemplates(userEmail = "") {
     const params = new URLSearchParams({ action: "getTemplates", user: userEmail });
     const res = await fetch(`${API}?${params.toString()}`);
-    const text = await res.text();
-    const json = safeJSON(text);
-
-    if (!json || !json.ok) return [];
-
-    return json.data; // <-- EXTRACT ARRAY
+    const json = await readEmailResponse(res);
+    return json.data || [];
   },
 
   async getLeads(userEmail = "") {
     const params = new URLSearchParams({ action: "getLeads", user: userEmail });
     const res = await fetch(`${API}?${params.toString()}`);
-    const text = await res.text();
-    const arr = safeJSON(text);
+    const arr = await readEmailResponse(res);
 
     if (!Array.isArray(arr)) return [];
 
@@ -49,8 +37,7 @@ const EmailService = {
   async previewTemplate(id, userEmail = "") {
     const params = new URLSearchParams({ action: "previewTemplate", id, user: userEmail });
     const res = await fetch(`${API}?${params.toString()}`);
-    const text = await res.text();
-    return safeJSON(text);
+    return readEmailResponse(res);
   },
 
   async createLead(data, userEmail = "") {
@@ -63,12 +50,7 @@ const EmailService = {
         ...data
       }),
     });
-    const text = await res.text();
-    const json = safeJSON(text);
-    if (!res.ok || (json && json.ok === false)) {
-      throw new Error(json?.error || text || "Lead creation failed");
-    }
-    return json || { ok: true };
+    return readEmailResponse(res);
   },
 
   async sendEmail(payload, userEmail = "") {
@@ -83,13 +65,7 @@ const EmailService = {
       "Content-Type": "application/json"
     }
   });
-  const text = await res.text();
-  const json = safeJSON(text);
-  if (!res.ok || (json && json.ok === false)) {
-    throw new Error(json?.error || text || "Email send failed");
-  }
-
-  return json || { ok: true };
+  return readEmailResponse(res);
 }
 };
 export default EmailService;

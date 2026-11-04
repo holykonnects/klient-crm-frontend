@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Box,
   Button,
@@ -8,6 +8,7 @@ import {
   IconButton,
   Stack,
   Typography,
+  Alert,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -17,6 +18,7 @@ import PreviewIcon from "@mui/icons-material/Preview";
 import CloseIcon from "@mui/icons-material/Close";
 import { useAuth } from "../AuthContext";
 import EmailHtmlPreview from './EmailHtmlPreview';
+import { readEmailResponse } from './emailApiResponse';
 
 const EMAIL_API = "/api/email";
 
@@ -27,17 +29,15 @@ export default function EmailTemplatesTable() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewHtml, setPreviewHtml] = useState("");
   const [selectedTemplate, setSelectedTemplate] = useState(null);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  // Fetch templates from Drive
-  useEffect(() => {
-    fetchTemplates();
-  }, []);
-
-  const fetchTemplates = async () => {
+  const fetchTemplates = useCallback(async () => {
+    setLoading(true); setErrorMsg('');
     try {
       const params = new URLSearchParams({ action: "getTemplates", user: userEmail });
       const res = await fetch(`${EMAIL_API}?${params.toString()}`);
-      const data = await res.json();
+      const data = await readEmailResponse(res);
       if (data.ok) {
         const list = data.data.map((t, i) => ({
           id: t.id,
@@ -49,9 +49,11 @@ export default function EmailTemplatesTable() {
       }
     } catch (err) {
       console.error("Error loading templates:", err);
-      alert("Failed to load templates.");
+      setRows([]); setErrorMsg(err.message || 'Failed to load templates.');
     }
-  };
+    finally { setLoading(false); }
+  }, [userEmail]);
+  useEffect(() => { fetchTemplates(); }, [fetchTemplates]);
 
   // Preview template (HTML export)
   const handlePreview = async (id) => {
@@ -140,10 +142,12 @@ export default function EmailTemplatesTable() {
         Email Templates
       </Typography>
 
+      {errorMsg && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTemplates}>Retry</Button>}>{errorMsg}</Alert>}
       {/* DATAGRID */}
       <div style={{ height: 500, width: "100%" }}>
         <DataGrid
           rows={rows}
+          loading={loading}
           columns={columns}
           pageSizeOptions={[5, 10]}
           sx={{

@@ -3,3 +3,5 @@ build/
 pnpm-lock.yaml
 pnpm-workspace.yaml
 .DS_Store
+.env.local
+.env.*.local

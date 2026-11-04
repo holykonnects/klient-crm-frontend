@@ -4,6 +4,12 @@ The Email Sender opens a CRM component, not an Apps Script web app. Templates an
 campaign recipients stay in Google Drive/Sheets; delivery uses the Gmail API.
 No Apps Script deployment is required. Scheduler scripts are unchanged.
 
+The local React review server mounts the same native API handlers through
+`src/setupProxy.js`. It needs the Google configuration locally (for example in
+the git-ignored `.env.local`), not just in Vercel. API source changes require a
+review-server restart. Requests are never silently forwarded to the live CRM.
+Missing credentials produce an explicit JSON configuration error, not index.html.
+
 ## Configuration
 
 - Existing `EMAIL_SHEET_ID`: email events and settings workbook.

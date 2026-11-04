@@ -127,7 +127,7 @@ export async function googleFetch(url, init = {}, auth = {}) {
   return json;
 }
 
-export async function driveListFiles({ q, fields, pageSize = 100, orderBy = "name" }) {
+export async function driveListFiles({ q, fields, pageSize = 100, orderBy = "name" }, auth = {}) {
   const params = new URLSearchParams({
     q,
     pageSize: String(pageSize),
@@ -138,15 +138,15 @@ export async function driveListFiles({ q, fields, pageSize = 100, orderBy = "nam
     supportsAllDrives: "true",
     includeItemsFromAllDrives: "true",
   });
-  return googleFetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`);
+  return googleFetch(`https://www.googleapis.com/drive/v3/files?${params.toString()}`, {}, auth);
 }
 
-export async function driveGetFile(fileId, fields = "id,name,mimeType,modifiedTime,size,webViewLink,webContentLink") {
+export async function driveGetFile(fileId, fields = "id,name,mimeType,modifiedTime,size,webViewLink,webContentLink", auth = {}) {
   const params = new URLSearchParams({
     fields,
     supportsAllDrives: "true",
   });
-  return googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`);
+  return googleFetch(`https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?${params.toString()}`, {}, auth);
 }
 
 export async function driveDownloadFile(fileId, auth = {}) {
@@ -165,8 +165,8 @@ export async function driveDownloadFile(fileId, auth = {}) {
   };
 }
 
-export async function driveExportFile(fileId, mimeType) {
-  const token = await getAccessToken();
+export async function driveExportFile(fileId, mimeType, auth = {}) {
+  const token = await getAccessToken(auth);
   const params = new URLSearchParams({
     mimeType,
     supportsAllDrives: "true",

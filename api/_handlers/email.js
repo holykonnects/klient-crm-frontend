@@ -22,18 +22,24 @@ import { prepareTemplateEmail, templateEmailHtml } from "../_lib/emailTemplates.
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
 import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, validEmail } from '../_lib/emailCampaigns.js';
 import { createHash } from 'node:crypto';
+import { emailGoogleRead, emailLoginAccess } from '../_lib/emailAccess.js';
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
-const EMAIL_PAGE_KEY = "Email";
 const DISPATCH_SHEET = 'CRM_Email_Dispatches';
 const campaignSpreadsheetId = () => process.env.EMAIL_CAMPAIGN_SHEET_ID || SHEETS.email.spreadsheetId;
 let cachedTemplate;
 
+const emailSheetsAuth = spreadsheetId => emailGoogleRead('Sheets', `workbook ${spreadsheetId}`, async auth => {
+  await getSpreadsheet(spreadsheetId, auth);
+  return auth;
+});
+
 async function appendDispatchRow(row) {
+  const auth = await emailSheetsAuth(campaignSpreadsheetId());
   const range = encodeURIComponent(`'${DISPATCH_SHEET}'!A:F`);
   return googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${campaignSpreadsheetId()}/values/${range}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ values: [row] }),
-  });
+  }, auth);
 }
 
 function previewHtml(prepared, template) {
@@ -65,22 +71,24 @@ async function templateImage(req, res) {
 
 async function loadTemplate(id) {
   if (!id) throw new Error('Select an email template.');
-  const meta = await driveGetFile(id, 'id,name,mimeType,modifiedTime,webViewLink,parents');
+  return emailGoogleRead('Drive', `email template ${id}`, async auth => {
+  const meta = await driveGetFile(id, 'id,name,mimeType,modifiedTime,webViewLink,parents', auth);
   if (!(meta.parents || []).includes(DRIVE_FOLDERS.emailTemplates)) throw Object.assign(new Error('Select a template from the CRM email template folder.'), { status: 403 });
   if (cachedTemplate?.id === id && cachedTemplate.modifiedTime === meta.modifiedTime && cachedTemplate.expires > Date.now()) return { ...cachedTemplate, meta };
   let exported;
-  if (meta.mimeType === GOOGLE_DOC_MIME) exported = await driveExportFile(id, 'text/html');
-  else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id);
+  if (meta.mimeType === GOOGLE_DOC_MIME) exported = await driveExportFile(id, 'text/html', auth);
+  else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id, auth);
   else throw new Error('Use a Google Docs or HTML email template.');
   const html = exported.body.toString('utf8');
   const version = createHash('sha256').update(html).digest('hex');
   cachedTemplate = { id, modifiedTime: meta.modifiedTime, expires: Date.now() + 60000, html, version };
   return { ...cachedTemplate, meta };
+  });
 }
 
 async function campaignSheets(user) {
   await assertCanUseEmail(user);
-  const spreadsheet = await getSpreadsheet(campaignSpreadsheetId());
+  const spreadsheet = await emailGoogleRead('Sheets', `campaign workbook ${campaignSpreadsheetId()}`, auth => getSpreadsheet(campaignSpreadsheetId(), auth));
   const excluded = new Set([...SHEETS.email.eventSheetNames, ...SHEETS.email.settingsSheetNames, DISPATCH_SHEET]);
   return { ok: true, data: (spreadsheet.sheets || []).map(sheet => sheet.properties?.title).filter(title => title && !excluded.has(title)) };
 }
@@ -88,26 +96,27 @@ async function campaignSheets(user) {
 async function readCampaign(sheet, user) {
   const { data } = await campaignSheets(user);
   if (!data.includes(sheet)) throw new Error('Select a campaign sheet from the available list.');
-  return campaignRecipients(await getValues(campaignSpreadsheetId(), sheet));
+  return campaignRecipients(await emailGoogleRead('Sheets', `campaign tab ${sheet}`, auth => getValues(campaignSpreadsheetId(), sheet, '', auth)));
 }
 
 async function ledger(create = false) {
   const id = campaignSpreadsheetId();
-  try { return await getValues(id, DISPATCH_SHEET); }
+  const auth = await emailSheetsAuth(id);
+  try { return await getValues(id, DISPATCH_SHEET, '', auth); }
   catch (error) {
-    const spreadsheet = await getSpreadsheet(id);
+    const spreadsheet = await getSpreadsheet(id, auth);
     if ((spreadsheet.sheets || []).some(sheet => sheet.properties?.title === DISPATCH_SHEET)) throw error;
     if (!create) return [];
     try {
       await googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ requests: [{ addSheet: { properties: { title: DISPATCH_SHEET, gridProperties: { frozenRowCount: 1 } } } }] }),
-      });
+      }, auth);
     } catch (creationError) {
-      const current = await getSpreadsheet(id);
+      const current = await getSpreadsheet(id, auth);
       if (!(current.sheets || []).some(sheet => sheet.properties?.title === DISPATCH_SHEET)) throw creationError;
     }
-    return getValues(id, DISPATCH_SHEET);
+    return getValues(id, DISPATCH_SHEET, '', auth);
   }
 }
 
@@ -153,9 +162,10 @@ async function sendCampaign(body, session) {
       const rows = await ledger();
       const index = rows.findIndex(row => row[1] === token);
       if (index < 0) throw new Error('Dispatch record not found.');
-      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 3, status);
-      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 5, messageId);
-      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 6, detail);
+      const auth = await emailSheetsAuth(campaignSpreadsheetId());
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 3, status, auth);
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 5, messageId, auth);
+      await updateCell(campaignSpreadsheetId(), DISPATCH_SHEET, index + 1, 6, detail, auth);
     },
     send: () => gmailSendRawEmail(base64Url(message)),
   });
@@ -165,8 +175,9 @@ async function sendCampaign(body, session) {
         const latest = await readCampaign(clean(body.sheet), session.sub);
         if (!latest.recipients.some(row => row.rowNumber === recipient.rowNumber && row.email === recipient.email)) throw new Error('Recipient moved after sending.');
         columns = latest.columns;
+        const auth = await emailSheetsAuth(campaignSpreadsheetId());
         for (const [field, value] of [['status', 'Sent'], ['sentAt', formatTimestamp()], ['template', template.meta.name]]) {
-          if (columns[field] >= 0) await updateCell(campaignSpreadsheetId(), body.sheet, recipient.rowNumber, columns[field] + 1, value);
+          if (columns[field] >= 0) await updateCell(campaignSpreadsheetId(), body.sheet, recipient.rowNumber, columns[field] + 1, value, auth);
         }
       }
       await logEmailEvent({ Timestamp: formatTimestamp(), to: recipient.email, subject, templateId: body.templateId,
@@ -184,18 +195,15 @@ function clean(value) {
   return String(value || "").trim();
 }
 
-function splitAccess(value) {
-  return clean(value).split(",").map((item) => clean(item).toLowerCase()).filter(Boolean);
-}
-
 function requestUser(req, body = {}) {
   return clean(body.user || req.query.user || req.headers["x-kk-user"]).toLowerCase();
 }
 
 async function getLoginRows() {
-  const sheetName = await resolveSheetTitle(SHEETS.validation.spreadsheetId, ["CRM Login"]);
-  const values = await getValues(SHEETS.validation.spreadsheetId, sheetName);
-  return rowsToObjects(values);
+  return emailGoogleRead('Sheets', 'CRM Login', async auth => {
+    const sheetName = await resolveSheetTitle(SHEETS.auth.spreadsheetId, SHEETS.auth.sheetNames, auth);
+    return rowsToObjects(await getValues(SHEETS.auth.spreadsheetId, sheetName, '', auth));
+  });
 }
 
 async function assertCanUseEmail(userEmail) {
@@ -207,22 +215,7 @@ async function assertCanUseEmail(userEmail) {
   }
 
   const rows = await getLoginRows();
-  const row = rows.find((r) => clean(r["Login Username"]).toLowerCase() === user);
-  if (!row) {
-    const err = new Error("Unauthorized: user not found in CRM Login.");
-    err.status = 403;
-    throw err;
-  }
-
-  const role = clean(row.Role).toLowerCase();
-  const access = splitAccess(row["Page Access"]);
-  if (role !== "admin" && !access.includes(EMAIL_PAGE_KEY.toLowerCase())) {
-    const err = new Error("Unauthorized: Email page access is required.");
-    err.status = 403;
-    throw err;
-  }
-
-  return { user, role: row.Role, pageAccess: access };
+  return emailLoginAccess(rows, user);
 }
 
 function escapeRegExp(value) {
@@ -231,10 +224,13 @@ function escapeRegExp(value) {
 
 async function listTemplates(userEmail) {
   await assertCanUseEmail(userEmail);
-  const result = await driveListFiles({
+  const result = await emailGoogleRead('Drive', `email template folder ${DRIVE_FOLDERS.emailTemplates}`, async auth => {
+    await driveGetFile(DRIVE_FOLDERS.emailTemplates, 'id,name', auth);
+    return driveListFiles({
     q: `'${DRIVE_FOLDERS.emailTemplates}' in parents and trashed=false`,
     pageSize: 200,
     fields: "files(id,name,mimeType,modifiedTime,webViewLink)",
+    }, auth);
   });
   const templates = (result.files || [])
     .filter((file) => file.mimeType !== "application/vnd.google-apps.folder")
@@ -299,8 +295,10 @@ async function getLeads(userEmail) {
 
 async function getEvents(userEmail) {
   await assertCanUseEmail(userEmail);
-  const sheetName = await resolveSheetTitle(SHEETS.email.spreadsheetId, SHEETS.email.eventSheetNames);
-  const values = await getValues(SHEETS.email.spreadsheetId, sheetName);
+  const values = await emailGoogleRead('Sheets', `email log workbook ${SHEETS.email.spreadsheetId}`, async auth => {
+    const sheetName = await resolveSheetTitle(SHEETS.email.spreadsheetId, SHEETS.email.eventSheetNames, auth);
+    return getValues(SHEETS.email.spreadsheetId, sheetName, '', auth);
+  });
   const rows = rowsToObjects(values);
   if (rows.length) return { ok: true, data: rows };
 
@@ -318,11 +316,13 @@ async function getEvents(userEmail) {
 }
 
 async function logEmailEvent(data) {
-  const sheetName = await resolveSheetTitle(SHEETS.email.spreadsheetId, SHEETS.email.eventSheetNames);
-  const values = await getValues(SHEETS.email.spreadsheetId, sheetName, "1:1");
+  const { auth, sheetName, values } = await emailGoogleRead('Sheets', 'email event log', async auth => {
+    const sheetName = await resolveSheetTitle(SHEETS.email.spreadsheetId, SHEETS.email.eventSheetNames, auth);
+    return { auth, sheetName, values: await getValues(SHEETS.email.spreadsheetId, sheetName, '1:1', auth) };
+  });
   const headers = values[0] || [];
   if (!headers.length) return;
-  await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, data, { timestampFields: ["Timestamp", "timestamp"] }));
+  await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, data, { timestampFields: ["Timestamp", "timestamp"] }), auth);
 }
 
 async function createLead(data, userEmail) {

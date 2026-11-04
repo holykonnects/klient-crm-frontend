@@ -17,6 +17,10 @@ Missing credentials produce an explicit JSON configuration error, not index.html
   otherwise the sender lists tabs in `EMAIL_SHEET_ID`.
 - The existing CRM email template folder is reused. Google Docs and HTML files
   are supported; the template must be in that folder.
+- Keep original newsletter `.html` files in that folder without converting them
+  into Google Docs. A Docs export cannot recover layout information lost during
+  a prior conversion. The CRM keeps the stored source unchanged and inlines its
+  CSS only in the preview/delivery copy, preserving existing inline overrides.
 - Existing Gmail delegation and `GMAIL_SENDER_EMAIL` are required. The service
   identity needs template read access and campaign workbook edit access.
 - CRM sign-in must issue the signed `kk_session` cookie. Bulk routes require
@@ -55,6 +59,9 @@ the CRM does not overwrite the template's styles or add the operational-email wr
 Preview image parts use short-lived signed CRM URLs instead of large base64 JSON
 responses. Individual embedded images and preview HTML are limited to 3 MB each
 to stay below the serverless response ceiling; oversized inputs require resizing.
+The signed-in parent page downloads preview image parts before passing them to
+the sandbox as data URLs, so private deployment cookies are not lost in an opaque
+iframe request. Sending remains disabled if those preview downloads fail.
 Mailbox clients can still differ in supported CSS. The 20 MB CRM content budget
 and 28 MB encoded MIME budget are preflight guards, not a bypass of Gmail quotas.
 

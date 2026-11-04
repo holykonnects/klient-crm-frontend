@@ -8,7 +8,19 @@ test('document HTML preserves stylesheet, dimensions and table styling', () => {
   const source = '<html><head><style>.c1{color:red;width:420px}</style></head><body style="background:#123456"><table class="c1" style="border:0"><tr><td>{{FIRST_NAME}}</td></tr></table></body></html>';
   const html = templateEmailHtml(source, { FIRST_NAME: '<A & B>' });
   assert.equal(html, source.replace('{{FIRST_NAME}}', '&lt;A &amp; B&gt;'));
-  assert.equal(prepareTemplateEmail(html).html, html);
+  const prepared = prepareTemplateEmail(html).html;
+  assert.match(prepared, /<style>\.c1\{color:red;width:420px\}<\/style>/);
+  assert.match(prepared, /style="color: red; width: 420px; border: 0;"/);
+  assert.match(prepared, /width="420"/);
+  assert.ok(!prepared.includes('Rido Sports communication'));
+});
+
+test('CSS is inlined for mail clients while media queries, links and author overrides survive', () => {
+  const source = '<html><head><style>.card{width:200px;color:red;padding:12px}@media(max-width:480px){.card{width:100%}}</style></head><body><table><tr><td class="card" style="color:blue"><a href="https://example.invalid/product">Product</a></td></tr></table></body></html>';
+  const result = prepareTemplateEmail(source).html;
+  assert.match(result, /width: 200px; padding: 12px; color: blue/);
+  assert.match(result, /@media\(max-width:480px\)/);
+  assert.match(result, /href="https:\/\/example.invalid\/product"/);
 });
 
 test('large embedded images become deduplicated inline MIME parts, not HTML body data', () => {

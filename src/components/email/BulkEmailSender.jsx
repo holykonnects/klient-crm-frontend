@@ -24,6 +24,7 @@ export default function BulkEmailSender({ open, onClose }) {
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState(null);
+  const [previewReady, setPreviewReady] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [loading, setLoading] = useState(false);
@@ -58,7 +59,7 @@ export default function BulkEmailSender({ open, onClose }) {
   }, [open, draftKey, username, user?.email]);
 
   useEffect(() => {
-    setPreview(null); previewRequest.current += 1;
+    setPreview(null); setPreviewReady(false); previewRequest.current += 1;
   }, [form, selected]);
 
   const change = (field, value) => { setForm(current => ({ ...current, [field]: value })); setError(''); };
@@ -114,7 +115,7 @@ export default function BulkEmailSender({ open, onClose }) {
     } finally { running.current = false; setSending(false); }
   };
 
-  const canSend = !loading && !sending && preview && !preview.missing?.length && form.campaign.trim() && form.subject.trim() && form.replyTo.trim() && targets.length && targets.every(target => target.email);
+  const canSend = !loading && !sending && preview && previewReady && !preview.missing?.length && form.campaign.trim() && form.subject.trim() && form.replyTo.trim() && targets.length && targets.every(target => target.email);
   return <Dialog open={open} onClose={() => { if (!running.current) onClose(); }} maxWidth="xl" fullWidth disableEscapeKeyDown={sending}>
     <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>Email Sender
       <Tooltip title="Close"><span><IconButton aria-label="Close email sender" disabled={sending} onClick={onClose}><CloseIcon /></IconButton></span></Tooltip>
@@ -126,7 +127,7 @@ export default function BulkEmailSender({ open, onClose }) {
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(300px, 0.8fr) minmax(0, 1.2fr)' }, gap: 2 }}>
         <Box component="fieldset" disabled={sending} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
           <Stack spacing={2}>
-            <TextField label="Campaign name" size="small" value={form.campaign} onChange={e => change('campaign', e.target.value)} inputProps={{ maxLength: 160 }} />
+            <TextField required label="Campaign name" size="small" value={form.campaign} onChange={e => change('campaign', e.target.value)} inputProps={{ maxLength: 160 }} />
             <Autocomplete disabled={sending} options={templates} value={template} getOptionLabel={item => item.name} isOptionEqualToValue={(a, b) => a.id === b.id}
               onChange={(_, item) => change('templateId', item?.id || '')} renderInput={params => <TextField {...params} label="Template" size="small" />} />
             {template?.url && <Button component="a" href={template.url} target="_blank" rel="noopener noreferrer" size="small">Open template</Button>}
@@ -155,7 +156,7 @@ export default function BulkEmailSender({ open, onClose }) {
           {preview ? <>
             <Stack direction="row" spacing={1} mb={1} flexWrap="wrap"><Chip size="small" label={`HTML: ${Math.ceil(preview.htmlBytes / 1024)} KB`} /><Chip size="small" label={`Images: ${Math.ceil(preview.imageBytes / 1024)} KB`} />{previewRecipient?.email && <Chip size="small" label={previewRecipient.email} />}</Stack>
             {!!preview.missing?.length && <Alert severity="warning" sx={{ mb: 1 }}>Unfilled placeholders: {preview.missing.join(', ')}</Alert>}
-            <EmailHtmlPreview html={preview.html} />
+            <EmailHtmlPreview html={preview.html} onReady={setPreviewReady} />
           </> : <Box sx={{ minHeight: 300, height: '100%', border: '1px solid #dbe3ef', display: 'grid', placeItems: 'center', color: 'text.secondary' }}><VisibilityIcon fontSize="large" /></Box>}
         </Box>
       </Box>

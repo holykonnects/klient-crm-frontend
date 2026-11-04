@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { escapeHtml } from './emailRenderer.js';
+import juice from 'juice';
 
 // Template documents own their styles and layout; do not run them through the
 // operational-email wrapper, which deliberately restyles tables.
@@ -36,5 +37,9 @@ export function prepareTemplateEmail(html) {
     error.status = 413;
     throw error;
   }
-  return { html: prepared, inlineAttachments, htmlBytes, imageBytes };
+  const compatibleHtml = juice(prepared, { removeStyleTags: false, preserveMediaQueries: true,
+    preserveFontFaces: true, preserveImportant: true, inlinePseudoElements: false });
+  const compatibleBytes = Buffer.byteLength(compatibleHtml, 'utf8');
+  if (compatibleBytes + imageBytes > 20 * 1024 * 1024) throw Object.assign(new Error('This template exceeds the 20 MB message budget after CSS preparation.'), { status: 413 });
+  return { html: compatibleHtml, inlineAttachments, htmlBytes: compatibleBytes, imageBytes };
 }

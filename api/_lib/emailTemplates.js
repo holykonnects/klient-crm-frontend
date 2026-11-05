@@ -25,6 +25,56 @@ export function templateEmailHtml(html, placeholders = {}) {
   });
 }
 
+function objectIds(value, target = { inline: [], positioned: [] }) {
+  if (!value || typeof value !== 'object') return target;
+  if (value.inlineObjectElement?.inlineObjectId) target.inline.push(value.inlineObjectElement.inlineObjectId);
+  if (Array.isArray(value.positionedObjectIds)) target.positioned.push(...value.positionedObjectIds);
+  for (const child of Object.values(value)) if (child && typeof child === 'object') objectIds(child, target);
+  return target;
+}
+
+function embeddedObject(tab, id, kind) {
+  return kind === 'inline'
+    ? tab.inlineObjects?.[id]?.inlineObjectProperties?.embeddedObject
+    : tab.positionedObjects?.[id]?.positionedObjectProperties?.embeddedObject;
+}
+
+export function googleDocFrameImages(document = {}) {
+  const sourceTab = document.tabs?.[0]?.documentTab || document.tabs?.[0] || document;
+  const style = sourceTab.documentStyle || document.documentStyle || {};
+  const pick = (collection, preferred, fallback) => {
+    const id = style.useFirstPageHeaderFooter ? (preferred || fallback) : fallback;
+    const area = collection?.[id];
+    const ids = objectIds(area?.content || area);
+    return [...ids.positioned.map(objectId => [objectId, 'positioned']), ...ids.inline.map(objectId => [objectId, 'inline'])]
+      .map(([objectId, kind]) => embeddedObject(sourceTab, objectId, kind))
+      .filter(object => object?.imageProperties?.contentUri)
+      .map(object => ({ uri: object.imageProperties.contentUri, title: object.title || object.description || '', size: object.size || {} }));
+  };
+  return {
+    header: pick(sourceTab.headers, style.firstPageHeaderId, style.defaultHeaderId),
+    footer: pick(sourceTab.footers, style.firstPageFooterId, style.defaultFooterId),
+  };
+}
+
+function frameRow(images, type) {
+  if (!images?.length) return '';
+  const cells = images.map((image, index) => {
+    const width = Math.max(1, Math.round(Number(image.size?.width?.magnitude || 144) * 4 / 3));
+    const align = images.length === 1 ? (type === 'header' ? 'right' : 'center') : (index ? 'right' : 'left');
+    return `<td align="${align}" valign="${type === 'header' ? 'top' : 'bottom'}" style="padding:0;line-height:0"><img src="${image.src}" alt="" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;border:0"></td>`;
+  }).join('');
+  return `<table class="crm-doc-${type}" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse"><tr>${cells}</tr></table>`;
+}
+
+export function frameGoogleDocEmailHtml(html, frames = {}) {
+  const header = frameRow(frames.header, 'header');
+  const footer = frameRow(frames.footer, 'footer');
+  if (!header && !footer) return String(html || '');
+  return String(html || '').replace(/<body\b([^>]*)>([\s\S]*?)<\/body>/i,
+    (_, attributes, body) => `<body${attributes}>${header}${body}${footer}</body>`);
+}
+
 function cssDeclarations(style = '') {
   return Object.fromEntries(String(style).split(';').map(part => part.split(':')).filter(parts => parts.length > 1)
     .map(([name, ...value]) => [name.trim().toLowerCase(), value.join(':').trim()]));

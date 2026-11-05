@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { campaignColumns, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, validEmail } from '../api/_lib/emailCampaigns.js';
+import { campaignColumns, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../api/_lib/emailCampaigns.js';
 import { templateEmailHtml } from '../api/_lib/emailTemplates.js';
 
 test('campaign columns preserve actual sheet row numbers and ignore non-email rows', () => {
@@ -15,6 +15,15 @@ test('campaign columns preserve actual sheet row numbers and ignore non-email ro
   assert.equal(campaignColumns(['Email ID', 'Company']).company, 1);
   assert.throws(() => campaignRecipients([['Unrelated table']]), /needs an Email/);
   for (const value of ['a@b.invalid\r\nBcc:x@y.invalid', 'a@b.invalid,c@d.invalid', 'a@b.invalid;c@d.invalid']) assert.equal(validEmail(value), false);
+});
+
+test('lead recipient selection exposes only rows with valid email addresses', () => {
+  const rows = [['Lead ID', 'First Name', 'Last Name', 'Company', 'Email ID', 'Lead Owner', 'Lead Status'],
+    ['L-1', 'Ada', 'Lovelace', 'Analytical', 'ADA@EXAMPLE.INVALID', 'Owner One', 'Qualified'],
+    ['L-2', 'No', 'Email', 'Hidden', '', 'Owner Two', 'New'],
+    ['L-3', 'Bad', 'Email', 'Hidden', 'not-an-email', 'Owner Two', 'New']];
+  assert.deepEqual(leadEmailRecipients(rows), [{ rowNumber: 2, leadId: 'L-1', firstName: 'Ada', lastName: 'Lovelace',
+    company: 'Analytical', email: 'ada@example.invalid', owner: 'Owner One', status: 'Qualified', valid: true }]);
 });
 
 test('campaign keys deduplicate repeated email rows but allow a deliberately new campaign', () => {
@@ -98,4 +107,6 @@ test('native sender replaces Apps Script and bulk routes require signed sessions
   assert.match(sender, /for \(const recipient of queue\)/);
   assert.match(sender, /Confirm send/);
   assert.match(sender, /Save draft/);
+  assert.match(sender, /<Tab label="Leads"/);
+  assert.match(sender, /getLeadRecipients/);
 });

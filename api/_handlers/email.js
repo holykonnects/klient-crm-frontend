@@ -10,6 +10,7 @@ import {
   formatTimestamp,
   getValues,
   getSpreadsheet,
+  googleDownload,
   googleFetch,
   updateCell,
   gmailSendRawEmail,
@@ -18,9 +19,9 @@ import {
 } from "../_lib/googleSheets.js";
 import { handleLeadPost } from "../_lib/crmHandlers.js";
 import { base64Url, mimeMessage } from "../_lib/emailRenderer.js";
-import { prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
+import { frameGoogleDocEmailHtml, googleDocFrameImages, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
-import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, validEmail } from '../_lib/emailCampaigns.js';
+import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../_lib/emailCampaigns.js';
 import { createHash } from 'node:crypto';
 import { emailGoogleRead, emailLoginAccess } from '../_lib/emailAccess.js';
 
@@ -79,7 +80,24 @@ async function loadTemplate(id) {
   if (meta.mimeType === GOOGLE_DOC_MIME) exported = await driveExportFile(id, 'text/html', auth);
   else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id, auth);
   else throw new Error('Use a Google Docs or HTML email template.');
-  const html = exported.body.toString('utf8');
+  let html = exported.body.toString('utf8');
+  if (meta.mimeType === GOOGLE_DOC_MIME) {
+    const document = await googleFetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(id)}?includeTabsContent=true`, {}, auth);
+    const frames = googleDocFrameImages(document);
+    const downloaded = new Map();
+    const hydrate = async image => {
+      if (!downloaded.has(image.uri)) downloaded.set(image.uri, googleDownload(image.uri, auth));
+      const asset = await downloaded.get(image.uri);
+      const contentType = String(asset.contentType || '').split(';')[0].toLowerCase();
+      if (!/^image\/(png|jpe?g|gif|webp)$/.test(contentType)) throw new Error('A Google Docs header or footer image uses an unsupported format.');
+      return { ...image, digest: createHash('sha256').update(asset.body).digest('hex'), src: `data:${contentType};base64,${asset.body.toString('base64')}` };
+    };
+    const unique = images => [...new Map(images.map(image => [image.digest, image])).values()];
+    html = frameGoogleDocEmailHtml(html, {
+      header: unique(await Promise.all(frames.header.map(hydrate))),
+      footer: unique(await Promise.all(frames.footer.map(hydrate))),
+    });
+  }
   const version = createHash('sha256').update(html).digest('hex');
   cachedTemplate = { id, modifiedTime: meta.modifiedTime, expires: Date.now() + 60000, html, version };
   return { ...cachedTemplate, meta };
@@ -97,6 +115,19 @@ async function readCampaign(sheet, user) {
   const { data } = await campaignSheets(user);
   if (!data.includes(sheet)) throw new Error('Select a campaign sheet from the available list.');
   return campaignRecipients(await emailGoogleRead('Sheets', `campaign tab ${sheet}`, auth => getValues(campaignSpreadsheetId(), sheet, '', auth)));
+}
+
+async function readLeadRecipients(user) {
+  const access = await assertCanUseEmail(user);
+  const { values } = await emailGoogleRead('Sheets', `leads workbook ${SHEETS.leads.spreadsheetId}`, async auth => {
+    const sheetName = await resolveSheetTitle(SHEETS.leads.spreadsheetId, SHEETS.leads.sheetNames, auth);
+    return { values: await getValues(SHEETS.leads.spreadsheetId, sheetName, '', auth) };
+  });
+  const recipients = leadEmailRecipients(values);
+  const data = clean(access.role).toLowerCase() === 'admin'
+    ? recipients
+    : recipients.filter(recipient => clean(recipient.owner).toLowerCase() === access.user);
+  return { ok: true, data };
 }
 
 async function ledger(create = false) {
@@ -348,13 +379,9 @@ async function sendEmail(body) {
   if (!to) throw new Error("Missing email recipient");
   if (!templateId) throw new Error("Missing templateId");
 
-  const templateMeta = await driveGetFile(templateId);
-  if (templateMeta.mimeType !== GOOGLE_DOC_MIME) {
-    throw new Error("Only Google Docs email templates can be exported as HTML.");
-  }
-
-  const exported = await driveExportFile(templateId, "text/html");
-  const { html, inlineAttachments } = prepareTemplateEmail(templateEmailHtml(exported.body.toString("utf8"), body.placeholders || {}));
+  const template = await loadTemplate(templateId);
+  const templateMeta = template.meta;
+  const { html, inlineAttachments } = prepareTemplateEmail(templateEmailHtml(template.html, body.placeholders || {}));
   const replyTo = clean(body.fromEmail) || access.user;
   const message = mimeMessage({ to, subject, html, replyTo, inlineAttachments });
   if (Buffer.byteLength(message, 'utf8') > 28 * 1024 * 1024) {
@@ -388,9 +415,10 @@ export default async function handler(req, res) {
       const action = clean(req.query.action);
       if (action === 'emailTemplateImage') return await templateImage(req, res);
       const userEmail = requestUser(req);
-      if (action === 'getCampaignSheets' || action === 'getCampaignRecipients') {
+      if (action === 'getCampaignSheets' || action === 'getCampaignRecipients' || action === 'getLeadRecipients') {
         const session = requireSession(req);
         if (action === 'getCampaignSheets') return json(res, 200, await campaignSheets(session.sub));
+        if (action === 'getLeadRecipients') return json(res, 200, await readLeadRecipients(session.sub));
         const campaign = await readCampaign(clean(req.query.sheet), session.sub);
         return json(res, 200, { ok: true, data: campaign.recipients });
       }

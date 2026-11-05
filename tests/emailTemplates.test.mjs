@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from '../api/_lib/emailTemplates.js';
+import { frameGoogleDocEmailHtml, googleDocFrameImages, normalizeGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from '../api/_lib/emailTemplates.js';
 import { mimeMessage } from '../api/_lib/emailRenderer.js';
 
 test('document HTML preserves stylesheet, dimensions and table styling', () => {
@@ -37,6 +37,27 @@ test('Google Docs page styles become an email-safe wrapper with responsive image
   assert.match(prepared, /<table[^>]*style="[^"]*width:\s*100%\s*!important/);
   assert.ok(!prepared.includes('height="auto"'));
   assert.equal(normalizeGoogleDocEmailHtml('<html><body><p>Ordinary HTML</p></body></html>'), '<html><body><p>Ordinary HTML</p></body></html>');
+});
+
+test('Google Docs first-page header and footer images frame the exported email body', () => {
+  const image = uri => ({ imageProperties: { contentUri: uri }, size: { width: { magnitude: 72, unit: 'PT' } } });
+  const document = { tabs: [{ documentTab: {
+    documentStyle: { useFirstPageHeaderFooter: true, firstPageHeaderId: 'header', firstPageFooterId: 'footer' },
+    headers: { header: { content: [{ paragraph: { positionedObjectIds: ['logo'] } }] } },
+    footers: { footer: { content: [{ paragraph: { positionedObjectIds: ['end'] } }] } },
+    positionedObjects: {
+      logo: { positionedObjectProperties: { embeddedObject: image('https://example.invalid/logo.png') } },
+      end: { positionedObjectProperties: { embeddedObject: image('https://example.invalid/footer.png') } },
+    },
+  } }] };
+  const frames = googleDocFrameImages(document);
+  assert.equal(frames.header[0].uri, 'https://example.invalid/logo.png');
+  assert.equal(frames.footer[0].uri, 'https://example.invalid/footer.png');
+  const framed = frameGoogleDocEmailHtml('<html><body class="doc-content"><p>Body</p></body></html>', {
+    header: [{ ...frames.header[0], src: 'data:image/png;base64,YQ==' }], footer: [{ ...frames.footer[0], src: 'data:image/png;base64,Yg==' }],
+  });
+  assert.ok(framed.indexOf('crm-doc-header') < framed.indexOf('<p>Body</p>'));
+  assert.ok(framed.indexOf('crm-doc-footer') > framed.indexOf('<p>Body</p>'));
 });
 
 test('template picker exposes canonical Docs and HTML in a stable order', () => {

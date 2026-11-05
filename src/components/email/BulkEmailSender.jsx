@@ -21,6 +21,7 @@ export default function BulkEmailSender({ open, onClose }) {
   const [templates, setTemplates] = useState([]);
   const [sheets, setSheets] = useState([]);
   const [recipients, setRecipients] = useState([]);
+  const [leadRecipients, setLeadRecipients] = useState([]);
   const [selected, setSelected] = useState([]);
   const [search, setSearch] = useState('');
   const [preview, setPreview] = useState(null);
@@ -37,11 +38,13 @@ export default function BulkEmailSender({ open, onClose }) {
   const pause = useRef(false);
   const previewRequest = useRef(0);
   const campaignRequest = useRef(0);
+  const leadRequest = useRef(0);
   const template = templates.find(item => item.id === form.templateId) || null;
-  const targets = form.mode === 0 ? recipients.filter(row => selected.includes(row.rowNumber) && row.valid)
-    : [{ email: form.email.trim(), firstName: form.firstName, company: form.company }];
+  const selectableRecipients = form.mode === 2 ? leadRecipients : recipients;
+  const targets = form.mode === 1 ? [{ email: form.email.trim(), firstName: form.firstName, company: form.company }]
+    : selectableRecipients.filter(row => selected.includes(row.rowNumber) && row.valid);
   const previewRecipient = targets[0];
-  const filteredRecipients = recipients.filter(row => `${row.firstName} ${row.company} ${row.email}`.toLowerCase().includes(search.toLowerCase()));
+  const filteredRecipients = selectableRecipients.filter(row => `${row.firstName} ${row.lastName || ''} ${row.company} ${row.email} ${row.owner || ''} ${row.status || ''}`.toLowerCase().includes(search.toLowerCase()));
 
   useEffect(() => {
     if (!open) return;
@@ -52,10 +55,10 @@ export default function BulkEmailSender({ open, onClose }) {
       setForm({ ...emptyForm, replyTo: user?.email || (/^[^@]+@/.test(username) ? username : ''), ...(saved || {}) });
     } catch { setForm({ ...emptyForm, replyTo: user?.email || '' }); }
     setLoading(true);
-    Promise.all([EmailService.campaign('getCampaignSheets'), EmailService.campaign('getTemplates', { user: username })]).then(([sheetResult, templateResult]) => {
-      if (active) { setSheets(sheetResult.data || []); setTemplates(templateResult.data || []); }
+    Promise.all([EmailService.campaign('getCampaignSheets'), EmailService.campaign('getTemplates', { user: username }), EmailService.campaign('getLeadRecipients')]).then(([sheetResult, templateResult, leadResult]) => {
+      if (active) { setSheets(sheetResult.data || []); setTemplates(templateResult.data || []); setLeadRecipients(leadResult.data || []); }
     }).catch(err => { if (active) setError(err.message); }).finally(() => { if (active) setLoading(false); });
-    return () => { active = false; previewRequest.current += 1; campaignRequest.current += 1; };
+    return () => { active = false; previewRequest.current += 1; campaignRequest.current += 1; leadRequest.current += 1; };
   }, [open, draftKey, username, user?.email]);
 
   useEffect(() => {
@@ -71,6 +74,16 @@ export default function BulkEmailSender({ open, onClose }) {
       if (request === campaignRequest.current) setRecipients(result.data || []);
     } catch (err) { if (request === campaignRequest.current) setError(err.message); }
     finally { if (request === campaignRequest.current) setLoading(false); }
+  };
+
+  const loadLeadRecipients = async () => {
+    const request = ++leadRequest.current;
+    setLoading(true); setError(''); setSelected([]); setOutcomes({});
+    try {
+      const result = await EmailService.campaign('getLeadRecipients');
+      if (request === leadRequest.current) setLeadRecipients(result.data || []);
+    } catch (err) { if (request === leadRequest.current) setError(err.message); }
+    finally { if (request === leadRequest.current) setLoading(false); }
   };
 
   const makePreview = async () => {
@@ -134,16 +147,17 @@ export default function BulkEmailSender({ open, onClose }) {
             <TextField label="Subject" size="small" value={form.subject} onChange={e => change('subject', e.target.value)} />
             <TextField label="Reply-to email" type="email" size="small" value={form.replyTo} onChange={e => change('replyTo', e.target.value)} />
             <TextField label="Quotation link" type="url" size="small" value={form.quotationLink} onChange={e => change('quotationLink', e.target.value)} />
-            <Tabs value={form.mode} onChange={(_, mode) => { change('mode', mode); setSelected([]); }} variant="fullWidth"><Tab label="Campaign sheet" /><Tab label="Single recipient" /></Tabs>
+            <Tabs value={form.mode} onChange={(_, mode) => { change('mode', mode); setSelected([]); setSearch(''); }} variant="fullWidth"><Tab label="Campaign sheet" /><Tab label="Single recipient" /><Tab label="Leads" /></Tabs>
             {form.mode === 0 ? <TextField disabled={loading || sending} select label="Campaign sheet" size="small" value={sheets.includes(form.sheet) ? form.sheet : ''} onChange={e => {
               campaignRequest.current += 1; change('sheet', e.target.value); setRecipients([]); setSelected([]); setOutcomes({});
-            }}>{sheets.map(sheet => <MenuItem key={sheet} value={sheet}>{sheet}</MenuItem>)}</TextField> : <>
+            }}>{sheets.map(sheet => <MenuItem key={sheet} value={sheet}>{sheet}</MenuItem>)}</TextField> : form.mode === 1 ? <>
               <TextField label="Recipient email" type="email" size="small" value={form.email} onChange={e => change('email', e.target.value)} />
               <TextField label="First name" size="small" value={form.firstName} onChange={e => change('firstName', e.target.value)} />
               <TextField label="Company" size="small" value={form.company} onChange={e => change('company', e.target.value)} />
-            </>}
+            </> : <Alert severity="info">Only leads with valid email addresses are listed. Select one or more rows below.</Alert>}
             <Stack direction="row" flexWrap="wrap" gap={1}>
               {form.mode === 0 && <Button startIcon={<RefreshIcon />} disabled={loading || !form.sheet || sending} onClick={loadRecipients}>Load recipients</Button>}
+              {form.mode === 2 && <Button startIcon={<RefreshIcon />} disabled={loading || sending} onClick={loadLeadRecipients}>Refresh leads</Button>}
               <Button startIcon={<VisibilityIcon />} disabled={!form.templateId || previewLoading || sending} onClick={makePreview}>Preview</Button>
               <Button startIcon={<SaveIcon />} disabled={sending} onClick={() => {
                 try { localStorage.setItem(draftKey, JSON.stringify(form)); setNotice('Draft saved on this browser.'); }
@@ -160,12 +174,17 @@ export default function BulkEmailSender({ open, onClose }) {
           </> : <Box sx={{ minHeight: 300, height: '100%', border: '1px solid #dbe3ef', display: 'grid', placeItems: 'center', color: 'text.secondary' }}><VisibilityIcon fontSize="large" /></Box>}
         </Box>
       </Box>
-      {form.mode === 0 && <Box sx={{ mt: 3 }}>
-        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} mb={1}><Typography variant="subtitle2">Recipients ({recipients.length})</Typography><TextField label="Search recipients" size="small" value={search} disabled={sending} onChange={e => setSearch(e.target.value)} /></Stack>
+      {form.mode !== 1 && <Box sx={{ mt: 3 }}>
+        <Stack direction="row" alignItems="center" justifyContent="space-between" gap={2} mb={1}><Typography variant="subtitle2">{form.mode === 2 ? 'Leads' : 'Recipients'} ({selectableRecipients.length})</Typography><TextField label={`Search ${form.mode === 2 ? 'leads' : 'recipients'}`} size="small" value={search} disabled={sending} onChange={e => setSearch(e.target.value)} /></Stack>
         <Box sx={{ height: 380, width: '100%' }}><DataGrid rows={filteredRecipients} getRowId={row => row.rowNumber} checkboxSelection disableRowSelectionOnClick loading={loading}
           rowSelectionModel={selected} onRowSelectionModelChange={ids => { if (!sending) setSelected(ids); }} keepNonExistentRowsSelected
           isRowSelectable={params => !sending && params.row.valid} pageSizeOptions={[10, 25, 50]} initialState={{ pagination: { paginationModel: { pageSize: 25 } } }}
-          columns={[{ field: 'firstName', headerName: 'First name', minWidth: 130, flex: 1 }, { field: 'company', headerName: 'Company', minWidth: 150, flex: 1 },
+          columns={form.mode === 2 ? [
+            { field: 'firstName', headerName: 'First name', minWidth: 120, flex: 0.8 }, { field: 'lastName', headerName: 'Last name', minWidth: 120, flex: 0.8 },
+            { field: 'company', headerName: 'Company', minWidth: 150, flex: 1 }, { field: 'email', headerName: 'Email', minWidth: 220, flex: 1.3 },
+            { field: 'owner', headerName: 'Lead owner', minWidth: 150, flex: 1 }, { field: 'status', headerName: 'Lead status', minWidth: 130,
+              valueGetter: params => outcomes[params.row.rowNumber] || params.row.status || 'Ready' },
+          ] : [{ field: 'firstName', headerName: 'First name', minWidth: 130, flex: 1 }, { field: 'company', headerName: 'Company', minWidth: 150, flex: 1 },
             { field: 'email', headerName: 'Email', minWidth: 220, flex: 1.3 }, { field: 'status', headerName: 'Status', minWidth: 170,
               valueGetter: params => !params.row.valid ? 'Invalid email' : outcomes[params.row.rowNumber] || params.row.status || 'Ready' },
             { field: 'sentAt', headerName: 'Last sent', minWidth: 150 }, { field: 'template', headerName: 'Template sent', minWidth: 160 }]} /></Box>
@@ -174,7 +193,7 @@ export default function BulkEmailSender({ open, onClose }) {
     </DialogContent>
     <DialogActions sx={{ px: 2 }}>
       {sending ? <Button startIcon={<PauseIcon />} onClick={() => { pause.current = true; setNotice('Pausing after the current recipient.'); }}>Pause</Button> : <Button onClick={onClose}>Close</Button>}
-      <Button variant="contained" startIcon={<SendIcon />} disabled={!canSend} onClick={() => setConfirmOpen(true)}>Send {form.mode === 0 ? `selected (${targets.length})` : 'email'}</Button>
+      <Button variant="contained" startIcon={<SendIcon />} disabled={!canSend} onClick={() => setConfirmOpen(true)}>Send {form.mode === 1 ? 'email' : `selected (${targets.length})`}</Button>
     </DialogActions>
     <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Confirm email send</DialogTitle><DialogContent>
       <Typography>{targets.length} recipient(s)</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>

@@ -10,7 +10,6 @@ import {
   formatTimestamp,
   getValues,
   getSpreadsheet,
-  googleDownload,
   googleFetch,
   updateCell,
   gmailSendRawEmail,
@@ -19,7 +18,7 @@ import {
 } from "../_lib/googleSheets.js";
 import { handleLeadPost } from "../_lib/crmHandlers.js";
 import { base64Url, mimeMessage } from "../_lib/emailRenderer.js";
-import { frameGoogleDocEmailHtml, googleDocFrameImages, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
+import { docxFrameImages, frameGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
 import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../_lib/emailCampaigns.js';
 import { createHash } from 'node:crypto';
@@ -77,26 +76,17 @@ async function loadTemplate(id) {
   if (!(meta.parents || []).includes(DRIVE_FOLDERS.emailTemplates)) throw Object.assign(new Error('Select a template from the CRM email template folder.'), { status: 403 });
   if (cachedTemplate?.id === id && cachedTemplate.modifiedTime === meta.modifiedTime && cachedTemplate.expires > Date.now()) return { ...cachedTemplate, meta };
   let exported;
-  if (meta.mimeType === GOOGLE_DOC_MIME) exported = await driveExportFile(id, 'text/html', auth);
-  else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id, auth);
+  let frames = { header: [], footer: [] };
+  if (meta.mimeType === GOOGLE_DOC_MIME) {
+    [exported, frames] = await Promise.all([
+      driveExportFile(id, 'text/html', auth),
+      driveExportFile(id, 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', auth).then(file => docxFrameImages(file.body)),
+    ]);
+  } else if (meta.mimeType === 'text/html') exported = await driveDownloadFile(id, auth);
   else throw new Error('Use a Google Docs or HTML email template.');
   let html = exported.body.toString('utf8');
   if (meta.mimeType === GOOGLE_DOC_MIME) {
-    const document = await googleFetch(`https://docs.googleapis.com/v1/documents/${encodeURIComponent(id)}?includeTabsContent=true`, {}, auth);
-    const frames = googleDocFrameImages(document);
-    const downloaded = new Map();
-    const hydrate = async image => {
-      if (!downloaded.has(image.uri)) downloaded.set(image.uri, googleDownload(image.uri, auth));
-      const asset = await downloaded.get(image.uri);
-      const contentType = String(asset.contentType || '').split(';')[0].toLowerCase();
-      if (!/^image\/(png|jpe?g|gif|webp)$/.test(contentType)) throw new Error('A Google Docs header or footer image uses an unsupported format.');
-      return { ...image, digest: createHash('sha256').update(asset.body).digest('hex'), src: `data:${contentType};base64,${asset.body.toString('base64')}` };
-    };
-    const unique = images => [...new Map(images.map(image => [image.digest, image])).values()];
-    html = frameGoogleDocEmailHtml(html, {
-      header: unique(await Promise.all(frames.header.map(hydrate))),
-      footer: unique(await Promise.all(frames.footer.map(hydrate))),
-    });
+    html = frameGoogleDocEmailHtml(html, frames);
   }
   const version = createHash('sha256').update(html).digest('hex');
   cachedTemplate = { id, modifiedTime: meta.modifiedTime, expires: Date.now() + 60000, html, version };

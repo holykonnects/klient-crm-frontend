@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto';
+import { inflateRawSync } from 'node:zlib';
+import { posix as path } from 'node:path';
 import { escapeHtml } from './emailRenderer.js';
 import juice from 'juice';
 
@@ -25,36 +27,70 @@ export function templateEmailHtml(html, placeholders = {}) {
   });
 }
 
-function objectIds(value, target = { inline: [], positioned: [] }) {
-  if (!value || typeof value !== 'object') return target;
-  if (value.inlineObjectElement?.inlineObjectId) target.inline.push(value.inlineObjectElement.inlineObjectId);
-  if (Array.isArray(value.positionedObjectIds)) target.positioned.push(...value.positionedObjectIds);
-  for (const child of Object.values(value)) if (child && typeof child === 'object') objectIds(child, target);
-  return target;
+function zipEntries(buffer) {
+  const minimum = Math.max(0, buffer.length - 65557);
+  let eocd = -1;
+  for (let offset = buffer.length - 22; offset >= minimum; offset -= 1) {
+    if (buffer.readUInt32LE(offset) === 0x06054b50) { eocd = offset; break; }
+  }
+  if (eocd < 0) throw new Error('The Google Docs DOCX export is damaged.');
+  const count = buffer.readUInt16LE(eocd + 10);
+  let offset = buffer.readUInt32LE(eocd + 16);
+  const entries = new Map();
+  for (let index = 0; index < count; index += 1) {
+    if (buffer.readUInt32LE(offset) !== 0x02014b50) throw new Error('The Google Docs DOCX directory is damaged.');
+    const method = buffer.readUInt16LE(offset + 10);
+    const compressedSize = buffer.readUInt32LE(offset + 20);
+    const nameLength = buffer.readUInt16LE(offset + 28);
+    const extraLength = buffer.readUInt16LE(offset + 30);
+    const commentLength = buffer.readUInt16LE(offset + 32);
+    const localOffset = buffer.readUInt32LE(offset + 42);
+    const name = buffer.subarray(offset + 46, offset + 46 + nameLength).toString('utf8');
+    const localNameLength = buffer.readUInt16LE(localOffset + 26);
+    const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+    const start = localOffset + 30 + localNameLength + localExtraLength;
+    const compressed = buffer.subarray(start, start + compressedSize);
+    if (method === 0) entries.set(name, Buffer.from(compressed));
+    else if (method === 8) entries.set(name, inflateRawSync(compressed));
+    offset += 46 + nameLength + extraLength + commentLength;
+  }
+  return entries;
 }
 
-function embeddedObject(tab, id, kind) {
-  return kind === 'inline'
-    ? tab.inlineObjects?.[id]?.inlineObjectProperties?.embeddedObject
-    : tab.positionedObjects?.[id]?.positionedObjectProperties?.embeddedObject;
+function xmlAttribute(attributes, name) {
+  return attributes.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'))?.[1] || '';
 }
 
-export function googleDocFrameImages(document = {}) {
-  const sourceTab = document.tabs?.[0]?.documentTab || document.tabs?.[0] || document;
-  const style = sourceTab.documentStyle || document.documentStyle || {};
-  const pick = (collection, preferred, fallback) => {
-    const id = style.useFirstPageHeaderFooter ? (preferred || fallback) : fallback;
-    const area = collection?.[id];
-    const ids = objectIds(area?.content || area);
-    return [...ids.positioned.map(objectId => [objectId, 'positioned']), ...ids.inline.map(objectId => [objectId, 'inline'])]
-      .map(([objectId, kind]) => embeddedObject(sourceTab, objectId, kind))
-      .filter(object => object?.imageProperties?.contentUri)
-      .map(object => ({ uri: object.imageProperties.contentUri, title: object.title || object.description || '', size: object.size || {} }));
-  };
-  return {
-    header: pick(sourceTab.headers, style.firstPageHeaderId, style.defaultHeaderId),
-    footer: pick(sourceTab.footers, style.firstPageFooterId, style.defaultFooterId),
-  };
+function docxPartImages(entries, type) {
+  const partNames = [...entries.keys()].filter(name => new RegExp(`^word/${type}\\d+\\.xml$`, 'i').test(name)).sort();
+  const seen = new Set();
+  return partNames.flatMap(partName => {
+    const xml = entries.get(partName)?.toString('utf8') || '';
+    const relationshipName = `word/_rels/${path.basename(partName)}.rels`;
+    const relationshipXml = entries.get(relationshipName)?.toString('utf8') || '';
+    const relationships = new Map([...relationshipXml.matchAll(/<Relationship\b([^>]*)\/?\s*>/gi)].map(match =>
+      [xmlAttribute(match[1], 'Id'), xmlAttribute(match[1], 'Target')]));
+    return [...xml.matchAll(/r:embed="([^"]+)"/gi)].flatMap(match => {
+      const target = relationships.get(match[1]);
+      if (!target) return [];
+      const mediaName = target.startsWith('/') ? target.slice(1) : path.normalize(path.join(path.dirname(partName), target));
+      const body = entries.get(mediaName);
+      const extension = path.extname(mediaName).slice(1).toLowerCase().replace('jpg', 'jpeg');
+      if (!body || !['png', 'jpeg', 'gif', 'webp'].includes(extension)) return [];
+      const digest = createHash('sha256').update(body).digest('hex');
+      if (seen.has(digest)) return [];
+      seen.add(digest);
+      const beforeImage = xml.slice(Math.max(0, match.index - 2500), match.index);
+      const extent = [...beforeImage.matchAll(/<wp:extent\b[^>]*\bcx="(\d+)"[^>]*\bcy="(\d+)"[^>]*>/gi)].at(-1);
+      const size = extent ? { width: { magnitude: Number(extent[1]) / 12700, unit: 'PT' }, height: { magnitude: Number(extent[2]) / 12700, unit: 'PT' } } : {};
+      return [{ src: `data:image/${extension};base64,${body.toString('base64')}`, title: '', size }];
+    });
+  });
+}
+
+export function docxFrameImages(buffer) {
+  const entries = zipEntries(Buffer.from(buffer || []));
+  return { header: docxPartImages(entries, 'header'), footer: docxPartImages(entries, 'footer') };
 }
 
 function frameRow(images, type) {

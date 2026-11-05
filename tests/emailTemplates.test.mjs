@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { frameGoogleDocEmailHtml, googleDocFrameImages, normalizeGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from '../api/_lib/emailTemplates.js';
+import { docxFrameImages, frameGoogleDocEmailHtml, normalizeGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from '../api/_lib/emailTemplates.js';
 import { mimeMessage } from '../api/_lib/emailRenderer.js';
 
 test('document HTML preserves stylesheet, dimensions and table styling', () => {
@@ -40,22 +40,33 @@ test('Google Docs page styles become an email-safe wrapper with responsive image
 });
 
 test('Google Docs first-page header and footer images frame the exported email body', () => {
-  const image = uri => ({ imageProperties: { contentUri: uri }, size: { width: { magnitude: 72, unit: 'PT' } } });
-  const document = { tabs: [{ documentTab: {
-    documentStyle: { useFirstPageHeaderFooter: true, firstPageHeaderId: 'header', firstPageFooterId: 'footer' },
-    headers: { header: { content: [{ paragraph: { positionedObjectIds: ['logo'] } }] } },
-    footers: { footer: { content: [{ paragraph: { positionedObjectIds: ['end'] } }] } },
-    positionedObjects: {
-      logo: { positionedObjectProperties: { embeddedObject: image('https://example.invalid/logo.png') } },
-      end: { positionedObjectProperties: { embeddedObject: image('https://example.invalid/footer.png') } },
-    },
-  } }] };
-  const frames = googleDocFrameImages(document);
-  assert.equal(frames.header[0].uri, 'https://example.invalid/logo.png');
-  assert.equal(frames.footer[0].uri, 'https://example.invalid/footer.png');
-  const framed = frameGoogleDocEmailHtml('<html><body class="doc-content"><p>Body</p></body></html>', {
-    header: [{ ...frames.header[0], src: 'data:image/png;base64,YQ==' }], footer: [{ ...frames.footer[0], src: 'data:image/png;base64,Yg==' }],
-  });
+  const zip = entries => {
+    const locals = [], centrals = [];
+    let offset = 0;
+    for (const [name, content] of Object.entries(entries)) {
+      const filename = Buffer.from(name); const body = Buffer.from(content);
+      const local = Buffer.alloc(30); local.writeUInt32LE(0x04034b50, 0); local.writeUInt16LE(20, 4); local.writeUInt32LE(body.length, 18);
+      local.writeUInt32LE(body.length, 22); local.writeUInt16LE(filename.length, 26);
+      locals.push(local, filename, body);
+      const central = Buffer.alloc(46); central.writeUInt32LE(0x02014b50, 0); central.writeUInt16LE(20, 4); central.writeUInt16LE(20, 6);
+      central.writeUInt32LE(body.length, 20); central.writeUInt32LE(body.length, 24); central.writeUInt16LE(filename.length, 28); central.writeUInt32LE(offset, 42);
+      centrals.push(central, filename); offset += local.length + filename.length + body.length;
+    }
+    const directory = Buffer.concat(centrals); const end = Buffer.alloc(22); end.writeUInt32LE(0x06054b50, 0);
+    end.writeUInt16LE(Object.keys(entries).length, 8); end.writeUInt16LE(Object.keys(entries).length, 10);
+    end.writeUInt32LE(directory.length, 12); end.writeUInt32LE(offset, 16);
+    return Buffer.concat([...locals, directory, end]);
+  };
+  const frames = docxFrameImages(zip({
+    'word/header1.xml': '<w:hdr><a:blip r:embed="rId1"/></w:hdr>',
+    'word/_rels/header1.xml.rels': '<Relationships><Relationship Id="rId1" Target="media/logo.png"/></Relationships>',
+    'word/footer1.xml': '<w:ftr><a:blip r:embed="rId2"/></w:ftr>',
+    'word/_rels/footer1.xml.rels': '<Relationships><Relationship Id="rId2" Target="media/end.png"/></Relationships>',
+    'word/media/logo.png': 'a', 'word/media/end.png': 'b',
+  }));
+  assert.match(frames.header[0].src, /base64,YQ==$/);
+  assert.match(frames.footer[0].src, /base64,Yg==$/);
+  const framed = frameGoogleDocEmailHtml('<html><body class="doc-content"><p>Body</p></body></html>', frames);
   assert.ok(framed.indexOf('crm-doc-header') < framed.indexOf('<p>Body</p>'));
   assert.ok(framed.indexOf('crm-doc-footer') > framed.indexOf('<p>Body</p>'));
 });

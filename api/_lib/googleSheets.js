@@ -127,19 +127,6 @@ export async function googleFetch(url, init = {}, auth = {}) {
   return json;
 }
 
-export async function googleDownload(url, auth = {}) {
-  const token = await getAccessToken(auth);
-  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
-  if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `Google download failed: ${res.status}`);
-  }
-  return {
-    contentType: res.headers.get('content-type') || 'application/octet-stream',
-    body: Buffer.from(await res.arrayBuffer()),
-  };
-}
-
 export async function driveListFiles({ q, fields, pageSize = 100, orderBy = "name" }, auth = {}) {
   const params = new URLSearchParams({
     q,

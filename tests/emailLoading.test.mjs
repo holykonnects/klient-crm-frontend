@@ -42,4 +42,9 @@ test('historic and native event headers map to readable logs, latest first', () 
   assert.equal(logs[1].to, 'old@example.invalid');
   assert.equal(logs[1].status, 'Sent');
   assert.ok(Number.isFinite(Date.parse(logs[0].timestamp)));
+  const accepted = normalizeEmailEvents([{ Timestamp: '05/11/2026 13:21:50', 'Campaign ID': 'Diwali', 'Recipient ID': 'lead@example.invalid',
+    'Event (Sent/Open/Click/Bounce/Unsubscribe)': 'ACCEPTED_BY_GMAIL', 'Meta (JSON blob)': '{"messageId":"gmail-1","subject":"Happy Diwali","template":"Diwali Template"}' }])[0];
+  assert.equal(accepted.to, 'lead@example.invalid');
+  assert.equal(accepted.subject, 'Happy Diwali');
+  assert.equal(accepted.messageId, 'gmail-1');
 });

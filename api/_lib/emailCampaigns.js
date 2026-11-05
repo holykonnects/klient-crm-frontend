@@ -75,5 +75,5 @@ export async function dispatchCampaign({ key, claim, readClaims, send, updateCla
   let warning = '';
   try { await updateClaim(token, 'Sent', result?.id || '', ''); }
   catch { warning = 'Email sent, but the send ledger could not be updated. Do not resend; check Gmail Sent.'; }
-  return { ok: true, status: 'Sent', messageId: result?.id || '', warning };
+  return { ok: true, status: 'Accepted by Gmail', messageId: result?.id || '', warning };
 }

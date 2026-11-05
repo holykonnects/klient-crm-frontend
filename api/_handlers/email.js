@@ -197,13 +197,14 @@ async function sendCampaign(body, session) {
         if (!latest.recipients.some(row => row.rowNumber === recipient.rowNumber && row.email === recipient.email)) throw new Error('Recipient moved after sending.');
         columns = latest.columns;
         const auth = await emailSheetsAuth(campaignSpreadsheetId());
-        for (const [field, value] of [['status', 'Sent'], ['sentAt', formatTimestamp()], ['template', template.meta.name]]) {
+        for (const [field, value] of [['status', 'Accepted by Gmail'], ['sentAt', formatTimestamp()], ['template', template.meta.name]]) {
           if (columns[field] >= 0) await updateCell(campaignSpreadsheetId(), body.sheet, recipient.rowNumber, columns[field] + 1, value, auth);
         }
       }
-      await logEmailEvent({ Timestamp: formatTimestamp(), to: recipient.email, subject, templateId: body.templateId,
-        templateText: template.meta.name, sentBy: access.user, firstName: recipient.firstName, companyName: recipient.company, status: 'SENT' });
-    } catch { result.warning = [result.warning, 'Email sent, but campaign status or event logging needs review. Do not resend.'].filter(Boolean).join(' '); }
+      await logEmailEvent({ Timestamp: formatTimestamp(), campaign: body.campaign, to: recipient.email, subject, templateId: body.templateId,
+        templateText: template.meta.name, sentBy: access.user, firstName: recipient.firstName, companyName: recipient.company,
+        status: 'ACCEPTED_BY_GMAIL', messageId: result.messageId });
+    } catch { result.warning = [result.warning, 'Gmail accepted the email, but campaign status or event logging needs review. Do not resend automatically.'].filter(Boolean).join(' '); }
   }
   return result;
 }
@@ -340,7 +341,17 @@ async function logEmailEvent(data) {
   });
   const headers = values[0] || [];
   if (!headers.length) return;
-  await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, data, { timestampFields: ["Timestamp", "timestamp"] }), auth);
+  const eventHeader = 'Event (Sent/Open/Click/Bounce/Unsubscribe)';
+  const metaHeader = 'Meta (JSON blob)';
+  const compatible = {
+    ...data,
+    'Campaign ID': data.campaign || data.subject || '',
+    'Recipient ID': data.to || '',
+    [eventHeader]: data.status || '',
+    [metaHeader]: JSON.stringify({ messageId: data.messageId || '', subject: data.subject || '', templateId: data.templateId || '',
+      template: data.templateText || '', sentBy: data.sentBy || '', recipient: data.to || '' }),
+  };
+  await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, compatible, { timestampFields: ["Timestamp", "timestamp"] }), auth);
 }
 
 async function createLead(data, userEmail) {
@@ -378,7 +389,7 @@ async function sendEmail(body) {
     throw Object.assign(new Error('The email is too large after encoding. Reduce template image sizes before sending.'), { status: 413 });
   }
   const raw = base64Url(message);
-  await gmailSendRawEmail(raw);
+  const delivery = await gmailSendRawEmail(raw);
 
   await logEmailEvent({
     Timestamp: formatTimestamp(),
@@ -392,7 +403,8 @@ async function sendEmail(body) {
     firstName: body.placeholders?.FIRST_NAME || "",
     sentBy: access.user,
     fromEmail: replyTo,
-    status: "SENT",
+    status: "ACCEPTED_BY_GMAIL",
+    messageId: delivery?.id || '',
     error: "",
   });
 

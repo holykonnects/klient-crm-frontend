@@ -55,7 +55,7 @@ function fakeDispatch() {
 test('durable dispatch sends once and reload or resume skips the existing claim', async () => {
   const fixture = fakeDispatch();
   const result = await dispatchCampaign(fixture.io);
-  assert.equal(result.status, 'Sent');
+  assert.equal(result.status, 'Accepted by Gmail');
   assert.equal(result.messageId, 'gmail-fixture-id');
   assert.equal((await dispatchCampaign(fixture.io)).skipped, true);
   assert.equal(fixture.sends, 1);
@@ -82,7 +82,7 @@ test('post-send ledger failure returns sent with warning and blocks retries', as
   const fixture = fakeDispatch();
   const io = { ...fixture.io, updateClaim: async () => { throw new Error('Sheets unavailable'); } };
   const result = await dispatchCampaign(io);
-  assert.equal(result.status, 'Sent');
+  assert.equal(result.status, 'Accepted by Gmail');
   assert.match(result.warning, /Do not resend/);
   assert.equal((await dispatchCampaign(io)).skipped, true);
   assert.equal(fixture.sends, 1);

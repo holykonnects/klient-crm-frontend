@@ -8,25 +8,17 @@ import {
   CardActionArea,
   CardContent,
   Stack,
-  Dialog,
-  DialogTitle,
-  DialogContent,
 } from "@mui/material";
 
 import MailOutlineIcon from "@mui/icons-material/MailOutline";
-import DescriptionIcon from "@mui/icons-material/Description";
-import HistoryIcon from "@mui/icons-material/History";
 import SendIcon from "@mui/icons-material/Send"; // for bulk sender
 
 import EmailTemplatesTable from "./EmailTemplatesTable";
 import EmailLogsTable from "./EmailLogsTable";
 import SendEmailModal from "./SendEmailModal";
+import BulkEmailSender from './BulkEmailSender';
 
 const cornflowerBlue = "#6495ED";
-
-// ✅ Bulk email Apps Script URL (inline)
-const BULK_EMAIL_URL =
-  "https://script.google.com/macros/s/AKfycbyHKwZhtRyVNYtECD3LZ_whE4q1Me29Xgv4CLjnpW3N1M0_iXV0d55ZuiJgpViCBJZ_zQ/exec";
 
 export default function EmailDashboard() {
   const [tab, setTab] = useState(0);
@@ -145,7 +137,7 @@ export default function EmailDashboard() {
               </CardActionArea>
             </Card>
 
-            {/* BULK SENDER CARD (INLINE IFRAME) */}
+            {/* NATIVE CAMPAIGN SENDER */}
             <Card
               sx={{
                 width: 250,
@@ -188,42 +180,7 @@ export default function EmailDashboard() {
             onClose={() => setSendEmailOpen(false)}
           />
 
-          {/* BULK SENDER INLINE MODAL (IFRAME) */}
-          <Dialog
-            open={bulkOpen}
-            onClose={() => setBulkOpen(false)}
-            fullWidth
-            maxWidth="lg"
-          >
-            <DialogTitle
-              sx={{
-                fontFamily: "Montserrat, sans-serif",
-                fontWeight: 600,
-                fontSize: 16,
-              }}
-            >
-              Bulk Email Sender
-            </DialogTitle>
-            <DialogContent
-              dividers
-              sx={{
-                p: 0,
-                height: "80vh",
-              }}
-            >
-              <Box sx={{ width: "100%", height: "100%" }}>
-                <iframe
-                  src={BULK_EMAIL_URL}
-                  title="Bulk Email Sender"
-                  style={{
-                    border: "none",
-                    width: "100%",
-                    height: "100%",
-                  }}
-                />
-              </Box>
-            </DialogContent>
-          </Dialog>
+          <BulkEmailSender open={bulkOpen} onClose={() => setBulkOpen(false)} />
         </Box>
       )}
 

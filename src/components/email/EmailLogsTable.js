@@ -13,8 +13,12 @@ import {
   Chip,
   CircularProgress,
   Link,
+  Alert,
+  Button,
 } from "@mui/material";
 import { useAuth } from "../AuthContext";
+import { readEmailResponse } from './emailApiResponse';
+import { normalizeEmailEvents } from '../../utils/emailEvents';
 
 const cornflowerBlue = "#6495ED";
 
@@ -26,6 +30,7 @@ export default function EmailLogsTable() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [reload, setReload] = useState(0);
 
   // 🔹 Read role from localStorage (adjust key if needed)
   const [role, setRole] = useState("End User");
@@ -40,38 +45,34 @@ export default function EmailLogsTable() {
       // ignore if localStorage not available
     }
   }, []);
-  const isAdmin = role?.toLowerCase() === "admin";
+  const isAdmin = String(user?.role || role).toLowerCase() === "admin";
 
   useEffect(() => {
+    let active = true;
     const fetchLogs = async () => {
       try {
         setLoading(true);
         setErrorMsg("");
         const params = new URLSearchParams({ action: "getEmailEvents", user: userEmail });
         const res = await fetch(`/api/email?${params.toString()}`);
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
-        }
-        const json = await res.json();
+        const json = await readEmailResponse(res);
+        if (!active) return;
         const data = Array.isArray(json.data) ? json.data : [];
         // Sort: latest first
-        const sorted = [...data].sort((a, b) => {
-          const da = new Date(a.timestamp).getTime() || 0;
-          const db = new Date(b.timestamp).getTime() || 0;
-          return db - da;
-        });
+        const sorted = normalizeEmailEvents(data);
         setLogs(sorted);
         setFiltered(sorted);
       } catch (err) {
         console.error("Error fetching email logs:", err);
-        setErrorMsg("Unable to load email logs. Please try again later.");
+        if (active) { setLogs([]); setErrorMsg(err.message || 'Unable to load email logs.'); }
       } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     };
 
     fetchLogs();
-  }, [userEmail]);
+    return () => { active = false; };
+  }, [userEmail, reload]);
 
   // Simple text filter across key fields
   useEffect(() => {
@@ -172,11 +173,7 @@ export default function EmailLogsTable() {
       )}
 
       {!loading && errorMsg && (
-        <Typography
-          sx={{ fontSize: 12, color: "#c62828", fontFamily: "Montserrat" }}
-        >
-          {errorMsg}
-        </Typography>
+        <Alert severity="error" action={<Button color="inherit" size="small" onClick={() => setReload(value => value + 1)}>Retry</Button>}>{errorMsg}</Alert>
       )}
 
       {!loading && !errorMsg && filtered.length === 0 && (

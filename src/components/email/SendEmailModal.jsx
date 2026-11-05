@@ -40,11 +40,12 @@ export default function SendEmailModal({ open, onClose }) {
     if (!open) return;
 
     (async () => {
-      const fetchedLeads = await EmailService.getLeads(userEmail);
-      const fetchedTemplates = await EmailService.getTemplates(userEmail);
-
-      setLeads(Array.isArray(fetchedLeads) ? fetchedLeads : []);
-      setTemplates(Array.isArray(fetchedTemplates) ? fetchedTemplates : []);
+      try {
+        const fetchedLeads = await EmailService.getLeads(userEmail);
+        const fetchedTemplates = await EmailService.getTemplates(userEmail);
+        setLeads(Array.isArray(fetchedLeads) ? fetchedLeads : []);
+        setTemplates(Array.isArray(fetchedTemplates) ? fetchedTemplates : []);
+      } catch (error) { alert(error.message || 'Unable to load email templates.'); }
     })();
   }, [open, userEmail]);
 

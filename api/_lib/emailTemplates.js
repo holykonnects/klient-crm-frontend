@@ -2,6 +2,17 @@ import { createHash } from 'node:crypto';
 import { escapeHtml } from './emailRenderer.js';
 import juice from 'juice';
 
+const GOOGLE_DOC_MIME = 'application/vnd.google-apps.document';
+
+export function selectEmailTemplateFiles(files = []) {
+  return files
+    .filter(file => [GOOGLE_DOC_MIME, 'text/html'].includes(file?.mimeType))
+    .filter(file => !/\.([0-9]+)$/.test(String(file?.name || '')))
+    .filter(file => !/^copy of\s+/i.test(String(file?.name || '')))
+    .slice()
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'en', { sensitivity: 'base' }));
+}
+
 // Template documents own their styles and layout; do not run them through the
 // operational-email wrapper, which deliberately restyles tables.
 export function templateEmailHtml(html, placeholders = {}) {
@@ -48,7 +59,7 @@ export function normalizeGoogleDocEmailHtml(html) {
   const background = declarations['background-color'] || '#ffffff';
   const compatibility = `<style>
     .crm-google-doc-content img{max-width:100%!important;height:auto!important}
-    .crm-google-doc-content table{max-width:100%!important}
+    .crm-google-doc-content table{width:100%!important;max-width:100%!important;table-layout:fixed!important}
     @media only screen and (max-width:600px){.crm-google-doc-padding{padding:24px 16px!important}}
   </style>`;
   const wrapped = `<body${bodyAttributes} style="margin:0;background-color:${background}">

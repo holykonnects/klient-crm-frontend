@@ -18,7 +18,7 @@ import {
 } from "../_lib/googleSheets.js";
 import { handleLeadPost } from "../_lib/crmHandlers.js";
 import { base64Url, mimeMessage } from "../_lib/emailRenderer.js";
-import { prepareTemplateEmail, templateEmailHtml } from "../_lib/emailTemplates.js";
+import { prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
 import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, validEmail } from '../_lib/emailCampaigns.js';
 import { createHash } from 'node:crypto';
@@ -232,10 +232,7 @@ async function listTemplates(userEmail) {
     fields: "files(id,name,mimeType,modifiedTime,webViewLink)",
     }, auth);
   });
-  const templates = (result.files || [])
-    .filter((file) => file.mimeType !== "application/vnd.google-apps.folder")
-    .filter(file => [GOOGLE_DOC_MIME, 'text/html'].includes(file.mimeType))
-    .filter((file) => !/\.([0-9]+)$/.test(file.name || ""))
+  const templates = selectEmailTemplateFiles(result.files || [])
     .map((file) => ({
       id: file.id,
       name: file.name,

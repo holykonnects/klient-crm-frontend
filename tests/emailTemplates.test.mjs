@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeGoogleDocEmailHtml, prepareTemplateEmail, templateEmailHtml } from '../api/_lib/emailTemplates.js';
+import { normalizeGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from '../api/_lib/emailTemplates.js';
 import { mimeMessage } from '../api/_lib/emailRenderer.js';
 
 test('document HTML preserves stylesheet, dimensions and table styling', () => {
@@ -24,7 +24,7 @@ test('CSS is inlined for mail clients while media queries, links and author over
 });
 
 test('Google Docs page styles become an email-safe wrapper with responsive images and mobile padding', () => {
-  const source = '<html><head><meta charset="utf-8"></head><body class="doc-content" style="background-color:#fafafa;max-width:468pt;padding:54pt 72pt 54pt 72pt"><img src="https://example.invalid/banner.png" style="width:856px;height:92px"><p>Hello</p></body></html>';
+  const source = '<html><head><meta charset="utf-8"></head><body class="doc-content" style="background-color:#fafafa;max-width:468pt;padding:54pt 72pt 54pt 72pt"><img src="https://example.invalid/banner.png" style="width:856px;height:92px"><table><tr><td style="width:156pt">One</td><td style="width:156pt">Two</td><td style="width:156pt">Three</td></tr></table></body></html>';
   const normalized = normalizeGoogleDocEmailHtml(source);
   assert.match(normalized, /width="816"/);
   assert.match(normalized, /class="crm-google-doc-padding"/);
@@ -33,8 +33,21 @@ test('Google Docs page styles become an email-safe wrapper with responsive image
   assert.match(prepared, /max-width: 100%\s*!important; height: auto\s*!important/);
   assert.match(prepared, /@media only screen and \(max-width:600px\)/);
   assert.match(prepared, /max-width:\s*816px/);
+  assert.match(prepared, /table-layout:\s*fixed\s*!important/);
+  assert.match(prepared, /<table[^>]*style="[^"]*width:\s*100%\s*!important/);
   assert.ok(!prepared.includes('height="auto"'));
   assert.equal(normalizeGoogleDocEmailHtml('<html><body><p>Ordinary HTML</p></body></html>'), '<html><body><p>Ordinary HTML</p></body></html>');
+});
+
+test('template picker exposes canonical Docs and HTML in a stable order', () => {
+  const files = [
+    { id: 'copy', name: 'Copy of Diwali Template', mimeType: 'application/vnd.google-apps.document' },
+    { id: 'docx', name: 'Diwali Template.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' },
+    { id: 'version', name: 'Diwali Template.2', mimeType: 'application/vnd.google-apps.document' },
+    { id: 'html', name: 'Athletic offer', mimeType: 'text/html' },
+    { id: 'doc', name: 'Diwali Template', mimeType: 'application/vnd.google-apps.document' },
+  ];
+  assert.deepEqual(selectEmailTemplateFiles(files).map(file => file.id), ['html', 'doc']);
 });
 
 test('large embedded images become deduplicated inline MIME parts, not HTML body data', () => {

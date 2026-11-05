@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { prepareTemplateEmail, templateEmailHtml } from '../api/_lib/emailTemplates.js';
+import { normalizeGoogleDocEmailHtml, prepareTemplateEmail, templateEmailHtml } from '../api/_lib/emailTemplates.js';
 import { mimeMessage } from '../api/_lib/emailRenderer.js';
 
 test('document HTML preserves stylesheet, dimensions and table styling', () => {
@@ -21,6 +21,20 @@ test('CSS is inlined for mail clients while media queries, links and author over
   assert.match(result, /width: 200px; padding: 12px; color: blue/);
   assert.match(result, /@media\(max-width:480px\)/);
   assert.match(result, /href="https:\/\/example.invalid\/product"/);
+});
+
+test('Google Docs page styles become an email-safe wrapper with responsive images and mobile padding', () => {
+  const source = '<html><head><meta charset="utf-8"></head><body class="doc-content" style="background-color:#fafafa;max-width:468pt;padding:54pt 72pt 54pt 72pt"><img src="https://example.invalid/banner.png" style="width:856px;height:92px"><p>Hello</p></body></html>';
+  const normalized = normalizeGoogleDocEmailHtml(source);
+  assert.match(normalized, /width="816"/);
+  assert.match(normalized, /class="crm-google-doc-padding"/);
+  assert.match(normalized, /padding:54pt 72pt 54pt 72pt/);
+  const prepared = prepareTemplateEmail(source).html;
+  assert.match(prepared, /max-width: 100%\s*!important; height: auto\s*!important/);
+  assert.match(prepared, /@media only screen and \(max-width:600px\)/);
+  assert.match(prepared, /max-width:\s*816px/);
+  assert.ok(!prepared.includes('height="auto"'));
+  assert.equal(normalizeGoogleDocEmailHtml('<html><body><p>Ordinary HTML</p></body></html>'), '<html><body><p>Ordinary HTML</p></body></html>');
 });
 
 test('large embedded images become deduplicated inline MIME parts, not HTML body data', () => {
@@ -46,6 +60,15 @@ test('remote images remain unchanged and damaged or unsupported embedded images 
   assert.throws(() => prepareTemplateEmail('<img src="data:image/svg+xml;base64,PHN2Zz4=">'), /not a supported/);
   assert.throws(() => prepareTemplateEmail('<p style="background:url(data:image/png;base64,YQ==)">Text</p>'), /background image/);
   assert.throws(() => prepareTemplateEmail('a'.repeat(20 * 1024 * 1024 + 1)), /20 MB/);
+});
+
+test('image-free HTML is base64 encoded and line-wrapped for Gmail MIME compatibility', () => {
+  const html = '<html><body><p>Hello ₹ — '.repeat(100) + '</p></body></html>';
+  const message = mimeMessage({ to: 'test@example.invalid', subject: 'Fixture', html });
+  assert.match(message, /Content-Transfer-Encoding: base64/);
+  const payload = message.split('\r\n\r\n')[1];
+  assert.ok(payload.split('\r\n').every(line => line.length <= 76));
+  assert.equal(Buffer.from(payload.replace(/\r\n/g, ''), 'base64').toString('utf8'), html);
 });
 
 test('both CRM previews isolate HTML and the server send path uses the same template renderer', () => {

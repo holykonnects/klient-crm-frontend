@@ -219,7 +219,8 @@ export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", re
 
   if (!attachments.length) {
     headers.push("Content-Type: text/html; charset=UTF-8");
-    return `${headers.join("\r\n")}\r\n\r\n${html || ""}`;
+    headers.push("Content-Transfer-Encoding: base64");
+    return `${headers.join("\r\n")}\r\n\r\n${base64Mime(html || "")}`;
   }
 
   const boundary = `kk_related_${Date.now().toString(36)}`;

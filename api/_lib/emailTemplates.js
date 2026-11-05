@@ -14,9 +14,57 @@ export function templateEmailHtml(html, placeholders = {}) {
   });
 }
 
+function cssDeclarations(style = '') {
+  return Object.fromEntries(String(style).split(';').map(part => part.split(':')).filter(parts => parts.length > 1)
+    .map(([name, ...value]) => [name.trim().toLowerCase(), value.join(':').trim()]));
+}
+
+function cssPixels(value) {
+  const match = String(value || '').trim().match(/^([\d.]+)(px|pt|in|cm|mm)?$/i);
+  if (!match) return 0;
+  const amount = Number(match[1]);
+  return amount * ({ pt: 4 / 3, in: 96, cm: 96 / 2.54, mm: 96 / 25.4 }[String(match[2] || 'px').toLowerCase()] || 1);
+}
+
+function paddingSides(value = '') {
+  const parts = String(value).trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return { left: 0, right: 0 };
+  if (parts.length === 1) return { left: cssPixels(parts[0]), right: cssPixels(parts[0]) };
+  if (parts.length === 2 || parts.length === 3) return { left: cssPixels(parts[1]), right: cssPixels(parts[1]) };
+  return { left: cssPixels(parts[3]), right: cssPixels(parts[1]) };
+}
+
+export function normalizeGoogleDocEmailHtml(html) {
+  const source = String(html || '');
+  const bodyMatch = source.match(/<body\b([^>]*)>([\s\S]*?)<\/body>/i);
+  if (!bodyMatch || !/\bclass\s*=\s*(["'])[^"']*\bdoc-content\b[^"']*\1/i.test(bodyMatch[1])) return source;
+  const styleMatch = bodyMatch[1].match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i);
+  const declarations = cssDeclarations(styleMatch?.[2]);
+  const padding = declarations.padding || '0';
+  const sides = paddingSides(padding);
+  const contentWidth = cssPixels(declarations['max-width']) || 624;
+  const documentWidth = Math.max(320, Math.round(contentWidth + sides.left + sides.right));
+  const bodyAttributes = bodyMatch[1].replace(/\s*style\s*=\s*(["'])[\s\S]*?\1/i, '');
+  const background = declarations['background-color'] || '#ffffff';
+  const compatibility = `<style>
+    .crm-google-doc-content img{max-width:100%!important;height:auto!important}
+    .crm-google-doc-content table{max-width:100%!important}
+    @media only screen and (max-width:600px){.crm-google-doc-padding{padding:24px 16px!important}}
+  </style>`;
+  const wrapped = `<body${bodyAttributes} style="margin:0;background-color:${background}">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse;background-color:${background}"><tr><td align="center">
+      <table role="presentation" width="${documentWidth}" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:${documentWidth}px;border-collapse:collapse"><tr>
+        <td class="crm-google-doc-padding" style="padding:${padding};background-color:${background}"><div class="crm-google-doc-content">${bodyMatch[2]}</div></td>
+      </tr></table>
+    </td></tr></table>
+  </body>`;
+  const withCss = /<\/head>/i.test(source) ? source.replace(/<\/head>/i, `${compatibility}</head>`) : `${compatibility}${source}`;
+  return withCss.replace(bodyMatch[0], wrapped);
+}
+
 export function prepareTemplateEmail(html) {
   const attachments = new Map();
-  const prepared = String(html || '').replace(/(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:[\s\S]*?)\2/gi, (_, prefix, quote, src) => {
+  const prepared = normalizeGoogleDocEmailHtml(html).replace(/(<img\b[^>]*?\bsrc\s*=\s*)(["'])(data:[\s\S]*?)\2/gi, (_, prefix, quote, src) => {
     const match = src.match(/^data:image\/(png|jpe?g|gif|webp);base64,([a-z0-9+/=\s]+)$/i);
     if (!match) throw new Error('An embedded template image is not a supported PNG, JPEG, GIF or WebP image. Replace it before sending.');
     const encoded = match[2].replace(/\s/g, '');
@@ -38,7 +86,8 @@ export function prepareTemplateEmail(html) {
     throw error;
   }
   const compatibleHtml = juice(prepared, { removeStyleTags: false, preserveMediaQueries: true,
-    preserveFontFaces: true, preserveImportant: true, inlinePseudoElements: false });
+    preserveFontFaces: true, preserveImportant: true, inlinePseudoElements: false })
+    .replace(/\sheight=(["'])auto\1/gi, '');
   const compatibleBytes = Buffer.byteLength(compatibleHtml, 'utf8');
   if (compatibleBytes + imageBytes > 20 * 1024 * 1024) throw Object.assign(new Error('This template exceeds the 20 MB message budget after CSS preparation.'), { status: 413 });
   return { html: compatibleHtml, inlineAttachments, htmlBytes: compatibleBytes, imageBytes };

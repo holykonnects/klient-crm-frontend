@@ -85,7 +85,9 @@ test('native campaign API previews, sends once, updates only status cells and re
     assert.equal((await invoke(payload)).body.skipped, true);
     assert.equal(deliveries, 1);
     assert.match((await invoke({ ...payload, expectedEmail: 'changed@example.invalid' })).body.error, /row changed/);
-    assert.match((await invoke({ ...payload, version: 'stale' })).body.error, /template has changed/);
+    const stale = await invoke({ ...payload, version: 'stale' });
+    assert.equal(stale.status, 409);
+    assert.match(stale.body.error, /template has changed/);
   } finally {
     globalThis.fetch = priorFetch;
     for (const name of envNames) if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name];

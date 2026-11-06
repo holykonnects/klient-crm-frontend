@@ -60,7 +60,7 @@ async function templateImage(req, res) {
   catch { throw Object.assign(new Error('Template preview image has expired. Preview the template again.'), { status: 403 }); }
   if (receipt.type !== 'email-template-image') throw Object.assign(new Error('Invalid image token.'), { status: 403 });
   const template = await loadTemplate(receipt.templateId);
-  if (template.version !== receipt.version) throw new Error('The template changed. Preview it again.');
+  if (template.version !== receipt.version) throw Object.assign(new Error('The template changed. Preview it again.'), { status: 409 });
   const image = prepareTemplateEmail(template.html).inlineAttachments.find(attachment => attachment.cid === receipt.cid);
   if (!image) throw new Error('Template image not found.');
   res.setHeader('Content-Type', image.contentType);
@@ -166,7 +166,9 @@ async function sendCampaign(body, session) {
   const replyTo = clean(body.replyTo || session.email || session.sub);
   if (!subject || /[\r\n]/.test(subject) || !validEmail(replyTo)) throw new Error('Enter a subject without line breaks and a valid reply-to email address.');
   const template = await loadTemplate(clean(body.templateId));
-  if (!body.version || body.version !== template.version) throw new Error('The template has changed. Preview it again before sending.');
+  if (!body.version || body.version !== template.version) {
+    throw Object.assign(new Error('The template has changed. Preview it again before sending.'), { status: 409 });
+  }
   const placeholders = campaignPlaceholders(recipient, body.quotationLink);
   const prepared = prepareTemplateEmail(templateEmailHtml(template.html, placeholders));
   const missing = prepared.html.match(/\{\{[A-Z_]+\}\}/g);

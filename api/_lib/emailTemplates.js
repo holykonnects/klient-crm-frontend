@@ -61,8 +61,32 @@ function xmlAttribute(attributes, name) {
   return attributes.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'))?.[1] || '';
 }
 
+function docxFramePartNames(entries, type) {
+  const fallback = [...entries.keys()].filter(name => new RegExp(`^word/${type}\\d+\\.xml$`, 'i').test(name)).sort();
+  const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';
+  const relationshipXml = entries.get('word/_rels/document.xml.rels')?.toString('utf8') || '';
+  if (!documentXml || !relationshipXml) return fallback;
+  const relationships = new Map([...relationshipXml.matchAll(/<Relationship\b([^>]*)\/?\s*>/gi)].map(match =>
+    [xmlAttribute(match[1], 'Id'), xmlAttribute(match[1], 'Target')]));
+  const section = [...documentXml.matchAll(/<w:sectPr\b[^>]*>([\s\S]*?)<\/w:sectPr>/gi)][0]?.[1] || '';
+  if (!section) return fallback;
+  const references = [...section.matchAll(new RegExp(`<w:${type}Reference\\b([^>]*)\\/?\\s*>`, 'gi'))].map(match => ({
+    id: xmlAttribute(match[1], 'r:id'),
+    kind: xmlAttribute(match[1], 'w:type').toLowerCase(),
+  }));
+  const hasDistinctFirstPage = /<w:titlePg(?:\s|\/|>)/i.test(section);
+  const selected = (hasDistinctFirstPage && references.find(reference => reference.kind === 'first'))
+    || references.find(reference => reference.kind === 'default')
+    || references.find(reference => reference.kind === 'first')
+    || references[0];
+  const target = selected && relationships.get(selected.id);
+  if (!target) return fallback;
+  const name = target.startsWith('/') ? target.slice(1) : path.normalize(path.join('word', target));
+  return entries.has(name) ? [name] : fallback;
+}
+
 function docxPartImages(entries, type) {
-  const partNames = [...entries.keys()].filter(name => new RegExp(`^word/${type}\\d+\\.xml$`, 'i').test(name)).sort();
+  const partNames = docxFramePartNames(entries, type);
   const seen = new Set();
   return partNames.flatMap(partName => {
     const xml = entries.get(partName)?.toString('utf8') || '';

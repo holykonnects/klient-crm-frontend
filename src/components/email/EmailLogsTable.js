@@ -92,6 +92,7 @@ export default function EmailLogsTable() {
           log.mode,
           log.status,
           log.templateText,
+          log.messageId,
           log.quotationLink, // 🔍 include quotation link in search
         ]
           .filter(Boolean)
@@ -107,6 +108,7 @@ export default function EmailLogsTable() {
     const s = status.toUpperCase();
     let color = "default";
     if (s === "SENT") color = "success";
+    else if (s === "ACCEPTED_BY_GMAIL") color = "info";
     else if (s === "ERROR") color = "error";
     return (
       <Chip
@@ -206,6 +208,7 @@ export default function EmailLogsTable() {
                 <TableCell>Template</TableCell>
                 <TableCell>Quotation</TableCell> {/* 🔹 new visible column */}
                 <TableCell>Status</TableCell>
+                <TableCell>Gmail Message ID</TableCell>
                 <TableCell>Error</TableCell>
               </TableRow>
             </TableHead>
@@ -275,6 +278,7 @@ export default function EmailLogsTable() {
                   </TableCell>
 
                   <TableCell>{renderStatusChip(log.status)}</TableCell>
+                  <TableCell sx={{ fontFamily: 'monospace' }}>{log.messageId || '—'}</TableCell>
                   <TableCell>
                     {log.error && (
                       <Typography

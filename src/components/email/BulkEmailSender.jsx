@@ -113,9 +113,10 @@ export default function BulkEmailSender({ open, onClose }) {
           const result = await EmailService.campaign('sendCampaignEmail', { campaign: settings.campaign, subject: settings.subject,
             templateId: settings.templateId, version: settings.version, replyTo: settings.replyTo, quotationLink: settings.quotationLink,
             ...(settings.mode === 0 ? { sheet: settings.sheet, rowNumber: recipient.rowNumber, expectedEmail: recipient.email } : { recipient }) }, 'POST');
-          setOutcomes(current => ({ ...current, [id]: result.skipped ? `${result.status} (already recorded)` : result.status }));
+          const deliveryLabel = result.messageId ? `${result.status} (${result.messageId})` : result.status;
+          setOutcomes(current => ({ ...current, [id]: result.skipped ? `${result.status} (not sent again; already recorded)` : deliveryLabel }));
           done += 1; setProgress({ done, total: queue.length });
-          if (result.warning || (result.skipped && result.status !== 'Sent')) {
+          if (result.warning || (result.skipped && !['Sent', 'Accepted by Gmail'].includes(result.status))) {
             setError(result.warning || 'A prior send is unconfirmed. Check Gmail Sent before continuing.');
             break;
           }
@@ -124,7 +125,7 @@ export default function BulkEmailSender({ open, onClose }) {
           setError(err.message); break;
         }
       }
-      setNotice(`${done} of ${queue.length} recipients processed${pause.current ? ' (paused)' : ''}.`);
+      setNotice(`${done} of ${queue.length} recipients submitted to Gmail${pause.current ? ' (paused)' : ''}. Inbox delivery can still be delayed, filtered or rejected.`);
     } finally { running.current = false; setSending(false); }
   };
 
@@ -197,7 +198,7 @@ export default function BulkEmailSender({ open, onClose }) {
     </DialogActions>
     <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Confirm email send</DialogTitle><DialogContent>
       <Typography>{targets.length} recipient(s)</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>
-      <Alert severity="info" sx={{ mt: 2 }}>Recipients already recorded for this campaign and template will not be sent another email. Unconfirmed deliveries require review.</Alert>
+      <Alert severity="info" sx={{ mt: 2 }}>A successful result means Gmail accepted the message; it does not confirm inbox delivery. Recipients already recorded for this campaign and template will not be sent another email.</Alert>
     </DialogContent><DialogActions><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="contained" startIcon={<SendIcon />} onClick={send}>Confirm send</Button></DialogActions></Dialog>
   </Dialog>;
 }

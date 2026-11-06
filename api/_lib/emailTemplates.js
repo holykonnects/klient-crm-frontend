@@ -61,8 +61,32 @@ function xmlAttribute(attributes, name) {
   return attributes.match(new RegExp(`(?:^|\\s)${name}="([^"]*)"`, 'i'))?.[1] || '';
 }
 
+function docxFramePartNames(entries, type) {
+  const fallback = [...entries.keys()].filter(name => new RegExp(`^word/${type}\\d+\\.xml$`, 'i').test(name)).sort();
+  const documentXml = entries.get('word/document.xml')?.toString('utf8') || '';
+  const relationshipXml = entries.get('word/_rels/document.xml.rels')?.toString('utf8') || '';
+  if (!documentXml || !relationshipXml) return fallback;
+  const relationships = new Map([...relationshipXml.matchAll(/<Relationship\b([^>]*)\/?\s*>/gi)].map(match =>
+    [xmlAttribute(match[1], 'Id'), xmlAttribute(match[1], 'Target')]));
+  const section = [...documentXml.matchAll(/<w:sectPr\b[^>]*>([\s\S]*?)<\/w:sectPr>/gi)][0]?.[1] || '';
+  if (!section) return fallback;
+  const references = [...section.matchAll(new RegExp(`<w:${type}Reference\\b([^>]*)\\/?\\s*>`, 'gi'))].map(match => ({
+    id: xmlAttribute(match[1], 'r:id'),
+    kind: xmlAttribute(match[1], 'w:type').toLowerCase(),
+  }));
+  const hasDistinctFirstPage = /<w:titlePg(?:\s|\/|>)/i.test(section);
+  const selected = (hasDistinctFirstPage && references.find(reference => reference.kind === 'first'))
+    || references.find(reference => reference.kind === 'default')
+    || references.find(reference => reference.kind === 'first')
+    || references[0];
+  const target = selected && relationships.get(selected.id);
+  if (!target) return fallback;
+  const name = target.startsWith('/') ? target.slice(1) : path.normalize(path.join('word', target));
+  return entries.has(name) ? [name] : fallback;
+}
+
 function docxPartImages(entries, type) {
-  const partNames = [...entries.keys()].filter(name => new RegExp(`^word/${type}\\d+\\.xml$`, 'i').test(name)).sort();
+  const partNames = docxFramePartNames(entries, type);
   const seen = new Set();
   return partNames.flatMap(partName => {
     const xml = entries.get(partName)?.toString('utf8') || '';
@@ -103,12 +127,41 @@ function frameRow(images, type) {
   return `<table class="crm-doc-${type}" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse"><tr>${cells}</tr></table>`;
 }
 
+function framePixelSize(image) {
+  const value = dimension => {
+    const magnitude = Number(dimension?.magnitude || 0);
+    const unit = String(dimension?.unit || 'PT').toLowerCase();
+    return magnitude ? cssPixels(`${magnitude}${unit}`) : 0;
+  };
+  return { width: value(image.size?.width), height: value(image.size?.height) };
+}
+
+function htmlImagePixelSize(tag) {
+  const style = tag.match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i)?.[2] || '';
+  const declarations = cssDeclarations(style);
+  const attribute = name => tag.match(new RegExp(`\\b${name}\\s*=\\s*(["']?)([\\d.]+)\\1`, 'i'))?.[2] || '';
+  return {
+    width: cssPixels(declarations.width || attribute('width')),
+    height: cssPixels(declarations.height || attribute('height')),
+  };
+}
+
+function omitFramesAlreadyRendered(body, images = [], type) {
+  const tags = [...String(body || '').matchAll(/<img\b[^>]*>/gi)].map(match => match[0]);
+  const candidates = (type === 'header' ? tags.slice(0, 3) : tags.slice(-3)).map(htmlImagePixelSize);
+  return images.filter(image => {
+    const expected = framePixelSize(image);
+    if (!expected.width || !expected.height) return true;
+    return !candidates.some(actual => Math.abs(actual.width - expected.width) < 1.5 && Math.abs(actual.height - expected.height) < 1.5);
+  });
+}
+
 export function frameGoogleDocEmailHtml(html, frames = {}) {
-  const header = frameRow(frames.header, 'header');
-  const footer = frameRow(frames.footer, 'footer');
-  if (!header && !footer) return String(html || '');
-  return String(html || '').replace(/<body\b([^>]*)>([\s\S]*?)<\/body>/i,
-    (_, attributes, body) => `<body${attributes}>${header}${body}${footer}</body>`);
+  return String(html || '').replace(/<body\b([^>]*)>([\s\S]*?)<\/body>/i, (_, attributes, body) => {
+    const header = frameRow(omitFramesAlreadyRendered(body, frames.header, 'header'), 'header');
+    const footer = frameRow(omitFramesAlreadyRendered(body, frames.footer, 'footer'), 'footer');
+    return `<body${attributes}>${header}${body}${footer}</body>`;
+  });
 }
 
 function cssDeclarations(style = '') {

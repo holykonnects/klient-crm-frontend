@@ -16,6 +16,7 @@ test('native campaign API previews, sends once, updates only status cells and re
   let ledgerExists = false;
   const claims = [];
   const updates = [];
+  const eventRows = [];
   let deliveries = 0;
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   globalThis.fetch = async (input, options = {}) => {
@@ -45,7 +46,11 @@ test('native campaign API previews, sends once, updates only status cells and re
       if (options.method === 'PUT') { updates.push(range); return response({}); }
       return response({ values: [['First Name', 'Email', 'Email Status', 'Email Shared Date', 'Template Sent'], ['Test', 'recipient@example.invalid', '', '', '']] });
     }
-    if (range.includes('Email_Events')) return response({ values: [['Timestamp', 'to', 'subject', 'status']] });
+    if (range.includes('Email_Events')) {
+      if (options.method === 'POST') { eventRows.push(JSON.parse(options.body).values[0]); return response({}); }
+      return response({ values: [['Timestamp', 'Campaign ID', 'Recipient ID', 'Event (Sent/Open/Click/Bounce/Unsubscribe)',
+        'URL (for clicks)', 'User Agent (if available)', 'IP (if available)', 'Meta (JSON blob)']] });
+    }
     throw new Error(`Unexpected range: ${range}`);
   };
   const invoke = async (body, cookie = true, method = 'POST') => {
@@ -68,13 +73,21 @@ test('native campaign API previews, sends once, updates only status cells and re
     const payload = { action: 'sendCampaignEmail', campaign: 'Fixture campaign', sheet: 'Contacts', rowNumber: 2, expectedEmail: 'recipient@example.invalid', templateId: 'fixture-template', subject: 'Fixture', replyTo: 'fixture@example.invalid', version: preview.body.version };
     const sent = await invoke(payload);
     assert.equal(sent.status, 200);
-    assert.equal(sent.body.status, 'Sent');
+    assert.equal(sent.body.status, 'Accepted by Gmail');
     assert.equal(deliveries, 1);
     assert.deepEqual(updates, ["'Contacts'!C2", "'Contacts'!D2", "'Contacts'!E2"]);
+    assert.equal(eventRows.length, 1);
+    assert.equal(eventRows[0][1], 'Fixture campaign');
+    assert.equal(eventRows[0][2], 'recipient@example.invalid');
+    assert.equal(eventRows[0][3], 'ACCEPTED_BY_GMAIL');
+    assert.deepEqual(JSON.parse(eventRows[0][7]), { messageId: 'fixture-gmail-id', subject: 'Fixture', templateId: 'fixture-template',
+      template: 'Greeting', sentBy: 'fixture@example.invalid', recipient: 'recipient@example.invalid' });
     assert.equal((await invoke(payload)).body.skipped, true);
     assert.equal(deliveries, 1);
     assert.match((await invoke({ ...payload, expectedEmail: 'changed@example.invalid' })).body.error, /row changed/);
-    assert.match((await invoke({ ...payload, version: 'stale' })).body.error, /template has changed/);
+    const stale = await invoke({ ...payload, version: 'stale' });
+    assert.equal(stale.status, 409);
+    assert.match(stale.body.error, /template has changed/);
   } finally {
     globalThis.fetch = priorFetch;
     for (const name of envNames) if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name];

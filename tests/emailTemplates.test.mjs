@@ -58,17 +58,25 @@ test('Google Docs first-page header and footer images frame the exported email b
     return Buffer.concat([...locals, directory, end]);
   };
   const frames = docxFrameImages(zip({
-    'word/header1.xml': '<w:hdr><a:blip r:embed="rId1"/></w:hdr>',
+    'word/document.xml': '<w:document><w:body><w:sectPr><w:headerReference w:type="first" r:id="rFirst"/><w:headerReference w:type="default" r:id="rDefault"/><w:footerReference w:type="default" r:id="rFooter"/><w:titlePg/></w:sectPr></w:body></w:document>',
+    'word/_rels/document.xml.rels': '<Relationships><Relationship Id="rFirst" Target="header1.xml"/><Relationship Id="rDefault" Target="header2.xml"/><Relationship Id="rFooter" Target="footer1.xml"/></Relationships>',
+    'word/header1.xml': '<w:hdr><wp:extent cx="914400" cy="457200"/><a:blip r:embed="rId1"/></w:hdr>',
     'word/_rels/header1.xml.rels': '<Relationships><Relationship Id="rId1" Target="media/logo.png"/></Relationships>',
+    'word/header2.xml': '<w:hdr><a:blip r:embed="rId3"/></w:hdr>',
+    'word/_rels/header2.xml.rels': '<Relationships><Relationship Id="rId3" Target="media/repeated.png"/></Relationships>',
     'word/footer1.xml': '<w:ftr><a:blip r:embed="rId2"/></w:ftr>',
     'word/_rels/footer1.xml.rels': '<Relationships><Relationship Id="rId2" Target="media/end.png"/></Relationships>',
-    'word/media/logo.png': 'a', 'word/media/end.png': 'b',
+    'word/media/logo.png': 'a', 'word/media/end.png': 'b', 'word/media/repeated.png': 'c',
   }));
+  assert.equal(frames.header.length, 1);
   assert.match(frames.header[0].src, /base64,YQ==$/);
   assert.match(frames.footer[0].src, /base64,Yg==$/);
   const framed = frameGoogleDocEmailHtml('<html><body class="doc-content"><p>Body</p></body></html>', frames);
   assert.ok(framed.indexOf('crm-doc-header') < framed.indexOf('<p>Body</p>'));
   assert.ok(framed.indexOf('crm-doc-footer') > framed.indexOf('<p>Body</p>'));
+  const alreadyExported = frameGoogleDocEmailHtml('<html><body class="doc-content"><img src="data:image/png;base64,Yw==" style="width:96px;height:48px"><p>Body</p></body></html>', frames);
+  assert.doesNotMatch(alreadyExported, /crm-doc-header/);
+  assert.equal((alreadyExported.match(/<img\b/gi) || []).length, 2); // exported header plus the separately injected footer
 });
 
 test('template picker exposes canonical Docs and HTML in a stable order', () => {

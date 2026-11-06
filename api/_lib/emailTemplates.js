@@ -127,12 +127,41 @@ function frameRow(images, type) {
   return `<table class="crm-doc-${type}" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;border-collapse:collapse"><tr>${cells}</tr></table>`;
 }
 
+function framePixelSize(image) {
+  const value = dimension => {
+    const magnitude = Number(dimension?.magnitude || 0);
+    const unit = String(dimension?.unit || 'PT').toLowerCase();
+    return magnitude ? cssPixels(`${magnitude}${unit}`) : 0;
+  };
+  return { width: value(image.size?.width), height: value(image.size?.height) };
+}
+
+function htmlImagePixelSize(tag) {
+  const style = tag.match(/\bstyle\s*=\s*(["'])([\s\S]*?)\1/i)?.[2] || '';
+  const declarations = cssDeclarations(style);
+  const attribute = name => tag.match(new RegExp(`\\b${name}\\s*=\\s*(["']?)([\\d.]+)\\1`, 'i'))?.[2] || '';
+  return {
+    width: cssPixels(declarations.width || attribute('width')),
+    height: cssPixels(declarations.height || attribute('height')),
+  };
+}
+
+function omitFramesAlreadyRendered(body, images = [], type) {
+  const tags = [...String(body || '').matchAll(/<img\b[^>]*>/gi)].map(match => match[0]);
+  const candidates = (type === 'header' ? tags.slice(0, 3) : tags.slice(-3)).map(htmlImagePixelSize);
+  return images.filter(image => {
+    const expected = framePixelSize(image);
+    if (!expected.width || !expected.height) return true;
+    return !candidates.some(actual => Math.abs(actual.width - expected.width) < 1.5 && Math.abs(actual.height - expected.height) < 1.5);
+  });
+}
+
 export function frameGoogleDocEmailHtml(html, frames = {}) {
-  const header = frameRow(frames.header, 'header');
-  const footer = frameRow(frames.footer, 'footer');
-  if (!header && !footer) return String(html || '');
-  return String(html || '').replace(/<body\b([^>]*)>([\s\S]*?)<\/body>/i,
-    (_, attributes, body) => `<body${attributes}>${header}${body}${footer}</body>`);
+  return String(html || '').replace(/<body\b([^>]*)>([\s\S]*?)<\/body>/i, (_, attributes, body) => {
+    const header = frameRow(omitFramesAlreadyRendered(body, frames.header, 'header'), 'header');
+    const footer = frameRow(omitFramesAlreadyRendered(body, frames.footer, 'footer'), 'footer');
+    return `<body${attributes}>${header}${body}${footer}</body>`;
+  });
 }
 
 function cssDeclarations(style = '') {

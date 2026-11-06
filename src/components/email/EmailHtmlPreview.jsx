@@ -25,6 +25,6 @@ export default function EmailHtmlPreview({ html = '', onReady }) {
     {error && <Alert severity="error">{error}</Alert>}
     <Box component="iframe" title="Email template preview" sandbox="" referrerPolicy="no-referrer"
       srcDoc={`<!doctype html><meta http-equiv="Content-Security-Policy" content="${policy}">${document}`}
-      sx={{ display: error ? 'none' : 'block', width: '100%', height: '65vh', minHeight: 320, border: '1px solid #dbe3ef', bgcolor: '#fff' }} />
+      sx={{ display: error ? 'none' : 'block', width: '100%', height: { xs: '52vh', sm: '60vh', lg: '65vh' }, minHeight: { xs: 360, sm: 420 }, border: '1px solid #dbe3ef', bgcolor: '#fff' }} />
   </Box>;
 }

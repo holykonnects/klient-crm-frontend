@@ -26,19 +26,20 @@ export default function EmailDashboard() {
   const [bulkOpen, setBulkOpen] = useState(false);
 
   return (
-    <Box sx={{ fontFamily: "Montserrat, sans-serif", p: 2 }}>
+    <Box sx={{ fontFamily: "Montserrat, sans-serif", p: { xs: 1, sm: 2 } }}>
       {/* HEADER WITH KK LOGO */}
       <Box
         sx={{
-          px: 2,
+          px: { xs: 0.5, sm: 2 },
           pb: 1,
           display: "flex",
           alignItems: "center",
           justifyContent: "space-between",
+          textAlign: { xs: 'center', sm: 'left' },
           mb: 1.5,
         }}
       >
-        <Box sx={{ display: "flex", alignItems: "center", gap: 1.5 }}>
+        <Box sx={{ display: "flex", flexDirection: { xs: 'column', sm: 'row' }, alignItems: "center", gap: { xs: 0.5, sm: 1.5 }, width: '100%' }}>
           <img
             className="crm-primary-logo"
             src="/assets/rido-sports-logo.png"
@@ -52,6 +53,7 @@ export default function EmailDashboard() {
                 fontWeight: 500,
                 color: cornflowerBlue,
                 letterSpacing: 0.5,
+                fontSize: { xs: 16, sm: 20 },
               }}
             >
               Client Communication Dashboard
@@ -78,11 +80,14 @@ export default function EmailDashboard() {
         indicatorColor="primary"
         sx={{
           mb: 2,
+          width: { xs: '100%', sm: 'auto' },
           "& .MuiTab-root": {
             fontFamily: "Montserrat, sans-serif",
             textTransform: "none",
-            fontSize: 14,
+            fontSize: { xs: 12, sm: 14 },
             fontWeight: 600,
+            minWidth: { xs: 0, sm: 90 },
+            flex: { xs: 1, sm: 'initial' },
           },
         }}
       >
@@ -100,18 +105,18 @@ export default function EmailDashboard() {
             Select action
           </Typography>
 
-          <Stack direction="row" spacing={3} flexWrap="wrap">
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={{ xs: 1.5, sm: 3 }} flexWrap="wrap">
             {/* SINGLE SEND CARD */}
             <Card
               sx={{
-                width: 250,
+                width: { xs: '100%', sm: 250 },
                 borderRadius: 3,
                 boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
                 border: `2px solid ${cornflowerBlue}`,
               }}
             >
               <CardActionArea onClick={() => setSendEmailOpen(true)}>
-                <CardContent sx={{ textAlign: "center", py: 4 }}>
+                <CardContent sx={{ textAlign: "center", py: { xs: 2.5, sm: 4 } }}>
                   <MailOutlineIcon
                     sx={{ fontSize: 40, color: cornflowerBlue }}
                   />
@@ -140,14 +145,14 @@ export default function EmailDashboard() {
             {/* NATIVE CAMPAIGN SENDER */}
             <Card
               sx={{
-                width: 250,
+                width: { xs: '100%', sm: 250 },
                 borderRadius: 3,
                 boxShadow: "0 2px 10px rgba(0,0,0,0.08)",
                 border: `2px solid ${cornflowerBlue}`,
               }}
             >
               <CardActionArea onClick={() => setBulkOpen(true)}>
-                <CardContent sx={{ textAlign: "center", py: 4 }}>
+                <CardContent sx={{ textAlign: "center", py: { xs: 2.5, sm: 4 } }}>
                   <SendIcon sx={{ fontSize: 40, color: cornflowerBlue }} />
                   <Typography
                     sx={{

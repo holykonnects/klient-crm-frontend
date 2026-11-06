@@ -9,6 +9,9 @@ import {
   Stack,
   Typography,
   Alert,
+  Paper,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { DataGrid } from "@mui/x-data-grid";
 import VisibilityIcon from "@mui/icons-material/Visibility";
@@ -23,6 +26,8 @@ import { readEmailResponse } from './emailApiResponse';
 const EMAIL_API = "/api/email";
 
 export default function EmailTemplatesTable() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
   const userEmail = String(user?.username || "").trim().toLowerCase();
   const [rows, setRows] = useState([]);
@@ -135,16 +140,27 @@ export default function EmailTemplatesTable() {
   ];
 
   return (
-    <Box sx={{ p: 2, fontFamily: "Montserrat, sans-serif" }}>
+    <Box sx={{ p: { xs: 0.5, sm: 2 }, fontFamily: "Montserrat, sans-serif" }}>
       
       {/* HEADER */}
-      <Typography variant="h5" fontWeight="bold" sx={{ mb: 2, color: "#6495ED" }}>
+      <Typography variant="h5" fontWeight="bold" sx={{ mb: 2, color: "#6495ED", fontSize: { xs: 18, sm: 24 } }}>
         Email Templates
       </Typography>
 
       {errorMsg && <Alert severity="error" sx={{ mb: 2 }} action={<Button color="inherit" size="small" onClick={fetchTemplates}>Retry</Button>}>{errorMsg}</Alert>}
       {/* DATAGRID */}
-      <div style={{ height: 500, width: "100%" }}>
+      {isMobile ? <Stack spacing={1}>
+        {rows.map(row => <Paper key={row.id} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+          <Typography sx={{ fontSize: 13, fontWeight: 700, overflowWrap: 'anywhere' }}>{row.name}</Typography>
+          <Typography sx={{ mt: 0.5, color: 'text.secondary', fontSize: 10 }}>Modified {row.modifiedTime}</Typography>
+          <Stack direction="row" spacing={0.5} mt={1} flexWrap="wrap">
+            <Button size="small" startIcon={<PreviewIcon />} onClick={() => handlePreview(row.id)}>Preview</Button>
+            <Button size="small" startIcon={<OpenInNewIcon />} onClick={() => window.open(row.url, "_blank")}>Open</Button>
+            <Button size="small" startIcon={<BackupIcon />} onClick={() => handleVersion(row.id)}>Version</Button>
+          </Stack>
+        </Paper>)}
+        {!loading && !rows.length && !errorMsg && <Typography sx={{ py: 3, textAlign: 'center', color: 'text.secondary', fontSize: 12 }}>No templates found.</Typography>}
+      </Stack> : <div style={{ height: 500, width: "100%" }}>
         <DataGrid
           rows={rows}
           loading={loading}
@@ -161,10 +177,10 @@ export default function EmailTemplatesTable() {
             },
           }}
         />
-      </div>
+      </div>}
 
       {/* PREVIEW DIALOG */}
-      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth>
+      <Dialog open={previewOpen} onClose={() => setPreviewOpen(false)} maxWidth="md" fullWidth fullScreen={isMobile}>
         <DialogTitle sx={{ fontWeight: 600, fontFamily: "Montserrat, sans-serif" }}>
           Template Preview
           <IconButton
@@ -176,10 +192,11 @@ export default function EmailTemplatesTable() {
         </DialogTitle>
         <DialogContent
           sx={{
-            maxHeight: "70vh",
+            maxHeight: { xs: 'none', sm: "70vh" },
+            height: { xs: 'calc(100dvh - 64px)', sm: 'auto' },
             overflowY: "auto",
             border: "1px solid #e0e0e0",
-            padding: 2,
+            padding: { xs: 1, sm: 2 },
           }}
         ><EmailHtmlPreview html={previewHtml} /></DialogContent>
       </Dialog>

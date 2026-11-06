@@ -15,6 +15,9 @@ import {
   Link,
   Alert,
   Button,
+  Stack,
+  useMediaQuery,
+  useTheme,
 } from "@mui/material";
 import { useAuth } from "../AuthContext";
 import { readEmailResponse } from './emailApiResponse';
@@ -23,6 +26,8 @@ import { normalizeEmailEvents } from '../../utils/emailEvents';
 const cornflowerBlue = "#6495ED";
 
 export default function EmailLogsTable() {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
   const userEmail = String(user?.username || "").trim().toLowerCase();
   const [logs, setLogs] = useState([]);
@@ -124,14 +129,15 @@ export default function EmailLogsTable() {
   };
 
   return (
-    <Box sx={{ mt: 2 }}>
+    <Box sx={{ mt: { xs: 1, sm: 2 } }}>
       <Box
         sx={{
           mb: 2,
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
-          gap: 2,
+          alignItems: { xs: 'stretch', sm: "center" },
+          flexDirection: { xs: 'column', sm: 'row' },
+          gap: { xs: 1, sm: 2 },
         }}
       >
         <Typography
@@ -150,7 +156,8 @@ export default function EmailLogsTable() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           sx={{
-            minWidth: 260,
+            minWidth: { xs: 0, sm: 260 },
+            width: { xs: '100%', sm: 'auto' },
             "& .MuiInputBase-root": {
               fontFamily: "Montserrat, sans-serif",
               fontSize: 11,
@@ -186,7 +193,29 @@ export default function EmailLogsTable() {
         </Typography>
       )}
 
-      {!loading && !errorMsg && filtered.length > 0 && (
+      {!loading && !errorMsg && filtered.length > 0 && isMobile && (
+        <Stack spacing={1}>
+          {filtered.map((log, idx) => <Paper key={`${log.timestamp}-${log.messageId}-${idx}`} variant="outlined" sx={{ p: 1.5, borderRadius: 2 }}>
+            <Stack direction="row" justifyContent="space-between" alignItems="flex-start" gap={1}>
+              <Box sx={{ minWidth: 0 }}>
+                <Typography sx={{ fontSize: 11, fontWeight: 700, overflowWrap: 'anywhere' }}>{log.subject || 'Email event'}</Typography>
+                <Typography sx={{ mt: 0.25, fontSize: 10, color: 'text.secondary' }}>{log.timestamp ? new Date(log.timestamp).toLocaleString() : 'Timestamp unavailable'}</Typography>
+              </Box>
+              {renderStatusChip(log.status)}
+            </Stack>
+            {isAdmin && log.to && <Typography sx={{ mt: 1, fontSize: 10, overflowWrap: 'anywhere' }}><strong>To:</strong> {log.to}</Typography>}
+            {(log.companyName || log.templateText) && <Typography sx={{ mt: 0.5, fontSize: 10, color: 'text.secondary' }}>{[log.companyName, log.templateText].filter(Boolean).join(' · ')}</Typography>}
+            {log.messageId && <Typography sx={{ mt: 0.5, fontSize: 9, fontFamily: 'monospace', overflowWrap: 'anywhere' }}>Gmail ID: {log.messageId}</Typography>}
+            <Stack direction="row" spacing={1.5} mt={1}>
+              {log.templateUrl && <Link href={log.templateUrl} target="_blank" rel="noopener noreferrer" sx={{ fontSize: 10 }}>Template</Link>}
+              {log.quotationLink && <Link href={log.quotationLink} target="_blank" rel="noopener noreferrer" sx={{ fontSize: 10 }}>Quotation</Link>}
+            </Stack>
+            {log.error && <Alert severity="error" sx={{ mt: 1, py: 0, '& .MuiAlert-message': { fontSize: 10 } }}>{log.error}</Alert>}
+          </Paper>)}
+        </Stack>
+      )}
+
+      {!loading && !errorMsg && filtered.length > 0 && !isMobile && (
         <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
           <Table size="small">
             <TableHead>

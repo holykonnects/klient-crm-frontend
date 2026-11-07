@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import {
   Box,
   Typography,
@@ -22,6 +22,7 @@ import {
 import { useAuth } from "../AuthContext";
 import { readEmailResponse } from './emailApiResponse';
 import { normalizeEmailEvents } from '../../utils/emailEvents';
+import { campaignPerformance } from '../../utils/campaignMetrics';
 
 const cornflowerBlue = "#6495ED";
 
@@ -51,6 +52,7 @@ export default function EmailLogsTable() {
     }
   }, []);
   const isAdmin = String(user?.role || role).toLowerCase() === "admin";
+  const performance = useMemo(() => campaignPerformance(logs), [logs]);
 
   useEffect(() => {
     let active = true;
@@ -191,6 +193,24 @@ export default function EmailLogsTable() {
         >
           No email logs found yet.
         </Typography>
+      )}
+
+      {!loading && !errorMsg && performance.length > 0 && (
+        <Box sx={{ mb: 2 }}>
+          <Typography sx={{ mb: 1, fontFamily: 'Montserrat, sans-serif', fontWeight: 600, color: cornflowerBlue }}>Campaign success</Typography>
+          <Alert severity="info" sx={{ mb: 1.5, '& .MuiAlert-message': { fontSize: 11 } }}>
+            Success is unique recipients who opened or clicked, divided by Gmail-accepted recipients. Open tracking is approximate because email clients may block or proxy images; click tracking is more reliable. Tracking starts with emails sent after this release.
+          </Alert>
+          <Stack direction={{ xs: 'column', md: 'row' }} spacing={1} sx={{ overflowX: { md: 'auto' } }}>
+            {performance.slice(0, 6).map(item => <Paper key={item.campaign} variant="outlined" sx={{ p: 1.5, minWidth: { md: 210 }, borderRadius: 2 }}>
+              <Typography sx={{ fontSize: 11, fontWeight: 700, overflowWrap: 'anywhere' }}>{item.campaign}</Typography>
+              <Typography sx={{ mt: 1, fontSize: 10 }}>Accepted: <strong>{item.accepted}</strong></Typography>
+              <Typography sx={{ fontSize: 10 }}>Opened: <strong>{item.opened}</strong> ({item.openRate}%)</Typography>
+              <Typography sx={{ fontSize: 10 }}>Clicked: <strong>{item.clicked}</strong> ({item.clickRate}%)</Typography>
+              <Typography sx={{ mt: 0.5, fontSize: 11, color: cornflowerBlue }}>Success: <strong>{item.successRate}%</strong></Typography>
+            </Paper>)}
+          </Stack>
+        </Box>
       )}
 
       {!loading && !errorMsg && filtered.length > 0 && isMobile && (

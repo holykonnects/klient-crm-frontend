@@ -62,7 +62,7 @@ test('native campaign API previews, sends once, updates only status cells and re
   const invoke = async (body, cookie = true, method = 'POST') => {
     const result = {};
     const res = { status(code) { result.status = code; return this; }, json(value) { result.body = value; return this; }, setHeader() {}, send(value) { result.body = value; return this; } };
-    await handler({ method, query: method === 'GET' ? body : {}, headers: cookie ? { cookie: `kk_session=${createSessionToken({ username: 'fixture@example.invalid', email: 'fixture@example.invalid', role: 'Admin' })}` } : {}, body: method === 'POST' ? body : {} }, res);
+    await handler({ method, query: method === 'GET' ? body : {}, headers: { host: 'crm.example.invalid', ...(cookie ? { cookie: `kk_session=${createSessionToken({ username: 'fixture@example.invalid', email: 'fixture@example.invalid', role: 'Admin' })}` } : {}) }, body: method === 'POST' ? body : {} }, res);
     return result;
   };
   try {
@@ -96,7 +96,7 @@ test('native campaign API previews, sends once, updates only status cells and re
     assert.equal(eventRows[0][2], 'recipient@example.invalid');
     assert.equal(eventRows[0][3], 'ACCEPTED_BY_GMAIL');
     assert.deepEqual(JSON.parse(eventRows[0][7]), { messageId: 'fixture-gmail-id', subject: 'Fixture', templateId: 'fixture-template',
-      template: 'Greeting', sentBy: 'fixture@example.invalid', recipient: 'recipient@example.invalid' });
+      template: 'Greeting', sentBy: 'fixture@example.invalid', recipient: 'recipient@example.invalid', event: 'ACCEPTED_BY_GMAIL' });
     assert.equal((await invoke(payload)).body.skipped, true);
     assert.equal(deliveries, 1);
     assert.match((await invoke({ ...payload, expectedEmail: 'changed@example.invalid' })).body.error, /row changed/);

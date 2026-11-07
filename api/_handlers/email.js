@@ -22,6 +22,7 @@ import { docxFrameImages, frameGoogleDocEmailHtml, prepareTemplateEmail, selectE
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
 import { emailTemplateVersion, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../_lib/emailCampaigns.js';
 import { emailGoogleRead, emailLoginAccess } from '../_lib/emailAccess.js';
+import { addEmailTracking, emailTrackingOrigin, readEmailTrackingToken } from '../_lib/emailTracking.js';
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
 const DISPATCH_SHEET = 'CRM_Email_Dispatches';
@@ -159,7 +160,7 @@ async function previewCampaign(body, user) {
     missing: [...new Set(html.match(/\{\{[A-Z_]+\}\}/g) || [])] };
 }
 
-async function sendCampaign(body, session) {
+async function sendCampaign(body, session, req) {
   let dispatchStarted = false;
   try {
     const access = await assertCanUseEmail(session.sub);
@@ -183,7 +184,9 @@ async function sendCampaign(body, session) {
     const prepared = prepareTemplateEmail(templateEmailHtml(template.html, placeholders));
     const missing = prepared.html.match(/\{\{[A-Z_]+\}\}/g);
     if (missing) throw new Error(`Complete the template placeholders before sending: ${[...new Set(missing)].join(', ')}`);
-    const message = mimeMessage({ to: recipient.email, subject, replyTo, ...prepared });
+    const tracked = { ...prepared, html: addEmailTracking(prepared.html, { origin: emailTrackingOrigin(req), campaign: body.campaign,
+      recipient: recipient.email, subject, templateId: body.templateId, template: template.meta.name, sentBy: access.user }) };
+    const message = mimeMessage({ to: recipient.email, subject, replyTo, ...tracked });
     if (Buffer.byteLength(message) > 28 * 1024 * 1024) throw Object.assign(new Error('The encoded email is too large. Reduce image sizes.'), { status: 413 });
     const key = campaignDispatchKey({ campaign: body.campaign, sheet: body.sheet || 'single', email: recipient.email, templateId: body.templateId });
     const initial = await ledger(true);
@@ -368,8 +371,11 @@ async function logEmailEvent(data) {
     'Campaign ID': data.campaign || data.subject || '',
     'Recipient ID': data.to || '',
     [eventHeader]: data.status || '',
+    'URL (for clicks)': data.url || '',
+    'User Agent (if available)': data.userAgent || '',
+    'IP (if available)': data.ip || '',
     [metaHeader]: JSON.stringify({ messageId: data.messageId || '', subject: data.subject || '', templateId: data.templateId || '',
-      template: data.templateText || '', sentBy: data.sentBy || '', recipient: data.to || '' }),
+      template: data.templateText || '', sentBy: data.sentBy || '', recipient: data.to || '', event: data.status || '' }),
   };
   await appendValues(SHEETS.email.spreadsheetId, sheetName, buildRow(headers, compatible, { timestampFields: ["Timestamp", "timestamp"] }), auth);
 }
@@ -392,7 +398,28 @@ async function createLead(data, userEmail) {
   return { ok: true, ...result };
 }
 
-async function sendEmail(body) {
+async function emailTrack(req, res) {
+  let receipt;
+  try { receipt = readEmailTrackingToken(clean(req.query.token)); }
+  catch { return json(res, 400, { ok: false, error: 'This email tracking link is invalid or has expired.' }); }
+  const forwarded = clean(req.headers?.['x-forwarded-for']).split(',')[0];
+  try {
+    await logEmailEvent({ Timestamp: formatTimestamp(), campaign: receipt.campaign, to: receipt.recipient, subject: receipt.subject,
+      templateId: receipt.templateId, templateText: receipt.template, sentBy: receipt.sentBy,
+      status: receipt.event === 'click' ? 'CLICKED' : 'OPENED', url: receipt.url || '', userAgent: clean(req.headers?.['user-agent']), ip: forwarded });
+  } catch (error) { console.error('Email engagement logging failed:', error); }
+  if (receipt.event === 'click') {
+    res.setHeader('Cache-Control', 'no-store');
+    res.setHeader('Location', receipt.url);
+    return res.status(302).send('');
+  }
+  res.setHeader('Content-Type', 'image/gif');
+  res.setHeader('Cache-Control', 'no-store, max-age=0');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  return res.status(200).send(Buffer.from('R0lGODlhAQABAIAAAAAAAP///ywAAAAAAQABAAACAUwAOw==', 'base64'));
+}
+
+async function sendEmail(body, req) {
   const access = await assertCanUseEmail(body.user);
   const templateId = clean(body.templateId);
   const to = clean(body.to);
@@ -404,7 +431,9 @@ async function sendEmail(body) {
   const templateMeta = template.meta;
   const { html, inlineAttachments } = prepareTemplateEmail(templateEmailHtml(template.html, body.placeholders || {}));
   const replyTo = clean(body.fromEmail) || access.user;
-  const message = mimeMessage({ to, subject, html, replyTo, inlineAttachments });
+  const trackedHtml = addEmailTracking(html, { origin: emailTrackingOrigin(req), campaign: body.campaign || subject, recipient: to,
+    subject, templateId, template: templateMeta.name, sentBy: access.user });
+  const message = mimeMessage({ to, subject, html: trackedHtml, replyTo, inlineAttachments });
   if (Buffer.byteLength(message, 'utf8') > 28 * 1024 * 1024) {
     throw Object.assign(new Error('The email is too large after encoding. Reduce template image sizes before sending.'), { status: 413 });
   }
@@ -436,6 +465,7 @@ export default async function handler(req, res) {
     if (req.method === "GET") {
       const action = clean(req.query.action);
       if (action === 'emailTemplateImage') return await templateImage(req, res);
+      if (action === 'emailTrack') return await emailTrack(req, res);
       const userEmail = requestUser(req);
       if (action === 'getCampaignSheets' || action === 'getCampaignRecipients' || action === 'getLeadRecipients') {
         const session = requireSession(req);
@@ -458,11 +488,11 @@ export default async function handler(req, res) {
       const userEmail = requestUser(req, body);
       if (action === 'previewCampaignEmail' || action === 'sendCampaignEmail') {
         const session = requireSession(req);
-        return json(res, 200, action === 'previewCampaignEmail' ? await previewCampaign(body, session.sub) : await sendCampaign(body, session));
+        return json(res, 200, action === 'previewCampaignEmail' ? await previewCampaign(body, session.sub) : await sendCampaign(body, session, req));
       }
       if (action === "versionTemplate") return json(res, 200, await versionTemplate(clean(body.templateId), userEmail));
       if (action === "createLead") return json(res, 200, await createLead(body, userEmail));
-      if (action === "sendEmail") return json(res, 200, await sendEmail(body));
+      if (action === "sendEmail") return json(res, 200, await sendEmail(body, req));
       return json(res, 400, { ok: false, error: "Invalid action" });
     }
 

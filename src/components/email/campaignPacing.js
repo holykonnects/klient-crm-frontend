@@ -1,4 +1,4 @@
-export const EMAIL_INTERVAL_MS = 20000;
+export const EMAIL_INTERVAL_MS = 10000;
 export const MAX_QUOTA_RETRIES = 3;
 
 // Short waits allow Pause to interrupt both normal pacing and quota cooldowns.

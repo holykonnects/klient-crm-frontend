@@ -7,7 +7,7 @@ import { emailGoogleRead } from '../api/_lib/emailAccess.js';
 test('pacing waits for the full interval and Pause cancels promptly', async () => {
   let elapsed = 0;
   assert.equal(await waitForCampaign(EMAIL_INTERVAL_MS, () => false, async ms => { elapsed += ms; }), true);
-  assert.equal(elapsed, 20000);
+  assert.equal(elapsed, 10000);
   let paused = false;
   elapsed = 0;
   assert.equal(await waitForCampaign(60000, () => paused, async ms => { elapsed += ms; paused = true; }), false);

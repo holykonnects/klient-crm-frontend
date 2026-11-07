@@ -129,7 +129,7 @@ export default function BulkEmailSender({ open, onClose }) {
       for (const recipient of queue) {
         if (pause.current) break;
         if (processed > 0) {
-          setNotice('Waiting 20 seconds before the next recipient. Keep this window open.');
+          setNotice('Waiting 10 seconds before the next recipient. Keep this window open.');
           if (!await waitForCampaign(EMAIL_INTERVAL_MS, () => pause.current)) break;
         }
         const id = recipient.rowNumber || recipient.email;
@@ -178,7 +178,7 @@ export default function BulkEmailSender({ open, onClose }) {
     <DialogContent dividers sx={{ height: { xs: 'auto', sm: '78vh' }, flex: 1, p: { xs: 1.25, sm: 2 }, overflowX: 'hidden' }}>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="info" sx={{ mb: 2 }}>{notice}</Alert>}
-      <Alert severity="info" sx={{ mb: 2 }}>Bulk emails are staggered with a 20-second pause between recipients. Keep this window open and your device awake while sending. Use Pause to stop safely, then send the same campaign to resume.</Alert>
+      <Alert severity="info" sx={{ mb: 2 }}>Bulk emails are staggered with a 10-second pause between recipients. Keep this window open and your device awake while sending. Use Pause to stop safely, then send the same campaign to resume.</Alert>
       {(loading || previewLoading) && <LinearProgress sx={{ mb: 2 }} />}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(300px, 0.8fr) minmax(0, 1.2fr)' }, gap: { xs: 1.5, sm: 2 } }}>
         <Box component="fieldset" disabled={sending} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
@@ -260,7 +260,7 @@ export default function BulkEmailSender({ open, onClose }) {
       <Button variant="contained" startIcon={<SendIcon />} disabled={!canSend} onClick={() => setConfirmOpen(true)}>Send {form.mode === 1 ? 'email' : `selected (${targets.length})`}</Button>
     </DialogActions>
     <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Confirm email send</DialogTitle><DialogContent>
-      <Typography>{targets.length} recipient(s), with a 20-second pause between recipients.</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>
+      <Typography>{targets.length} recipient(s), with a 10-second pause between recipients.</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>
       <Alert severity="info" sx={{ mt: 2 }}>A successful result means Gmail accepted the message; it does not confirm inbox delivery. Recipients already recorded for this campaign and template will not be sent another email.</Alert>
     </DialogContent><DialogActions><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="contained" startIcon={<SendIcon />} onClick={send}>Confirm send</Button></DialogActions></Dialog>
   </Dialog>;

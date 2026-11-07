@@ -7,7 +7,9 @@ import {
   Typography,
   Select,
   MenuItem,
-  Stack
+  Stack,
+  useMediaQuery,
+  useTheme
 } from "@mui/material";
 
 import EmailService from "./EmailService";
@@ -16,6 +18,8 @@ import MinimalLeadModal from "./MinimalLeadModal";
 import { useAuth } from "../AuthContext";
 
 export default function SendEmailModal({ open, onClose }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const { user } = useAuth();
   const userEmail = String(user?.username || "").trim().toLowerCase();
   const [mode, setMode] = useState("existing");
@@ -119,14 +123,14 @@ export default function SendEmailModal({ open, onClose }) {
   return (
     <>
       {/* ───────── SEND EMAIL MODAL ───────── */}
-      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-        <Box p={3} sx={{ fontFamily: "Montserrat, sans-serif" }}>
+      <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth fullScreen={isMobile}>
+        <Box sx={{ p: { xs: 2, sm: 3 }, fontFamily: "Montserrat, sans-serif", overflowY: 'auto' }}>
           <Typography variant="h6" fontWeight="bold">
             Send Email
           </Typography>
 
           {/* Mode Toggle Buttons */}
-          <Stack direction="row" spacing={2} mt={2}>
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1} mt={2}>
             <Button
               variant={mode === "existing" ? "contained" : "outlined"}
               onClick={() => setMode("existing")}

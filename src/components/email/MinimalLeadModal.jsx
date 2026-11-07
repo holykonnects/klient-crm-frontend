@@ -1,7 +1,9 @@
-import { Dialog, Box, TextField, Button, Typography, Stack } from "@mui/material";
+import { Dialog, Box, TextField, Button, Typography, Stack, useMediaQuery, useTheme } from "@mui/material";
 import { useState, useEffect } from "react";
 
 export default function MinimalLeadModal({ open, onClose, onSave }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const [email, setEmail] = useState("");
   const [firstName, setFirstName] = useState("");
   const [company, setCompany] = useState("");
@@ -26,8 +28,8 @@ export default function MinimalLeadModal({ open, onClose, onSave }) {
   };
 
   return (
-    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth>
-      <Box p={3} sx={{ fontFamily: "Montserrat" }}>
+    <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth fullScreen={isMobile}>
+      <Box sx={{ p: { xs: 2, sm: 3 }, fontFamily: "Montserrat" }}>
         <Typography fontWeight={600} mb={2}>
           Quick Lead Entry
         </Typography>

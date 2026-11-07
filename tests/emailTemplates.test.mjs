@@ -137,5 +137,6 @@ test('both CRM previews isolate HTML and the server send path uses the same temp
   const handler = readFileSync(new URL('../api/_handlers/email.js', import.meta.url), 'utf8');
   assert.ok(!handler.includes('brandedEmailHtml'));
   assert.match(handler, /prepareTemplateEmail\(templateEmailHtml/);
-  assert.match(handler, /mimeMessage\(\{ to, subject, html, replyTo, inlineAttachments \}\)/);
+  assert.match(handler, /addEmailTracking\(html/);
+  assert.match(handler, /mimeMessage\(\{ to, subject, html: trackedHtml, replyTo, inlineAttachments \}\)/);
 });

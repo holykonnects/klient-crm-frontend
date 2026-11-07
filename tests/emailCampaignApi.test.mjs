@@ -18,6 +18,9 @@ test('native campaign API previews, sends once, updates only status cells and re
   const updates = [];
   const eventRows = [];
   let deliveries = 0;
+  let quotaOnLogin = false;
+  let quotaAfterClaim = false;
+  let sheetsReads = 0;
   const response = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
   globalThis.fetch = async (input, options = {}) => {
     const url = new URL(input);
@@ -28,9 +31,11 @@ test('native campaign API previews, sends once, updates only status cells and re
       return response({ id: 'fixture-template', name: 'Greeting', mimeType: 'text/html', parents: [DRIVE_FOLDERS.emailTemplates], modifiedTime: 'fixture-time' });
     }
     if (url.hostname !== 'sheets.googleapis.com') throw new Error(`Unexpected fixture network request: ${input}`);
+    if (!options.method || options.method === 'GET') sheetsReads += 1;
     if (url.pathname.endsWith(':batchUpdate')) { ledgerExists = true; return response({}); }
     const range = decodeURIComponent(url.pathname.split('/values/')[1] || '');
     if (!range) return response({ sheets: ['CRM Login', 'Contacts', 'Email_Events', ...(ledgerExists ? ['CRM_Email_Dispatches'] : [])].map(title => ({ properties: { title } })) });
+    if (range.includes('CRM Login') && quotaOnLogin) return response({ error: { message: 'Quota exceeded for Read requests' } }, 429);
     if (range.includes('CRM Login')) return response({ values: [['Login Username', 'Role'], ['fixture@example.invalid', 'Admin']] });
     if (range.includes('CRM_Email_Dispatches')) {
       if (!ledgerExists) return response({ error: { message: 'Unable to parse range' } }, 400);
@@ -40,6 +45,7 @@ test('native campaign API previews, sends once, updates only status cells and re
         claims[Number(match[2]) - 1][match[1].charCodeAt(0) - 65] = JSON.parse(options.body).values[0][0];
         return response({});
       }
+      if (quotaAfterClaim && claims.some(row => row[2] === 'Sending')) return response({ error: { message: 'Quota exceeded for Read requests' } }, 429);
       return response({ values: claims });
     }
     if (range.includes('Contacts')) {
@@ -71,7 +77,16 @@ test('native campaign API previews, sends once, updates only status cells and re
     assert.ok(Buffer.isBuffer(image.body));
     assert.equal((await invoke({ action: 'emailTemplateImage', token: `${token}broken` }, false, 'GET')).status, 403);
     const payload = { action: 'sendCampaignEmail', campaign: 'Fixture campaign', sheet: 'Contacts', rowNumber: 2, expectedEmail: 'recipient@example.invalid', templateId: 'fixture-template', subject: 'Fixture', replyTo: 'fixture@example.invalid', version: preview.body.version };
+    quotaOnLogin = true;
+    const limited = await invoke(payload);
+    assert.equal(limited.status, 429);
+    assert.equal(limited.body.retryable, true);
+    assert.equal(limited.body.retryAfterSeconds, 60);
+    assert.equal(deliveries, 0);
+    quotaOnLogin = false;
+    sheetsReads = 0;
     const sent = await invoke(payload);
+    assert.ok(sheetsReads <= 15, `Expected fewer Sheets reads, got ${sheetsReads}`);
     assert.equal(sent.status, 200);
     assert.equal(sent.body.status, 'Accepted by Gmail');
     assert.equal(deliveries, 1);
@@ -88,6 +103,15 @@ test('native campaign API previews, sends once, updates only status cells and re
     const stale = await invoke({ ...payload, version: 'stale' });
     assert.equal(stale.status, 409);
     assert.match(stale.body.error, /template has changed/);
+    quotaAfterClaim = true;
+    const claimed = await invoke({ ...payload, campaign: 'Interrupted claim' });
+    assert.equal(claimed.body.retryable, false);
+    assert.equal(deliveries, 1);
+    quotaAfterClaim = false;
+    const resume = await invoke({ ...payload, campaign: 'Interrupted claim' });
+    assert.equal(resume.body.skipped, true);
+    assert.equal(resume.body.status, 'Sending');
+    assert.equal(deliveries, 1);
   } finally {
     globalThis.fetch = priorFetch;
     for (const name of envNames) if (previous[name] === undefined) delete process.env[name]; else process.env[name] = previous[name];

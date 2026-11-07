@@ -10,6 +10,7 @@ import PauseIcon from '@mui/icons-material/Pause';
 import { useAuth } from '../AuthContext';
 import EmailService from './EmailService';
 import EmailHtmlPreview from './EmailHtmlPreview';
+import { EMAIL_INTERVAL_MS, sendWithQuotaRetry, waitForCampaign } from './campaignPacing';
 
 const emptyForm = { campaign: '', sheet: '', templateId: '', subject: '', replyTo: '', quotationLink: '', mode: 0, email: '', firstName: '', company: '' };
 
@@ -37,6 +38,7 @@ export default function BulkEmailSender({ open, onClose }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [outcomes, setOutcomes] = useState({});
   const running = useRef(false);
+  const completed = useRef(new Set());
   const pause = useRef(false);
   const previewRequest = useRef(0);
   const campaignRequest = useRef(0);
@@ -50,6 +52,8 @@ export default function BulkEmailSender({ open, onClose }) {
   const toggleRecipient = (rowNumber) => setSelected(current => current.includes(rowNumber)
     ? current.filter(id => id !== rowNumber)
     : [...current, rowNumber]);
+
+  useEffect(() => () => { pause.current = true; }, []);
 
   useEffect(() => {
     if (!open) return;
@@ -105,32 +109,53 @@ export default function BulkEmailSender({ open, onClose }) {
     if (running.current) return;
     running.current = true; pause.current = false;
     setSending(true); setConfirmOpen(false); setError(''); setNotice('');
-    const queue = [...targets];
+    const dispatchId = recipient => JSON.stringify([form.campaign.trim().toLowerCase(), form.mode === 0 ? form.sheet : 'single', recipient.email.toLowerCase(), form.templateId]);
+    const queue = targets.filter(recipient => !completed.current.has(dispatchId(recipient)));
     const settings = { ...form, version: preview.version };
     setProgress({ done: 0, total: queue.length });
     let done = 0;
+    let processed = 0;
     try {
       for (const recipient of queue) {
         if (pause.current) break;
+        if (processed > 0) {
+          setNotice('Waiting 20 seconds before the next recipient. Keep this window open.');
+          if (!await waitForCampaign(EMAIL_INTERVAL_MS, () => pause.current)) break;
+        }
         const id = recipient.rowNumber || recipient.email;
         setOutcomes(current => ({ ...current, [id]: 'Sending' }));
         try {
-          const result = await EmailService.campaign('sendCampaignEmail', { campaign: settings.campaign, subject: settings.subject,
+          const result = await sendWithQuotaRetry(() => EmailService.campaign('sendCampaignEmail', { campaign: settings.campaign, subject: settings.subject,
             templateId: settings.templateId, version: settings.version, replyTo: settings.replyTo, quotationLink: settings.quotationLink,
-            ...(settings.mode === 0 ? { sheet: settings.sheet, rowNumber: recipient.rowNumber, expectedEmail: recipient.email } : { recipient }) }, 'POST');
+            ...(settings.mode === 0 ? { sheet: settings.sheet, rowNumber: recipient.rowNumber, expectedEmail: recipient.email } : { recipient }) }, 'POST'), {
+            paused: () => pause.current,
+            onRetry: (delay, attempt) => {
+              setOutcomes(current => ({ ...current, [id]: 'Waiting for Google quota' }));
+              setNotice(`Google read quota reached. Retrying in ${delay / 1000} seconds (attempt ${attempt}/3). Keep this window open.`);
+            },
+          });
+          if (!result) {
+            setOutcomes(current => ({ ...current, [id]: 'Queued' }));
+            break;
+          }
+          processed += 1;
           const deliveryLabel = result.messageId ? `${result.status} (${result.messageId})` : result.status;
           setOutcomes(current => ({ ...current, [id]: result.skipped ? `${result.status} (not sent again; already recorded)` : deliveryLabel }));
-          done += 1; setProgress({ done, total: queue.length });
+          if (['Sent', 'Accepted by Gmail'].includes(result.status)) {
+            completed.current.add(dispatchId(recipient));
+            done += 1;
+          }
+          setProgress({ done, total: queue.length });
           if (result.warning || (result.skipped && !['Sent', 'Accepted by Gmail'].includes(result.status))) {
             setError(result.warning || 'A prior send is unconfirmed. Check Gmail Sent before continuing.');
             break;
           }
         } catch (err) {
           setOutcomes(current => ({ ...current, [id]: 'Needs review' }));
-          setError(err.message); break;
+          setError(err.retryable ? `${err.message} Automatic retries exhausted. Resume this campaign later with the same campaign name and template.` : err.message); break;
         }
       }
-      setNotice(`${done} of ${queue.length} recipients submitted to Gmail${pause.current ? ' (paused)' : ''}. Inbox delivery can still be delayed, filtered or rejected.`);
+      setNotice(`${done} of ${queue.length} recipients submitted to Gmail${pause.current ? ' (paused)' : ''}. Resume with the same campaign name and template to skip already recorded recipients. Inbox delivery can still be delayed, filtered or rejected.`);
     } finally { running.current = false; setSending(false); }
   };
 
@@ -143,6 +168,7 @@ export default function BulkEmailSender({ open, onClose }) {
     <DialogContent dividers sx={{ height: { xs: 'auto', sm: '78vh' }, flex: 1, p: { xs: 1.25, sm: 2 }, overflowX: 'hidden' }}>
       {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
       {notice && <Alert severity="info" sx={{ mb: 2 }}>{notice}</Alert>}
+      <Alert severity="info" sx={{ mb: 2 }}>Bulk emails are staggered with a 20-second pause between recipients. Keep this window open and your device awake while sending. Use Pause to stop safely, then send the same campaign to resume.</Alert>
       {(loading || previewLoading) && <LinearProgress sx={{ mb: 2 }} />}
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: 'minmax(0, 1fr)', lg: 'minmax(300px, 0.8fr) minmax(0, 1.2fr)' }, gap: { xs: 1.5, sm: 2 } }}>
         <Box component="fieldset" disabled={sending} sx={{ border: 0, p: 0, m: 0, minWidth: 0 }}>
@@ -217,7 +243,7 @@ export default function BulkEmailSender({ open, onClose }) {
       <Button variant="contained" startIcon={<SendIcon />} disabled={!canSend} onClick={() => setConfirmOpen(true)}>Send {form.mode === 1 ? 'email' : `selected (${targets.length})`}</Button>
     </DialogActions>
     <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)} maxWidth="sm" fullWidth><DialogTitle>Confirm email send</DialogTitle><DialogContent>
-      <Typography>{targets.length} recipient(s)</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>
+      <Typography>{targets.length} recipient(s), with a 20-second pause between recipients.</Typography><Typography>Campaign: {form.campaign}</Typography><Typography>Subject: {form.subject}</Typography><Typography>Template: {template?.name}</Typography>
       <Alert severity="info" sx={{ mt: 2 }}>A successful result means Gmail accepted the message; it does not confirm inbox delivery. Recipients already recorded for this campaign and template will not be sent another email.</Alert>
     </DialogContent><DialogActions><Button onClick={() => setConfirmOpen(false)}>Cancel</Button><Button variant="contained" startIcon={<SendIcon />} onClick={send}>Confirm send</Button></DialogActions></Dialog>
   </Dialog>;

@@ -7,6 +7,9 @@ export async function emailGoogleRead(kind, resource, operation, subjects) {
     try { return await operation({ scopes: [`https://www.googleapis.com/auth/${kind === 'Sheets' ? 'spreadsheets' : 'drive'}`], subject }); }
     catch (error) {
       if (/Missing Google service account env vars/.test(error.message)) throw Object.assign(new Error('The native email API is missing its Google service account configuration in this environment.'), { status: 503 });
+      if (error.googleStatus === 429 || /quota exceeded|rate limit exceeded/i.test(error.message)) {
+        throw Object.assign(error, { status: 429 });
+      }
       failures.push(`${subject || 'service account'}: ${error.message}`);
     }
   }

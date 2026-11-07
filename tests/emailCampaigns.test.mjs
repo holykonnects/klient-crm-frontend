@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { campaignColumns, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../api/_lib/emailCampaigns.js';
+import { emailTemplateVersion, campaignColumns, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../api/_lib/emailCampaigns.js';
 import { templateEmailHtml } from '../api/_lib/emailTemplates.js';
 
 test('campaign columns preserve actual sheet row numbers and ignore non-email rows', () => {
@@ -109,4 +109,11 @@ test('native sender replaces Apps Script and bulk routes require signed sessions
   assert.match(sender, /Save draft/);
   assert.match(sender, /<Tab label="Leads"/);
   assert.match(sender, /getLeadRecipients/);
+});
+
+test('template version survives regenerated exports and changes on source edits', () => {
+  const meta = { id: 'doc', mimeType: 'application/vnd.google-apps.document', modifiedTime: '2026-11-07T10:00:00Z' };
+  assert.equal(emailTemplateVersion(meta, '<img src="temporary-export-url-1">'), emailTemplateVersion(meta, '<img src="temporary-export-url-2">'));
+  assert.notEqual(emailTemplateVersion(meta, 'same'), emailTemplateVersion({ ...meta, modifiedTime: '2026-11-07T11:00:00Z' }, 'same'));
+  assert.notEqual(emailTemplateVersion({ id: 'no-metadata' }, 'old'), emailTemplateVersion({ id: 'no-metadata' }, 'new'));
 });

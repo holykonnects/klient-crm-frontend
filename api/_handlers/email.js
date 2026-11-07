@@ -20,8 +20,7 @@ import { handleLeadPost } from "../_lib/crmHandlers.js";
 import { base64Url, mimeMessage } from "../_lib/emailRenderer.js";
 import { docxFrameImages, frameGoogleDocEmailHtml, prepareTemplateEmail, selectEmailTemplateFiles, templateEmailHtml } from "../_lib/emailTemplates.js";
 import { createSignedToken, requireSession, verifySignedToken } from '../_lib/sessionAuth.js';
-import { campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../_lib/emailCampaigns.js';
-import { createHash } from 'node:crypto';
+import { emailTemplateVersion, campaignRecipients, campaignDispatchKey, campaignPlaceholders, dispatchCampaign, leadEmailRecipients, validEmail } from '../_lib/emailCampaigns.js';
 import { emailGoogleRead, emailLoginAccess } from '../_lib/emailAccess.js';
 
 const GOOGLE_DOC_MIME = "application/vnd.google-apps.document";
@@ -97,7 +96,7 @@ async function loadTemplate(id) {
   if (meta.mimeType === GOOGLE_DOC_MIME) {
     html = frameGoogleDocEmailHtml(html, frames);
   }
-  const version = createHash('sha256').update(html).digest('hex');
+  const version = emailTemplateVersion(meta, html);
   cachedTemplate = { id, modifiedTime: meta.modifiedTime, expires: Date.now() + 60000, html, version };
   return { ...cachedTemplate, meta };
   });

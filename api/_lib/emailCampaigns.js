@@ -77,3 +77,11 @@ export async function dispatchCampaign({ key, claim, readClaims, send, updateCla
   catch { warning = 'Email sent, but the send ledger could not be updated. Do not resend; check Gmail Sent.'; }
   return { ok: true, status: 'Accepted by Gmail', messageId: result?.id || '', warning };
 }
+
+// Google Docs exports may contain changing resource URLs. Version the source file,
+// rather than generated export bytes, while retaining a content fallback.
+export function emailTemplateVersion(meta, html) {
+  return createHash('sha256').update(JSON.stringify(meta.modifiedTime
+    ? [meta.id, meta.mimeType, meta.modifiedTime]
+    : [meta.id, meta.mimeType, html])).digest('hex');
+}

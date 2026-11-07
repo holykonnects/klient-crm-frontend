@@ -72,9 +72,15 @@ export default function BulkEmailSender({ open, onClose }) {
 
   useEffect(() => {
     setPreview(null); setPreviewReady(false); previewRequest.current += 1;
-  }, [form, selected]);
+  }, [form.templateId, form.quotationLink, previewRecipient?.email, previewRecipient?.firstName, previewRecipient?.company]);
 
-  const change = (field, value) => { setForm(current => ({ ...current, [field]: value })); setError(''); };
+  const change = (field, value) => {
+    const next = { ...form, [field]: value };
+    setForm(next);
+    try { localStorage.setItem(draftKey, JSON.stringify(next)); }
+    catch { setNotice('Changes could not be saved on this browser. Keep this window open.'); }
+    setError('');
+  };
   const loadRecipients = async () => {
     const request = ++campaignRequest.current;
     setLoading(true); setError(''); setRecipients([]); setSelected([]); setOutcomes({});

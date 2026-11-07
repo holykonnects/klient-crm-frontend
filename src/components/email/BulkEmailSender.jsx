@@ -49,9 +49,13 @@ export default function BulkEmailSender({ open, onClose }) {
     : selectableRecipients.filter(row => selected.includes(row.rowNumber) && row.valid);
   const previewRecipient = targets[0];
   const filteredRecipients = selectableRecipients.filter(row => `${row.firstName} ${row.lastName || ''} ${row.company} ${row.email} ${row.owner || ''} ${row.status || ''}`.toLowerCase().includes(search.toLowerCase()));
+  const filteredValidRecipientIds = filteredRecipients.filter(row => row.valid).map(row => row.rowNumber);
+  const allFilteredSelected = filteredValidRecipientIds.length > 0 && filteredValidRecipientIds.every(id => selected.includes(id));
   const toggleRecipient = (rowNumber) => setSelected(current => current.includes(rowNumber)
     ? current.filter(id => id !== rowNumber)
     : [...current, rowNumber]);
+  const selectFilteredRecipients = () => setSelected(current => [...new Set([...current, ...filteredValidRecipientIds])]);
+  const clearRecipientSelection = () => setSelected([]);
 
   useEffect(() => () => { pause.current = true; }, []);
 
@@ -216,6 +220,13 @@ export default function BulkEmailSender({ open, onClose }) {
       </Box>
       {form.mode !== 1 && <Box sx={{ mt: { xs: 2, sm: 3 } }}>
         <Stack direction={{ xs: 'column', sm: 'row' }} alignItems={{ xs: 'stretch', sm: 'center' }} justifyContent="space-between" gap={1} mb={1}><Typography variant="subtitle2">{form.mode === 2 ? 'Leads' : 'Recipients'} ({selectableRecipients.length})</Typography><TextField fullWidth={isMobile} label={`Search ${form.mode === 2 ? 'leads' : 'recipients'}`} size="small" value={search} disabled={sending} onChange={e => setSearch(e.target.value)} /></Stack>
+        <Stack direction="row" alignItems="center" gap={0.5} mb={1} sx={{ display: { xs: 'flex', sm: 'none' }, overflowX: 'auto' }}>
+          <Button size="small" variant={allFilteredSelected ? 'contained' : 'outlined'} disabled={sending || !filteredValidRecipientIds.length} onClick={selectFilteredRecipients} sx={{ whiteSpace: 'nowrap' }}>
+            {search ? `Select filtered (${filteredValidRecipientIds.length})` : `Select all (${filteredValidRecipientIds.length})`}
+          </Button>
+          <Button size="small" disabled={sending || !selected.length} onClick={clearRecipientSelection}>Clear</Button>
+          <Chip size="small" color={selected.length ? 'primary' : 'default'} label={`${selected.length} selected`} sx={{ ml: 'auto', flexShrink: 0 }} />
+        </Stack>
         <Box sx={{ display: { xs: 'grid', sm: 'none' }, gap: 1, maxHeight: 440, overflowY: 'auto', pr: 0.25 }}>
           {filteredRecipients.map(row => <Paper key={row.rowNumber} variant="outlined" onClick={() => !sending && row.valid && toggleRecipient(row.rowNumber)}
             sx={{ p: 1.25, display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr)', gap: 1, cursor: row.valid ? 'pointer' : 'default', opacity: row.valid ? 1 : 0.6, borderColor: selected.includes(row.rowNumber) ? 'primary.main' : 'divider', bgcolor: selected.includes(row.rowNumber) ? 'rgba(100,149,237,0.08)' : 'background.paper' }}>

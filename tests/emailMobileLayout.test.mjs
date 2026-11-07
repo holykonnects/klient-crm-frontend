@@ -10,6 +10,9 @@ test('client comms sender uses a full-screen mobile workflow with recipient card
   assert.match(sender, /display:\s*\{ xs: 'grid', sm: 'none' \}/);
   assert.match(sender, /display:\s*\{ xs: 'none', sm: 'block' \}/);
   assert.match(sender, /toggleRecipient/);
+  assert.match(sender, /selectFilteredRecipients/);
+  assert.match(sender, /Select all/);
+  assert.match(sender, /selected`/);
   assert.match(sender, /position:\s*\{ xs: 'sticky', sm: 'static' \}/);
 });
 

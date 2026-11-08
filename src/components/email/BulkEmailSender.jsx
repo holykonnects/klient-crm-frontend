@@ -35,7 +35,7 @@ export default function BulkEmailSender({ open, onClose }) {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [progress, setProgress] = useState({ done: 0, total: 0, sent: 0, skipped: 0 });
   const [outcomes, setOutcomes] = useState({});
   const running = useRef(false);
   const completed = useRef(new Set());
@@ -120,15 +120,33 @@ export default function BulkEmailSender({ open, onClose }) {
     running.current = true; pause.current = false;
     setSending(true); setConfirmOpen(false); setError(''); setNotice('');
     const dispatchId = recipient => JSON.stringify([form.campaign.trim().toLowerCase(), form.mode === 0 ? form.sheet : 'single', recipient.email.toLowerCase(), form.templateId]);
-    const queue = targets.filter(recipient => !completed.current.has(dispatchId(recipient)));
+    const pendingTargets = targets.filter(recipient => !completed.current.has(dispatchId(recipient)));
     const settings = { ...form, version: preview.version };
-    setProgress({ done: 0, total: queue.length });
-    let done = 0;
-    let processed = 0;
+    const total = targets.length;
+    setProgress({ done: 0, total, sent: 0, skipped: 0 });
+    let sent = 0;
+    let skipped = targets.length - pendingTargets.length;
     try {
+      setNotice('Checking this campaign for recipients already recorded in the send ledger.');
+      const prior = await EmailService.campaign('getCampaignDispatchStatus', {
+        campaign: settings.campaign, templateId: settings.templateId,
+        sheet: settings.mode === 0 ? settings.sheet : 'single', emails: pendingTargets.map(recipient => recipient.email),
+      }, 'POST');
+      const recorded = new Map((prior.recorded || []).map(item => [String(item.email || '').toLowerCase(), item.status || 'Needs review']));
+      const queue = pendingTargets.filter(recipient => {
+        const status = recorded.get(recipient.email.toLowerCase());
+        if (!status) return true;
+        const id = recipient.rowNumber || recipient.email;
+        completed.current.add(dispatchId(recipient));
+        setOutcomes(current => ({ ...current, [id]: `${status} (not sent again; already recorded)` }));
+        skipped += 1;
+        return false;
+      });
+      setProgress({ done: skipped, total, sent, skipped });
+      let newlyProcessed = 0;
       for (const recipient of queue) {
         if (pause.current) break;
-        if (processed > 0) {
+        if (newlyProcessed > 0) {
           setNotice('Waiting 10 seconds before the next recipient. Keep this window open.');
           if (!await waitForCampaign(EMAIL_INTERVAL_MS, () => pause.current)) break;
         }
@@ -148,14 +166,16 @@ export default function BulkEmailSender({ open, onClose }) {
             setOutcomes(current => ({ ...current, [id]: 'Queued' }));
             break;
           }
-          processed += 1;
           const deliveryLabel = result.messageId ? `${result.status} (${result.messageId})` : result.status;
           setOutcomes(current => ({ ...current, [id]: result.skipped ? `${result.status} (not sent again; already recorded)` : deliveryLabel }));
-          if (['Sent', 'Accepted by Gmail'].includes(result.status)) {
+          if (result.skipped) {
+            skipped += 1;
+          } else if (['Sent', 'Accepted by Gmail'].includes(result.status)) {
             completed.current.add(dispatchId(recipient));
-            done += 1;
+            sent += 1;
+            newlyProcessed += 1;
           }
-          setProgress({ done, total: queue.length });
+          setProgress({ done: sent + skipped, total, sent, skipped });
           if (result.warning || (result.skipped && !['Sent', 'Accepted by Gmail'].includes(result.status))) {
             setError(result.warning || 'A prior send is unconfirmed. Check Gmail Sent before continuing.');
             break;
@@ -165,7 +185,9 @@ export default function BulkEmailSender({ open, onClose }) {
           setError(err.retryable ? `${err.message} Automatic retries exhausted. Resume this campaign later with the same campaign name and template.` : err.message); break;
         }
       }
-      setNotice(`${done} of ${queue.length} recipients submitted to Gmail${pause.current ? ' (paused)' : ''}. Resume with the same campaign name and template to skip already recorded recipients. Inbox delivery can still be delayed, filtered or rejected.`);
+      setNotice(`${sent} newly submitted to Gmail; ${skipped} already recorded${pause.current ? ' (paused)' : ''}. Resume with the same campaign name and template to skip recorded recipients. Inbox delivery can still be delayed, filtered or rejected.`);
+    } catch (err) {
+      setError(err.message);
     } finally { running.current = false; setSending(false); }
   };
 
@@ -253,7 +275,7 @@ export default function BulkEmailSender({ open, onClose }) {
               valueGetter: params => !params.row.valid ? 'Invalid email' : outcomes[params.row.rowNumber] || params.row.status || 'Ready' },
             { field: 'sentAt', headerName: 'Last sent', minWidth: 150 }, { field: 'template', headerName: 'Template sent', minWidth: 160 }]} /></Box>
       </Box>}
-      {(sending || progress.total > 0) && <Box sx={{ mt: 2 }}><LinearProgress variant="determinate" value={progress.total ? 100 * progress.done / progress.total : 0} /><Typography variant="caption">{progress.done} / {progress.total}</Typography></Box>}
+      {(sending || progress.total > 0) && <Box sx={{ mt: 2 }}><LinearProgress variant="determinate" value={progress.total ? 100 * progress.done / progress.total : 0} /><Typography variant="caption">{progress.done} / {progress.total} processed · {progress.sent} newly sent · {progress.skipped} already recorded</Typography></Box>}
     </DialogContent>
     <DialogActions sx={{ px: { xs: 1.25, sm: 2 }, py: { xs: 1, sm: 1.5 }, position: { xs: 'sticky', sm: 'static' }, bottom: 0, bgcolor: 'background.paper', borderTop: { xs: '1px solid', sm: 0 }, borderColor: 'divider', '& .MuiButton-root': { minWidth: 0 } }}>
       {sending ? <Button startIcon={<PauseIcon />} onClick={() => { pause.current = true; setNotice('Pausing after the current recipient.'); }}>Pause</Button> : <Button onClick={onClose}>Close</Button>}

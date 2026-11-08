@@ -160,6 +160,25 @@ async function previewCampaign(body, user) {
     missing: [...new Set(html.match(/\{\{[A-Z_]+\}\}/g) || [])] };
 }
 
+async function campaignDispatchStatus(body, session) {
+  await assertCanUseEmail(session.sub);
+  const campaign = clean(body.campaign);
+  const templateId = clean(body.templateId);
+  const sheet = clean(body.sheet) || 'single';
+  const emails = [...new Set((Array.isArray(body.emails) ? body.emails : [])
+    .map(email => clean(email).toLowerCase()).filter(validEmail))].slice(0, 1000);
+  if (!campaign || !templateId) throw new Error('Enter a campaign name and select a template before checking prior sends.');
+  if (!emails.length) return { ok: true, recorded: [] };
+  const keys = new Map(emails.map(email => [campaignDispatchKey({ campaign, sheet, email, templateId }), email]));
+  const rows = await ledger();
+  const recorded = [];
+  for (const row of rows) {
+    const email = keys.get(row[0]);
+    if (email) recorded.push({ email, status: clean(row[2]) || 'Needs review' });
+  }
+  return { ok: true, recorded };
+}
+
 async function sendCampaign(body, session, req) {
   let dispatchStarted = false;
   try {
@@ -489,6 +508,10 @@ export default async function handler(req, res) {
       if (action === 'previewCampaignEmail' || action === 'sendCampaignEmail') {
         const session = requireSession(req);
         return json(res, 200, action === 'previewCampaignEmail' ? await previewCampaign(body, session.sub) : await sendCampaign(body, session, req));
+      }
+      if (action === 'getCampaignDispatchStatus') {
+        const session = requireSession(req);
+        return json(res, 200, await campaignDispatchStatus(body, session));
       }
       if (action === "versionTemplate") return json(res, 200, await versionTemplate(clean(body.templateId), userEmail));
       if (action === "createLead") return json(res, 200, await createLead(body, userEmail));

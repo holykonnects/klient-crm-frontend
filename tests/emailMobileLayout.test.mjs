@@ -13,6 +13,8 @@ test('client comms sender uses a full-screen mobile workflow with recipient card
   assert.match(sender, /selectFilteredRecipients/);
   assert.match(sender, /Select all/);
   assert.match(sender, /selected`/);
+  assert.match(sender, /getCampaignDispatchStatus/);
+  assert.match(sender, /already recorded/);
   assert.match(sender, /position:\s*\{ xs: 'sticky', sm: 'static' \}/);
 });
 

@@ -46,6 +46,7 @@ import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
 import CloseIcon from "@mui/icons-material/Close";
 import MobileActionMenu from "./MobileActionMenu";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
+import { dealRowGroups, recoverDealSnapshot } from "../utils/dealTableRows";
 import {
   ORDER_ATTACHMENT_FIELD_BY_KEY,
   removeOrderAttachment,
@@ -90,22 +91,6 @@ const dealReference = (row) => Object.fromEntries(
   ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Timestamp"]
     .map((field) => [field, row?.[field] ?? ""])
 );
-
-const dealKeyOf = (row) => {
-  for (const field of ["Deal ID", "Order Distribution ID"]) {
-    const id = String(row?.[field] ?? "").trim();
-    if (id) return `${field}:${id.toLowerCase()}`;
-  }
-
-  const account = String(row?.["Account ID"] || row?.["Lead ID"] || "").trim().toLowerCase();
-  const name = String(row?.["Deal Name"] ?? "").trim().toLowerCase();
-  if (account && name) return JSON.stringify([account, name]);
-
-  const orderId = String(row?.["Order ID"] ?? "").trim();
-  if (orderId) return `Order ID:${orderId.toLowerCase()}`;
-  const timestamp = String(row?.Timestamp ?? "").trim();
-  return name ? JSON.stringify([name, timestamp]) : "";
-};
 
 const getDealRowTime = (row) => crmRowUpdatedAt(row, ["Deal Updated Time"]);
 
@@ -221,8 +206,25 @@ const OrderField = React.memo(function OrderField({
 });
 
 function DealsTable() {
-  const [deals, setDeals] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
+  const { deals, historyByDeal } = useMemo(() => {
+    const groups = dealRowGroups(allDeals);
+    const historyByGroup = new Map();
+    for (const row of allDeals) {
+      const group = groups.get(row);
+      if (!historyByGroup.has(group)) historyByGroup.set(group, []);
+      historyByGroup.get(group).push(row);
+    }
+
+    const historyByDeal = new Map();
+    const deals = latestCrmRows(allDeals, (row) => groups.get(row), ["Deal Updated Time"]).map((row) => {
+      const history = newestCrmRows(historyByGroup.get(groups.get(row)), ["Deal Updated Time"]);
+      const display = recoverDealSnapshot(row, history.slice(1));
+      historyByDeal.set(display, history);
+      return display;
+    });
+    return { deals, historyByDeal };
+  }, [allDeals]);
   const [loading, setLoading] = useState(true);
 
   // table controls
@@ -303,14 +305,10 @@ function DealsTable() {
 
       setAllDeals(filtered);
 
-      const dedupedLatest = latestCrmRows(filtered, dealKeyOf, ["Deal Updated Time"]);
-
-      setDeals(dedupedLatest);
-
       const stored =
         JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-deals`)) || null;
 
-      setVisibleColumns(stored || ['Deal Name', 'Company', 'Deal Stage', 'Deal Value', 'Account Owner', 'Order ID'].filter((key) => Object.keys(dedupedLatest[0] || {}).includes(key)));
+      setVisibleColumns(stored || ['Deal Name', 'Company', 'Deal Stage', 'Deal Value', 'Account Owner', 'Order ID'].filter((key) => Object.keys(filtered[0] || {}).includes(key)));
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -459,16 +457,8 @@ function DealsTable() {
   // Logs (FULL ROW)
   // ----------------------------
   const handleViewLogs = (dealRow) => {
-    const key = dealKeyOf(dealRow);
-    if (!key) {
-      alert("No Deal Key found for logs.");
-      return;
-    }
-
-    const logs = newestCrmRows(
-      allDeals.filter((d) => dealKeyOf(d) === key),
-      ["Deal Updated Time"]
-    );
+    const logs = historyByDeal.get(dealRow);
+    if (!logs) return;
 
     setDealLogs(logs);
     setLogsOpen(true);

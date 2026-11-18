@@ -236,6 +236,12 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     "Deal ID": dealId,
     "Account ID": previousDeal?.["Account ID"] || data["Account ID"] || data["Lead ID"] || previousDeal?.["Lead ID"] || "",
   };
+  const unlinkedOrder = previousDeal?.["Order ID"] && !(
+    previousDeal["Deal ID"] || previousDeal["Order Distribution ID"] || previousDeal["Account ID"] || previousDeal["Lead ID"]
+  );
+  if (data.amountUpdate?.mode === "add" && unlinkedOrder && !String(previousDeal["Deal Amount"] ?? "").trim()) {
+    throw dealConflict("The original deal amount could not be recovered for this order. Reconcile the deal and order records before adding an amount.");
+  }
   applyAmountUpdate(deal, previousDeal, "Deal Amount");
   const headers = await ensureSheetHeaders(dealsConfig, sheetName, existingHeaders, [...UPDATE_AUDIT_HEADERS, "Deal ID", "Account ID"]);
   if (matched) {

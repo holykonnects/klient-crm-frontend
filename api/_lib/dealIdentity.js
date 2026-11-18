@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { rowsToObjects } from "./googleSheets.js";
+import { dealRowGroups, recoverDealSnapshot } from "../../src/utils/dealTableRows.js";
 
 const stableFields = ["Deal ID", "Order Distribution ID", "Order ID"];
 const normalize = (value) => String(value ?? "").trim().toLowerCase();
@@ -62,17 +63,15 @@ export function resolveDeal(values, original, spreadsheetId) {
     throw dealConflict("The original deal could not be found. Refresh the Deals table and reopen the deal.");
   }
 
-  matches.sort((a, b) => b.rowNumber - a.rowNumber);
-  const [latest] = matches;
-  const previous = { ...latest.row };
-  // Legacy Add Order wrote a sparse deal snapshot. Recover fields absent from that row.
-  if (previous["Order ID"] && !String(previous["Deal Amount"] ?? "").trim()) {
-    for (const { row } of matches.slice(1)) {
-      for (const [field, value] of Object.entries(row)) {
-        if (value !== "" && (previous[field] === "" || previous[field] == null)) previous[field] = value;
-      }
-    }
+  const groups = dealRowGroups(records.map(({ row }) => row));
+  const matchedGroups = new Set(matches.map(({ row }) => groups.get(row)));
+  if (matchedGroups.size === 1) {
+    matches = records.filter(({ row }) => matchedGroups.has(groups.get(row)));
   }
+
+  matches.sort((a, b) => b.rowNumber - a.rowNumber);
+  const [latest, ...older] = matches;
+  const previous = recoverDealSnapshot(latest.row, older.map(({ row }) => row));
 
   const assignedId = matches.find(({ row }) => normalize(row["Deal ID"]))?.row["Deal ID"];
   const rowsToBackfill = matches.filter(({ row }) => !normalize(row["Deal ID"])).map(({ rowNumber }) => rowNumber);

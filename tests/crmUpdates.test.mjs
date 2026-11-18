@@ -79,7 +79,7 @@ test("order attachment batches stay below the serverless request limit", () => {
   }), /3 MB combined/);
 });
 
-const dealHeaders = ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Deal Amount", "Timestamp"];
+const dealHeaders = ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Deal Amount", "Timestamp", "Company", "Mobile Number", "Account Owner", "Order Amount", "Stage"];
 const dealValues = (...deals) => [dealHeaders, ...deals.map((deal) => dealHeaders.map((field) => deal[field] ?? ""))];
 
 test("new deal IDs are unique even for multiple deals from the same account", () => {
@@ -129,4 +129,19 @@ test("legacy name matches cannot merge distinct deals and a stale Deal ID cannot
   const values = dealValues({ ...base, "Order Distribution ID": "OD-1" }, { ...base, "Order Distribution ID": "OD-2" });
   assert.throws(() => resolveDeal(values, base, "deals"), { status: 409 });
   assert.throws(() => resolveDeal(values, { ...base, "Deal ID": "missing" }, "deals"), { status: 409 });
+});
+
+test("editing a legacy order snapshot recovers the original deal amount through the customer match", () => {
+  const contact = { "Deal Name": "Example deal", Company: "Example", "Account Owner": "Owner", "Mobile Number": "9000000000" };
+  const closed = { ...contact, "Account ID": "A-1", "Deal Amount": 1250, Stage: "Closed Won" };
+  const order = { ...contact, "Order ID": "ORD-1", "Order Amount": 800 };
+  const resolved = resolveDeal(dealValues(closed, order), order, "deals");
+  assert.deepEqual(resolved.rowsToBackfill, [3, 2]);
+  assert.equal(resolved.previous["Account ID"], "A-1");
+  assert.equal(resolved.previous.Stage, "Closed Won");
+  assert.equal(resolved.previous["Order Amount"], 800);
+  const update = { amountUpdate: { field: "Deal Amount", mode: "add", addition: 250 } };
+  applyAmountUpdate(update, resolved.previous, "Deal Amount");
+  assert.equal(update["Deal Amount"], 1500);
+  assert.equal(resolveDeal(dealValues(closed, order), closed, "deals").dealId, resolved.dealId);
 });

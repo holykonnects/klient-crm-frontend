@@ -1,5 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { dealRowGroups, recoverDealSnapshot } from '../src/utils/dealTableRows.js';
+
 import {
   crmRowUpdatedAt,
   latestCrmRows,
@@ -37,4 +39,62 @@ test('history is ordered newest first', () => {
     { value: 'new', 'Updated At': '02/01/2026 09:00:00' },
   ];
   assert.deepEqual(newestCrmRows(rows).map(row => row.value), ['new', 'old']);
+});
+
+test('deals show one latest row when snapshots acquire stable IDs', () => {
+  const created = { 'Deal Name': 'New campus', 'Lead ID': 'LEAD-1' };
+  const closed = { 'Deal Name': 'New campus', 'Account ID': 'LEAD-1', 'Order Distribution ID': 'DIST-1', 'Order ID': 'ORD-1' };
+  const renamed = { 'Deal Name': 'New campus phase 1', 'Deal ID': 'DEAL-1', 'Order ID': 'ORD-1' };
+  const rows = [created, closed, renamed];
+  const groups = dealRowGroups(rows);
+  assert.deepEqual(latestCrmRows(rows, row => groups.get(row)), [renamed]);
+  assert.deepEqual(rows.filter(row => groups.get(row) === groups.get(renamed)), rows);
+});
+
+test('separate deals with the same name stay separate when their IDs or accounts differ', () => {
+  const legacy = { 'Deal Name': 'New campus', 'Account ID': 'A-1' };
+  const rows = [
+    legacy,
+    { ...legacy, 'Deal ID': 'D-1' },
+    { ...legacy, 'Deal ID': 'D-2' },
+    { ...legacy, 'Account ID': 'A-2' },
+  ];
+  const groups = dealRowGroups(rows);
+  assert.equal(new Set(groups.values()).size, rows.length);
+});
+
+test('rows with one Deal ID stay together throughout changes to order fields', () => {
+  const deal = { 'Deal ID': 'D-1', 'Order ID': 'O-1' };
+  const updated = { ...deal, 'Order ID': 'O-2' };
+  const groups = dealRowGroups([deal, updated]);
+  assert.equal(groups.get(deal), groups.get(updated));
+});
+
+test('deal names alone do not join rows without identifiers', () => {
+  const first = { 'Deal Name': 'New campus', Timestamp: '01/01/2026 09:00:00' };
+  const updated = { ...first, 'Updated At': '03/01/2026 09:00:00' };
+  const other = { ...first, Timestamp: '02/01/2026 09:00:00' };
+  const groups = dealRowGroups([first, updated, other]);
+  assert.equal(groups.get(first), groups.get(updated));
+  assert.notEqual(groups.get(updated), groups.get(other));
+});
+
+test('a sparse legacy order joins its unique earlier deal and exposes fields from both rows', () => {
+  const contact = { 'Deal Name': 'Example deal', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const closed = { ...contact, 'Account ID': 'A-1', 'Deal Amount': 1250, Stage: 'Closed Won' };
+  const order = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': 800, Timestamp: '01/01/2026 09:00:00' };
+  const rows = [closed, order];
+  const groups = dealRowGroups(rows);
+  assert.deepEqual(latestCrmRows(rows, row => groups.get(row)), [order]);
+  assert.deepEqual(recoverDealSnapshot(order, [closed]), { ...closed, ...order });
+  assert.deepEqual([closed, order].map(row => groups.get(row)), [0, 0]);
+});
+
+test('a sparse order stays separate when two earlier deals match the customer', () => {
+  const contact = { 'Deal Name': 'Example deal', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const first = { ...contact, 'Account ID': 'A-1', 'Deal ID': 'D-1', 'Deal Amount': 1250 };
+  const second = { ...first, 'Deal ID': 'D-2' };
+  const order = { ...contact, 'Order ID': 'ORD-1' };
+  assert.equal(new Set(dealRowGroups([first, second, order]).values()).size, 3);
+  assert.equal(new Set(dealRowGroups([first, { ...order, Company: 'Different company' }]).values()).size, 2);
 });

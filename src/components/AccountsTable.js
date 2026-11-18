@@ -466,7 +466,7 @@ function AccountsTable() {
         const res = await fetch(submitUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
+          body: JSON.stringify({ action: "createDeal", data: payload }),
         });
         if (!res.ok) throw new Error(await res.text());
 

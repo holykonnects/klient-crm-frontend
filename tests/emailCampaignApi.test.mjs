@@ -99,6 +99,10 @@ test('native campaign API previews, sends once, updates only status cells and re
       template: 'Greeting', sentBy: 'fixture@example.invalid', recipient: 'recipient@example.invalid', event: 'ACCEPTED_BY_GMAIL' });
     assert.equal((await invoke(payload)).body.skipped, true);
     assert.equal(deliveries, 1);
+    const dispatchStatus = await invoke({ action: 'getCampaignDispatchStatus', campaign: payload.campaign, sheet: payload.sheet,
+      templateId: payload.templateId, emails: ['recipient@example.invalid', 'new@example.invalid'] });
+    assert.equal(dispatchStatus.status, 200);
+    assert.deepEqual(dispatchStatus.body.recorded, [{ email: 'recipient@example.invalid', status: 'Sent' }]);
     assert.match((await invoke({ ...payload, expectedEmail: 'changed@example.invalid' })).body.error, /row changed/);
     const stale = await invoke({ ...payload, version: 'stale' });
     assert.equal(stale.status, 409);

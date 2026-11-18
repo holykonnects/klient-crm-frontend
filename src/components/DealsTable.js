@@ -46,6 +46,7 @@ import AddShoppingCartIcon from "@mui/icons-material/AddShoppingCart";
 import CloseIcon from "@mui/icons-material/Close";
 import MobileActionMenu from "./MobileActionMenu";
 import { CRM_TABLE_SX, crmRowUpdatedAt, latestCrmRows, newestCrmRows } from "../utils/crmTableUtils";
+import { dealRowGroups, recoverDealSnapshot } from "../utils/dealTableRows";
 import {
   ORDER_ATTACHMENT_FIELD_BY_KEY,
   removeOrderAttachment,
@@ -86,16 +87,10 @@ const ORDER_ATTACHMENT_FIELDS = [
   "Proforma Invoice",
 ];
 
-/**
- * ✅ Deal key
- * - If "Order Distribution ID" exists (Closed Won), use it (stable)
- * - Else fallback to Deal Name + Account ID
- */
-const dealKeyOf = (row) => {
-  const finalId = row?.["Order Distribution ID"];
-  if (finalId) return String(finalId).trim();
-  return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
-};
+const dealReference = (row) => Object.fromEntries(
+  ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Timestamp"]
+    .map((field) => [field, row?.[field] ?? ""])
+);
 
 const getDealRowTime = (row) => crmRowUpdatedAt(row, ["Deal Updated Time"]);
 
@@ -211,8 +206,25 @@ const OrderField = React.memo(function OrderField({
 });
 
 function DealsTable() {
-  const [deals, setDeals] = useState([]);
   const [allDeals, setAllDeals] = useState([]);
+  const { deals, historyByDeal } = useMemo(() => {
+    const groups = dealRowGroups(allDeals);
+    const historyByGroup = new Map();
+    for (const row of allDeals) {
+      const group = groups.get(row);
+      if (!historyByGroup.has(group)) historyByGroup.set(group, []);
+      historyByGroup.get(group).push(row);
+    }
+
+    const historyByDeal = new Map();
+    const deals = latestCrmRows(allDeals, (row) => groups.get(row), ["Deal Updated Time"]).map((row) => {
+      const history = newestCrmRows(historyByGroup.get(groups.get(row)), ["Deal Updated Time"]);
+      const display = recoverDealSnapshot(row, history.slice(1));
+      historyByDeal.set(display, history);
+      return display;
+    });
+    return { deals, historyByDeal };
+  }, [allDeals]);
   const [loading, setLoading] = useState(true);
 
   // table controls
@@ -293,14 +305,10 @@ function DealsTable() {
 
       setAllDeals(filtered);
 
-      const dedupedLatest = latestCrmRows(filtered, dealKeyOf, ["Deal Updated Time"]);
-
-      setDeals(dedupedLatest);
-
       const stored =
         JSON.parse(localStorage.getItem(`visibleColumns-v2-${username}-deals`)) || null;
 
-      setVisibleColumns(stored || ['Deal Name', 'Company', 'Deal Stage', 'Deal Value', 'Account Owner', 'Order ID'].filter((key) => Object.keys(dedupedLatest[0] || {}).includes(key)));
+      setVisibleColumns(stored || ['Deal Name', 'Company', 'Deal Stage', 'Deal Value', 'Account Owner', 'Order ID'].filter((key) => Object.keys(filtered[0] || {}).includes(key)));
     } catch (e) {
       console.error("Deals fetch error:", e);
     } finally {
@@ -396,7 +404,7 @@ function DealsTable() {
   }, []);
 
   const handleSubmitDeal = async () => {
-    if (savingDeal) return;
+    if (savingDeal || !selectedRow) return;
     if (dealAmountMode === "add" && amountNumber(dealAmountAddition) <= 0) {
       setSaveMsg("Enter an amount greater than zero.");
       return;
@@ -406,13 +414,17 @@ function DealsTable() {
     setSaveMsg("Updating...");
 
     try {
+      const changes = Object.fromEntries(
+        Object.entries(dealFormData).filter(([field, value]) => value !== selectedRow[field])
+      );
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "updateDeal",
+          originalDeal: dealReference(selectedRow),
           data: {
-            ...dealFormData,
+            ...changes,
             amountUpdate: {
               field: "Deal Amount",
               mode: dealAmountMode,
@@ -423,7 +435,10 @@ function DealsTable() {
           },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        throw new Error(result.error || "Unable to update the deal.");
+      }
 
       setSaveMsg("Updated ✅");
       setSelectedRow(null);
@@ -431,7 +446,7 @@ function DealsTable() {
     } catch (e) {
       console.error(e);
       setSaveMsg("Update failed ❌");
-      alert("❌ Error updating deal");
+      alert(e.message || "Unable to update the deal.");
     } finally {
       setTimeout(() => setSaveMsg(""), 1200);
       setSavingDeal(false);
@@ -442,16 +457,8 @@ function DealsTable() {
   // Logs (FULL ROW)
   // ----------------------------
   const handleViewLogs = (dealRow) => {
-    const key = dealKeyOf(dealRow);
-    if (!key || key === "__") {
-      alert("No Deal Key found for logs.");
-      return;
-    }
-
-    const logs = newestCrmRows(
-      allDeals.filter((d) => dealKeyOf(d) === key),
-      ["Deal Updated Time"]
-    );
+    const logs = historyByDeal.get(dealRow);
+    if (!logs) return;
 
     setDealLogs(logs);
     setLogsOpen(true);
@@ -603,6 +610,7 @@ function DealsTable() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "createOrder",
+          originalDeal: dealReference(orderBaseRow),
           data: payloadRow,
         }),
       });

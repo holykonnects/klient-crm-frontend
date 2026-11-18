@@ -292,6 +292,20 @@ export async function updateCell(spreadsheetId, sheetName, rowNumber, columnNumb
   }, auth);
 }
 
+export async function updateColumnCells(spreadsheetId, sheetName, column, rowNumbers, value) {
+  if (!rowNumbers.length) return;
+  const letter = columnName(column);
+  const data = rowNumbers.map((row) => ({
+    range: sheetRange(sheetName, `${letter}${row}`),
+    values: [[value]],
+  }));
+  return googleFetch(`https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values:batchUpdate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ valueInputOption: "RAW", data }),
+  });
+}
+
 export function appendedRowNumber(appendResult) {
   const range = String(appendResult?.updates?.updatedRange || "");
   const match = range.match(/![A-Z]+(\d+)(?::[A-Z]+\d+)?$/i);

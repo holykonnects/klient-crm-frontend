@@ -98,3 +98,45 @@ test('a sparse order stays separate when two earlier deals match the customer', 
   assert.equal(new Set(dealRowGroups([first, second, order]).values()).size, 3);
   assert.equal(new Set(dealRowGroups([first, { ...order, Company: 'Different company' }]).values()).size, 2);
 });
+
+test('legacy Closed Won deals and order snapshots group even when both lack an Account ID', () => {
+  const contact = { 'Deal Name': 'Example deal', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const deal = { ...contact, Stage: 'Closed Won', 'Deal Amount': '1,68,958', Timestamp: '31/10/26 13:44:03' };
+  const order = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': '1,68,958 acrylic material', Timestamp: '31/10/2026 13:55:02' };
+  const rows = [deal, order];
+  const groups = dealRowGroups(rows);
+  assert.deepEqual(latestCrmRows(rows, row => groups.get(row)), [order]);
+  assert.equal(recoverDealSnapshot(order, [deal])['Deal Amount'], '1,68,958');
+  assert.equal(new Set(dealRowGroups([deal, { ...deal, Timestamp: '31/10/26 13:50:00' }, order]).values()).size, 3);
+  assert.equal(new Set(dealRowGroups([{ ...deal, Stage: 'Needs Analysis' }, order]).values()).size, 2);
+});
+
+test('multiple legacy orders can be paired with the same customer’s distinct deal amounts', () => {
+  const contact = { 'Deal Name': 'Example', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const first = { ...contact, Stage: 'Closed Won', 'Deal Amount': '1,000.00' };
+  const second = { ...first, 'Deal Amount': '1250' };
+  const firstOrder = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': '1,000' };
+  const secondOrder = { ...contact, 'Order ID': 'ORD-2', 'Order Amount': '1,250.00' };
+  const rows = [first, firstOrder, second, secondOrder];
+  const groups = dealRowGroups(rows);
+  assert.deepEqual(latestCrmRows(rows, row => groups.get(row)), [secondOrder, firstOrder]);
+  assert.equal(groups.get(first), groups.get(firstOrder));
+  assert.equal(groups.get(second), groups.get(secondOrder));
+});
+
+test('amount matching leaves equally plausible deals or orders separate', () => {
+  const contact = { 'Deal Name': 'Example', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const first = { ...contact, Stage: 'Closed Won', 'Deal Amount': '1,000.00' };
+  const other = { ...first };
+  const order = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': '1000' };
+  assert.equal(new Set(dealRowGroups([first, other, order]).values()).size, 3);
+  assert.equal(new Set(dealRowGroups([first, order, { ...order, 'Order ID': 'ORD-2' }]).values()).size, 3);
+});
+
+test('missing company requires an exact amount match in addition to owner, deal name and mobile', () => {
+  const contact = { 'Deal Name': 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const deal = { ...contact, Stage: 'Closed Won', 'Deal Amount': '1,000' };
+  const order = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': '1000.00' };
+  assert.equal(new Set(dealRowGroups([deal, order]).values()).size, 1);
+  assert.equal(new Set(dealRowGroups([deal, { ...order, 'Order Amount': '750' }]).values()).size, 2);
+});

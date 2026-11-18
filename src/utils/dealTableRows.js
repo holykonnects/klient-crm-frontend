@@ -2,6 +2,11 @@ const idFields = ["Deal ID", "Order Distribution ID", "Order ID"];
 const clean = (value) => String(value ?? "").trim().toLowerCase();
 const accountKey = (row) => clean(row["Account ID"]) || clean(row["Lead ID"]);
 
+function recordedAmount(value) {
+  const amount = clean(value).replace(/[₹,\s]/g, "");
+  return /^\d+(?:\.\d{1,2})?$/.test(amount) && Number(amount) > 0 ? Number(amount) : null;
+}
+
 const sparseOrderSnapshot = (row) => clean(row["Order ID"]) && !clean(row["Deal Amount"]);
 
 export function recoverDealSnapshot(latest, olderRows) {
@@ -18,7 +23,7 @@ export function recoverDealSnapshot(latest, olderRows) {
 function contactKey(row) {
   const mobile = clean(row["Mobile Number"]).replace(/\D/g, "");
   const parts = [row["Deal Name"], row.Company, row["Account Owner"], mobile].map(clean);
-  return mobile.length >= 7 && parts.every(Boolean) ? JSON.stringify(parts) : "";
+  return mobile.length >= 7 && parts[0] && parts[2] ? JSON.stringify(parts) : "";
 }
 
 export function dealRowGroups(rows) {
@@ -80,7 +85,8 @@ export function dealRowGroups(rows) {
     }
     const contact = contactKey(row);
     if (!contact) return;
-    if (accountKey(row)) {
+    const closedDeal = !clean(row["Order ID"]) && clean(row.Stage) === "closed won" && clean(row["Deal Amount"]);
+    if (accountKey(row) || closedDeal) {
       if (!earlierDeals.has(contact)) earlierDeals.set(contact, []);
       earlierDeals.get(contact).push(index);
     } else if (sparseOrderSnapshot(row) && !clean(row["Deal ID"]) && !clean(row["Order Distribution ID"])) {
@@ -89,13 +95,41 @@ export function dealRowGroups(rows) {
     }
   });
 
-  // Legacy Add Order omitted the account link. Require one order group and one earlier deal group.
+  // Legacy deals and their order snapshots can both lack an account ID.
+  // A Closed Won row with a deal amount can supply the original deal when the contact match is unique.
   for (const [contact, orders] of legacyOrders) {
+    if (!clean(rows[orders[0]].Company)) continue;
     const candidates = (earlierDeals.get(contact) || []).filter((index) => index < orders[0]);
     const orderGroup = root(orders[0]);
     if (!linkedOrderGroups.has(orderGroup) && new Set(orders.map(root)).size === 1 && new Set(candidates.map(root)).size === 1) {
       connect([candidates[0], orders[0]]);
     }
+  }
+
+  // When a customer has multiple legacy deals, equal amounts are useful only for one-to-one matches.
+  const amountMatches = new Map();
+  const orderCountByDeal = new Map();
+  for (const [contact, orders] of legacyOrders) {
+    const candidates = earlierDeals.get(contact) || [];
+    for (const index of orders) {
+      const orderGroup = root(index);
+      if (amountMatches.has(orderGroup) || linkedOrderGroups.has(orderGroup) ||
+          candidates.some((candidate) => root(candidate) === orderGroup)) continue;
+      const amount = recordedAmount(rows[index]["Order Amount"]);
+      if (amount === null) continue;
+      const matchingDeals = new Set(candidates.filter((candidate) => {
+        const row = rows[candidate];
+        return candidate < index && clean(row.Stage) === "closed won" &&
+          !identifiers[root(candidate)][2].size && recordedAmount(row["Deal Amount"]) === amount;
+      }).map(root));
+      amountMatches.set(orderGroup, matchingDeals);
+      for (const group of matchingDeals) orderCountByDeal.set(group, (orderCountByDeal.get(group) || 0) + 1);
+    }
+  }
+  for (const [orderGroup, matchingDeals] of amountMatches) {
+    if (matchingDeals.size !== 1) continue;
+    const [dealGroup] = matchingDeals;
+    if (orderCountByDeal.get(dealGroup) === 1) connect([dealGroup, orderGroup]);
   }
 
   return new Map(rows.map((row, index) => [row, root(index)]));

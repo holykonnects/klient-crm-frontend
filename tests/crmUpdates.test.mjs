@@ -145,3 +145,15 @@ test("editing a legacy order snapshot recovers the original deal amount through 
   assert.equal(update["Deal Amount"], 1500);
   assert.equal(resolveDeal(dealValues(closed, order), closed, "deals").dealId, resolved.dealId);
 });
+
+test("a legacy order recovers its Closed Won deal amount even when both rows have no Account ID", () => {
+  const contact = { "Deal Name": "Example deal", Company: "Example", "Account Owner": "Owner", "Mobile Number": "9000000000" };
+  const closed = { ...contact, "Deal Amount": "1,68,958", Stage: "Closed Won", Timestamp: "31/10/26 13:44:03" };
+  const order = { ...contact, "Order ID": "ORD-1", "Order Amount": "1,68,958 acrylic material" };
+  const values = dealValues(closed, order);
+  const resolved = resolveDeal(values, order, "deals");
+  assert.equal(resolved.previous["Deal Amount"], "1,68,958");
+  assert.equal(resolved.previous["Order ID"], "ORD-1");
+  assert.deepEqual(resolved.rowsToBackfill, [3, 2]);
+  assert.equal(resolveDeal(values, closed, "deals").dealId, resolved.dealId);
+});

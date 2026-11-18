@@ -10,6 +10,7 @@ import {
   rowsToObjects,
   updateValues,
   updateCell,
+  updateColumnCells,
   uploadDriveFile,
 } from "./googleSheets.js";
 import {
@@ -20,6 +21,8 @@ import {
   notifySalesTrackerSubmitted,
 } from "./operationalEmails.js";
 import { ensureUpdateAuditHeaders, UPDATE_AUDIT_HEADERS, withUpdateAudit } from "./updateAudit.js";
+
+import { dealConflict, newDealId, resolveDeal } from "./dealIdentity.js";
 
 const FILE_FIELDS = ["Attach Purchase Order", "Attach Drawing", "Attach BOQ", "Proforma Invoice"];
 export const MAX_ORDER_ATTACHMENT_BYTES = 2 * 1024 * 1024;
@@ -167,38 +170,81 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
   const action = String(payload?.action || "").trim();
   const data = await withUpdateAudit(payload?.data || payload || {});
 
-  if (!action || action === "updateDeal") {
-    const sheetName = await resolveSheetTitle(dealsConfig.spreadsheetId, dealsConfig.sheetNames);
-    const values = await getValues(dealsConfig.spreadsheetId, sheetName);
-    const existingHeaders = values[0] || [];
-    if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
-    const headers = await ensureUpdateAuditHeaders(dealsConfig, sheetName, existingHeaders);
-    const previousDeal = findPreviousRecord(values, headers, data, [["Deal ID"], ["Order Distribution ID"], ["Account ID", "Deal Name"]]);
-    applyAmountUpdate(data, previousDeal, "Deal Amount");
-    const appendResult = await appendValues(dealsConfig.spreadsheetId, sheetName, buildRow(headers, data || {}));
-    const notification = await notifySafely(() => notifyDealSubmitted(headers, data, previousDeal));
-    await persistSentStatus({ config: dealsConfig, sheetName, headers, appendResult, notification });
-    return { ok: true, notification };
+  if (!["", "createDeal", "updateDeal", "createOrder"].includes(action)) {
+    throw new Error(`Unknown deals action: ${action}`);
   }
+
+  const { spreadsheetId } = dealsConfig;
+  const sheetName = await resolveSheetTitle(spreadsheetId, dealsConfig.sheetNames);
+  const values = await getValues(spreadsheetId, sheetName);
+  const existingHeaders = values[0] || [];
+  if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
+  const isNewDeal = action === "createDeal" || (!action && !data.amountUpdate);
+  const original = payload?.originalDeal || (action === "createOrder" ? { ...data, "Order ID": "" } : data);
+  const matched = isNewDeal ? null : resolveDeal(values, original, spreadsheetId);
+  const previousDeal = matched?.previous;
+  const dealId = matched?.dealId || newDealId();
 
   if (action === "createOrder") {
     const orderId = data["Order ID"];
     if (!orderId) throw new Error("Missing Order ID in createOrder payload.");
-    const uploaded = await withUploadedFiles(data, `ORD ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
+    const linkedOrderId = previousDeal["Order ID"];
+    if (linkedOrderId && linkedOrderId !== orderId) {
+      throw dealConflict("An order already exists for this deal. Open it from the Orders table.");
+    }
+
     const orderSheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
     const orderValues = await getValues(ordersConfig.spreadsheetId, orderSheetName);
     const existingOrderHeaders = orderValues[0] || [];
     if (!existingOrderHeaders.length) throw new Error(`No headers found in ${orderSheetName}`);
-    const orderHeaders = await ensureUpdateAuditHeaders(ordersConfig, orderSheetName, existingOrderHeaders);
-    const appendResult = await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded || {}));
-    await appendTableRow(dealsConfig, clearFileFields(uploaded));
-    const previousOrder = findPreviousRecord(orderValues, orderHeaders, uploaded, [["Order ID"]]);
-    const notification = await notifySafely(() => notifyOrderSubmitted(orderHeaders, uploaded, previousOrder));
+    const existingOrder = findPreviousRecord(orderValues, existingOrderHeaders, data, [["Order ID"]]);
+    if (existingOrder && linkedOrderId !== orderId && existingOrder["Deal ID"] !== dealId) {
+      throw dealConflict("That Order ID is already in use. Reopen Add Order to get a new ID.");
+    }
+
+    const headers = await ensureSheetHeaders(dealsConfig, sheetName, existingHeaders, [...UPDATE_AUDIT_HEADERS, "Deal ID", "Account ID"]);
+    await updateColumnCells(spreadsheetId, sheetName, headers.indexOf("Deal ID") + 1, matched.rowsToBackfill, dealId);
+    if (linkedOrderId === orderId && existingOrder) return { ok: true, orderId, dealId };
+
+    const orderData = {
+      ...data,
+      "Deal ID": dealId,
+      "Order Distribution ID": previousDeal["Order Distribution ID"] || data["Order Distribution ID"] || "",
+      "Account ID": previousDeal["Account ID"] || previousDeal["Lead ID"] || data["Account ID"] || "",
+      "Deal Name": previousDeal["Deal Name"],
+      "Lead ID": previousDeal["Lead ID"] || data["Lead ID"] || "",
+    };
+    const uploaded = existingOrder || await withUploadedFiles(orderData, `ORD ${orderId}${orderData["Deal Name"] ? ` - ${orderData["Deal Name"]}` : ""}`);
+    const orderHeaders = await ensureSheetHeaders(ordersConfig, orderSheetName, existingOrderHeaders, [...UPDATE_AUDIT_HEADERS, "Deal ID"]);
+    const appendResult = existingOrder ? null : await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded));
+    if (linkedOrderId !== orderId) {
+      await appendValues(spreadsheetId, sheetName, buildRow(headers, {
+        ...previousDeal,
+        ...clearFileFields(orderData),
+        "Deal Amount": previousDeal["Deal Amount"],
+      }));
+    }
+    if (!appendResult) return { ok: true, orderId, dealId };
+    const notification = await notifySafely(() => notifyOrderSubmitted(orderHeaders, uploaded, null));
     await persistSentStatus({ config: ordersConfig, sheetName: orderSheetName, headers: orderHeaders, appendResult, notification });
-    return { ok: true, orderId, notification };
+    return { ok: true, orderId, dealId, notification };
   }
 
-  throw new Error(`Unknown deals action: ${action}`);
+  const deal = {
+    ...previousDeal,
+    ...data,
+    "Deal ID": dealId,
+    "Account ID": previousDeal?.["Account ID"] || data["Account ID"] || data["Lead ID"] || previousDeal?.["Lead ID"] || "",
+  };
+  applyAmountUpdate(deal, previousDeal, "Deal Amount");
+  const headers = await ensureSheetHeaders(dealsConfig, sheetName, existingHeaders, [...UPDATE_AUDIT_HEADERS, "Deal ID", "Account ID"]);
+  if (matched) {
+    await updateColumnCells(spreadsheetId, sheetName, headers.indexOf("Deal ID") + 1, matched.rowsToBackfill, dealId);
+  }
+  const appendResult = await appendValues(spreadsheetId, sheetName, buildRow(headers, deal));
+  const notification = await notifySafely(() => notifyDealSubmitted(headers, deal, previousDeal));
+  await persistSentStatus({ config: dealsConfig, sheetName, headers, appendResult, notification });
+  return { ok: true, dealId, notification };
 }
 
 export async function handleOrderPost({ ordersConfig, payload }) {

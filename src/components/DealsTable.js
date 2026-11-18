@@ -86,15 +86,25 @@ const ORDER_ATTACHMENT_FIELDS = [
   "Proforma Invoice",
 ];
 
-/**
- * ✅ Deal key
- * - If "Order Distribution ID" exists (Closed Won), use it (stable)
- * - Else fallback to Deal Name + Account ID
- */
+const dealReference = (row) => Object.fromEntries(
+  ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Timestamp"]
+    .map((field) => [field, row?.[field] ?? ""])
+);
+
 const dealKeyOf = (row) => {
-  const finalId = row?.["Order Distribution ID"];
-  if (finalId) return String(finalId).trim();
-  return `${row?.["Deal Name"] || ""}__${row?.["Account ID"] || ""}`;
+  for (const field of ["Deal ID", "Order Distribution ID"]) {
+    const id = String(row?.[field] ?? "").trim();
+    if (id) return `${field}:${id.toLowerCase()}`;
+  }
+
+  const account = String(row?.["Account ID"] || row?.["Lead ID"] || "").trim().toLowerCase();
+  const name = String(row?.["Deal Name"] ?? "").trim().toLowerCase();
+  if (account && name) return JSON.stringify([account, name]);
+
+  const orderId = String(row?.["Order ID"] ?? "").trim();
+  if (orderId) return `Order ID:${orderId.toLowerCase()}`;
+  const timestamp = String(row?.Timestamp ?? "").trim();
+  return name ? JSON.stringify([name, timestamp]) : "";
 };
 
 const getDealRowTime = (row) => crmRowUpdatedAt(row, ["Deal Updated Time"]);
@@ -396,7 +406,7 @@ function DealsTable() {
   }, []);
 
   const handleSubmitDeal = async () => {
-    if (savingDeal) return;
+    if (savingDeal || !selectedRow) return;
     if (dealAmountMode === "add" && amountNumber(dealAmountAddition) <= 0) {
       setSaveMsg("Enter an amount greater than zero.");
       return;
@@ -406,13 +416,17 @@ function DealsTable() {
     setSaveMsg("Updating...");
 
     try {
+      const changes = Object.fromEntries(
+        Object.entries(dealFormData).filter(([field, value]) => value !== selectedRow[field])
+      );
       const res = await fetch(submitUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "updateDeal",
+          originalDeal: dealReference(selectedRow),
           data: {
-            ...dealFormData,
+            ...changes,
             amountUpdate: {
               field: "Deal Amount",
               mode: dealAmountMode,
@@ -423,7 +437,10 @@ function DealsTable() {
           },
         }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const result = await res.json().catch(() => ({}));
+        throw new Error(result.error || "Unable to update the deal.");
+      }
 
       setSaveMsg("Updated ✅");
       setSelectedRow(null);
@@ -431,7 +448,7 @@ function DealsTable() {
     } catch (e) {
       console.error(e);
       setSaveMsg("Update failed ❌");
-      alert("❌ Error updating deal");
+      alert(e.message || "Unable to update the deal.");
     } finally {
       setTimeout(() => setSaveMsg(""), 1200);
       setSavingDeal(false);
@@ -443,7 +460,7 @@ function DealsTable() {
   // ----------------------------
   const handleViewLogs = (dealRow) => {
     const key = dealKeyOf(dealRow);
-    if (!key || key === "__") {
+    if (!key) {
       alert("No Deal Key found for logs.");
       return;
     }
@@ -603,6 +620,7 @@ function DealsTable() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "createOrder",
+          originalDeal: dealReference(orderBaseRow),
           data: payloadRow,
         }),
       });

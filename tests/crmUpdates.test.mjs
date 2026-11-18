@@ -1,6 +1,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { anchoredAppendRange } from "../api/_lib/googleSheets.js";
+import { newDealId, resolveDeal } from "../api/_lib/dealIdentity.js";
+
 import {
   applyAmountUpdate,
   assertValidAttachment,
@@ -75,4 +77,56 @@ test("order attachment batches stay below the serverless request limit", () => {
     "Attach Purchase Order": { base64: Buffer.alloc(2 * 1024 * 1024).toString("base64") },
     "Attach Drawing": { base64: Buffer.alloc(2 * 1024 * 1024).toString("base64") },
   }), /3 MB combined/);
+});
+
+const dealHeaders = ["Deal ID", "Order Distribution ID", "Order ID", "Account ID", "Lead ID", "Deal Name", "Deal Amount", "Timestamp"];
+const dealValues = (...deals) => [dealHeaders, ...deals.map((deal) => dealHeaders.map((field) => deal[field] ?? ""))];
+
+test("new deal IDs are unique even for multiple deals from the same account", () => {
+  const first = newDealId();
+  assert.match(first, /^DEAL-/);
+  assert.notEqual(newDealId(), first);
+});
+
+test("a legacy order snapshot resolves the prior deal amount and backfills its history", () => {
+  const base = { "Account ID": "A-1", "Deal Name": "Old name" };
+  const snapshot = { ...base, "Order ID": "ORD-1" };
+  const legacy = dealValues({ ...base, "Deal Amount": "1,250" }, snapshot);
+  const resolved = resolveDeal(legacy, snapshot, "deals");
+  assert.deepEqual(resolved.rowsToBackfill, [3, 2]);
+  assert.equal(resolveDeal(legacy, snapshot, "deals").dealId, resolved.dealId);
+
+  const update = { "Deal Name": "New name", amountUpdate: { field: "Deal Amount", mode: "add", addition: 250 } };
+  applyAmountUpdate(update, resolved.previous, "Deal Amount");
+  assert.equal(update["Deal Amount"], 1500);
+
+  const migrated = dealValues(
+    { ...base, "Deal ID": resolved.dealId, "Deal Amount": 1250 },
+    { ...snapshot, "Deal ID": resolved.dealId, "Deal Name": "New name", "Deal Amount": 1500 },
+  );
+  const latest = resolveDeal(migrated, snapshot, "deals");
+  assert.equal(latest.previous["Deal Name"], "New name");
+  assert.equal(latest.previous["Deal Amount"], 1500);
+  assert.deepEqual(latest.rowsToBackfill, []);
+});
+
+test("legacy deals can be identified by Order ID alone or by the qualified Lead ID", () => {
+  const orderOnly = { "Order ID": "ORD-1", "Deal Name": "Legacy", "Deal Amount": 120 };
+  const leadOnly = { "Lead ID": "L-1", "Deal Name": "Legacy", "Deal Amount": 900 };
+  const values = dealValues(orderOnly, leadOnly);
+  assert.equal(resolveDeal(values, { "Order ID": "ORD-1" }, "deals").previous["Deal Amount"], 120);
+  assert.equal(resolveDeal(values, { "Account ID": "L-1", "Deal Name": "Legacy" }, "deals").previous["Deal Amount"], 900);
+});
+
+test("an ID-less record requires a unique original name and timestamp", () => {
+  const selected = { "Deal Name": "Legacy", Timestamp: "18/11/2026 08:00:00" };
+  assert.deepEqual(resolveDeal(dealValues(selected, { ...selected, Timestamp: "18/11/2026 09:00:00" }), selected, "deals").rowsToBackfill, [2]);
+  assert.throws(() => resolveDeal(dealValues(selected, selected), selected, "deals"), { status: 409 });
+});
+
+test("legacy name matches cannot merge distinct deals and a stale Deal ID cannot target a different deal", () => {
+  const base = { "Account ID": "A-1", "Deal Name": "Same name" };
+  const values = dealValues({ ...base, "Order Distribution ID": "OD-1" }, { ...base, "Order Distribution ID": "OD-2" });
+  assert.throws(() => resolveDeal(values, base, "deals"), { status: 409 });
+  assert.throws(() => resolveDeal(values, { ...base, "Deal ID": "missing" }, "deals"), { status: 409 });
 });

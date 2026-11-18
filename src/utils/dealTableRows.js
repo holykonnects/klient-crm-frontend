@@ -80,7 +80,8 @@ export function dealRowGroups(rows) {
     }
     const contact = contactKey(row);
     if (!contact) return;
-    if (accountKey(row)) {
+    const closedDeal = !clean(row["Order ID"]) && clean(row.Stage) === "closed won" && clean(row["Deal Amount"]);
+    if (accountKey(row) || closedDeal) {
       if (!earlierDeals.has(contact)) earlierDeals.set(contact, []);
       earlierDeals.get(contact).push(index);
     } else if (sparseOrderSnapshot(row) && !clean(row["Deal ID"]) && !clean(row["Order Distribution ID"])) {
@@ -89,7 +90,8 @@ export function dealRowGroups(rows) {
     }
   });
 
-  // Legacy Add Order omitted the account link. Require one order group and one earlier deal group.
+  // Legacy deals and their order snapshots can both lack an account ID.
+  // A Closed Won row with a deal amount can supply the original deal when the contact match is unique.
   for (const [contact, orders] of legacyOrders) {
     const candidates = (earlierDeals.get(contact) || []).filter((index) => index < orders[0]);
     const orderGroup = root(orders[0]);

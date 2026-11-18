@@ -98,3 +98,15 @@ test('a sparse order stays separate when two earlier deals match the customer', 
   assert.equal(new Set(dealRowGroups([first, second, order]).values()).size, 3);
   assert.equal(new Set(dealRowGroups([first, { ...order, Company: 'Different company' }]).values()).size, 2);
 });
+
+test('legacy Closed Won deals and order snapshots group even when both lack an Account ID', () => {
+  const contact = { 'Deal Name': 'Example deal', Company: 'Example', 'Account Owner': 'Owner', 'Mobile Number': '9000000000' };
+  const deal = { ...contact, Stage: 'Closed Won', 'Deal Amount': '1,68,958', Timestamp: '31/10/26 13:44:03' };
+  const order = { ...contact, 'Order ID': 'ORD-1', 'Order Amount': '1,68,958 acrylic material', Timestamp: '31/10/2026 13:55:02' };
+  const rows = [deal, order];
+  const groups = dealRowGroups(rows);
+  assert.deepEqual(latestCrmRows(rows, row => groups.get(row)), [order]);
+  assert.equal(recoverDealSnapshot(order, [deal])['Deal Amount'], '1,68,958');
+  assert.equal(new Set(dealRowGroups([deal, { ...deal, Timestamp: '31/10/26 13:50:00' }, order]).values()).size, 3);
+  assert.equal(new Set(dealRowGroups([{ ...deal, Stage: 'Needs Analysis' }, order]).values()).size, 2);
+});

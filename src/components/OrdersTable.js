@@ -92,7 +92,7 @@ const isProtectedOrderField = (field = "") => {
   const value = String(field).trim();
   return /^(?:Order|Deal|Account|Lead|Project|Booking|Order Distribution) ID$/i.test(value) || [
     "S.No", "Timestamp", "Created At", "Updated At", "Order Updated Time",
-    "Updated By", "Updated By Email", "Updater Name", "Updater Email", "Account Owner", "Lead Owner", "Owner",
+    "Updated By", "Updated By Email", "Updater Name", "Updater Email", "Order Owner", "Account Owner", "Lead Owner", "Owner",
   ].some((name) => name.toLowerCase() === value.toLowerCase());
 };
 

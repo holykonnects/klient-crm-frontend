@@ -4,7 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import handler from "../api/_handlers/ownership.js";
 import { SHEETS } from "../api/_lib/crmConfig.js";
 import { createSessionToken } from "../api/_lib/sessionAuth.js";
-import { ownerPortfolio, ownershipChain, ownershipRecordKey, projectOwnership, transferFingerprint } from "../api/_lib/ownership.js";
+import { ownerPortfolio, ownershipChain, ownershipRecordKey, portfolioOwners, projectOwnership, transferFingerprint } from "../api/_lib/ownership.js";
 
 const oldOwner = "Existing Owner";
 const newOwner = "New Owner";
@@ -52,6 +52,29 @@ test("all four entry points resolve the same customer chain, including legacy de
   assert.equal(data.orders[0]["Account Owner"], oldOwner);
 });
 
+test("the owner picker includes account-only, deal-only and order-only owners", () => {
+  const data = fixture();
+  data.accounts.push({ "Account ID": "A-3", "Account Owner": "Account only", Company: "No lead" });
+  data.deals[1]["Deal Owner"] = "Deal only";
+  data.orders[1]["Order Owner"] = "Order only";
+  data.orders.push({ "Order ID": "O-2", "Deal ID": "D-2", "Updated At": "20/08/2026 12:00:00" });
+  const available = portfolioOwners(data, []);
+  assert.ok(available.includes("Account only"));
+  for (const owner of ["Deal only", "Order only"]) {
+    assert.ok(available.includes(owner));
+    const result = ownerPortfolio(data, [], [owner]);
+    assert.deepEqual(result.blockers, []);
+    assert.deepEqual(result.chains[0].changes.map(({ type }) => type), ["accounts", "deals", "deals", "leads", "orders", "orders"]);
+  }
+  const [chain] = ownerPortfolio(data, [], ["Deal only"]).chains;
+  const event = { id: "r1", customer: chain.customer, customerIds: chain.customerIds, to: { username: newOwner }, records: chain.changes };
+  assert.equal(projectOwnership("deals", data.deals, [event])[1]["Deal Owner"], newOwner);
+  assert.equal(projectOwnership("orders", data.orders, [event])[1]["Order Owner"], newOwner);
+  const account = ownerPortfolio(data, [], ["Account only"]);
+  assert.deepEqual(account.blockers, []);
+  assert.deepEqual(account.chains[0].changes.map(({ type }) => type), ["accounts"]);
+});
+
 test("ambiguous legacy records block a partial transfer, and stable IDs survive a legacy migration", () => {
   const data = fixture();
   const chain = ownershipChain(data, [], "leads", reference(data, "leads"));
@@ -84,11 +107,12 @@ test("the API requires a signed preview, refuses stale previews and records one 
   const types = ["leads", "accounts", "deals", "orders"];
   const byId = new Map(types.map((type) => [SHEETS[type].spreadsheetId, type]));
   const login = [
-    ["Login Email", "Login Username", "Page Access"],
+    ["Login Email", "Login Username", "Page Access", "Status"],
     ["manager@example.com", "Manager", "Lead, Ownership Transfer , Deal"],
     ["new@example.com", newOwner, ""],
     ["old@example.com", oldOwner, ""],
     ["holy@klientkonnect.com", "Holy", "Lead"],
+    ["former@example.com", "Archived Owner", "Ownership Transfer", "Inactive"],
   ];
   let events = [];
   let commits = 0;
@@ -153,8 +177,18 @@ test("the API requires a signed preview, refuses stale previews and records one 
   assert.equal((await call(former, capability)).data.canTransfer, false);
   assert.equal((await call(admin, { body: { action: "confirm", ...selection } })).status, 409);
 
+  data.deals[1]["Deal Owner"] = "former@example.com";
+  data.orders[1]["Order Owner"] = "Archived Owner";
   const options = await call(admin, { body: { action: "options" } });
   assert.ok(options.data.sources.includes(oldOwner));
+  assert.ok(options.data.sources.includes("Archived Owner"));
+  assert.ok(!options.data.sources.includes("former@example.com"));
+  assert.ok(!options.data.users.some((profile) => profile.email === "former@example.com"));
+  const archived = user("former@example.com", "Archived Owner");
+  assert.equal((await call(archived, capability)).data.canTransfer, false);
+  const archivedSource = await call(admin, { body: { ...preview, source: "Archived Owner" } });
+  assert.deepEqual(archivedSource.data.customers.map(({ records }) => records.length), [6]);
+  assert.equal((await call(admin, { body: { ...preview, recipient: archived.email } })).status, 400);
   data.orders.push({ "Order ID": "UNLINKED", "Account Owner": oldOwner });
   const blocked = await call(admin, { body: preview });
   assert.equal(blocked.data.token, null);

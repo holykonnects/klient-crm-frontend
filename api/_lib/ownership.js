@@ -10,19 +10,24 @@ export const clean = (value) => String(value ?? "").trim();
 export const normalize = (value) => clean(value).toLowerCase();
 export const ownershipError = (message, status = 409) => Object.assign(new Error(message), { status });
 const hash = (value) => createHash("sha256").update(value).digest("hex");
-const ownerFields = ["Account Owner", "Lead Owner", "Owner"];
+const ownerFields = {
+  leads: ["Lead Owner", "Account Owner", "Owner"],
+  accounts: ["Account Owner", "Lead Owner", "Owner"],
+  deals: ["Deal Owner", "Account Owner", "Lead Owner", "Owner"],
+  orders: ["Order Owner", "Account Owner", "Lead Owner", "Owner"],
+};
 const unique = (items) => [...new Set(items.filter(Boolean))];
 const ledgerTitle = "CRM Ownership Transfers";
 const ledgerId = () => SHEETS.accounts.spreadsheetId;
 
 export function recordOwner(type, row) {
-  const fields = ["leads", "accounts"].includes(type) ? ["Lead Owner", "Account Owner", "Owner"] : ownerFields;
+  const fields = ownerFields[type];
   return fields.map((field) => clean(row[field])).find(Boolean) || "";
 }
 
 export function setRecordOwner(type, row, owner) {
   const field = ["leads", "accounts"].includes(type) ? "Lead Owner" : "Account Owner";
-  const otherFields = ownerFields.filter((name) => Object.hasOwn(row, name));
+  const otherFields = ownerFields[type].filter((name) => Object.hasOwn(row, name));
   return { ...row, ...Object.fromEntries(otherFields.map((name) => [name, owner])), [field]: owner };
 }
 
@@ -129,12 +134,14 @@ function ownershipGraph(data, events) {
   const dealLinks = new Map();
   const add = (kind, rows, ids) => {
     const keys = unique(rows.flatMap((row) => recordKeys(kind, row)));
-    const latest = newestCrmRows(rows)[0];
-    const old = currentTransfer(index, kind, latest);
+    const snapshots = newestCrmRows(rows);
+    const latest = snapshots[0];
+    const old = snapshots.map((row) => currentTransfer(index, kind, row)).find(Boolean);
+    const owner = snapshots.map((row) => recordOwner(kind, row)).find(Boolean) || "";
     const reference = clean(latest[kind === "deals" ? "Deal ID" : kind === "orders" ? "Order ID" : "Lead ID"]) ||
       clean(latest["Account ID"] || latest.Timestamp);
     records.push({ type: kind, ids, keys, label: label(kind, latest), reference,
-      owner: old?.to.username || recordOwner(kind, latest), contacts: rows.map(contactKey).filter(Boolean) });
+      owner: old?.to.username || owner, contacts: rows.map(contactKey).filter(Boolean) });
   };
 
   for (const rows of groupRows(data.leads, (row) => ownershipRecordKey("leads", row))) add("leads", rows, resolveIds(rows));

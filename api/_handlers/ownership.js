@@ -21,7 +21,7 @@ async function crmUsers() {
         ["no", "false", "0"].includes(normalize(row.Active)),
     };
   });
-  return users.filter((user) => user.email && user.username && !user.disabled &&
+  return users.filter((user) => user.email && user.username &&
     users.filter((entry) => entry.email === user.email || normalize(entry.username) === normalize(user.username)).length === 1
   );
 }
@@ -46,7 +46,8 @@ export default async function handler(req, res) {
 
     const directory = history ? [] : await crmUsers();
     const profile = directory.find((user) => user.email === normalize(session.email));
-    const canTransfer = profile?.pageAccess.some((access) => normalize(access) === transferAccess) ?? false;
+    const canTransfer = Boolean(profile && !profile.disabled &&
+      profile.pageAccess.some((access) => normalize(access) === transferAccess));
     if (capabilities) return res.status(200).json({ canTransfer });
     if (!history && !canTransfer) throw ownershipError("You do not have permission to transfer ownership.", 403);
 
@@ -69,11 +70,11 @@ export default async function handler(req, res) {
       return res.status(200).json({ owner: chain.selected.owner, entries: entries.reverse() });
     }
 
-    const users = directory.map(({ email, username }) => ({ email, username }));
+    const users = directory.filter((user) => !user.disabled).map(({ email, username }) => ({ email, username }));
     const actor = { email: profile.email, username: profile.username };
     if (body.action === "options") {
       const sources = portfolioOwners(data, ledger.events).map((owner) => {
-        const matched = users.find((user) => [user.email, normalize(user.username)].includes(normalize(owner)));
+        const matched = directory.find((user) => [user.email, normalize(user.username)].includes(normalize(owner)));
         return matched?.username || owner;
       });
       return res.status(200).json({ sources: [...new Set(sources)].sort((a, b) => a.localeCompare(b)), users });
@@ -82,7 +83,7 @@ export default async function handler(req, res) {
     const recipient = users.find((user) => user.email === normalize(token?.recipient || body.recipient));
     if (!recipient) throw ownershipError("Choose a uniquely identified active CRM user.", 400);
     const source = normalize(token?.source || body.source);
-    const sourceUser = users.find((user) => [user.email, normalize(user.username)].includes(source));
+    const sourceUser = directory.find((user) => [user.email, normalize(user.username)].includes(source));
     const sourceOwners = sourceUser ? [sourceUser.email, sourceUser.username] : [source];
     if (sourceOwners.some((owner) => [recipient.email, normalize(recipient.username)].includes(normalize(owner)))) {
       throw ownershipError("Choose a different new owner.", 400);

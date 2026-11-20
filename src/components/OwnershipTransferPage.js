@@ -1,12 +1,28 @@
-import React, { useEffect, useState } from "react";
+import React, { Fragment, useEffect, useState } from "react";
 import {
-  Alert, Box, Button, List, ListItem, ListItemText, MenuItem, Paper, Stack, TextField, Typography,
+  Alert, Box, Button, List, ListItem, ListItemText, MenuItem, Stack, Table, TableBody, TableCell,
+  TableHead, TableRow, TextField, Typography, createTheme, ThemeProvider,
 } from "@mui/material";
+import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import { CRM_TABLE_SX } from "../utils/crmTableUtils";
 import { ownershipRequest } from "./OwnershipActions";
 
+const theme = createTheme({ typography: { fontFamily: "Montserrat, sans-serif", fontSize: 10.5 } });
 const typeLabels = { leads: "Lead", accounts: "Account", deals: "Deal", orders: "Order" };
 
 function TransferPreview({ preview }) {
+  const [expanded, setExpanded] = useState(() => new Set());
+
+  function toggle(customer) {
+    setExpanded((previous) => {
+      const next = new Set(previous);
+      if (next.has(customer)) next.delete(customer);
+      else next.add(customer);
+      return next;
+    });
+  }
+
   const counts = preview.customers.reduce((totals, customer) => {
     for (const { type } of customer.records) totals[type] = (totals[type] || 0) + 1;
     return totals;
@@ -34,30 +50,52 @@ function TransferPreview({ preview }) {
           </List>
         </Alert>
       )}
-      <List disablePadding>
-        {preview.customers.map((customer) => (
-          <ListItem key={customer.customer} disableGutters divider sx={{ display: "block" }}>
-            <Box component="details">
-              <Box component="summary" sx={{ cursor: "pointer", py: 1 }}>
-                {customer.label} · {customer.records.length} records
-              </Box>
-              <List dense>
-                {customer.records.map((record, index) => (
-                  <ListItem key={index}>
-                    <ListItemText
-                      primary={`${typeLabels[record.type]} · ${record.label}`}
-                      secondary={[
-                        record.reference !== record.label && record.reference,
-                        `Current owner: ${record.owner || "Unassigned"}`,
-                      ].filter(Boolean).join(" · ")}
-                    />
-                  </ListItem>
-                ))}
-              </List>
-            </Box>
-          </ListItem>
-        ))}
-      </List>
+      {preview.customers.length > 0 && (
+        <Box className="crm-table-shell">
+          <Table size="small" aria-label="Records in this transfer" sx={CRM_TABLE_SX}>
+            <TableHead>
+              <TableRow>
+                <TableCell>Type</TableCell>
+                <TableCell>Customer / record</TableCell>
+                <TableCell>Reference</TableCell>
+                <TableCell>Current owner</TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {preview.customers.map((customer) => {
+                const open = expanded.has(customer.customer);
+                return (
+                  <Fragment key={customer.customer}>
+                    <TableRow hover>
+                      <TableCell colSpan={4}>
+                        <Button
+                          type="button"
+                          size="small"
+                          color="inherit"
+                          aria-expanded={open}
+                          onClick={() => toggle(customer.customer)}
+                          startIcon={open ? <ExpandMoreIcon /> : <ChevronRightIcon />}
+                          sx={{ textTransform: "none", fontSize: "inherit", px: 0.5 }}
+                        >
+                          {customer.label} · {customer.records.length} records
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                    {open && customer.records.map((record, index) => (
+                      <TableRow key={index} hover>
+                        <TableCell>{typeLabels[record.type]}</TableCell>
+                        <TableCell>{record.label}</TableCell>
+                        <TableCell>{record.reference !== record.label ? record.reference : ""}</TableCell>
+                        <TableCell>{record.owner || "Unassigned"}</TableCell>
+                      </TableRow>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </Box>
+      )}
     </Stack>
   );
 }
@@ -118,9 +156,12 @@ export default function OwnershipTransferPage() {
   }
 
   return (
-    <Box sx={{ maxWidth: 960, mx: "auto", px: { xs: 1, sm: 2 }, py: { xs: 2, sm: 4 } }}>
-      <Typography component="h1" variant="h4" fontWeight={700} sx={{ mb: 2 }}>Ownership Transfer</Typography>
-      <Paper variant="outlined" sx={{ p: { xs: 2, sm: 3 } }}>
+    <ThemeProvider theme={theme}>
+      <Box padding={4}>
+        <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
+          <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
+          <Typography component="h1" variant="h5" fontWeight="bold">Ownership Transfer</Typography>
+        </Box>
         <Stack component="form" onSubmit={submit} spacing={2}>
           {error && <Alert severity="error">{error}</Alert>}
           {receipt && (
@@ -129,38 +170,38 @@ export default function OwnershipTransferPage() {
             </Alert>
           )}
           {!error && !options && <Typography role="status">Loading owners…</Typography>}
-          {options && !preview && (
+          {options && !preview && (options.sources.length === 0 ? (
+            <Alert severity="info">There are no assigned records to transfer.</Alert>
+          ) : (
+            <Box className="crm-filter-bar" display="flex" gap={2} flexWrap="wrap" alignItems="center">
+              <TextField size="small" select disabled={busy} label="Current owner" value={source} onChange={changeSource} sx={{ minWidth: 200 }}>
+                {options.sources.map((owner) => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
+              </TextField>
+              <TextField size="small" select disabled={busy} label="New owner" value={recipient} onChange={(event) => setRecipient(event.target.value)} sx={{ minWidth: 200 }}>
+                {options.users.map((user) => (
+                  <MenuItem key={user.email} value={user.email} disabled={user.username.toLowerCase() === source.toLowerCase()}>
+                    {user.username} · {user.email}
+                  </MenuItem>
+                ))}
+              </TextField>
+              <Button type="submit" size="small" variant="contained" disabled={busy || !source || !recipient}>
+                {busy ? "Working…" : "Review transfer"}
+              </Button>
+            </Box>
+          ))}
+          {preview && (
             <>
-              <Typography>Move an owner’s linked Leads, Accounts, Deals, and Orders together.</Typography>
-              {options.sources.length === 0 ? (
-                <Alert severity="info">There are no assigned records to transfer.</Alert>
-              ) : (
-                <Stack direction={{ xs: "column", sm: "row" }} spacing={2}>
-                  <TextField fullWidth select disabled={busy} label="Current owner" value={source} onChange={changeSource}>
-                    {options.sources.map((owner) => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
-                  </TextField>
-                  <TextField fullWidth select disabled={busy} label="New owner" value={recipient} onChange={(event) => setRecipient(event.target.value)}>
-                    {options.users.map((user) => (
-                      <MenuItem key={user.email} value={user.email} disabled={user.username.toLowerCase() === source.toLowerCase()}>
-                        {user.username} · {user.email}
-                      </MenuItem>
-                    ))}
-                  </TextField>
-                </Stack>
-              )}
+              <TransferPreview preview={preview} />
+              <Stack direction="row" spacing={1} justifyContent="flex-end">
+                <Button type="button" size="small" onClick={() => { setPreview(null); setError(""); }} disabled={busy}>Back</Button>
+                <Button type="submit" size="small" variant="contained" disabled={busy || !preview.token}>
+                  {busy ? "Working…" : "Confirm transfer"}
+                </Button>
+              </Stack>
             </>
           )}
-          {preview && <TransferPreview preview={preview} />}
-          {options && options.sources.length > 0 && (
-            <Stack direction="row" spacing={1} justifyContent="flex-end">
-              {preview && <Button type="button" onClick={() => { setPreview(null); setError(""); }} disabled={busy}>Back</Button>}
-              <Button type="submit" variant="contained" disabled={busy || !source || !recipient || Boolean(preview && !preview.token)}>
-                {busy ? "Working…" : preview ? "Confirm transfer" : "Review transfer"}
-              </Button>
-            </Stack>
-          )}
         </Stack>
-      </Paper>
-    </Box>
+      </Box>
+    </ThemeProvider>
   );
 }

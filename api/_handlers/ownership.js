@@ -3,6 +3,7 @@ import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheet
 import {
   loadOwnershipData, normalize, ownerPortfolio, ownershipChain, ownershipError, portfolioOwners, readOwnershipLedger, saveOwnershipTransfer, transferFingerprint,
 } from "../_lib/ownership.js";
+import { ownershipReceipt, sendOwnershipReceipt } from "../_lib/ownershipReceipt.js";
 import { readCrmLoginProfile } from "../_lib/loginCredentials.js";
 import { createSignedToken, requireSession, verifySignedToken } from "../_lib/sessionAuth.js";
 
@@ -55,7 +56,8 @@ export default async function handler(req, res) {
     if (!history && !["options", "preview", "confirm"].includes(body.action)) throw ownershipError("Unknown ownership action.", 400);
     const token = body.action === "confirm" ? previewToken(body.token) : null;
     if (token && token.actor !== normalize(session.email)) throw ownershipError("This preview belongs to another CRM user.", 403);
-    const [data, ledger] = await Promise.all([loadOwnershipData(), readOwnershipLedger()]);
+    const includeHandoffContacts = !history && body.action !== "options";
+    const [data, ledger] = await Promise.all([loadOwnershipData({ includeHandoffContacts }), readOwnershipLedger()]);
 
     if (history) {
       const { type, recordKey } = body;
@@ -96,7 +98,12 @@ export default async function handler(req, res) {
         throw ownershipError("The linked records or owners changed. Review a fresh preview.");
       }
       const events = await saveOwnershipTransfer(ledger, chains, recipient, actor);
-      return res.status(200).json({ ok: true, customers: events.length, count: events.reduce((sum, event) => sum + event.records.length, 0) });
+      const attachment = ownershipReceipt(events);
+      const delivery = await sendOwnershipReceipt(events, attachment);
+      return res.status(200).json({
+        ok: true, customers: events.length, count: events.reduce((sum, event) => sum + event.records.length, 0),
+        attachment, delivery,
+      });
     }
     const confirmation = blockers.length ? null : createSignedToken({
       type: tokenType, actor: actor.email, recipient: recipient.email, source, fingerprint,

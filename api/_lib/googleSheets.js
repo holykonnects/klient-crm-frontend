@@ -247,6 +247,13 @@ export async function getValues(spreadsheetId, sheetName, a1 = "", auth = {}) {
   return json.values || [];
 }
 
+export async function getUnformattedColumn(spreadsheetId, sheetName, columnIndex) {
+  const column = columnName(columnIndex + 1);
+  const range = encodeURIComponent(sheetRange(sheetName, `${column}:${column}`));
+  const url = `https://sheets.googleapis.com/v4/spreadsheets/${spreadsheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`;
+  return (await googleFetch(url)).values || [];
+}
+
 export function anchoredAppendRange(sheetName, width) {
   return sheetRange(sheetName, `A:${columnName(Math.max(1, Number(width) || 1))}`);
 }

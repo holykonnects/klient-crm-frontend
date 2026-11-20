@@ -202,7 +202,7 @@ export function brandedEmailHtml(contentHtml, { subject = "" } = {}) {
 </html>`;
 }
 
-export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "", fromName = "Rido CRM", inlineAttachments = [] }) {
+export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", replyTo = "", fromName = "Rido CRM", inlineAttachments = [], fileAttachments = [] }) {
   const sender = clean(process.env.GMAIL_SENDER_EMAIL || process.env.GOOGLE_DELEGATED_USER_EMAIL || "");
   const attachments = [...inlineLogoAttachments(html), ...inlineAttachments.map(attachment => ({
     ...attachment, content: base64Mime(attachment.body),
@@ -217,14 +217,30 @@ export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", re
   ].filter(Boolean);
   if (replyTo) headers.push(`Reply-To: ${replyTo}`);
 
+  function finish(bodyHeaders, body) {
+    if (!fileAttachments.length) return `${[...headers, ...bodyHeaders].join("\r\n")}\r\n\r\n${body}`;
+
+    const boundary = `kk_mixed_${Date.now().toString(36)}`;
+    const parts = [
+      `--${boundary}`, ...bodyHeaders, "", body,
+      ...fileAttachments.flatMap(({ filename, contentType, body: file }) => [
+        `--${boundary}`,
+        `Content-Type: ${contentType}; name="${filename}"`,
+        "Content-Transfer-Encoding: base64",
+        `Content-Disposition: attachment; filename="${filename}"`,
+        "",
+        base64Mime(file),
+      ]),
+      `--${boundary}--`,
+    ];
+    return `${[...headers, `Content-Type: multipart/mixed; boundary="${boundary}"`].join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+  }
+
   if (!attachments.length) {
-    headers.push("Content-Type: text/html; charset=UTF-8");
-    headers.push("Content-Transfer-Encoding: base64");
-    return `${headers.join("\r\n")}\r\n\r\n${base64Mime(html || "")}`;
+    return finish(["Content-Type: text/html; charset=UTF-8", "Content-Transfer-Encoding: base64"], base64Mime(html || ""));
   }
 
   const boundary = `kk_related_${Date.now().toString(36)}`;
-  headers.push(`Content-Type: multipart/related; boundary="${boundary}"`);
 
   const parts = [
     `--${boundary}`,
@@ -246,7 +262,7 @@ export function mimeMessage({ to, cc = "", bcc = "", subject = "", html = "", re
     `--${boundary}--`,
   ];
 
-  return `${headers.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+  return finish([`Content-Type: multipart/related; boundary="${boundary}"`], parts.join("\r\n"));
 }
 
 function inlineLogoAttachments(html) {

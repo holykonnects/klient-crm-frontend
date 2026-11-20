@@ -87,6 +87,17 @@ function TransferPreview({ preview }) {
   );
 }
 
+function downloadAttachment({ filename, csv }) {
+  const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 export default function OwnershipTransferPage() {
   const [options, setOptions] = useState(null);
   const [optionsVersion, refreshOptions] = useState(0);
@@ -152,9 +163,23 @@ export default function OwnershipTransferPage() {
         <Stack component="form" onSubmit={submit} spacing={2}>
           {error && <Alert severity="error">{error}</Alert>}
           {receipt && (
-            <Alert severity="success">
-              Transferred {receipt.count} linked {receipt.count === 1 ? "record" : "records"} across {receipt.customers} customer {receipt.customers === 1 ? "chain" : "chains"} to {receipt.owner}.
-            </Alert>
+            <Stack spacing={1}>
+              <Alert severity="success">
+                Transferred {receipt.count} linked {receipt.count === 1 ? "record" : "records"} across {receipt.customers} customer {receipt.customers === 1 ? "chain" : "chains"} to {receipt.owner}.
+                {receipt.delivery === "sent" && " The transfer list was emailed to the new owner."}
+              </Alert>
+              {receipt.attachment && receipt.delivery !== "sent" && (
+                <Alert severity="warning">
+                  {receipt.delivery === "disabled" ? "CRM email is disabled." : "Email delivery could not be confirmed."} Download the list to share it with the new owner.
+                </Alert>
+              )}
+              {receipt.attachment && (
+                <Button type="button" size="small" variant="outlined" sx={{ alignSelf: "flex-start" }}
+                  onClick={() => downloadAttachment(receipt.attachment)}>
+                  Download transfer list
+                </Button>
+              )}
+            </Stack>
           )}
           {!error && !options && <Typography role="status">Loading owners…</Typography>}
           {options && !preview && (options.sources.length === 0 ? (

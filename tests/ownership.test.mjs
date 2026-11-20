@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { generateKeyPairSync } from "node:crypto";
 import handler from "../api/_handlers/ownership.js";
 import { SHEETS } from "../api/_lib/crmConfig.js";
+import { fillLinkedContacts, transferDetails } from "../api/_lib/ownershipHandoff.js";
 import { createSessionToken } from "../api/_lib/sessionAuth.js";
 import { ownerPortfolio, ownershipChain, ownershipRecordKey, portfolioOwners, projectOwnership, transferFingerprint } from "../api/_lib/ownership.js";
 
@@ -12,7 +13,7 @@ const newOwner = "New Owner";
 function fixture() {
   return {
     leads: [
-      { "Lead ID": "L-1", "Lead Owner": oldOwner, Company: "Same name", "Mobile Number": "9000000000" },
+      { "Lead ID": "L-1", "Lead Owner": oldOwner, Company: "Same name", "First Name": "Customer Contact", "Mobile Number": "9000000000", "Email ID": "customer@example.com" },
       { "Lead ID": "L-2", "Lead Owner": "Other", Company: "Same name", "Mobile Number": "9000000001" },
     ],
     accounts: [
@@ -87,10 +88,32 @@ test("ambiguous legacy records block a partial transfer, and stable IDs survive 
   assert.ok(ownerPortfolio(ambiguous, [], [oldOwner]).blockers.length > 0);
 });
 
+test("handoff details fill in a unique linked contact and keep conflicting contacts apart", () => {
+  const lead = { details: transferDetails("leads", [{ "First Name": "First", "Mobile Number": "9000000000", "Email ID": "first@example.com" }]) };
+  const deal = { details: transferDetails("deals", [{ "First Name": "First", "Mobile Number": "+91 9000000000", "Deal Amount": "1200" }]) };
+  const order = { details: transferDetails("orders", [{ "First Name": "Other", "Mobile Number": "9000000001" }]) };
+  const blank = { details: {} };
+  const [, linkedDeal, separateOrder, unknownContact] = fillLinkedContacts([lead, deal, order, blank]);
+  assert.equal(linkedDeal.details.email, "first@example.com");
+  assert.equal(linkedDeal.details.dealAmount, "1200");
+  assert.equal(separateOrder.details.email, undefined);
+  assert.deepEqual(unknownContact.details, {});
+  const changed = transferDetails("leads", [
+    { "First Name": "Other", "Mobile Number": "9000000001" },
+    { "First Name": "First", "Mobile Number": "9000000000", "Email ID": "first@example.com" },
+  ]);
+  assert.equal(changed.email, undefined);
+  const legacy = transferDetails("leads", [{ "Mobile Number": "9.00000E+09", _handoffMobile: 9000000000, "Email ID": "xxxxx" }]);
+  assert.equal(legacy.mobile, "9000000000");
+  assert.equal(legacy.email, undefined);
+});
+
 test("the API requires a signed preview, refuses stale previews and records one transfer with history", async (t) => {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const env = {
     CRM_SESSION_SECRET: "test-ownership-session",
+    ENABLE_OPERATIONAL_EMAILS: "true",
+    GMAIL_SENDER_EMAIL: "crm@example.com",
     GOOGLE_SERVICE_ACCOUNT_EMAIL: "test@example.com",
     GOOGLE_PRIVATE_KEY: privateKey.export({ format: "pem", type: "pkcs8" }),
   };
@@ -116,6 +139,8 @@ test("the API requires a signed preview, refuses stale previews and records one 
   ];
   let events = [];
   let commits = 0;
+  const messages = [];
+  let failEmail = false;
   const reservations = new Set();
   const asValues = (rows) => {
     const headers = [...new Set(rows.flatMap(Object.keys))];
@@ -124,6 +149,12 @@ test("the API requires a signed preview, refuses stale previews and records one 
   t.mock.method(globalThis, "fetch", async (input, options = {}) => {
     const url = new URL(input);
     if (url.hostname === "oauth2.googleapis.com") return Response.json({ access_token: "test" });
+    if (url.hostname === "gmail.googleapis.com") {
+      if (failEmail) return Response.json({ error: { message: "Email unavailable" } }, { status: 503 });
+      messages.push(Buffer.from(JSON.parse(options.body).raw, "base64url").toString());
+      assert.ok(commits > 0);
+      return Response.json({ id: "test-email" });
+    }
     const id = url.pathname.split("/")[3];
     if (id.endsWith(":batchUpdate")) {
       const batch = JSON.parse(options.body).requests;
@@ -210,7 +241,19 @@ test("the API requires a signed preview, refuses stale previews and records one 
   login[1][2] = "Lead, Ownership Transfer, Deal";
   const confirmations = await Promise.all([call(admin, { body: confirm }), call(admin, { body: confirm })]);
   assert.deepEqual(confirmations.map((result) => result.status).sort(), [200, 409]);
-  assert.deepEqual(confirmations.find((result) => result.status === 200).data, { ok: true, customers: 2, count: 11 });
+  const saved = confirmations.find((result) => result.status === 200).data;
+  assert.equal(saved.ok, true);
+  assert.equal(saved.customers, 2);
+  assert.equal(saved.count, 11);
+  assert.equal(saved.delivery, "sent");
+  assert.equal(saved.attachment.csv.trim().split("\r\n").length, 12);
+  assert.match(saved.attachment.csv, /O-new/);
+  assert.match(saved.attachment.csv, /"Contact name","Mobile number","Email address"/);
+  assert.match(saved.attachment.csv, /customer@example\.com/);
+  assert.equal(messages.length, 1);
+  assert.match(messages[0], /To: new@example.com/);
+  assert.doesNotMatch(messages[0], /(?:^|\r\n)(?:Cc|Bcc):/);
+  assert.ok(messages[0].includes(`Content-Disposition: attachment; filename="${saved.attachment.filename}"`));
   assert.equal((await call(admin, { body: confirm })).status, 409);
   assert.equal(commits, 1);
   assert.equal(events.length, 2);
@@ -221,4 +264,13 @@ test("the API requires a signed preview, refuses stale previews and records one 
   assert.equal(trail.data.entries[0].from, oldOwner);
   assert.equal(trail.data.entries[0].actor, "Manager");
   assert.equal((await call(former, { method: "GET", query })).status, 403);
+
+  failEmail = true;
+  const reverse = await call(admin, { body: { action: "preview", source: newOwner, recipient: former.email } });
+  const stillSaved = await call(admin, { body: { action: "confirm", token: reverse.data.token } });
+  assert.equal(stillSaved.status, 200);
+  assert.equal(stillSaved.data.delivery, "failed");
+  assert.match(stillSaved.data.attachment.csv, /O-new/);
+  assert.equal(commits, 2);
+  assert.equal(messages.length, 1);
 });

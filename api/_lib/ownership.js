@@ -1,6 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { SHEETS } from "./crmConfig.js";
-import { getValues, googleFetch, resolveSheetTitle, rowsToObjects } from "./googleSheets.js";
+import { getUnformattedColumn, getValues, googleFetch, resolveSheetTitle, rowsToObjects } from "./googleSheets.js";
+import { fillLinkedContacts, transferDetails } from "./ownershipHandoff.js";
 import { dealRowGroups } from "../../src/utils/dealTableRows.js";
 import { newestCrmRows } from "../../src/utils/crmTableUtils.js";
 
@@ -141,7 +142,8 @@ function ownershipGraph(data, events) {
     const reference = clean(latest[kind === "deals" ? "Deal ID" : kind === "orders" ? "Order ID" : "Lead ID"]) ||
       clean(latest["Account ID"] || latest.Timestamp);
     records.push({ type: kind, ids, keys, label: label(kind, latest), reference,
-      owner: old?.to.username || owner, contacts: rows.map(contactKey).filter(Boolean) });
+      owner: old?.to.username || owner, details: transferDetails(kind, snapshots),
+      contacts: rows.map(contactKey).filter(Boolean) });
   };
 
   for (const rows of groupRows(data.leads, (row) => ownershipRecordKey("leads", row))) add("leads", rows, resolveIds(rows));
@@ -194,8 +196,9 @@ function customerChain({ records, knownIds, contactOwners, accountsById, events 
     throw Object.assign(ownershipError("Some records have conflicting or missing customer links."), { records: conflicts });
   }
   const customerAliases = unique([customer, ...[...accountsById].filter(([, targets]) => targets.size === 1 && targets.has(customer)).map(([id]) => id)]);
-  const changes = chain.map(({ type, keys, label, reference, owner }) => ({ type, keys: [...keys].sort(), label, reference, owner }))
-    .sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
+  const changes = fillLinkedContacts(chain.map(({ type, keys, label, reference, owner, details }) => ({
+    type, keys: [...keys].sort(), label, reference, owner, details,
+  }))).sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
   const history = events.filter((event) => customerAliases.some((id) => event.customerIds.includes(id)));
   const revision = history.at(-1)?.id || "";
   const label = changes.find((record) => record.type === "accounts")?.label ||
@@ -263,11 +266,21 @@ export function transferFingerprint(chains) {
   return hash(JSON.stringify(chains.map(({ customer, customerIds, revision, changes }) => [customer, customerIds, revision, changes])));
 }
 
-export async function loadOwnershipData() {
+export async function loadOwnershipData({ includeHandoffContacts = false } = {}) {
   const entries = await Promise.all(ownershipTypes.map(async (type) => {
     const { spreadsheetId, sheetNames } = SHEETS[type];
     const sheet = await resolveSheetTitle(spreadsheetId, sheetNames);
-    return [type, rowsToObjects(await getValues(spreadsheetId, sheet))];
+    const values = await getValues(spreadsheetId, sheet);
+    const rows = rowsToObjects(values);
+    if (includeHandoffContacts && values.length) {
+      await Promise.all([["Mobile Number", "_handoffMobile"], ["Order Onsite Contact Number", "_handoffOnsiteMobile"]]
+        .filter(([field]) => rows.some((row) => /^\d+(?:\.\d+)?e\+?\d+$/i.test(clean(row[field]))))
+        .map(async ([field, key]) => {
+          const exact = await getUnformattedColumn(spreadsheetId, sheet, values[0].indexOf(field));
+          rows.forEach((row, i) => { row[key] = exact[i + 1]?.[0] ?? ""; });
+        }));
+    }
+    return [type, rows];
   }));
   return Object.fromEntries(entries);
 }

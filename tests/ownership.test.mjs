@@ -84,10 +84,11 @@ test("the API requires a signed preview, refuses stale previews and records one 
   const types = ["leads", "accounts", "deals", "orders"];
   const byId = new Map(types.map((type) => [SHEETS[type].spreadsheetId, type]));
   const login = [
-    ["Login Email", "Login Username"],
-    ["holy@klientkonnect.com", "Holy"],
-    ["new@example.com", newOwner],
-    ["old@example.com", oldOwner],
+    ["Login Email", "Login Username", "Page Access"],
+    ["manager@example.com", "Manager", "Lead, Ownership Transfer , Deal"],
+    ["new@example.com", newOwner, ""],
+    ["old@example.com", oldOwner, ""],
+    ["holy@klientkonnect.com", "Holy", "Lead"],
   ];
   let events = [];
   let commits = 0;
@@ -124,7 +125,8 @@ test("the API requires a signed preview, refuses stale previews and records one 
   });
 
   function user(email, username, role = "End User") { return { email, username, role }; }
-  const admin = user("holy@klientkonnect.com", "Holy", "Admin");
+  const admin = user("manager@example.com", "Manager", "Admin");
+  const previousAllowlistUser = user("holy@klientkonnect.com", "Holy", "Admin");
   const recipient = user("new@example.com", newOwner);
   const former = user("old@example.com", oldOwner);
   async function call(actor, { method = "POST", body, query = {} } = {}) {
@@ -141,6 +143,14 @@ test("the API requires a signed preview, refuses stale previews and records one 
   const preview = { action: "preview", source: oldOwner, recipient: recipient.email };
   assert.equal((await call(null, { body: preview })).status, 401);
   assert.equal((await call(former, { body: preview })).status, 403);
+  const capability = { method: "GET", query: { action: "capabilities" } };
+  assert.equal((await call(admin, capability)).data.canTransfer, true);
+  assert.equal((await call(previousAllowlistUser, capability)).data.canTransfer, false);
+  assert.equal((await call(previousAllowlistUser, { body: { action: "options" } })).status, 403);
+  login[3][2] = "  OWNERSHIP TRANSFER  ";
+  assert.equal((await call(former, capability)).data.canTransfer, true);
+  login[3][2] = "";
+  assert.equal((await call(former, capability)).data.canTransfer, false);
   assert.equal((await call(admin, { body: { action: "confirm", ...selection } })).status, 409);
 
   const options = await call(admin, { body: { action: "options" } });
@@ -160,6 +170,10 @@ test("the API requires a signed preview, refuses stale previews and records one 
 
   const fresh = await call(admin, { body: preview });
   const confirm = { action: "confirm", token: fresh.data.token };
+  login[1][2] = "Lead, Deal";
+  assert.equal((await call(admin, { body: confirm })).status, 403);
+  assert.equal(commits, 0);
+  login[1][2] = "Lead, Ownership Transfer, Deal";
   const confirmations = await Promise.all([call(admin, { body: confirm }), call(admin, { body: confirm })]);
   assert.deepEqual(confirmations.map((result) => result.status).sort(), [200, 409]);
   assert.deepEqual(confirmations.find((result) => result.status === 200).data, { ok: true, customers: 2, count: 11 });
@@ -171,6 +185,6 @@ test("the API requires a signed preview, refuses stale previews and records one 
   const trail = await call(recipient, { method: "GET", query });
   assert.equal(trail.data.owner, newOwner);
   assert.equal(trail.data.entries[0].from, oldOwner);
-  assert.equal(trail.data.entries[0].actor, "Holy");
+  assert.equal(trail.data.entries[0].actor, "Manager");
   assert.equal((await call(former, { method: "GET", query })).status, 403);
 });

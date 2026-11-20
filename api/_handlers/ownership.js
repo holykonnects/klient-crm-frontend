@@ -3,24 +3,27 @@ import { getValues, resolveSheetTitle, rowsToObjects } from "../_lib/googleSheet
 import {
   loadOwnershipData, normalize, ownerPortfolio, ownershipChain, ownershipError, portfolioOwners, readOwnershipLedger, saveOwnershipTransfer, transferFingerprint,
 } from "../_lib/ownership.js";
+import { readCrmLoginProfile } from "../_lib/loginCredentials.js";
 import { createSignedToken, requireSession, verifySignedToken } from "../_lib/sessionAuth.js";
 
-const transferEmails = new Set(["holy@klientkonnect.com", "sidhant@ridosports.com", "sandeep@ridosports.com"]);
+const transferAccess = "ownership transfer";
 const tokenType = "crm-ownership-bulk-preview";
 
 async function crmUsers() {
   const { spreadsheetId, sheetNames } = SHEETS.auth;
   const tab = await resolveSheetTitle(spreadsheetId, sheetNames);
   const rows = rowsToObjects(await getValues(spreadsheetId, tab));
-  const users = rows.map((row) => ({
-    email: normalize(row["Login Email"] || row.Email),
-    username: String(row["Login Username"] || row.Username || row.Name || "").trim(),
-    disabled: ["inactive", "disabled", "archived", "removed"].includes(normalize(row.Status || row["Account Status"])) ||
-      ["no", "false", "0"].includes(normalize(row.Active)),
-  }));
+  const users = rows.map((row) => {
+    const { email, username, pageAccess } = readCrmLoginProfile(row);
+    return {
+      email: normalize(email), username, pageAccess,
+      disabled: ["inactive", "disabled", "archived", "removed"].includes(normalize(row.Status || row["Account Status"])) ||
+        ["no", "false", "0"].includes(normalize(row.Active)),
+    };
+  });
   return users.filter((user) => user.email && user.username && !user.disabled &&
     users.filter((entry) => entry.email === user.email || normalize(entry.username) === normalize(user.username)).length === 1
-  ).map(({ email, username }) => ({ email, username }));
+  );
 }
 
 function previewToken(value) {
@@ -37,11 +40,14 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "private, no-store");
   try {
     const session = requireSession(req);
-    const canTransfer = transferEmails.has(normalize(session.email));
-    if (req.method === "GET" && req.query.action === "capabilities") return res.status(200).json({ canTransfer });
-
+    const capabilities = req.method === "GET" && req.query.action === "capabilities";
     const history = req.method === "GET" && req.query.action === "history";
-    if (!history && req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+    if (!capabilities && !history && req.method !== "POST") return res.status(405).json({ error: "Method Not Allowed" });
+
+    const directory = history ? [] : await crmUsers();
+    const profile = directory.find((user) => user.email === normalize(session.email));
+    const canTransfer = profile?.pageAccess.some((access) => normalize(access) === transferAccess) ?? false;
+    if (capabilities) return res.status(200).json({ canTransfer });
     if (!history && !canTransfer) throw ownershipError("You do not have permission to transfer ownership.", 403);
 
     const body = history ? req.query : (typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {});
@@ -63,9 +69,8 @@ export default async function handler(req, res) {
       return res.status(200).json({ owner: chain.selected.owner, entries: entries.reverse() });
     }
 
-    const users = await crmUsers();
-    const actor = users.find((user) => user.email === normalize(session.email));
-    if (!actor) throw ownershipError("Your account is unavailable for this action.", 403);
+    const users = directory.map(({ email, username }) => ({ email, username }));
+    const actor = { email: profile.email, username: profile.username };
     if (body.action === "options") {
       const sources = portfolioOwners(data, ledger.events).map((owner) => {
         const matched = users.find((user) => [user.email, normalize(user.username)].includes(normalize(owner)));

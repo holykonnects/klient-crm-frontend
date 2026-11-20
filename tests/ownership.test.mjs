@@ -4,7 +4,7 @@ import { generateKeyPairSync } from "node:crypto";
 import handler from "../api/_handlers/ownership.js";
 import { SHEETS } from "../api/_lib/crmConfig.js";
 import { createSessionToken } from "../api/_lib/sessionAuth.js";
-import { ownershipChain, ownershipRecordKey, projectOwnership, transferFingerprint } from "../api/_lib/ownership.js";
+import { ownerPortfolio, ownershipChain, ownershipRecordKey, projectOwnership, transferFingerprint } from "../api/_lib/ownership.js";
 
 const oldOwner = "Existing Owner";
 const newOwner = "New Owner";
@@ -38,7 +38,7 @@ test("all four entry points resolve the same customer chain, including legacy de
   const chain = ownershipChain(data, [], "leads", reference(data, "leads"));
   assert.deepEqual(chain.changes.map(({ type }) => type), ["accounts", "deals", "deals", "leads", "orders", "orders"]);
   for (const type of ["accounts", "deals", "orders"]) {
-    assert.equal(transferFingerprint(ownershipChain(data, [], type, reference(data, type))), transferFingerprint(chain));
+    assert.equal(transferFingerprint([ownershipChain(data, [], type, reference(data, type))]), transferFingerprint([chain]));
   }
   assert.equal(chain.changes.find((row) => row.label === "O-2").owner, "Former order owner");
   const event = { id: "r1", customer: chain.customer, customerIds: chain.customerIds, to: { username: newOwner }, records: chain.changes };
@@ -61,7 +61,7 @@ test("ambiguous legacy records block a partial transfer, and stable IDs survive 
 
   const ambiguous = fixture();
   ambiguous.accounts[1]["Mobile Number"] = "9000000000";
-  assert.throws(() => ownershipChain(ambiguous, [], "leads", reference(ambiguous, "leads")), /conflicting or missing links/);
+  assert.ok(ownerPortfolio(ambiguous, [], [oldOwner]).blockers.length > 0);
 });
 
 test("the API requires a signed preview, refuses stale previews and records one transfer with history", async (t) => {
@@ -79,6 +79,8 @@ test("the API requires a signed preview, refuses stale previews and records one 
   }));
 
   const data = fixture();
+  // The source owns only the Lead on the second chain, so the remaining rungs must move with it.
+  data.leads[1]["Lead Owner"] = oldOwner;
   const types = ["leads", "accounts", "deals", "orders"];
   const byId = new Map(types.map((type) => [SHEETS[type].spreadsheetId, type]));
   const login = [
@@ -100,12 +102,14 @@ test("the API requires a signed preview, refuses stale previews and records one 
     const id = url.pathname.split("/")[3];
     if (id.endsWith(":batchUpdate")) {
       const batch = JSON.parse(options.body).requests;
-      const reservation = batch.find((entry) => entry.addNamedRange)?.addNamedRange.namedRange.namedRangeId;
-      assert.ok(reservation);
-      if (reservations.has(reservation)) return Response.json({ error: { message: "Duplicate reservation" } }, { status: 400 });
-      reservations.add(reservation);
-      const values = batch.find((entry) => entry.appendCells).appendCells.rows[0].values;
-      events.push(values.map((value) => value.userEnteredValue.stringValue));
+      const pending = batch.filter((entry) => entry.addNamedRange).map((entry) => entry.addNamedRange.namedRange.namedRangeId);
+      assert.equal(pending.length, 2);
+      if (pending.some((reservation) => reservations.has(reservation))) {
+        return Response.json({ error: { message: "Duplicate reservation" } }, { status: 400 });
+      }
+      pending.forEach((reservation) => reservations.add(reservation));
+      const rows = batch.find((entry) => entry.appendCells).appendCells.rows;
+      events.push(...rows.map(({ values }) => values.map((value) => value.userEnteredValue.stringValue)));
       commits++;
       return Response.json({});
     }
@@ -134,14 +138,21 @@ test("the API requires a signed preview, refuses stale previews and records one 
     return result;
   }
   const selection = { type: "leads", recordKey: reference(data, "leads") };
-  const preview = { action: "preview", recipient: recipient.email, ...selection };
+  const preview = { action: "preview", source: oldOwner, recipient: recipient.email };
   assert.equal((await call(null, { body: preview })).status, 401);
   assert.equal((await call(former, { body: preview })).status, 403);
   assert.equal((await call(admin, { body: { action: "confirm", ...selection } })).status, 409);
 
+  const options = await call(admin, { body: { action: "options" } });
+  assert.ok(options.data.sources.includes(oldOwner));
+  data.orders.push({ "Order ID": "UNLINKED", "Account Owner": oldOwner });
+  const blocked = await call(admin, { body: preview });
+  assert.equal(blocked.data.token, null);
+  assert.equal(blocked.data.blockers.length, 1);
+  data.orders.pop();
   const first = await call(admin, { body: preview });
   assert.equal(first.status, 200);
-  assert.equal(first.data.records.length, 6);
+  assert.deepEqual(first.data.customers.map(({ records }) => records.length), [6, 4]);
   assert.equal(commits, 0);
   data.orders.push({ "Order ID": "O-new", "Deal ID": "D-2", "Account Owner": oldOwner });
   assert.equal((await call(admin, { body: { action: "confirm", token: first.data.token } })).status, 409);
@@ -151,9 +162,11 @@ test("the API requires a signed preview, refuses stale previews and records one 
   const confirm = { action: "confirm", token: fresh.data.token };
   const confirmations = await Promise.all([call(admin, { body: confirm }), call(admin, { body: confirm })]);
   assert.deepEqual(confirmations.map((result) => result.status).sort(), [200, 409]);
-  assert.equal(confirmations.find((result) => result.status === 200).data.count, 7);
+  assert.deepEqual(confirmations.find((result) => result.status === 200).data, { ok: true, customers: 2, count: 11 });
   assert.equal((await call(admin, { body: confirm })).status, 409);
   assert.equal(commits, 1);
+  assert.equal(events.length, 2);
+  assert.equal(JSON.parse(events[0].join("")).batchId, JSON.parse(events[1].join("")).batchId);
   const query = { action: "history", ...selection };
   const trail = await call(recipient, { method: "GET", query });
   assert.equal(trail.data.owner, newOwner);

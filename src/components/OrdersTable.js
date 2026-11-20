@@ -502,6 +502,7 @@ function OrdersTable() {
           <Typography variant="h5" fontWeight="bold">
             Orders Records
           </Typography>
+          {ownership.transferButton}
         </Box>
 
         {/* Filters */}

@@ -504,6 +504,7 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">
             Accounts Records
           </Typography>
+          {ownership.transferButton}
         </Box>
 
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">

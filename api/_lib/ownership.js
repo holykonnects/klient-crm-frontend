@@ -93,8 +93,7 @@ function groupRows(rows, getKey) {
   return [...groups.values()];
 }
 
-export function ownershipChain(data, events, type, recordKey) {
-  if (!ownershipTypes.includes(type) || !recordKey) throw ownershipError("Select a saved CRM record.", 400);
+function ownershipGraph(data, events) {
 
   const accountRows = groupRows(data.accounts, (row) => normalize(row["Lead ID"]) || normalize(row["Account ID"]));
   const accountsById = new Map();
@@ -163,33 +162,98 @@ export function ownershipChain(data, events, type, recordKey) {
     add("orders", rows, ids);
   }
 
-  const selected = records.filter((record) => record.type === type && record.keys.includes(recordKey));
+  for (const type of ["leads", "accounts", "orders"]) {
+    for (const row of data[type]) {
+      if (!ownershipRecordKey(type, row) && recordOwner(type, row)) add(type, [row], resolveIds([row]));
+    }
+  }
+
+  const roots = records.filter((record) => record.type === "leads" || record.type === "accounts");
+  const knownIds = new Set(roots.flatMap((record) => record.ids));
+  return { records, knownIds, contactOwners, accountsById, events };
+}
+
+function customerChain({ records, knownIds, contactOwners, accountsById, events }, customer) {
+  const chain = records.filter((record) => record.ids.includes(customer));
+  if (!knownIds.has(customer)) {
+    throw ownershipError("The linked Lead or Account is missing.");
+  }
+  const ambiguous = records.filter((record) =>
+    (!record.ids.length || record.ids.some((id) => !knownIds.has(id))) &&
+    record.contacts.some((contact) => contactOwners.get(contact)?.has(customer)));
+  const conflicts = unique([...ambiguous, ...chain.filter((record) =>
+    record.ids.length !== 1 || !record.keys.length || record.conflictingAccountIds)]);
+  if (conflicts.length) {
+    throw Object.assign(ownershipError("Some records have conflicting or missing customer links."), { records: conflicts });
+  }
+  const customerAliases = unique([customer, ...[...accountsById].filter(([, targets]) => targets.size === 1 && targets.has(customer)).map(([id]) => id)]);
+  const changes = chain.map(({ type, keys, label, reference, owner }) => ({ type, keys: [...keys].sort(), label, reference, owner }))
+    .sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
+  const history = events.filter((event) => customerAliases.some((id) => event.customerIds.includes(id)));
+  const revision = history.at(-1)?.id || "";
+  const label = changes.find((record) => record.type === "accounts")?.label ||
+    changes.find((record) => record.type === "leads")?.label || customer;
+  return { customer, customerIds: customerAliases.sort(), changes, revision, history, label };
+}
+
+export function ownershipChain(data, events, type, recordKey) {
+  if (!ownershipTypes.includes(type) || !recordKey) throw ownershipError("Select a saved CRM record.", 400);
+  const graph = ownershipGraph(data, events);
+  const selected = graph.records.filter((record) => record.type === type && record.keys.includes(recordKey));
   if (selected.length !== 1 || selected[0].ids.length !== 1) {
     throw ownershipError("This record cannot be linked to a unique Lead or Account. Reconcile its IDs before transferring.");
   }
-
+  // History for a verified record remains readable even if a newer record has an unresolved customer link.
   const customer = selected[0].ids[0];
-  const chain = records.filter((record) => record.ids.includes(customer));
-  const roots = records.filter((record) => record.type === "leads" || record.type === "accounts");
-  if (!roots.some((record) => record.ids.includes(customer))) {
-    throw ownershipError("The linked Lead or Account is missing. Reconcile the customer link before transferring.");
+  const history = events.filter((event) => event.customer === customer || event.customerIds.includes(customer));
+  try {
+    return { ...customerChain(graph, customer), selected: selected[0] };
+  } catch (error) {
+    if (error.status !== 409) throw error;
+    return { selected: selected[0], history, customer };
   }
-  const knownIds = new Set(roots.flatMap((record) => record.ids));
-  const ambiguous = records.some((record) => record.ids.some((id) => !knownIds.has(id)) &&
-    record.contacts.some((contact) => contactOwners.get(contact)?.has(customer)));
-  if (ambiguous || chain.some((record) => record.ids.length !== 1 || !record.keys.length || record.conflictingAccountIds)) {
-    throw ownershipError("Some records have conflicting or missing links. Reconcile those records before transferring.");
-  }
-  const customerAliases = unique([customer, ...[...accountsById].filter(([, targets]) => targets.size === 1 && targets.has(customer)).map(([id]) => id)]);
-  const changes = chain.map(({ type: kind, keys, label: name, reference, owner }) => ({ type: kind, keys: [...keys].sort(), label: name, reference, owner }))
-    .sort((a, b) => a.keys[0].localeCompare(b.keys[0]));
-  const relevantEvents = events.filter((event) => customerAliases.some((id) => event.customerIds.includes(id)));
-  const revision = relevantEvents.at(-1)?.id || "";
-  return { customer, customerIds: customerAliases.sort(), changes, revision, selected: selected[0], history: relevantEvents };
 }
 
-export function transferFingerprint(chain) {
-  return hash(JSON.stringify([chain.customer, chain.customerIds, chain.revision, chain.changes]));
+export function portfolioOwners(data, events) {
+  const graph = ownershipGraph(data, events);
+  const byName = new Map();
+  for (const { owner } of graph.records) if (owner) byName.set(normalize(owner), owner);
+  return [...byName.values()].sort((a, b) => a.localeCompare(b));
+}
+
+export function ownerPortfolio(data, events, sourceOwners) {
+  const owners = new Set(sourceOwners.map(normalize).filter(Boolean));
+  if (!owners.size) throw ownershipError("Choose the current owner.", 400);
+  const graph = ownershipGraph(data, events);
+  const affected = graph.records.filter((record) => owners.has(normalize(record.owner)));
+  const blockers = [];
+  const customers = new Map();
+  for (const record of affected) {
+    if (record.ids.length !== 1 || !record.keys.length) {
+      blockers.push({ type: record.type, label: record.label, reference: record.reference, reason: "Missing or ambiguous customer link." });
+    } else if (!customers.has(record.ids[0])) {
+      customers.set(record.ids[0], record);
+    }
+  }
+  const chains = [];
+  for (const [customer, record] of customers) {
+    try {
+      chains.push(customerChain(graph, customer));
+    } catch (error) {
+      if (error.status !== 409) throw error;
+      for (const conflict of error.records || [record]) {
+        if (!blockers.some((blocker) => blocker.type === conflict.type && blocker.reference === conflict.reference && blocker.label === conflict.label)) {
+          blockers.push({ type: conflict.type, label: conflict.label, reference: conflict.reference, reason: error.message });
+        }
+      }
+    }
+  }
+  chains.sort((a, b) => a.customer.localeCompare(b.customer));
+  return { chains, blockers };
+}
+
+export function transferFingerprint(chains) {
+  return hash(JSON.stringify(chains.map(({ customer, customerIds, revision, changes }) => [customer, customerIds, revision, changes])));
 }
 
 export async function loadOwnershipData() {
@@ -223,21 +287,7 @@ export async function inheritOwnership(type, row, source = row) {
   return transfer ? setRecordOwner(type, row, transfer.to.username) : row;
 }
 
-export async function saveOwnershipTransfer(ledger, chain, to, actor) {
-  const event = {
-    id: randomUUID(), customer: chain.customer, customerIds: chain.customerIds,
-    to, actor, at: new Date().toISOString(), records: chain.changes,
-  };
-  const sheetId = ledger.sheet?.sheetId ?? (Math.max(0, ...ledger.properties.map((prop) => prop.sheetId)) + 1);
-  // An identical revision cannot be committed twice, even by different server instances.
-  const reservation = "CrmOwnership_" + hash(JSON.stringify([chain.customer, chain.revision]));
-  const requests = ledger.sheet ? [] : [
-    { addSheet: { properties: { sheetId, title: ledgerTitle, hidden: true } } },
-    { updateCells: {
-      start: { sheetId, rowIndex: 0, columnIndex: 0 },
-      rows: [{ values: [{ userEnteredValue: { stringValue: "Ownership Transfer" } }] }], fields: "userEnteredValue",
-    } },
-  ];
+function transferCells(event) {
   const json = JSON.stringify(event);
   const values = [];
   for (let offset = 0; offset < json.length;) {
@@ -247,24 +297,44 @@ export async function saveOwnershipTransfer(ledger, chain, to, actor) {
     offset = end;
   }
   if (values.length > 26) throw ownershipError("This customer has too many records for one transfer.");
-  requests.push(
-    { addNamedRange: { namedRange: {
+  return { values };
+}
+
+export async function saveOwnershipTransfer(ledger, chains, to, actor) {
+  const at = new Date().toISOString();
+  const batchId = randomUUID();
+  const events = chains.map((chain) => ({
+    id: randomUUID(), batchId, customer: chain.customer, customerIds: chain.customerIds,
+    to, actor, at, records: chain.changes,
+  }));
+  const sheetId = ledger.sheet?.sheetId ?? (Math.max(0, ...ledger.properties.map((prop) => prop.sheetId)) + 1);
+  const requests = ledger.sheet ? [] : [
+    { addSheet: { properties: { sheetId, title: ledgerTitle, hidden: true } } },
+    { updateCells: {
+      start: { sheetId, rowIndex: 0, columnIndex: 0 },
+      rows: [{ values: [{ userEnteredValue: { stringValue: "Ownership Transfer" } }] }], fields: "userEnteredValue",
+    } },
+  ];
+  // Reserve every chain revision and append every event in one atomic Sheets batch.
+  for (const { customer, revision } of chains) {
+    const reservation = "CrmOwnership_" + hash(JSON.stringify([customer, revision]));
+    requests.push({ addNamedRange: { namedRange: {
       namedRangeId: reservation, name: reservation,
       range: { sheetId, startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: 1 },
-    } } },
-    { appendCells: { sheetId, rows: [{ values }], fields: "userEnteredValue" } },
-  );
+    } } });
+  }
+  requests.push({ appendCells: { sheetId, rows: events.map(transferCells), fields: "userEnteredValue" } });
   try {
     await googleFetch(`${ledger.base}:batchUpdate`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ requests }),
     });
   } catch (error) {
     const refreshed = await readOwnershipLedger();
-    if (refreshed.events.some((entry) => entry.id === event.id)) return event;
+    if (events.every((event) => refreshed.events.some((entry) => entry.id === event.id))) return events;
     if (error.googleStatus === 400 || error.googleStatus === 409) {
-      throw ownershipError("The transfer could not be confirmed. Review the current owner and create a new preview.");
+      throw ownershipError("The transfer could not be confirmed. Review the current owners and create a new preview.");
     }
     throw error;
   }
-  return event;
+  return events;
 }

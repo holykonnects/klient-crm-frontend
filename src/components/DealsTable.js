@@ -652,6 +652,7 @@ function DealsTable() {
           <Typography variant="h5" fontWeight="bold">
             Deals Records
           </Typography>
+          {ownership.transferButton}
         </Box>
 
         {/* Filters and Search */}

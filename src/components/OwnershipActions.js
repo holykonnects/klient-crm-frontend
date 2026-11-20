@@ -23,6 +23,8 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [users, setUsers] = useState([]);
+  const [sources, setSources] = useState([]);
+  const [source, setSource] = useState("");
   const [history, setHistory] = useState(null);
   const [selectedUser, setSelectedUser] = useState("");
   const [preview, setPreview] = useState(null);
@@ -30,12 +32,15 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
 
   useEffect(() => {
     const controller = new AbortController();
-    const params = new URLSearchParams({ action: "history", type, recordKey: selection.key });
-    const request = isHistory ? ownershipRequest(`?${params}`, null, controller.signal) :
-      ownershipRequest("", { action: "recipients" }, controller.signal);
+    const request = isHistory
+      ? ownershipRequest(`?${new URLSearchParams({ action: "history", type, recordKey: selection.key })}`, null, controller.signal)
+      : ownershipRequest("", { action: "options" }, controller.signal);
     request.then((result) => {
       if (isHistory) setHistory(result);
-      else setUsers(result.users);
+      else {
+        setUsers(result.users);
+        setSources(result.sources);
+      }
     }).catch((err) => {
       if (err.name !== "AbortError") setError(err.message);
     }).finally(() => {
@@ -44,13 +49,18 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
     return () => controller.abort();
   }, [isHistory, selection.key, type]);
 
+  const recordCounts = preview?.customers.reduce((counts, customer) => {
+    for (const { type } of customer.records) counts[type] = (counts[type] || 0) + 1;
+    return counts;
+  }, {});
+
   async function advance() {
-    if (busy) return;
+    if (busy || (preview && !preview.token)) return;
     setBusy(true);
     setError("");
     try {
       if (!preview) {
-        const result = await ownershipRequest("", { action: "preview", type, recordKey: selection.key, recipient: selectedUser });
+        const result = await ownershipRequest("", { action: "preview", source, recipient: selectedUser });
         setPreview(result);
       } else {
         const result = await ownershipRequest("", { action: "confirm", token: preview.token });
@@ -67,7 +77,7 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
 
   return (
     <Dialog open onClose={busy ? undefined : onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>{isHistory ? "Ownership history" : preview ? "Confirm ownership transfer" : "Transfer customer ownership"}</DialogTitle>
+      <DialogTitle>{isHistory ? "Ownership history" : preview ? "Review bulk transfer" : "Transfer all records by owner"}</DialogTitle>
       <DialogContent dividers>
         {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
         {loading && <Typography>Loading…</Typography>}
@@ -90,22 +100,54 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
         )}
         {!isHistory && !loading && !preview && (
           <>
-            <Typography sx={{ mb: 2 }}>This moves the customer’s linked Leads, Accounts, Deals, and Orders to the new owner.</Typography>
+            <Typography sx={{ mb: 2 }}>Every customer chain assigned to the current owner will move, including all linked Leads, Accounts, Deals, and Orders.</Typography>
+            <TextField fullWidth select label="Current owner" value={source} onChange={(event) => setSource(event.target.value)} sx={{ mb: 2 }}>
+              {sources.map((owner) => <MenuItem key={owner} value={owner}>{owner}</MenuItem>)}
+            </TextField>
             <TextField fullWidth select label="New owner" value={selectedUser} onChange={(event) => setSelectedUser(event.target.value)}>
-              {users.map((user) => <MenuItem key={user.email} value={user.email}>{user.username} · {user.email}</MenuItem>)}
+              {users.map((user) => <MenuItem key={user.email} value={user.email} disabled={user.username.toLowerCase() === source.toLowerCase()}>{user.username} · {user.email}</MenuItem>)}
             </TextField>
           </>
         )}
         {preview && (
           <>
-            <Typography><strong>{preview.recipient}</strong> will own these {preview.records.length} records.</Typography>
+            <Typography><strong>{preview.source}</strong> → <strong>{preview.recipient}</strong></Typography>
+            <Typography sx={{ mt: 1 }}>
+              {preview.customers.length} customer chains · {Object.entries(typeLabels).map(([type, label]) => {
+                const count = recordCounts[type] || 0;
+                return `${count} ${label}${count === 1 ? "" : "s"}`;
+              }).join(" · ")}
+            </Typography>
+            {preview.blockers.length > 0 && (
+              <Alert severity="error" sx={{ mt: 2 }}>
+                Resolve these customer links before transferring. No records will move until the entire transfer can be confirmed.
+                <List dense>
+                  {preview.blockers.map((record, index) => (
+                    <ListItem key={index} disableGutters>
+                      <ListItemText primary={`${typeLabels[record.type]} · ${record.label || record.reference || "Unnamed record"}`} secondary={record.reason} />
+                    </ListItem>
+                  ))}
+                </List>
+              </Alert>
+            )}
             <List>
-              {preview.records.map((record, index) => (
-                <ListItem key={index} disableGutters>
-                  <ListItemText
-                    primary={`${typeLabels[record.type]} · ${record.label}`}
-                    secondary={[record.reference !== record.label && record.reference, `Current owner: ${record.owner || "Unassigned"}`].filter(Boolean).join(" · ")}
-                  />
+              {preview.customers.map((customer) => (
+                <ListItem key={customer.customer} disableGutters sx={{ display: "block" }}>
+                  <Box component="details">
+                    <Box component="summary" sx={{ cursor: "pointer" }}>
+                      {customer.label} · {customer.records.length} records
+                    </Box>
+                    <List dense>
+                      {customer.records.map((record, index) => (
+                        <ListItem key={index}>
+                          <ListItemText
+                            primary={`${typeLabels[record.type]} · ${record.label}`}
+                            secondary={[record.reference !== record.label && record.reference, `Current owner: ${record.owner || "Unassigned"}`].filter(Boolean).join(" · ")}
+                          />
+                        </ListItem>
+                      ))}
+                    </List>
+                  </Box>
                 </ListItem>
               ))}
             </List>
@@ -116,7 +158,7 @@ function OwnershipDialog({ type, selection, onClose, onTransferred }) {
         <Button onClick={onClose} disabled={busy}>{isHistory ? "Close" : "Cancel"}</Button>
         {preview && <Button onClick={() => setPreview(null)} disabled={busy}>Back</Button>}
         {!isHistory && (
-          <Button variant="contained" onClick={advance} disabled={busy || loading || !selectedUser}>
+          <Button variant="contained" onClick={advance} disabled={busy || loading || !source || !selectedUser || Boolean(preview && !preview.token)}>
             {busy ? "Working…" : preview ? "Confirm transfer" : "Review transfer"}
           </Button>
         )}
@@ -141,19 +183,17 @@ export function useOwnershipActions(type, user, onTransferred) {
   }, [userEmail]);
 
   const actions = useCallback((row) => row._ownershipRecord && (
-    <Box component="span">
-      {canTransfer && (
-        <IconButton size="small" title="Transfer ownership" aria-label="Transfer ownership"
-          onClick={() => setSelection({ mode: "transfer", key: row._ownershipRecord })}>
-          <SwapHorizIcon fontSize="small" />
-        </IconButton>
-      )}
-      <IconButton size="small" title="Ownership history" aria-label="Ownership history"
-        onClick={() => setSelection({ mode: "history", key: row._ownershipRecord })}>
-        <ManageHistoryIcon fontSize="small" />
-      </IconButton>
-    </Box>
-  ), [canTransfer]);
+    <IconButton size="small" title="Ownership history" aria-label="Ownership history"
+      onClick={() => setSelection({ mode: "history", key: row._ownershipRecord })}>
+      <ManageHistoryIcon fontSize="small" />
+    </IconButton>
+  ), []);
+
+  const transferButton = canTransfer && (
+    <Button variant="outlined" size="small" startIcon={<SwapHorizIcon />} onClick={() => setSelection({ mode: "transfer" })}>
+      Transfer by owner
+    </Button>
+  );
 
   const dialog = (
     <>
@@ -165,5 +205,5 @@ export function useOwnershipActions(type, user, onTransferred) {
       <Snackbar open={Boolean(notice)} message={notice} autoHideDuration={4500} onClose={() => setNotice("")} />
     </>
   );
-  return { actions, dialog };
+  return { actions, dialog, transferButton };
 }

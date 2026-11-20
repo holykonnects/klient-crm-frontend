@@ -1,10 +1,8 @@
-import React, { Fragment, useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
   Alert, Box, Button, List, ListItem, ListItemText, MenuItem, Stack, Table, TableBody, TableCell,
   TableHead, TableRow, TextField, Typography, createTheme, ThemeProvider,
 } from "@mui/material";
-import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import { CRM_TABLE_SX } from "../utils/crmTableUtils";
 import { ownershipRequest } from "./OwnershipActions";
 
@@ -12,17 +10,6 @@ const theme = createTheme({ typography: { fontFamily: "Montserrat, sans-serif", 
 const typeLabels = { leads: "Lead", accounts: "Account", deals: "Deal", orders: "Order" };
 
 function TransferPreview({ preview }) {
-  const [expanded, setExpanded] = useState(() => new Set());
-
-  function toggle(customer) {
-    setExpanded((previous) => {
-      const next = new Set(previous);
-      if (next.has(customer)) next.delete(customer);
-      else next.add(customer);
-      return next;
-    });
-  }
-
   const counts = preview.customers.reduce((totals, customer) => {
     for (const { type } of customer.records) totals[type] = (totals[type] || 0) + 1;
     return totals;
@@ -52,46 +39,46 @@ function TransferPreview({ preview }) {
       )}
       {preview.customers.length > 0 && (
         <Box className="crm-table-shell">
-          <Table size="small" aria-label="Records in this transfer" sx={CRM_TABLE_SX}>
+          <Table
+            size="small"
+            aria-label="Records in this transfer"
+            sx={{
+              ...CRM_TABLE_SX,
+              "& .MuiTableCell-root": {
+                ...CRM_TABLE_SX["& .MuiTableCell-root"],
+                textAlign: "left",
+                verticalAlign: "middle",
+                whiteSpace: "normal",
+                overflowWrap: "anywhere",
+              },
+              "& .MuiTableCell-root:last-child": {
+                textAlign: "left",
+                minWidth: 0,
+                maxWidth: "none",
+              },
+            }}
+          >
             <TableHead>
               <TableRow>
+                <TableCell>Customer</TableCell>
                 <TableCell>Type</TableCell>
-                <TableCell>Customer / record</TableCell>
+                <TableCell>Record</TableCell>
                 <TableCell>Reference</TableCell>
                 <TableCell>Current owner</TableCell>
+                <TableCell>New owner</TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
-              {preview.customers.map((customer) => {
-                const open = expanded.has(customer.customer);
-                return (
-                  <Fragment key={customer.customer}>
-                    <TableRow hover>
-                      <TableCell colSpan={4}>
-                        <Button
-                          type="button"
-                          size="small"
-                          color="inherit"
-                          aria-expanded={open}
-                          onClick={() => toggle(customer.customer)}
-                          startIcon={open ? <ExpandMoreIcon /> : <ChevronRightIcon />}
-                          sx={{ textTransform: "none", fontSize: "inherit", px: 0.5 }}
-                        >
-                          {customer.label} · {customer.records.length} records
-                        </Button>
-                      </TableCell>
-                    </TableRow>
-                    {open && customer.records.map((record, index) => (
-                      <TableRow key={index} hover>
-                        <TableCell>{typeLabels[record.type]}</TableCell>
-                        <TableCell>{record.label}</TableCell>
-                        <TableCell>{record.reference !== record.label ? record.reference : ""}</TableCell>
-                        <TableCell>{record.owner || "Unassigned"}</TableCell>
-                      </TableRow>
-                    ))}
-                  </Fragment>
-                );
-              })}
+              {preview.customers.flatMap((customer) => customer.records.map((record, index) => (
+                <TableRow key={`${customer.customer}-${index}`} hover>
+                  <TableCell component="th" scope="row">{customer.label || "—"}</TableCell>
+                  <TableCell>{typeLabels[record.type]}</TableCell>
+                  <TableCell>{record.label || "—"}</TableCell>
+                  <TableCell>{record.reference || "—"}</TableCell>
+                  <TableCell>{record.owner || "Unassigned"}</TableCell>
+                  <TableCell>{preview.recipient}</TableCell>
+                </TableRow>
+              )))}
             </TableBody>
           </Table>
         </Box>

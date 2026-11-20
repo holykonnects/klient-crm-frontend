@@ -1,4 +1,5 @@
 // src/components/DealsTable.js
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
@@ -290,6 +291,8 @@ function DealsTable() {
   const validationUrl =
     "/api/deals?action=validation";
 
+  const ownership = useOwnershipHistory("deals");
+
   const fetchDeals = async () => {
     setLoading(true);
     try {
@@ -378,7 +381,7 @@ function DealsTable() {
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(deals[0] || {});
+    const all = ownershipColumns(deals[0] || {});
     setVisibleColumns(all);
     localStorage.setItem(`visibleColumns-v2-${username}-deals`, JSON.stringify(all));
   };
@@ -635,11 +638,12 @@ function DealsTable() {
   };
 
   // Logs modal headers
-  const allLogHeaders = dealLogs?.[0] ? Object.keys(dealLogs[0]) : [];
+  const allLogHeaders = dealLogs?.[0] ? ownershipColumns(dealLogs[0]) : [];
   const logHeaders = allLogHeaders;
 
   return (
     <ThemeProvider theme={theme}>
+      {ownership.dialog}
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
@@ -703,7 +707,7 @@ function DealsTable() {
               <Button onClick={handleSelectAll}>Select All</Button>
               <Button onClick={handleDeselectAll}>Deselect All</Button>
               <FormGroup>
-                {(deals[0] ? Object.keys(deals[0]) : []).map((col) => (
+                {(deals[0] ? ownershipColumns(deals[0]) : []).map((col) => (
                   <FormControlLabel
                     key={col}
                     control={
@@ -764,6 +768,7 @@ function DealsTable() {
                     <AddShoppingCartIcon />
                   </IconButton>
 
+                  {ownership.actions(deal)}
                   <IconButton onClick={() => handleViewLogs(deal)} title="Logs">
                     <HistoryIcon />
                   </IconButton>

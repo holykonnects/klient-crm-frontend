@@ -1,4 +1,5 @@
 // src/components/AccountsTable.js
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
@@ -65,6 +66,7 @@ const AccountsGrid = React.memo(function AccountsGrid({
   sortConfig,
   onSort,
   onOpenDeal,
+  ownershipActions,
   onOpenMeeting,
 }) {
   return (
@@ -105,6 +107,7 @@ const AccountsGrid = React.memo(function AccountsGrid({
             ))}
 
             <TableCell>
+              {ownershipActions(acc)}
               <IconButton onClick={() => onOpenDeal(acc)}>
                 <EditIcon />
               </IconButton>
@@ -382,6 +385,8 @@ function AccountsTable() {
       .catch(() => {});
   }, [username, role]);
 
+  const ownership = useOwnershipHistory("accounts");
+
   const handleSort = useCallback(
     (key) => {
       const direction =
@@ -405,7 +410,7 @@ function AccountsTable() {
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(accounts[0] || {});
+    const all = ownershipColumns(accounts[0] || {});
     setVisibleColumns(all);
     localStorage.setItem(`visibleColumns-v2-${username}-accounts`, JSON.stringify(all));
   };
@@ -489,6 +494,7 @@ function AccountsTable() {
 
   return (
     <ThemeProvider theme={theme}>
+      {ownership.dialog}
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
@@ -558,7 +564,7 @@ function AccountsTable() {
                 Deselect All
               </Button>
 
-              {Object.keys(accounts[0] || {}).map((col) => (
+              {ownershipColumns(accounts[0] || {}).map((col) => (
                 <Box key={col}>
                   <Checkbox
                     size="small"
@@ -579,6 +585,7 @@ function AccountsTable() {
           sortConfig={sortConfig}
           onSort={handleSort}
           onOpenDeal={openDealModal}
+          ownershipActions={ownership.actions}
           onOpenMeeting={handleOpenMeetingFromRow}
         />
         </Box>

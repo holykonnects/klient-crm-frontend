@@ -18,6 +18,15 @@ function safeEqual(left, right) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
+export function readCrmLoginProfile(row) {
+  return {
+    username: valueFrom(row, ["Login Username", "Username", "Name", "Email"]),
+    email: valueFrom(row, ["Login Email", "Email"]),
+    role: valueFrom(row, ["Role", "User Role"]),
+    pageAccess: valueFrom(row, ["Page Access", "Pages", "Access"]).split(",").map(clean).filter(Boolean),
+  };
+}
+
 export function authenticateLogin(rows, identifier, password) {
   const identity = normalize(identifier);
   if (!identity || typeof password !== "string" || !password) return null;
@@ -27,10 +36,6 @@ export function authenticateLogin(rows, identifier, password) {
   const user = matches[0];
   const storedPassword = valuesFrom(user, ["Password", "Login Password", "Passcode"])[0];
   if (!storedPassword || !safeEqual(storedPassword, password)) return null;
-  return {
-    username: valueFrom(user, ["Login Username", "Username", "Name", "Email"]),
-    email: valueFrom(user, ["Login Email", "Email"]) || identity,
-    role: valueFrom(user, ["Role", "User Role"]),
-    pageAccess: valueFrom(user, ["Page Access", "Pages", "Access"]).split(",").map(clean).filter(Boolean),
-  };
+  const profile = readCrmLoginProfile(user);
+  return { ...profile, email: profile.email || identity };
 }

@@ -1,4 +1,5 @@
 // LeadsTable.js — typing-snappy + Lead ID search + latest-updated sort + optimistic save + live revalidate
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, {
   useEffect,
   useMemo,
@@ -125,10 +126,10 @@ const EditLeadDialog = React.memo(function EditLeadDialog({
       }}>
         <DialogContent dividers>
           <Grid container spacing={2}>
-            {row && Object.keys(row).map((key, i) => (
+            {row && ownershipColumns(row).map((key, i) => (
               <Grid item xs={6} key={key}>
                 {validationOptions?.[key] ? (
-                  <FormControl fullWidth size="small" disabled={submitting}>
+                  <FormControl fullWidth size="small" disabled={submitting || key === 'Lead Owner'}>
                     <InputLabel>{key}</InputLabel>
                     <Select
                       name={key}
@@ -150,7 +151,7 @@ const EditLeadDialog = React.memo(function EditLeadDialog({
                     value={form[key] ?? ''}
                     onChange={handleChange}
                     size="small"
-                    disabled={submitting}
+                    disabled={submitting || key === 'Lead Owner'}
                     autoFocus={i === 0}
                     inputProps={{ autoComplete: 'off', spellCheck: 'false' }}
                   />
@@ -396,7 +397,7 @@ const LeadsTable = () => {
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(leads[0] || {});
+    const all = ownershipColumns(leads[0] || {});
     setVisibleColumns(all);
     localStorage.setItem(`visibleColumns-v2-${username}-leads`, JSON.stringify(all));
   };
@@ -436,7 +437,7 @@ const LeadsTable = () => {
 
     // Dynamic union of columns
     const colSet = new Set();
-    logs.forEach(row => Object.keys(row || {}).forEach(k => colSet.add(k)));
+    logs.forEach(row => ownershipColumns(row || {}).forEach(k => colSet.add(k)));
     const allCols = preferredOrderBoost(Array.from(colSet));
 
     setLogsKeyInfo({
@@ -470,6 +471,7 @@ const LeadsTable = () => {
   const handleOpenEdit = useCallback((row) => setEditRow(row), []);
 
   // Memoize the table body so unrelated state (like modal typing) doesn't rebuild rows
+  const ownership = useOwnershipHistory("leads");
   const tableBodyMemo = useMemo(() => (
     <TableBody>
       {pagedRows.map((lead, index) => (
@@ -504,16 +506,18 @@ const LeadsTable = () => {
           <TableCell>
             <IconButton onClick={() => setViewRow(lead)} disabled={submitting}><VisibilityIcon /></IconButton>
             <IconButton onClick={() => handleOpenEdit(lead)} disabled={submitting}><EditIcon /></IconButton>
+            {ownership.actions(lead)}
             <IconButton onClick={() => handleViewLogs(lead)} disabled={submitting}><HistoryIcon /></IconButton>
             <IconButton onClick={() => handleOpenMeetingFromRow(lead, 'Lead')} disabled={submitting}><EventIcon /></IconButton>
           </TableCell>
         </TableRow>
       ))}
     </TableBody>
-  ), [pagedRows, visibleColumns, submitting, handleOpenEdit]);
+  ), [pagedRows, visibleColumns, submitting, handleOpenEdit, ownership.actions]);
 
   return (
     <ThemeProvider theme={theme}>
+      {ownership.dialog}
       {loading && <LoadingOverlay />}
       <Box padding={4}>
         {loadError && (
@@ -617,7 +621,7 @@ const LeadsTable = () => {
             <Box padding={2} sx={selectorStyle}>
               <Button size="small" onClick={handleSelectAll}>Select All</Button>
               <Button size="small" onClick={handleDeselectAll}>Deselect All</Button>
-              {Object.keys(leads[0] || {}).map(col => (
+              {ownershipColumns(leads[0] || {}).map(col => (
                 <Box key={col}>
                   <Checkbox
                     size="small"
@@ -665,7 +669,7 @@ const LeadsTable = () => {
           <DialogTitle>View Lead</DialogTitle>
           <DialogContent dividers>
             <Grid container spacing={2}>
-              {viewRow && Object.entries(viewRow).map(([key, value]) => (
+              {viewRow && Object.entries(viewRow).filter(([key]) => key !== "_ownershipRecord").map(([key, value]) => (
                 <Grid item xs={6} key={key}>
                   {isMobileColumn(key) ? (
                     <Box>

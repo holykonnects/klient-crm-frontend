@@ -1,5 +1,6 @@
+import { getOwnershipTable } from "../_lib/ownership.js";
 import { SHEETS } from "../_lib/crmConfig.js";
-import { getTable, getValidationOptions, handleOrderPost } from "../_lib/crmHandlers.js";
+import { getValidationOptions, handleOrderPost } from "../_lib/crmHandlers.js";
 
 export default async function handler(req, res) {
   try {
@@ -7,7 +8,7 @@ export default async function handler(req, res) {
       if (req.query.action === "validation") {
         return res.status(200).json(await getValidationOptions(SHEETS.validation, SHEETS.validation.dealSheetNames));
       }
-      return res.status(200).json(await getTable(SHEETS.orders));
+      return res.status(200).json(await getOwnershipTable("orders"));
     }
 
     if (req.method === "POST") {

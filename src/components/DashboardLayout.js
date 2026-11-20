@@ -38,10 +38,12 @@ import {
   ManageSearch,
   Inventory2,
   Description,
-  FormatSize
+  FormatSize,
+  SwapHoriz
 } from '@mui/icons-material';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from './AuthContext';
+import { ownershipRequest } from './OwnershipActions';
 
 const drawerWidth = 240;
 const cornflowerBlue = '#6495ED';
@@ -54,6 +56,19 @@ function DashboardLayout({ children }) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [tableFontSize, setTableFontSize] = useState(10);
+  const [transferUser, setTransferUser] = useState(null);
+  const email = user?.email;
+  const canTransfer = Boolean(email && transferUser === email);
+
+  useEffect(() => {
+    if (!email) return undefined;
+    const controller = new AbortController();
+    ownershipRequest("?action=capabilities", null, controller.signal)
+      .then((result) => setTransferUser(result.canTransfer === true ? email : null))
+      .catch(() => {});
+    return () => controller.abort();
+  }, [email]);
+
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
@@ -87,6 +102,7 @@ function DashboardLayout({ children }) {
     { label: 'Accounts', icon: <AccountCircle />, route: '/view-accounts', access: 'Account' },
     { label: 'Deals', icon: <MonetizationOn />, route: '/view-deals', access: 'Deal' },
     { label: 'Orders', icon: <AssignmentTurnedIn />, route: '/view-orders', access: 'Order' },
+    ...(canTransfer ? [{ label: 'Ownership Transfer', icon: <SwapHoriz />, route: '/ownership-transfer', show: true }] : []),
     { label: 'Tenders', icon: <Groups />, route: '/tender', access: 'Tender' },
     { label: 'Add Tender', icon: <Assignment />, route: '/manage-tender', access: 'Manage Tender' },
     { label: 'View Calendar', icon: <EditCalendar />, route: '/calendar', access: 'Calendar' },

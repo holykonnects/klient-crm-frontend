@@ -1,3 +1,4 @@
+import { inheritOwnership, recordOwner, setRecordOwner } from "./ownership.js";
 import { DRIVE_FOLDERS } from "./crmConfig.js";
 import {
   appendValues,
@@ -123,7 +124,7 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
   if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
   const headers = await ensureUpdateAuditHeaders(leadsConfig, sheetName, existingHeaders);
 
-  const data = await withUpdateAudit({ ...(payload || {}) });
+  let data = await withUpdateAudit({ ...(payload || {}) });
   const timestamp = data.Timestamp || formatTimestamp();
   data.Timestamp = timestamp;
   const existingLeadId = data["Lead ID"] || findExistingLeadId(values, headers, data["Mobile Number"]);
@@ -136,6 +137,8 @@ export async function handleLeadPost({ leadsConfig, accountsConfig, payload }) {
     : generateLeadId(timestamp, values.slice(1).map((row) => row[leadIdColumn]));
   data["Prefilled Link"] = data["Prefilled Link"] || buildLeadPrefilledLink(data);
   const previousLead = findPreviousRecord(values, headers, data, [["Lead ID"], ["Mobile Number"]]);
+  if (previousLead) data = setRecordOwner("leads", data, recordOwner("leads", previousLead));
+  data = await inheritOwnership("leads", data);
 
   const appendResult = await appendValues(leadsConfig.spreadsheetId, sheetName, buildRow(headers, data));
   const notification = await notifySafely(() => notifyLeadWorkflow(headers, data, previousLead));
@@ -182,7 +185,7 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
   const isNewDeal = action === "createDeal" || (!action && !data.amountUpdate);
   const original = payload?.originalDeal || (action === "createOrder" ? { ...data, "Order ID": "" } : data);
   const matched = isNewDeal ? null : resolveDeal(values, original, spreadsheetId);
-  const previousDeal = matched?.previous;
+  const previousDeal = matched && await inheritOwnership("deals", matched.previous, matched.source);
   const dealId = matched?.dealId || newDealId();
 
   if (action === "createOrder") {
@@ -206,14 +209,14 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     await updateColumnCells(spreadsheetId, sheetName, headers.indexOf("Deal ID") + 1, matched.rowsToBackfill, dealId);
     if (linkedOrderId === orderId && existingOrder) return { ok: true, orderId, dealId };
 
-    const orderData = {
+    const orderData = setRecordOwner("orders", {
       ...data,
       "Deal ID": dealId,
       "Order Distribution ID": previousDeal["Order Distribution ID"] || data["Order Distribution ID"] || "",
       "Account ID": previousDeal["Account ID"] || previousDeal["Lead ID"] || data["Account ID"] || "",
       "Deal Name": previousDeal["Deal Name"],
       "Lead ID": previousDeal["Lead ID"] || data["Lead ID"] || "",
-    };
+    }, recordOwner("deals", previousDeal));
     const uploaded = existingOrder || await withUploadedFiles(orderData, `ORD ${orderId}${orderData["Deal Name"] ? ` - ${orderData["Deal Name"]}` : ""}`);
     const orderHeaders = await ensureSheetHeaders(ordersConfig, orderSheetName, existingOrderHeaders, [...UPDATE_AUDIT_HEADERS, "Deal ID"]);
     const appendResult = existingOrder ? null : await appendValues(ordersConfig.spreadsheetId, orderSheetName, buildRow(orderHeaders, uploaded));
@@ -230,12 +233,14 @@ export async function handleDealPost({ dealsConfig, ordersConfig, payload }) {
     return { ok: true, orderId, dealId, notification };
   }
 
-  const deal = {
+  let deal = {
     ...previousDeal,
     ...data,
     "Deal ID": dealId,
     "Account ID": previousDeal?.["Account ID"] || data["Account ID"] || data["Lead ID"] || previousDeal?.["Lead ID"] || "",
   };
+  if (previousDeal) deal = setRecordOwner("deals", deal, recordOwner("deals", previousDeal));
+  if (!previousDeal) deal = await inheritOwnership("deals", deal);
   const unlinkedOrder = previousDeal?.["Order ID"] && !(
     previousDeal["Deal ID"] || previousDeal["Order Distribution ID"] || previousDeal["Account ID"] || previousDeal["Lead ID"]
   );
@@ -261,13 +266,15 @@ export async function handleOrderPost({ ordersConfig, payload }) {
   const orderId = data["Order ID"];
   if (!orderId) throw new Error("Missing Order ID in updateOrder payload.");
 
-  const uploaded = await withUploadedFiles(data, `ORD-UPDATE ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
+  let uploaded = await withUploadedFiles(data, `ORD-UPDATE ${orderId}${data["Deal Name"] ? ` - ${data["Deal Name"]}` : ""}`);
   const sheetName = await resolveSheetTitle(ordersConfig.spreadsheetId, ordersConfig.sheetNames);
   const values = await getValues(ordersConfig.spreadsheetId, sheetName);
   const existingHeaders = values[0] || [];
   if (!existingHeaders.length) throw new Error(`No headers found in ${sheetName}`);
   const headers = await ensureUpdateAuditHeaders(ordersConfig, sheetName, existingHeaders);
   const previousOrder = findPreviousRecord(values, headers, uploaded, [["Order ID"]]);
+  if (previousOrder) uploaded = setRecordOwner("orders", uploaded, recordOwner("orders", previousOrder));
+  uploaded = await inheritOwnership("orders", uploaded);
   applyAmountUpdate(uploaded, previousOrder, "Order Amount");
   const appendResult = await appendValues(ordersConfig.spreadsheetId, sheetName, buildRow(headers, uploaded || {}));
   const notification = await notifySafely(() => notifyOrderSubmitted(headers, uploaded, previousOrder));

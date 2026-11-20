@@ -86,6 +86,7 @@ export function resolveDeal(values, original, spreadsheetId) {
   };
   return {
     previous,
+    source: latest.row,
     dealId: assignedId || legacyId(),
     rowsToBackfill,
   };

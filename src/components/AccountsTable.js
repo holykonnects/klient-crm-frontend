@@ -1,4 +1,5 @@
 // src/components/AccountsTable.js
+import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
@@ -65,6 +66,7 @@ const AccountsGrid = React.memo(function AccountsGrid({
   sortConfig,
   onSort,
   onOpenDeal,
+  ownershipActions,
   onOpenMeeting,
 }) {
   return (
@@ -105,6 +107,7 @@ const AccountsGrid = React.memo(function AccountsGrid({
             ))}
 
             <TableCell>
+              {ownershipActions(acc)}
               <IconButton onClick={() => onOpenDeal(acc)}>
                 <EditIcon />
               </IconButton>
@@ -314,6 +317,7 @@ const DealModal = React.memo(function DealModal({
 
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
+  const [ownershipRefresh, setOwnershipRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -380,7 +384,9 @@ function AccountsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch(() => {});
-  }, [username, role]);
+  }, [username, role, ownershipRefresh]);
+
+  const ownership = useOwnershipActions("accounts", user, () => setOwnershipRefresh((value) => value + 1));
 
   const handleSort = useCallback(
     (key) => {
@@ -405,7 +411,7 @@ function AccountsTable() {
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(accounts[0] || {});
+    const all = ownershipColumns(accounts[0] || {});
     setVisibleColumns(all);
     localStorage.setItem(`visibleColumns-v2-${username}-accounts`, JSON.stringify(all));
   };
@@ -489,6 +495,7 @@ function AccountsTable() {
 
   return (
     <ThemeProvider theme={theme}>
+      {ownership.dialog}
       {loading && <LoadingOverlay />}
 
       <Box padding={4}>
@@ -558,7 +565,7 @@ function AccountsTable() {
                 Deselect All
               </Button>
 
-              {Object.keys(accounts[0] || {}).map((col) => (
+              {ownershipColumns(accounts[0] || {}).map((col) => (
                 <Box key={col}>
                   <Checkbox
                     size="small"
@@ -579,6 +586,7 @@ function AccountsTable() {
           sortConfig={sortConfig}
           onSort={handleSort}
           onOpenDeal={openDealModal}
+          ownershipActions={ownership.actions}
           onOpenMeeting={handleOpenMeetingFromRow}
         />
         </Box>

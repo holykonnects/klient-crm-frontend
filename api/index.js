@@ -10,6 +10,7 @@ import nomenclature from "./_handlers/nomenclature.js";
 import orderAttachments from "./_handlers/order-attachments.js";
 import orderInvoices from "./_handlers/order-invoices.js";
 import orders from "./_handlers/orders.js";
+import ownership from "./_handlers/ownership.js";
 import projects from "./_handlers/projects.js";
 import quotationImage from "./_handlers/quotation-image.js";
 import quotations from "./_handlers/quotations.js";
@@ -33,6 +34,7 @@ const handlers = {
   "order-attachments": orderAttachments,
   "order-invoices": orderInvoices,
   orders,
+  ownership,
   projects,
   "quotation-image": quotationImage,
   quotations,

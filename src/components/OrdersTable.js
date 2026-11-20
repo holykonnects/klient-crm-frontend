@@ -1,4 +1,5 @@
 // src/components/OrdersTable.js
+import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -91,7 +92,7 @@ const isProtectedOrderField = (field = "") => {
   const value = String(field).trim();
   return /^(?:Order|Deal|Account|Lead|Project|Booking|Order Distribution) ID$/i.test(value) || [
     "S.No", "Timestamp", "Created At", "Updated At", "Order Updated Time",
-    "Updated By", "Updated By Email", "Updater Name", "Updater Email",
+    "Updated By", "Updated By Email", "Updater Name", "Updater Email", "Account Owner", "Lead Owner", "Owner",
   ].some((name) => name.toLowerCase() === value.toLowerCase());
 };
 
@@ -178,6 +179,8 @@ function OrdersTable() {
   // Validation webapp
   const validationUrl =
     "/api/orders?action=validation";
+
+  const ownership = useOwnershipActions("orders", user, () => fetchOrders());
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -289,7 +292,7 @@ function OrdersTable() {
   };
 
   const handleSelectAll = () => {
-    const all = Object.keys(orders[0] || {});
+    const all = ownershipColumns(orders[0] || {});
     setVisibleColumns(all);
     localStorage.setItem(`visibleColumns-v2-${username}-orders`, JSON.stringify(all));
   };
@@ -463,11 +466,11 @@ function OrdersTable() {
     }
   };
 
-  const logHeaders = orderLogs?.[0] ? Object.keys(orderLogs[0]) : [];
+  const logHeaders = orderLogs?.[0] ? ownershipColumns(orderLogs[0]) : [];
   const logCols = logHeaders.length ? logHeaders : [];
 
   const orderEditSections = useMemo(() => {
-    const fields = Object.keys(orderFormData || {}).filter(Boolean);
+    const fields = ownershipColumns(orderFormData || {}).filter(Boolean);
     const attachments = fields.filter((field) => ORDER_ATTACHMENT_FIELDS.has(field));
     const protectedFields = fields.filter((field) => isProtectedOrderField(field));
     const paymentFields = fields.filter((field) => PAYMENT_FIELD_ORDER.includes(field) || /^Payment\b/i.test(field));
@@ -492,6 +495,7 @@ function OrdersTable() {
 
   return (
     <ThemeProvider theme={theme}>
+      {ownership.dialog}
       <Box padding={4}>
         <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
@@ -554,7 +558,7 @@ function OrdersTable() {
               <Button onClick={handleSelectAll}>Select All</Button>
               <Button onClick={handleDeselectAll}>Deselect All</Button>
               <FormGroup>
-                {(orders[0] ? Object.keys(orders[0]) : []).map((col) => (
+                {(orders[0] ? ownershipColumns(orders[0]) : []).map((col) => (
                   <FormControlLabel
                     key={col}
                     control={
@@ -603,6 +607,7 @@ function OrdersTable() {
                   <IconButton onClick={() => handleAddToSalesTracker(order)} title="Add order to Sales Tracker">
                     <PointOfSaleIcon />
                   </IconButton>
+                  {ownership.actions(order)}
                   <IconButton onClick={() => handleViewLogs(order)} title="View Logs">
                     <HistoryIcon />
                   </IconButton>

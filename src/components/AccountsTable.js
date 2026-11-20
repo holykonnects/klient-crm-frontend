@@ -1,5 +1,5 @@
 // src/components/AccountsTable.js
-import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
@@ -317,7 +317,6 @@ const DealModal = React.memo(function DealModal({
 
 function AccountsTable() {
   const [accounts, setAccounts] = useState([]);
-  const [ownershipRefresh, setOwnershipRefresh] = useState(0);
   const [loading, setLoading] = useState(true);
 
   const [searchTerm, setSearchTerm] = useState("");
@@ -384,9 +383,9 @@ function AccountsTable() {
       .then((res) => res.json())
       .then(setValidationData)
       .catch(() => {});
-  }, [username, role, ownershipRefresh]);
+  }, [username, role]);
 
-  const ownership = useOwnershipActions("accounts", user, () => setOwnershipRefresh((value) => value + 1));
+  const ownership = useOwnershipHistory("accounts");
 
   const handleSort = useCallback(
     (key) => {
@@ -504,7 +503,6 @@ function AccountsTable() {
           <Typography variant="h5" fontWeight="bold">
             Accounts Records
           </Typography>
-          {ownership.transferButton}
         </Box>
 
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">

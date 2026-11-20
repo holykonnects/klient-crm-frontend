@@ -1,5 +1,5 @@
 // LeadsTable.js — typing-snappy + Lead ID search + latest-updated sort + optimistic save + live revalidate
-import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, {
   useEffect,
   useMemo,
@@ -471,7 +471,7 @@ const LeadsTable = () => {
   const handleOpenEdit = useCallback((row) => setEditRow(row), []);
 
   // Memoize the table body so unrelated state (like modal typing) doesn't rebuild rows
-  const ownership = useOwnershipActions("leads", user, revalidate);
+  const ownership = useOwnershipHistory("leads");
   const tableBodyMemo = useMemo(() => (
     <TableBody>
       {pagedRows.map((lead, index) => (
@@ -528,7 +528,6 @@ const LeadsTable = () => {
         <Box className="crm-page-header" display="flex" alignItems="center" justifyContent="space-between" mb={2}>
           <img className="crm-primary-logo" src="/assets/rido-sports-logo.png" alt="Rido Sports" />
           <Typography variant="h5" fontWeight="bold">Leads Records</Typography>
-          {ownership.transferButton}
         </Box>
 
         <Box className="crm-filter-bar" display="flex" gap={2} mb={2} flexWrap="wrap" alignItems="center">

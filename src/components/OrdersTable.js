@@ -1,5 +1,5 @@
 // src/components/OrdersTable.js
-import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useMemo, useState } from "react";
 import {
   Box,
@@ -180,7 +180,7 @@ function OrdersTable() {
   const validationUrl =
     "/api/orders?action=validation";
 
-  const ownership = useOwnershipActions("orders", user, () => fetchOrders());
+  const ownership = useOwnershipHistory("orders");
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -502,7 +502,6 @@ function OrdersTable() {
           <Typography variant="h5" fontWeight="bold">
             Orders Records
           </Typography>
-          {ownership.transferButton}
         </Box>
 
         {/* Filters */}

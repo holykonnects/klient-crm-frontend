@@ -6,6 +6,7 @@ import LeadsTable from './components/LeadsTable';
 import AccountsTable from './components/AccountsTable';
 import DealsTable from './components/DealsTable';
 import OrdersTable from './components/OrdersTable';
+import OwnershipTransferPage from './components/OwnershipTransferPage';
 import LeadForm from './components/LeadForm';
 import Dashboard from './components/Dashboard';
 import TenderTable from './components/TenderTable';
@@ -37,6 +38,7 @@ const AppRoutes = () => {
         <Route path="view-accounts" element={<AccountsTable />} />
         <Route path="view-deals" element={<DealsTable />} />
         <Route path="view-orders" element={<OrdersTable />} />
+        <Route path="ownership-transfer" element={<OwnershipTransferPage />} />
         <Route path="add-lead" element={<LeadForm />} />
         <Route path="calendar" element={<CalendarView />} />
         <Route path="sales-tracker" element={<SalesTrackerTable />} />

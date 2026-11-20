@@ -1,5 +1,5 @@
 // src/components/DealsTable.js
-import { ownershipColumns, useOwnershipActions } from "./OwnershipActions";
+import { ownershipColumns, useOwnershipHistory } from "./OwnershipActions";
 import React, { useDeferredValue, useEffect, useState, useMemo, useCallback } from "react";
 import {
   Box,
@@ -291,7 +291,7 @@ function DealsTable() {
   const validationUrl =
     "/api/deals?action=validation";
 
-  const ownership = useOwnershipActions("deals", user, () => fetchDeals());
+  const ownership = useOwnershipHistory("deals");
 
   const fetchDeals = async () => {
     setLoading(true);
@@ -652,7 +652,6 @@ function DealsTable() {
           <Typography variant="h5" fontWeight="bold">
             Deals Records
           </Typography>
-          {ownership.transferButton}
         </Box>
 
         {/* Filters and Search */}
